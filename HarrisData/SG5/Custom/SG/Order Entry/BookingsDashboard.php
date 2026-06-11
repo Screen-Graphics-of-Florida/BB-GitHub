@@ -12,31 +12,34 @@ $moSt     = new DateTime($now->format('Y-m-01'));
 $yrSt     = new DateTime($now->format('Y-01-01'));
 $tomorrow = clone $now; $tomorrow->modify('+1 day');
 
-// Date boundaries as ISO strings for TIMESTAMP comparisons against OEORDT.ODOSTP
-$todayIso    = $now->format('Y-m-d');
-$wkStIso     = $wkSt->format('Y-m-d');
-$moStIso     = $moSt->format('Y-m-d');
-$yrStIso     = $yrSt->format('Y-m-d');
-$tomorrowIso = $tomorrow->format('Y-m-d');
+// OEBDTE (CYMD on order header) is the booking date anchor.
+// All comparisons stay as integer CYMD — no SQL date conversion needed.
+function dateToCymd(DateTime $dt) {
+    return ((int)$dt->format('Y') - 1900) * 10000 + (int)$dt->format('m') * 100 + (int)$dt->format('d');
+}
+$todayIso     = $now->format('Y-m-d');
+$todayCymd    = dateToCymd($now);
+$wkStCymd     = dateToCymd($wkSt);
+$moStCymd     = dateToCymd($moSt);
+$yrStCymd     = dateToCymd($yrSt);
+$tomorrowCymd = dateToCymd($tomorrow);
 
 $conn = $i5Connect->getConnection();
 
-// ODOSTP (original timestamp on detail line) defines when each line was booked.
-// WHERE uses TIMESTAMP range for index efficiency; CASE uses DATE() for period splits.
 $sql = "
     SELECT
-        TRIM(CHAR(h.OESLSM))                                                            AS SLSNUM,
-        CASE WHEN s.SMREGN <> 'INACT' THEN TRIM(s.SMSNA1) ELSE 'Ex-Sales' END         AS SLSNAME,
-        SUM(CASE WHEN DATE(d.ODOSTP) =  '$todayIso' THEN d.ODQORD * d.ODSLPR ELSE 0 END) AS DAYAMT,
-        SUM(CASE WHEN DATE(d.ODOSTP) >= '$wkStIso'  THEN d.ODQORD * d.ODSLPR ELSE 0 END) AS WEEKAMT,
-        SUM(CASE WHEN DATE(d.ODOSTP) >= '$moStIso'  THEN d.ODQORD * d.ODSLPR ELSE 0 END) AS MONTHAMT,
-        SUM(d.ODQORD * d.ODSLPR)                                                           AS YEARAMT
+        TRIM(CHAR(h.OESLSM))                                                             AS SLSNUM,
+        CASE WHEN s.SMREGN <> 'INACT' THEN TRIM(s.SMSNA1) ELSE 'Ex-Sales' END          AS SLSNAME,
+        SUM(CASE WHEN h.OEBDTE =  $todayCymd THEN d.ODQORD * d.ODSLPR ELSE 0 END)      AS DAYAMT,
+        SUM(CASE WHEN h.OEBDTE >= $wkStCymd  THEN d.ODQORD * d.ODSLPR ELSE 0 END)      AS WEEKAMT,
+        SUM(CASE WHEN h.OEBDTE >= $moStCymd  THEN d.ODQORD * d.ODSLPR ELSE 0 END)      AS MONTHAMT,
+        SUM(d.ODQORD * d.ODSLPR)                                                          AS YEARAMT
     FROM SGHDSDATA.OEORHD h
     JOIN SGHDSDATA.OEORDT d ON h.\"OEORD#\" = d.\"ODORD#\"
     LEFT JOIN SGHDSDATA.HDSLSM s ON h.OESLSM = s.SMSLSM
     WHERE h.OEORTY NOT IN ('Q', 'U')
-      AND d.ODOSTP >= TIMESTAMP('$yrStIso', '00:00:00')
-      AND d.ODOSTP <  TIMESTAMP('$tomorrowIso', '00:00:00')
+      AND h.OEBDTE >= $yrStCymd
+      AND h.OEBDTE <  $tomorrowCymd
     GROUP BY h.OESLSM, s.SMREGN, s.SMSNA1
     ORDER BY s.SMSNA1, h.OESLSM
 ";

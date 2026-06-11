@@ -27,7 +27,21 @@ $pd   = $periodDates[$period];
 $from = $pd['from'];
 $to   = $pd['to'];
 
+// CYMD integers for OEBDTE range filter
+function dateToCymd(DateTime $dt) {
+    return ((int)$dt->format('Y') - 1900) * 10000 + (int)$dt->format('m') * 100 + (int)$dt->format('d');
+}
+$periodCymds = array(
+    'day'   => array('from' => dateToCymd($now),  'to' => dateToCymd($next)),
+    'week'  => array('from' => dateToCymd($wkSt), 'to' => dateToCymd($next)),
+    'month' => array('from' => dateToCymd($moSt), 'to' => dateToCymd($next)),
+    'year'  => array('from' => dateToCymd($yrSt), 'to' => dateToCymd($next)),
+);
+$fromCymd = $periodCymds[$period]['from'];
+$toCymd   = $periodCymds[$period]['to'];
+
 $conn = $i5Connect->getConnection();
+
 
 $sql = "
     SELECT
@@ -47,8 +61,8 @@ $sql = "
     LEFT JOIN SGHDSDATA.HDSLSM s ON h.OESLSM = s.SMSLSM
     WHERE h.OESLSM = $slsNum
       AND h.OEORTY NOT IN ('Q', 'U')
-      AND d.ODOSTP >= TIMESTAMP('$from', '00:00:00')
-      AND d.ODOSTP <  TIMESTAMP('$to',   '00:00:00')
+      AND h.OEBDTE >= $fromCymd
+      AND h.OEBDTE <  $toCymd
     ORDER BY h.\"OEORD#\", d.ODOSTP
 ";
 
@@ -68,7 +82,7 @@ if ($stmt) {
 
 if (!empty($rows)) { $slsName = $rows[0]['SLSNAME']; }
 
-// Group by order number for subtotals
+// Group by order number for subtotals — then sort newer bk date first, then newer last-updated first
 $orders = array();
 foreach ($rows as $r) {
     $ord = $r['ORDNUM'];
@@ -79,13 +93,40 @@ foreach ($rows as $r) {
             'custname' => $r['CUSTNAME'],
             'lines'    => array(),
             'subtotal' => 0.0,
+            'lastupd'  => $r['ODOSTP'],
         );
+    }
+    if ($r['ODOSTP'] > $orders[$ord]['lastupd']) {
+        $orders[$ord]['lastupd'] = $r['ODOSTP'];
     }
     $orders[$ord]['lines'][]  = $r;
     $orders[$ord]['subtotal'] += (float)$r['LINEAMT'];
 }
 
+uasort($orders, function($a, $b) {
+    if ($b['bdte'] !== $a['bdte']) return $b['bdte'] - $a['bdte'];
+    return strcmp($b['lastupd'], $a['lastupd']);
+});
+
+// Build by-date summary (shown for week/month/year only)
+$byDate = array();
+foreach ($orders as $ord) {
+    $key = $ord['bdte'];
+    if (!isset($byDate[$key])) $byDate[$key] = array('bdte' => $key, 'orders' => 0, 'total' => 0.0);
+    $byDate[$key]['orders']++;
+    $byDate[$key]['total'] += $ord['subtotal'];
+}
+krsort($byDate); // descending by CYMD integer = newer first
+
 function fmt($n) { return '$' . number_format((float)$n, 2); }
+function fmtTs($ts) {
+    // DB2 timestamp: YYYY-MM-DD-HH.MM.SS.mmmmmm → mm-dd-yyyy hh:mm am/pm
+    if (!$ts) return '';
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})-(\d{2})\.(\d{2})/', $ts, $m)) return $ts;
+    $h = (int)$m[4];
+    return sprintf('%s/%s/%s %02d:%s %s', $m[2], $m[3], $m[1],
+        $h % 12 ?: 12, $m[5], $h >= 12 ? 'pm' : 'am');
+}
 function cymdToDate($v) {
     $v = (int)$v; if ($v <= 0) return '';
     $yy = intval($v / 10000); $mm = intval(($v % 10000) / 100); $dd = $v % 100;
@@ -115,9 +156,9 @@ body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; background: 
 .order-header .subtot { margin-left: auto; font-size: 14px; color: #6db3ff; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th { background: #1a3a6b; color: #c8d8f0; padding: 4px 10px; text-align: right; font-size: 11px; font-weight: 700; white-space: nowrap; }
-th:first-child, th:nth-child(2), th:nth-child(3) { text-align: left; }
+th:first-child, th:nth-child(2) { text-align: left; }
 td { padding: 4px 10px; text-align: right; border-bottom: 1px solid #eef; white-space: nowrap; color: #222; }
-td:first-child, td:nth-child(2), td:nth-child(3) { text-align: left; }
+td:first-child, td:nth-child(2) { text-align: left; }
 tr:nth-child(even) td { background: #f7f8fc; }
 .neg { color: #b00; }
 .err { background: #fdd; color: #900; padding: 8px 12px; border-radius: 4px; margin-bottom: 10px; font-family: monospace; }
@@ -125,6 +166,14 @@ tr:nth-child(even) td { background: #f7f8fc; }
 .back { display: inline-block; margin-bottom: 10px; color: #003087; text-decoration: none; font-size: 12px; }
 .back:hover { text-decoration: underline; }
 .empty { text-align: center; padding: 30px; color: #888; }
+.date-summary { background: #fff; border: 1px solid #c8d0de; border-radius: 4px; margin-bottom: 12px; overflow: hidden; }
+.date-summary-hdr { background: #1a3a6b; color: #c8d8f0; padding: 5px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+.date-summary table { font-size: 12px; }
+.date-summary th { background: #e8edf5; color: #1a2233; padding: 4px 12px; font-size: 11px; font-weight: 700; }
+.date-summary th:first-child { text-align: left; }
+.date-summary td { padding: 4px 12px; border-bottom: 1px solid #eef; color: #222; }
+.date-summary td:first-child { text-align: left; }
+.date-summary tfoot td { background: #dde3ef; font-weight: 700; border-top: 2px solid #1a3a6b; }
 </style>
 </head>
 <body>
@@ -142,6 +191,30 @@ tr:nth-child(even) td { background: #f7f8fc; }
     <div class="kpi"><div class="val"><?php echo count($rows); ?></div><div class="lbl">Lines</div></div>
     <div class="kpi"><div class="val"><?php echo fmt($total); ?></div><div class="lbl">Total Booked</div></div>
   </div>
+  <?php if ($period !== 'day' && !empty($byDate)): ?>
+  <div class="date-summary">
+    <div class="date-summary-hdr">Total by Booking Date</div>
+    <table>
+      <thead><tr>
+        <th>Booking Date</th><th style="text-align:right">Orders</th><th style="text-align:right">Total Booked</th>
+      </tr></thead>
+      <tbody>
+      <?php foreach ($byDate as $d): ?>
+      <tr>
+        <td><?php echo cymdToDate($d['bdte']); ?></td>
+        <td style="text-align:right"><?php echo $d['orders']; ?></td>
+        <td style="text-align:right"><?php echo fmt($d['total']); ?></td>
+      </tr>
+      <?php endforeach; ?>
+      </tbody>
+      <tfoot><tr>
+        <td>Total</td>
+        <td style="text-align:right"><?php echo count($orders); ?></td>
+        <td style="text-align:right"><?php echo fmt($total); ?></td>
+      </tr></tfoot>
+    </table>
+  </div>
+  <?php endif; ?>
   <?php if (empty($orders)): ?>
     <div class="empty">No booked lines found for this salesperson and period.</div>
   <?php else: ?>
@@ -150,20 +223,19 @@ tr:nth-child(even) td { background: #f7f8fc; }
       <div class="order-header">
         <span class="ord-num">Order #<?php echo htmlspecialchars($ord['ordnum']); ?></span>
         <span class="cust"><?php echo htmlspecialchars($ord['custname']); ?></span>
-        <span>Bk Date: <?php echo cymdToDate($ord['bdte']); ?></span>
+        <span>Booked Date: <?php echo cymdToDate($ord['bdte']); ?></span>
+        <span>Last Updated: <?php echo htmlspecialchars(fmtTs($ord['lastupd'])); ?></span>
         <span class="subtot"><?php echo fmt($ord['subtotal']); ?></span>
       </div>
       <table>
         <thead><tr>
-          <th>Item</th><th>Description</th><th>Line Timestamp</th>
-          <th>Qty Ord</th><th>Unit Price</th><th>Line Amt</th>
+          <th>Item</th><th>Description</th><th>Qty Ord</th><th>Unit Price</th><th>Line Amt</th>
         </tr></thead>
         <tbody>
         <?php foreach ($ord['lines'] as $ln): $amt = (float)$ln['LINEAMT']; ?>
         <tr>
           <td><?php echo htmlspecialchars($ln['ITEM']); ?></td>
           <td><?php echo htmlspecialchars($ln['ITEMDESC']); ?></td>
-          <td><?php echo htmlspecialchars($ln['ODOSTP']); ?></td>
           <td><?php echo number_format((float)$ln['QORD'], 0); ?></td>
           <td><?php echo '$'.number_format((float)$ln['SLPR'], 5); ?></td>
           <td class="<?php echo $amt < 0 ? 'neg' : ''; ?>"><?php echo fmt($amt); ?></td>
