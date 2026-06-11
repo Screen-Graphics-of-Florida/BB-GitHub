@@ -1,0 +1,1218 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Cost Simulator Display                                      *
+*********************************************************************
+%}
+
+%{EXT-COMMENTS
+Extension to allocate setup costs over simulated quantity instead of average lot size
+- Assumes simulated costs are for single manufacturing run with single setup (customized orders)
+- Developed for Screen Graphics to meet estimating requirements for customized customer orders
+  of varying qunatities
+
+Step #1: Add quickLink section to show table of possible prices for quote/estimating
+Table of form:
+
+Unit  Setup	 Target  Qty   
+Cost  Cost   Margin         500   1000  5000  10000  20000 
+1.23  500.00  15%           2.57  1.99  ...
+1.23  500.00  20%           2.68  ...
+...
+
+Allow for user input for 5 qty buckets and 5 margin buckets with recalc; 
+Initial defaults for all buckets set by system;
+
+Calculations:
+Unit Cost  = 
+
+Setup Cost = sum of [Standard Setup Hours (WRKRTM.WKSUHR) * Standard Setup Rate (WRKRTM.WKSLR)]
+                over all routing steps in the simulation (WRKRTM.WKXHND = current hex handle)
+
+Target Margin is input value [default from 25% to 55% in 5% increments per SG]
+
+Qty is input value [default to 1000, 2500, 5000, 7500, 10000 per SG]
+
+Price = (Unit Cost + (Setup Cost / Qty)) * (1 + Target Margin)
+
+**** MUST ADD QUICKLINK TO THE QUICKLINKS IN THE CPP CONFIGURATION ****
+D2W Name            CostSimulatorDisplay.d2w
+Quick Link          estimator
+Description         Estimator
+Rows to Display     99999
+Image
+Class
+URL ID
+Reserved Record on Update
+
+**** MUST ADD QUICKLINK TO APPROPRIATE ROLE IN THE CPP CONFIGURATION ****
+Edit the CostSimulatorDisplay.d2w entry for the appropriate role, add Estimator quickLink
+
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "QuickLink.icl"
+
+%Define {	
+  page_title              = "Cost Simulation *"
+  d2wName                 = "CostSimulatorDisplay.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(fromPlant)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)"
+  programName             = "HSCSIM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+  customerNumber          = "0"	
+  itemDescription         = ""	
+  orderQuantity           = "0"	
+  percentSM               = "0"	
+  percentGA               = "0"	
+  sellPrice               = "0"	
+  addonTotal              = "0"	
+  amountMiscTwo           = "0"	
+  percentOne              = "0"	
+  percentTwo              = "0"	
+  percentThree            = "0"	
+  percentFour             = "0"	
+  wareHouse               = "0"	
+  listPrice               = "0"	
+  quickLinkByUser         = "Y"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+	
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @PlantUserView(profileHandle, dataBaseID, userPass, plantNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "NewWindowOpen.icl"
+%{EXT-BEG: 2009-09-23 ESTIMATOR %}
+			function extSubmitEnter(e){ 
+			  var extKeyPress 
+			  if(e && e.which){ 
+			    e = e
+			    extKeyPress = e.which 
+			  } else {
+			    e = event
+			    extKeyPress = e.keyCode 
+  			  }
+			  if(extKeyPress == 13){ 
+			    document.forms[0].submit() 
+			    return false 
+			  } else {
+			    return true 
+			  }
+			}
+%{EXT-END: 2009-09-23 ESTIMATOR %}
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          @dtw_assign(pageID, "COSTSIMULATORDISPLAY")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+
+%{ QuickLink Table %}     %INCLUDE "QuickLinkTable.icl"
+
+%{ Featured Item %}
+                          @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMKIT", V_IMKIT)
+                          %if (V_IMKIT != "F")		
+                              @Remove_Quick_Link("featuresandoptions")
+                          %endif
+
+%{ QuickLink By User %}   %INCLUDE "QuickLinkByUser.icl"
+
+%{ Cost Simulator Heading %}
+                          @dtw_assign(RPT_MAX_ROWS, "99")
+                          @dtw_assign(dspMaxRows, "10")
+                          @dtw_assign(stmtSQL, "")
+                          @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From WRKSIM Where WKXHND='$(profileHandle)' ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Cost_Simulator_Header(profileHandle, dataBaseID, stmtSQL)
+
+%{ Quicklink Begin %}     %INCLUDE "QuickLinkBegLoop.icl"
+
+        %{ Cost Summary %}
+                              %if (quicklinkRef == "costsummary")
+                                  @dtw_assign(stmtSQL, "")
+                                  @dtw_concat(stmtSQL, "SELECT * FROM HDPLNT ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " WHERE PLPLNT=$(plantNumber) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  @Cost_Simulator_Summary(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Routing %}
+                              %elseif (quicklinkRef == "routing")
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, "Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " WRKRTM ", fileSQL)
+                                  @dtw_concat(selectSQL, " WKXHND='$(profileHandle)' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_concat(stmtSQL, " Order By WKDEPT, WKWC ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl" 
+                                  @Cost_Simulator_Routing(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Product Structure %}
+                              %elseif (quicklinkRef == "productstructure")
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select *  ", stmtSQL)
+                                  @dtw_concat(fileSQL, " WRKPSM ", fileSQL)
+                                  @dtw_concat(selectSQL, " WKXHND='$(profileHandle)' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_concat(stmtSQL, " Order By WKCPN ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Cost_Simulator_Product_Structure(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Part Class Summary %}
+                              %elseif (quicklinkRef == "partclasssummary")
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(distinctSQL, "WKCLAS||WKCDES", distinctSQL)
+                                  @dtw_concat(stmtSQL, "Select WKCLAS, WKCDES, Sum((WKSCPP + 1) * WKQPER * WKUCST * $(orderQuantity)) as extCost", stmtSQL)
+                                  @dtw_concat(fileSQL, " WRKPSM ", fileSQL)
+                                  @dtw_concat(selectSQL, " WKXHND='$(profileHandle)' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_concat(stmtSQL, " Group By WKCLAS, WKCDES ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " Order By WKCLAS ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Cost_Simulator_Part_Class(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Variable Costs %}
+                              %elseif (quicklinkRef == "variablecosts")
+                                  @dtw_assign(stmtSQL, "")
+                                  @dtw_concat(stmtSQL, "SELECT * FROM HDPLNT ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " WHERE PLPLNT=$(plantNumber) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  @Cost_Simulator_Variable_Cost(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Features And Options %}
+                              %elseif (quicklinkRef == "featuresandoptions")
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, "Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDFOPW ", fileSQL)
+                                  @dtw_concat(selectSQL, " SAXHND='$(profileHandle)' and SAMNCD='S' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Cost_Simulator_Features_Options(profileHandle, dataBaseID, stmtSQL)
+%{EXT-BEG: 2009-09-23 ESTIMATOR %}
+        %{ Estimator %}
+                              %elseif (quicklinkRef == "estimator")
+                                  %{ First get unit cost %}
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_assign(stmtSQL, "")
+                                  @dtw_concat(stmtSQL, "SELECT * FROM HDPLNT ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " WHERE PLPLNT=$(plantNumber) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  @ext_UnitCost(profileHandle, dataBaseID, stmtSQL, extUnitCost)
+
+                                  %{ Then make Estimator quickLink %}
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, "Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " WRKRTM ", fileSQL)
+                                  @dtw_concat(selectSQL, " WKXHND='$(profileHandle)' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_concat(stmtSQL, " Order By WKDEPT, WKWC ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Cost_Simulator_Ext_Estimator(profileHandle, dataBaseID, stmtSQL, extUnitCost)
+%{EXT-END: 2009-09-23 ESTIMATOR %}
+                              %endif
+
+%{ Quicklink End %}       %INCLUDE "QuickLinkEndLoop.icl"
+
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%{EXT-BEG: 2009-09-23 ESTIMATOR %}
+%{ Clean up/validate inputted number (remove commas, negatives, and scale decimals %}
+%MACRO_FUNCTION ext_rCleanInput (IN string) RETURNS (number) {
+	@dtw_Strip(string, string)
+	@dtw_Replace(string, ",", "", string)
+	@dtw_Replace(string, "-", "", string)
+	@dtw_Assign(decimals, @dtw_rSubtract(@dtw_rLength(string), @dtw_rLastPos(".", string)))
+	%if (decimals == @dtw_rLength(string)) 
+  	  @dtw_Assign(decimals, "0")
+      %endif
+	@dtw_Replace(string, ".", "", string)   
+      %if (@dtw_rIsNumeric(string) == "YES")   
+        @dtw_Assign(number, @dtw_rDivide(string, @dtw_rPower("10", decimals)))
+      %else
+        @dtw_Assign(number, "0")
+      %endif
+%}
+%{ Remove &nbsp; from end of formatted number used in input box %}
+%MACRO_FUNCTION ext_CleanFormat (INOUT string) {
+	@dtw_Strip(string, string)
+      @dtw_Substr(string, "1", @dtw_rSubtract(@dtw_rLength(string), "6"), string)
+%}
+%{ Calculate Unit Cost %}
+%FUNCTION(dtw_sql) ext_UnitCost (IN  CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL, 
+                                  OUT number)
+
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+     %ROW{
+       @RtvFldDesc("WKXHND='$(profileHandle)'", "WRKRTM", "char(ifnull(round(sum(WKMHRS*$(orderQuantity)*WKSLR),5),0))", V_TLLCST)
+       @RtvFldDesc("WKXHND='$(profileHandle)'", "WRKRTM", "char(ifnull(round(sum(WKMHRS*$(orderQuantity)*WKSLR*WKVAR/100),5),0))", V_TLVOVH)
+       @RtvFldDesc("WKXHND='$(profileHandle)'", "WRKRTM", "char(ifnull(round(sum(WKMHRS*$(orderQuantity)*WKSLR*WKFIX/100),5),0))", V_TLFOVH)
+       @RtvFldDesc("WKXHND='$(profileHandle)'", "WRKPSM", "char(ifnull(round(sum((1+WKSCPP)*WKQPER*WKUCST*$(orderQuantity)),5),0))", V_TLMCST)
+       @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMKIT", V_IMKIT)
+       @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMPCLS", V_IMPCLS)
+       @RtvFldDesc("IWITEM='$(itemNumber)' and IWWHS=$(wareHouse)", "HDIWHS", "IWPGRP", V_IWPGRP)
+
+       @dtw_assign(totalOverhead, @dtw_rAdd(V_TLVOVH, V_TLFOVH))
+       @dtw_assign(variableMFGCost, @dtw_rAdd(@dtw_rAdd(V_TLLCST, V_TLVOVH), V_TLMCST))
+       @dtw_assign(totalMFGCost, @dtw_rAdd(variableMFGCost, V_TLFOVH))
+       @dtw_assign(totalSM, @dtw_rdivide(@dtw_rMultiply(totalMFGCost, percentSM), "100"))
+       @dtw_assign(totalGA, @dtw_rdivide(@dtw_rMultiply(totalMFGCost, percentGA), "100"))
+       @dtw_assign(totalVariable, @dtw_rAdd(addonTotal, amountMiscTwo))
+       @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentOne, sellPrice), "100")))
+       @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentTwo, sellPrice), "100")))
+       @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentThree, sellPrice), "100")))
+       @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentFour, sellPrice), "100")))
+       @dtw_assign(variableTotal, @dtw_rAdd(variableMFGCost, totalVariable))
+       @dtw_assign(fixedTotal, @dtw_rAdd(@dtw_rAdd(V_TLFOVH, totalSM), totalGA))
+       @dtw_assign(grandTotal, @dtw_rAdd(fixedTotal, variableTotal))
+       @dtw_assign(profitVarDol, @dtw_rSubtract(sellPrice, variableTotal))
+       @dtw_assign(profitTotDol, @dtw_rSubtract(sellPrice, grandTotal))
+       @dtw_assign(profitVarPct, @dtw_rMultiply(@dtw_rDivide(profitVarDol, sellPrice), "100"))
+       @dtw_assign(profitTotPct, @dtw_rMultiply(@dtw_rDivide(profitTotDol, sellPrice), "100"))
+
+       @dtw_Assign(number, grandTotal)
+     %}
+  %}
+%}
+%{EXT-END: 2009-09-23 ESTIMATOR %}
+
+
+%FUNCTION(dtw_sql) Cost_Simulator_Header (IN  CHAR(64)    profileHandle,
+                                              CHAR(2)     dataBaseID,
+                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      <a href="$(homeURL)$(cGIPath)CostSimulator.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(fromPlant)">$(portalHome)</a>
+                      <a href="$(homeURL)$(cGIPath)CostSimulatorVariableMaintain.d2w/MAINTAIN$(d2wVarBase)">$(changeImageLrg)</a>
+                      <a href="$(homeURL)$(cGIPath)ProductStructureInquiry.d2w/DISPLAY$(d2wVarBase)" onclick="$(inquiryWinVar)">$(prodStrImageLrg)</a>
+                      <a href="$(homeURL)$(cGIPath)ReferenceRoutingInquiry.d2w/DISPLAY$(d2wVarBase)" onclick="$(inquiryWinVar)">$(refRtgImageLrg)</a>
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      %ROW{
+
+          @dtw_assign(itemImage, "$(itemNumber)$(itemImageExt)")
+          @dtwf_exists(itemImage, imageExists)
+          @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+          @RtvFldDesc("STCSET=$(V_WKCSET)", "SCMSTM", "STCSLD", costSetDesc)
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="70%">
+                  <col width="25%">
+              <tr>
+                  <td>
+                      <table $(contentTable)>
+                          @Format_Header_URL("Plant", $(plantName), $(plantNumber), "$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)")
+                          @Format_Header_URL("Item", $(itemDescription), $(itemNumber), "$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)")
+                          @Format_Header("Cost Set", "$(costSetDesc)", $(V_WKCSET))
+                          %if (V_WKCUST != "0")
+                              @RtvFldDesc("CMCUST=$(V_WKCUST)", "HDCUST", "CMCNA1", customerName)
+                              @Format_Header("Customer Number", "$(customerName)", $(V_WKCUST))
+                          %endif
+                          @Format_Header("Quantity", "$(V_WKQTY)", "")
+                      </table>
+                  </td>
+                  %if (imageExists == "Y")
+                      <td>
+                          <table $(contentTable)>
+                              <tr rowspan="8"><td><a href="$(homeURL)$(cGIPath)imageDisplay.d2w/DISPLAY$(genericVarBase)&amp;imageDisplayPath=$(homeURL)$(itemImage)&amp;imageDesc=@dtw_rurlescseq(itemDescription)" onclick="$(itemImageWinVar)"><img src="$(homeURL)$(itemImage)" border="0" height="150" width="150" title="Click here to view larger image"></a></td></tr>
+                          </table>
+                      </td>
+                  %endif
+              </tr>
+          </table>
+
+          @dtw_assign(customerNumber, "$(V_WKCUST)")
+          @dtw_assign(orderQuantity,  "$(V_WKQTY)")
+          @dtw_assign(percentSM,      "$(V_WKSPCT)")
+          @dtw_assign(percentGA,      "$(V_WKGPCT)")
+          @dtw_assign(sellPrice,      @dtw_rMultiply(V_WKSELL, V_WKQTY))
+          @dtw_assign(addonTotal,     "$(V_WKUDA1)")
+          @dtw_assign(amountMiscTwo,  "$(V_WKUDA2)")
+          @dtw_assign(percentOne,     "$(V_WKPCA1)")
+          @dtw_assign(percentTwo,     "$(V_WKPCA2)")
+          @dtw_assign(percentThree,   "$(V_WKPCA3)")
+          @dtw_assign(percentFour,    "$(V_WKPCA4)")
+          @dtw_assign(wareHouse,      "$(V_WKWHS)")
+      %}
+
+      $(hrTagAttr)
+      %INCLUDE "QuickLinkDisplay.icl"
+	   		
+  %}
+%}
+
+%FUNCTION(dtw_sql) Cost_Simulator_Summary (IN  CHAR(64)    profileHandle,
+                                               CHAR(2)     dataBaseID,
+                                               CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="costsummary"></a>
+      @dtw_assign(displayMaxRowsMsg, "N")
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+
+          <tr>
+              <th></th>
+              <th class="colhdr">MFG Overhead</th>
+              <th class="colhdr">Total MFG Cost</th>
+              <th class="colhdr">S&M % MFG</th>
+              <th class="colhdr">G&A % MFG</th>
+              <th class="colhdr">Variable Costs</th>
+              <th class="colhdr">Total Cost</th>
+              <th class="colhdr">Sell Price</th>
+              <th class="colhdr">Profit $</th>
+              <th class="colhdr">Profit %</th>
+          </tr>
+
+          %ROW{
+              @RtvFldDesc("WKXHND='$(profileHandle)'", "WRKRTM", "char(ifnull(round(sum(WKMHRS*$(orderQuantity)*WKSLR),5),0))", V_TLLCST)
+              @RtvFldDesc("WKXHND='$(profileHandle)'", "WRKRTM", "char(ifnull(round(sum(WKMHRS*$(orderQuantity)*WKSLR*WKVAR/100),5),0))", V_TLVOVH)
+              @RtvFldDesc("WKXHND='$(profileHandle)'", "WRKRTM", "char(ifnull(round(sum(WKMHRS*$(orderQuantity)*WKSLR*WKFIX/100),5),0))", V_TLFOVH)
+              @RtvFldDesc("WKXHND='$(profileHandle)'", "WRKPSM", "char(ifnull(round(sum((1+WKSCPP)*WKQPER*WKUCST*$(orderQuantity)),5),0))", V_TLMCST)
+              @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMKIT", V_IMKIT)
+              @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMPCLS", V_IMPCLS)
+              @RtvFldDesc("IWITEM='$(itemNumber)' and IWWHS=$(wareHouse)", "HDIWHS", "IWPGRP", V_IWPGRP)
+
+              @dtw_assign(totalOverhead, @dtw_rAdd(V_TLVOVH, V_TLFOVH))
+              @dtw_assign(variableMFGCost, @dtw_rAdd(@dtw_rAdd(V_TLLCST, V_TLVOVH), V_TLMCST))
+              @dtw_assign(totalMFGCost, @dtw_rAdd(variableMFGCost, V_TLFOVH))
+              @dtw_assign(totalSM, @dtw_rdivide(@dtw_rMultiply(totalMFGCost, percentSM), "100"))
+              @dtw_assign(totalGA, @dtw_rdivide(@dtw_rMultiply(totalMFGCost, percentGA), "100"))
+              @dtw_assign(totalVariable, @dtw_rAdd(addonTotal, amountMiscTwo))
+              @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentOne, sellPrice), "100")))
+              @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentTwo, sellPrice), "100")))
+              @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentThree, sellPrice), "100")))
+              @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentFour, sellPrice), "100")))
+              @dtw_assign(variableTotal, @dtw_rAdd(variableMFGCost, totalVariable))
+              @dtw_assign(fixedTotal, @dtw_rAdd(@dtw_rAdd(V_TLFOVH, totalSM), totalGA))
+              @dtw_assign(grandTotal, @dtw_rAdd(fixedTotal, variableTotal))
+              @dtw_assign(profitVarDol, @dtw_rSubtract(sellPrice, variableTotal))
+              @dtw_assign(profitTotDol, @dtw_rSubtract(sellPrice, grandTotal))
+              @dtw_assign(profitVarPct, @dtw_rMultiply(@dtw_rDivide(profitVarDol, sellPrice), "100"))
+              @dtw_assign(profitTotPct, @dtw_rMultiply(@dtw_rDivide(profitTotDol, sellPrice), "100"))
+
+              @Format_Nbr(V_TLVOVH, F_TLVOVH, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(V_TLFOVH, F_TLFOVH, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalOverhead, totalOverhead, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(variableMFGCost, variableMFGCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalMFGCost, totalMFGCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr($(percentSM), F_PLSPCT, "2", $(pctEditCode), "", "", "%")
+              @Format_Nbr($(percentGA), F_PLGPCT, "2", $(pctEditCode), "", "", "%")
+              @Format_Nbr(totalSM, totalSM, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalGA, totalGA, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalVariable, F_totalVariable, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr(variableTotal, variableTotal, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(fixedTotal, fixedTotal, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(grandTotal, grandTotal, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(sellPrice, F_sellPrice, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(profitVarDol, profitVarDol, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr(profitTotDol, profitTotDol, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr(profitVarPct, profitVarPct, "2", $(pctEditCode), "Y", "", "%")
+              @Format_Nbr(profitTotPct, profitTotPct, "2", $(pctEditCode), "Y", "", "%")
+
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="dsphdr">Variable</td>
+                  <td class="colnmbr"><a href="#routing" title="Click here to go to Routing">$(F_TLVOVH)</a></td>
+                  <td class="colnmbr">$(variableMFGCost)</td>
+                  <td></td>
+                  <td></td>
+                  <td class="colnmbr"><a href="#variablecosts" title="Click here to go to Variable Costs">$(F_totalVariable)</a></td>
+                  <td class="colnmbr">$(variableTotal)</td>
+                  %if (V_IMKIT != "F")		
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)PricingInquiry.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;warehouseNumber=@dtw_rurlescseq(wareHouse)&amp;productClass=@dtw_rurlescseq(V_IMPCLS)&amp;productGroup=@dtw_rurlescseq(V_IWPGRP)&amp;quantity=@dtw_rurlescseq(orderQuantity)" onclick="$(inquiryWinVar)" title="View Pricing">$(F_sellPrice)</a></td>
+                  %else
+                      <td class="colnmbr">$(F_sellPrice)</td>
+                  %endif
+                  <td class="colnmbr">$(profitVarDol)</td>
+                  <td class="colnmbr">$(profitVarPct)</td>
+              </tr>
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="dsphdr">Fixed</td>
+                  <td class="colnmbr"><a href="#routing" title="Click here to go to Routing">$(F_TLFOVH)</a></td>
+                  <td class="colnmbr"><a href="#routing" title="Click here to go to Routing">$(F_TLFOVH)</a></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_PLSPCT) of $(totalMFGCost) (Total MFG Cost)">$(totalSM)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_PLGPCT) of $(totalMFGCost) (Total MFG Cost)">$(totalGA)</span></td>
+                  <td></td>
+                  <td class="colnmbr">$(fixedTotal)</td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+              </tr>
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="dsphdr">Total</td>
+                  <td class="coltotal">$(totalOverhead)</td>
+                  <td class="coltotal">$(totalMFGCost)</td>
+                  <td class="coltotal" $(helpCursor)><span title="$(F_PLSPCT) of $(totalMFGCost) (Total MFG Cost)">$(totalSM)</span></td>
+                  <td class="coltotal" $(helpCursor)><span title="$(F_PLGPCT) of $(totalMFGCost) (Total MFG Cost)">$(totalGA)</span></td>
+                  <td class="coltotal"><a href="#variablecosts" title="Click here to go to Variable Costs">$(F_totalVariable)</a></td>
+                  <td class="coltotal">$(grandTotal)</td>
+                  %if (V_IMKIT != "F")		
+                      <td class="coltotal"><a href="$(homeURL)$(cGIPath)PricingInquiry.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;warehouseNumber=@dtw_rurlescseq(wareHouse)&amp;productClass=@dtw_rurlescseq(V_IMPCLS)&amp;productGroup=@dtw_rurlescseq(V_IWPGRP)&amp;quantity=@dtw_rurlescseq(orderQuantity)" onclick="$(inquiryWinVar)" title="View Pricing">$(F_sellPrice)</a></td>
+                  %else
+                      <td class="coltotal">$(F_sellPrice)</td>
+                  %endif
+                  <td class="coltotal">$(profitTotDol)</td>
+                  <td class="coltotal">$(profitTotPct)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Cost_Simulator_Routing (IN  CHAR(64)    profileHandle,
+                                               CHAR(2)     dataBaseID,
+                                               CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="routing"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)CostSimulatorRoutingMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=A")
+      @dtw_assign(moreInfoImage, "$(addImageMed)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  %if (formatToPrint != "Y")
+                      <th class="colhdr">$(optionHeading)</th>
+                  %endif
+                  @Format_Column_Header("WKDEPT", "Department")
+                  @Format_Column_Header("WKWC", "Work<br>Center")
+                  @Format_Column_Header("WCDesc", "Work Center<br>Description")
+                  @Format_Column_Header("WKMHRS", "Hours/<br>Piece")
+                  @Format_Column_Header("WKSLR", "Rate/<br>Hour")
+                  @Format_Column_Header("labAmount", "Labor<br>Cost")
+                  @Format_Column_Header("varAmount", "Variable")
+                  @Format_Column_Header("fixAmount", "Fixed")
+                  @Format_Column_Header("totAmount", "Total")
+              </tr>
+          %endif
+
+          @dtw_assign(totalLaborCost, "0")
+          @dtw_assign(totalVarCost, "0")
+          @dtw_assign(totalFixCost, "0")
+          @dtw_assign(totalLabor, "0")
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("WCPLT=$(plantNumber) and WCDEPT='$(V_WKDEPT)' and WCWC='$(V_WKWC)'", "HDMWCM", "WCDESC", WCDesc)
+
+              @dtw_assign(labAmount, @dtw_rMultiply(@dtw_rMultiply(V_WKMHRS, orderQuantity), V_WKSLR))
+              @dtw_assign(totalLaborCost, @dtw_rAdd(totalLaborCost, labAmount))
+              @dtw_assign(varAmount, @dtw_rdivide(@dtw_rMultiply(labAmount, V_WKVAR), "100"))
+              @dtw_assign(totalVarCost, @dtw_rAdd(totalVarCost, varAmount))
+              @dtw_assign(fixAmount, @dtw_rdivide(@dtw_rMultiply(labAmount, V_WKFIX), "100"))
+              @dtw_assign(totalFixCost, @dtw_rAdd(totalFixCost, fixAmount))
+              @dtw_assign(totAmount, @dtw_rAdd(@dtw_rAdd(labAmount, varAmount), fixAmount))
+
+              @Format_Nbr($(V_WKMHRS), F_WKMHRS, "6", $(hrsEditCode), "", "", "")
+              @Format_Nbr($(V_WKSLR), F_WKSLR, "3", $(rteEditCode), "", "", "")
+              @Format_Nbr($(V_WKVAR), F_WKVAR, "3", $(pctEditCode), "", "", "%")
+              @Format_Nbr($(V_WKFIX), F_WKFIX, "3", $(pctEditCode), "", "", "%")
+              @Format_Nbr(orderQuantity, F_WKQTY, "4", $(qtyEditCode), "", "", "")
+              @Format_Nbr(labAmount, labAmount, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(varAmount, varAmount, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(fixAmount, fixAmount, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totAmount, totAmount, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y")
+                      <td class="opticon">
+                          <a href="$(homeURL)$(cGIPath)CostSimulatorRoutingMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;department=@dtw_rurlescseq(V_WKDEPT)&amp;workCenter=@dtw_rurlescseq(V_WKWC)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          <a href="$(homeURL)$(cGIPath)CostSimulatorRoutingMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;department=@dtw_rurlescseq(V_WKDEPT)&amp;workCenter=@dtw_rurlescseq(V_WKWC)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                          <a href="$(homeURL)$(cGIPath)CostSimulatorRoutingMaintain.d2w/Edit_Data$(d2wVarBase)&amp;department=@dtw_rurlescseq(V_WKDEPT)&amp;workCenter=@dtw_rurlescseq(V_WKWC)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                      </td>
+                  %endif
+                  <td class="colalph">$(V_WKDEPT)</td>
+                  <td class="colalph">$(V_WKWC)</td>
+                  <td class="colalph">$(WCDesc)</td>
+                  <td class="colnmbr">$(F_WKMHRS)</td>
+                  <td class="colnmbr">$(F_WKSLR)</td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_WKMHRS) (Hours/Piece) x $(F_WKSLR) (Rate/Hour) x $(F_WKQTY) (Quantity)">$(labAmount)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_WKVAR) of $(labAmount) (Labor Cost)">$(varAmount)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_WKFIX) of $(labAmount) (Labor Cost)">$(fixAmount)</span></td>
+                  <td class="colnmbr">$(totAmount)</td>
+              </tr>
+          %}
+          %if (sql_Record_Count != "0")
+              %if (formatToPrint != "Y")
+                  @dtw_assign(totalSpan, "6")
+              %else
+                  @dtw_assign(totalSpan, "5")
+              %endif
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(totalLabor, @dtw_rAdd(@dtw_rAdd(totalLaborCost, totalVarCost), totalFixCost))
+
+              @Format_Nbr(totalLaborCost, F_totalLaborCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalVarCost, F_totalVarCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalFixCost, F_totalFixCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalLabor, F_totalLabor, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              <tr class="$(rowClass)">
+                  <td class="colnmbr" colspan="$(totalSpan)">Total Labor Cost</td>
+                  <td class="coltotal">$(F_totalLaborCost)</td>
+                  <td class="coltotal">$(F_totalVarCost)</td>
+                  <td class="coltotal">$(F_totalFixCost)</td>
+                  <td class="coltotal">$(F_totalLabor)</td>
+              </tr>
+              %if (formatToPrint != "Y")
+                  @dtw_assign(totalSpan, "9")
+              %else
+                  @dtw_assign(totalSpan, "8")
+              %endif
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(percentLabor, @dtw_rMultiply(@dtw_rDivide(totalLabor, sellPrice), "100"))
+              @Format_Nbr(percentLabor, percentLabor, "2", $(pctEditCode), "Y", "", "")
+              <tr class="$(rowClass)">
+                  <td class="colnmbr" colspan="$(totalSpan)">Labor Cost/Selling Price %</td>
+                  <td class="colnmbr">$(percentLabor)</td>
+              </tr>
+          %endif
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Cost_Simulator_Product_Structure (IN  CHAR(64)    profileHandle,
+                                                         CHAR(2)     dataBaseID,
+                                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="productstructure"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)CostSimulatorProductStructureMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=A")
+      @dtw_assign(moreInfoImage, "$(addImageMed)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  %if (formatToPrint != "Y")
+                      <th class="colhdr">$(optionHeading)</th>
+                  %endif
+                  @Format_Column_Header("WKCPN", "Component<br>Item")
+                  @Format_Column_Header("itemDescription", "Component Description")
+                  @Format_Column_Header("WKQPER", "Quantity<br>Per")
+                  @Format_Column_Header("WKCLAS", "Part<br>Class")
+                  @Format_Column_Header("WKPTYP", "Part<br>Type")
+                  @Format_Column_Header("WKUOMS", "Unit Of<br>Measure")
+                  @Format_Column_Header("WKSCPP", "Scrap<br>Percent")
+                  @Format_Column_Header("WKUCST", "Unit Cost")
+                  @Format_Column_Header("extCost", "Extended<br>Unit Cost")
+              </tr>
+          %endif
+
+          @dtw_assign(totalMaterial, "0")
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("IMITEM='$(V_WKCPN)'", "HDIMST", "IMIMDS", itemDescription)
+              @RtvFldDesc("FLTYPE='PARTTYPE' and FLVALU='$(V_WKPTYP)'", "SYFLAG", "FLDESC", partTypeDesc)
+              @RtvFldDesc("UMUOM='$(V_WKUOMS)'", "HDUOM", "UMUMLD", uomDesc)
+
+              @dtw_assign(extCost, @dtw_rMultiply(@dtw_rMultiply(@dtw_rMultiply(@dtw_rAdd(V_WKSCPP,"1"),V_WKQPER), V_WKUCST), orderQuantity))
+              @dtw_assign(totalMaterial, @dtw_rAdd(totalMaterial, extCost))
+
+              @Format_Nbr(orderQuantity, F_WKQTY, "4", $(qtyEditCode), "", "", "")
+              @Format_Nbr($(V_WKQPER), F_WKQPER, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr("@dtw_rMultiply(V_WKSCPP, "100")", F_WKSCPP, "0", $(pctEditCode), "", "", "%")
+              @Format_Nbr($(V_WKUCST), F_WKUCST, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(extCost, extCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @dtw_assign(F_TXSCPP, "")
+              %if (V_WKSCPP != ".00")
+                  @Format_Nbr("@dtw_rMultiply(@dtw_rAdd(V_WKSCPP, "1"),"100")", F_TXSCPP, "2", $(pctEditCode), "", "", "%")
+                  @dtw_concat("$(F_TXSCPP)", " of", F_TXSCPP)
+              %endif
+              @dtw_assign(itemImage, "$(V_WKCPN)$(itemImageExt)")
+              @dtwf_exists(itemImage, imageExists)
+
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y")
+                      <td class="opticon">
+                          <a href="$(homeURL)$(cGIPath)CostSimulatorProductStructureMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;componentNumber=@dtw_rurlescseq(V_WKCPN)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          <a href="$(homeURL)$(cGIPath)CostSimulatorProductStructureMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;componentNumber=@dtw_rurlescseq(V_WKCPN)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                          <a href="$(homeURL)$(cGIPath)CostSimulatorProductStructureMaintain.d2w/Edit_Data$(d2wVarBase)&amp;componentNumber=@dtw_rurlescseq(V_WKCPN)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+    		           %if (imageExists == "Y")
+                              <a href="$(homeURL)$(cGIPath)imageDisplay.d2w/DISPLAY$(genericVarBase)&amp;imageDisplayPath=$(homeURL)$(itemImage)&amp;imageDesc=@dtw_rurlescseq(itemDescription)" onclick="$(itemImageWinVar)">$(foundImage)</a>
+                          %endif
+                      </td>
+                  %endif
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_WKCPN))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_WKCPN)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_WKCPN)&amp;itemDescription=@dtw_rurlescseq(itemDescription)" title="View Item">$(itemDescription)</a></td>
+                  <td class="colnmbr">$(F_WKQPER)</td>
+                  <td class="colcode" $(helpCursor)><span title="$(V_WKCDES)">$(V_WKCLAS)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(partTypeDesc)">$(V_WKPTYP)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(uomDesc)">$(V_WKUOMS)</span></td>
+                  <td class="colnmbr">$(F_WKSCPP)</td>
+                  <td class="colnmbr">$(F_WKUCST)</td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_TXSCPP) $(F_WKQPER) (Quantity Per) x $(V_WKUCST) (Unit Cost) x $(F_WKQTY) (Quantity)">$(extCost)</span></td>
+              </tr>
+          %}
+          %if (sql_Record_Count != "0")
+              %if (formatToPrint != "Y")
+                  @dtw_assign(totalSpan, "9")
+              %else
+                  @dtw_assign(totalSpan, "8")
+              %endif
+              %INCLUDE "SetRowClass.icl"
+              @Format_Nbr(totalMaterial, F_totalMaterial, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              <tr class="$(rowClass)">
+                  <td class="colnmbr" colspan="$(totalSpan)">Total Material Cost</td>
+                  <td class="coltotal">$(F_totalMaterial)</td>
+              </tr>
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(percentMaterial, @dtw_rMultiply(@dtw_rDivide(totalMaterial, sellPrice), "100"))
+              @Format_Nbr(percentMaterial, percentMaterial, "2", $(pctEditCode), "Y", "", "")
+              <tr class="$(rowClass)">
+                  <td class="colnmbr" colspan="$(totalSpan)">Material Cost/Selling Price %</td>
+                  <td class="colnmbr">$(percentMaterial)</td>
+              </tr>
+          %endif
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Cost_Simulator_Part_Class (IN  CHAR(64)    profileHandle,
+                                                  CHAR(2)     dataBaseID,
+                                                  CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="partclasssummary"></a>
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("WKCLAS", "Part<br>Class")
+                  @Format_Column_Header("WKCDES", "Description")
+                  @Format_Column_Header("WKUCST", "Summary<br>Cost")
+              </tr>
+	   %endif
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Nbr($(V_extCost), F_extCost, $(cstNbrDec), $(qtyEditCode), "Y", "", "")
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_WKCLAS)</td>                                      	
+                  <td class="colalph">$(V_WKCDES)</td>                                      	
+                  <td class="colnmbr">$(F_extCost)</td>                                      	
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Cost_Simulator_Variable_Cost (IN  CHAR(64)    profileHandle,
+                                                     CHAR(2)     dataBaseID,
+                                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="variablecosts"></a>
+      @dtw_assign(displayMaxRowsMsg, "N")
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+   			
+          %ROW{
+              <tr>
+                  <th class="colhdr">$(V_PLDOL1)</th>
+                  <th class="colhdr">$(V_PLDOL2)</th>
+                  <th class="colhdr">$(V_PLPCT1)</th>
+                  <th class="colhdr">$(V_PLPCT2)</th>
+                  <th class="colhdr">$(V_PLPCT3)</th>
+                  <th class="colhdr">$(V_PLPCT4)</th>
+                  <th class="colhdr">Total</th>
+              </tr>
+
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(amountOne, @dtw_rDivide(@dtw_rMultiply(percentOne, sellPrice), "100"))
+              @dtw_assign(amountTwo, @dtw_rDivide(@dtw_rMultiply(percentTwo, sellPrice), "100"))
+              @dtw_assign(amountThree, @dtw_rDivide(@dtw_rMultiply(percentThree, sellPrice), "100"))
+              @dtw_assign(amountFour, @dtw_rDivide(@dtw_rMultiply(percentFour, sellPrice), "100"))
+              @dtw_assign(totalVariable, @dtw_rAdd(addonTotal, amountMiscTwo))
+              @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentOne, sellPrice), "100")))
+              @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentTwo, sellPrice), "100")))
+              @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentThree, sellPrice), "100")))
+              @dtw_assign(totalVariable, @dtw_rAdd(totalVariable, @dtw_rDivide(@dtw_rMultiply(percentFour, sellPrice), "100")))
+
+              @Format_Nbr(sellPrice, F_sellPrice, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr($(percentOne), F_PLPCA1, "2", $(pctEditCode), "", "", "%")
+              @Format_Nbr($(percentTwo), F_PLPCA2, "2", $(pctEditCode), "", "", "%")
+              @Format_Nbr($(percentThree), F_PLPCA3, "2", $(pctEditCode), "", "", "%")
+              @Format_Nbr($(percentFour), F_PLPCA4, "2", $(pctEditCode), "", "", "%")
+              @Format_Nbr(addonTotal, F_addonTotal, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr(amountMiscTwo, F_amountMiscTwo, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr(amountOne, amountOne, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr(amountTwo, amountTwo, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr(amountThree, amountThree, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr(amountFour, amountFour, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalVariable, F_totalVariable, "2", $(amtEditCode), "Y", "", "")
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CostSimulatorAddOnCost.d2w/REPORT$(d2wVarBase)" onclick="$(inquiryWinVar)" title="Click here to view the Add On Cost">$(F_addonTotal)</a></td>
+                  <td class="colnmbr">$(F_amountMiscTwo)</td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_PLPCA1) of $(F_sellPrice) (Sell Price)">$(amountOne)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_PLPCA2) of $(F_sellPrice) (Sell Price)">$(amountTwo)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_PLPCA3) of $(F_sellPrice) (Sell Price)">$(amountThree)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_PLPCA4) of $(F_sellPrice) (Sell Price)">$(amountFour)</span></td>
+                  <td class="colnmbr">$(F_totalVariable)</td>
+              </tr>
+          %}
+          %INCLUDE "SetRowClass.icl"
+          @dtw_assign(percentVariable, @dtw_rMultiply(@dtw_rDivide(totalVariable, sellPrice), "100"))
+          @Format_Nbr(percentVariable, percentVariable, "2", $(pctEditCode), "Y", "", "")
+          <tr class="$(rowClass)">
+              <td class="colnmbr" colspan="6">Variable Cost/Selling Price %</td>
+              <td class="colnmbr">$(percentVariable)</td>
+          </tr>
+
+          @RtvFldDesc("IWITEM='$(itemNumber)' and IWWHS=$(wareHouse)", "HDIWHS", "char(round(IWLIST*$(orderQuantity),5))", listPrice)
+          @dtw_assign(priceDiff, @dtw_rDivide(@dtw_rMultiply(@dtw_rSubtract(listPrice, sellPrice), "100"), listPrice))
+
+          @Format_Nbr(listPrice, F_listPrice, "2", $(amtEditCode), "Y", "", "")
+          @Format_Nbr(priceDiff, priceDiff, "2", $(pctEditCode), "Y", "", "%")
+          <tr>
+              <td class="dsphdr">List Price</td>
+              <td class="colnmbr">$(F_listPrice)</td>
+              <td class="dsphdr">Sell Price Diff %</td>
+              <td class="colnmbr">$(priceDiff)</td>
+          </tr>
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Cost_Simulator_Features_Options (IN  CHAR(64)    profileHandle,
+                                                        CHAR(2)     dataBaseID,
+                                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="featuresandoptions"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)CostSimulatorFeatureOption.d2w/DISPLAY$(d2wVarBase)")
+      @dtw_assign(moreInfoImage, "$(changeImageMed)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("SAFEAT", "Feature")
+                  @Format_Column_Header("SAOPTN", "Option")
+                  @Format_Column_Header("SADESC", "Description")
+                  @Format_Column_Header("SAOQTY", "Quantity")
+                  @Format_Column_Header("SAXCHG", "Extra Charge")
+                  @Format_Column_Header("SASLPR", "Price")
+              </tr>
+          %endif
+
+          @dtw_assign(saveFeature, "")
+
+          %ROW{
+              %if (saveFeature != V_SAFEAT)
+                  %INCLUDE "SetRowClass.icl"
+                  @dtw_assign(saveFeature, V_SAFEAT)
+                  @dtw_assign(newFeature, V_SAFEAT)
+              %else
+                  @dtw_assign(newFeature, "")
+              %endif
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(newFeature)</td>
+                  <td class="colalph">$(V_SAOPTN)</td>
+                  <td class="colalph">$(V_SADESC)</td>
+                  @Format_Nbr(V_SAOQTY, F_SAOQTY, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  <td class="colnmbr">$(F_SAOQTY)</td>
+                  @Format_Nbr(V_SAXCHG, F_SAXCHG, $(prcNbrDec), $(amtEditCode), "", "$", "")
+                  <td class="colnmbr">$(F_SAXCHG)</td>
+                  @Format_Nbr(V_SASLPR, F_SASLPR, $(prcNbrDec), $(amtEditCode), "Y", "$", "")
+                  <td class="colnmbr">$(F_SASLPR)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+
+%{EXT-BEG: 2009-09-23 ESTIMATOR %}
+%FUNCTION(dtw_sql) Cost_Simulator_Ext_Estimator (IN  CHAR(64)    profileHandle,
+                                               CHAR(2)     dataBaseID,
+                                               CHAR(32000) stmtSQL, extUnitCost)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="estimator"></a>
+      <form action="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)" method="post" name="extFormEstimator" id="extFormEstimator" onKeyPress="extSubmitEnter(event);">
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)"" onclick=""document.getElementById('extFormEstimator').submit(); return false;")
+      @dtw_assign(moreInfoImage, "$(orderUpdPriceImage)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+     @dtw_Assign(extMarginDesired, "35")
+
+      <h4>Adjust Setup Cost</h4>
+      @RtvFldDesc("IPPLT=$(plantNumber) and IPITEM='$(itemNumber)'", "HDIPLT", "IPALTS", extAcctLotSize)
+
+      <table $(contentTable)>
+
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+  		  <th class="colhdr" rowspan="2">Dept</th>
+  		  <th class="colhdr" rowspan="2">Work<br>Center</th>
+		  <th class="colhdr" colspan="3">Setup</th>
+		  <th class="colhdr" colspan="6">Non-Setup</th>
+              </tr>
+              <tr>
+  		  <th class="colhdr">Hours</th>
+  		  <th class="colhdr">Rate/Hour</th>
+  		  <th class="colhdr">Labor Cost</th>
+  		  <th class="colhdr">Hours/Piece</th>
+  		  <th class="colhdr">Rate/Hour</th>
+  		  <th class="colhdr">Labor Cost</th>
+  		  <th class="colhdr">Variable</th>
+  		  <th class="colhdr">Fixed</th>
+  		  <th class="colhdr">Total</th>
+              </tr>
+          %endif
+
+          @dtw_assign(totalSetupHours, "0")
+          @dtw_assign(totalSetupCost, "0")
+          @dtw_assign(totalOrigSetupCost, "0")
+          @dtw_assign(totalLaborCost, "0")
+          @dtw_assign(totalVarCost, "0")
+          @dtw_assign(totalFixCost, "0")
+          @dtw_assign(totalLabor, "0")
+          @dtw_assign(i, "0")
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("WCPLT=$(plantNumber) and WCDEPT='$(V_WKDEPT)' and WCWC='$(V_WKWC)'", "HDMWCM", "WCDESC", WCDesc)
+              @RtvFldDesc("RTPLT=$(plantNumber) and RTPN = '$(itemNumber)' and RTDEPT='$(V_WKDEPT)' and RTWC='$(V_WKWC)' and RTSTC='A'", "HDMRTM", "RTSUHR", extOrigSetupHrs)
+              @RtvFldDesc("DECSET=1 and DEPTYP='M' and DECELM=3 and DEKPLT=$(plantNumber) and DEKDPT='$(V_WKDEPT)' and DEKWC='$(V_WKWC)'", "HDMEDT", "DERVAL", extOrigSetupRate)
+
+		@dtw_Assign(string, $(extSetupHrs$(i))) 
+		@dtw_Replace(string, ",", "", string)   
+		@dtw_Replace(string, ".", "", string)   
+      	%if (@dtw_rIsNumeric(string) == "YES")   
+			@dtw_Assign(extSetupHrs, "$(extSetupHrs$(i))")
+            %else
+			@dtw_Assign(extSetupHrs, extOrigSetupHrs)
+            %endif
+		@dtw_Assign(string, $(extSetupRate$(i))) 
+		@dtw_Replace(string, ",", "", string)   
+		@dtw_Replace(string, ".", "", string)   
+      	%if (@dtw_rIsNumeric(string) == "YES")   
+			@dtw_Assign(extSetupRate, "$(extSetupRate$(i))")
+            %else
+			@dtw_Assign(extSetupRate, extOrigSetupRate)
+            %endif
+
+              @dtw_Subtract(V_WKMHRS, @dtw_rDivide(extOrigSetupHrs, extAcctLotSize), extAdjMHRS)              
+              @dtw_assign(labAmount, @dtw_rMultiply(@dtw_rMultiply(extAdjMHRS, orderQuantity), V_WKSLR))
+              @dtw_assign(totalLaborCost, @dtw_rAdd(totalLaborCost, labAmount))
+              @dtw_assign(varAmount, @dtw_rdivide(@dtw_rMultiply(labAmount, V_WKVAR), "100"))
+              @dtw_assign(totalVarCost, @dtw_rAdd(totalVarCost, varAmount))
+              @dtw_assign(fixAmount, @dtw_rdivide(@dtw_rMultiply(labAmount, V_WKFIX), "100"))
+              @dtw_assign(totalFixCost, @dtw_rAdd(totalFixCost, fixAmount))
+              @dtw_assign(totAmount, @dtw_rAdd(@dtw_rAdd(labAmount, varAmount), fixAmount))
+              @dtw_Multiply(@ext_rCleanInput($(extSetupHrs)), @ext_rCleanInput($(extSetupRate)), extSetupCost)
+	      @dtw_Add(totalSetupHours, @ext_rCleanInput($(extSetupHrs)), totalSetupHours)
+	      @dtw_Add(totalSetupCost, extSetupCost, totalSetupCost)
+	      @dtw_Add(totalOrigSetupCost, @dtw_rMultiply(extOrigSetupHrs, extOrigSetupRate), totalOrigSetupCost)
+
+              @Format_Nbr(@ext_rCleanInput($(extSetupHrs)), F_extSetupHrs, "6", $(hrsEditCode), "", "", "")
+              @Format_Nbr(@ext_rCleanInput($(extSetupRate)), F_extSetupRate, "3", $(rteEditCode), "", "", "")
+              @ext_CleanFormat(F_extSetupHrs) 
+              @ext_CleanFormat(F_extSetupRate) 
+              @Format_Nbr($(extSetupCost), F_extSetupCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr($(V_WKMHRS), F_WKMHRS, "6", $(hrsEditCode), "", "", "")
+              @Format_Nbr($(extAdjMHRS), F_extAdjMHRS, "6", $(hrsEditCode), "", "", "")
+              @Format_Nbr($(V_WKSLR), F_WKSLR, "3", $(rteEditCode), "", "", "")
+              @Format_Nbr($(V_WKVAR), F_WKVAR, "3", $(pctEditCode), "", "", "%")
+              @Format_Nbr($(V_WKFIX), F_WKFIX, "3", $(pctEditCode), "", "", "%")
+              @Format_Nbr(orderQuantity, F_WKQTY, "4", $(qtyEditCode), "", "", "")
+              @Format_Nbr(labAmount, labAmount, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(varAmount, varAmount, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(fixAmount, fixAmount, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totAmount, totAmount, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_WKDEPT)</td>
+                  <td class="colalph" $(helpCursor)><span title="$(WCDesc)">$(V_WKWC)</span></td>
+                  <td class="colnmbr" style="border-left: 1px solid #C0C0C0;">
+		    <input type="text" id="extSetupHrs$(i)" name="extSetupHrs$(i)" value="$(F_extSetupHrs)" size="8" style="text-align: right;">
+		  </td>
+                  <td class="colnmbr">
+		    <input type="text" id="extSetupRate$(i)" name="extSetupRate$(i)" value="$(F_extSetupRate)" size="8" style="text-align: right;">
+		  </td>
+                  <td class="colnmbr" style="border-right: 1px solid #C0C0C0;">$(F_extSetupCost)</td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_WKMHRS) (Measured Hours/Piece) - ( $(extOrigSetupHrs) (Setup Hours) / $(extAcctLotSize) (Accounting Lot Size) )">$(F_extAdjMHRS)</span></td>
+                  <td class="colnmbr">$(F_WKSLR)</td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_WKMHRS) (Hours/Piece) x $(F_WKSLR) (Rate/Hour) x $(F_WKQTY) (Quantity)">$(labAmount)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_WKVAR) of $(labAmount) (Labor Cost)">$(varAmount)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(F_WKFIX) of $(labAmount) (Labor Cost)">$(fixAmount)</span></td>
+                  <td class="colnmbr">$(totAmount)</td>
+              </tr>
+	      @dtw_Add(i, "1", i)
+          %}
+          %if (sql_Record_Count != "0")
+              @dtw_assign(totalSpan, "2")
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(totalLabor, @dtw_rAdd(@dtw_rAdd(totalLaborCost, totalVarCost), totalFixCost))
+              @dtw_assign(extUnitCostAdj, @dtw_rDivide(totalOrigSetupCost, extAcctLotSize))
+
+              @Format_Nbr(totalSetupHours, F_totalSetupHours, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalSetupCost, F_totalSetupCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalLaborCost, F_totalLaborCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalVarCost, F_totalVarCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalFixCost, F_totalFixCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(totalLabor, F_totalLabor, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              <tr class="$(rowClass)">
+                  <td class="coltotal" colspan="$(totalSpan)">Total </td>
+                  <td class="coltotal">$(F_totalSetupHours)</td>
+                  <td class="coltotal">&nbsp;</td>
+                  <td class="coltotal">$(F_totalSetupCost)</td>
+                  <td class="coltotal">&nbsp;</td>
+                  <td class="coltotal">&nbsp;</td>
+                  <td class="coltotal">$(F_totalLaborCost)</td>
+                  <td class="coltotal">$(F_totalVarCost)</td>
+                  <td class="coltotal">$(F_totalFixCost)</td>
+                  <td class="coltotal">$(F_totalLabor)</td>
+              </tr>
+          %endif
+      </table>
+	<br>
+        <div class="copr">
+		Adjust Setup Instructions: <br>
+		Enter desired Setup Hours and Rate as positive decimal values (commas OK; decimals OK; no negatives); <br>
+                Non-setup values have been adjusted to remove the impact of setup costs based on Accounting Lot Size of [ $(extAcctLotSize) ].<br>
+		Unit Cost Adjustment will be [ $(extUnitCostAdj) ] = Total Original Setup Labor Cost [ $(totalOrigSetupCost) ] divided by Accounting Lot Size [ $(extAcctLotSize) ]. <br>
+		Variable/Fixed/Total cost estimates for Non-Setup work are based on Non-Setup Labor Cost, and will NOT match other estimates.<br>
+		Press calculator button to update prices; <br>
+	</div>
+        <hr style="margin: 10px 0px; padding: 0; text-align: center;">
+     @dtw_Assign(extAdjUnitCost, @dtw_rSubtract(extUnitCost, extUnitCostAdj))
+     @dtw_Assign(extSetupCost, totalSetupCost)
+     @Format_Nbr($(extSetupCost), F_extSetupCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+     @Format_Nbr($(extAdjUnitCost), F_extAdjUnitCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+
+      %{ Check for input values and validate  %}
+      %if (@ext_rCleanInput(extQty0) == "0") 
+        @dtw_Assign(extQty0, "1000")
+        @dtw_Assign(extQty1, "2500")
+        @dtw_Assign(extQty2, "5000")
+        @dtw_Assign(extQty3, "7500")
+        @dtw_Assign(extQty4, "10000")
+      %endif
+      %if (@ext_rCleanInput(extMar0) == "0") 
+        @dtw_Assign(extMar0, "25")
+        @dtw_Assign(extMar1, "30")
+        @dtw_Assign(extMar2, "35")
+        @dtw_Assign(extMar3, "40")
+        @dtw_Assign(extMar4, "45")
+        @dtw_Assign(extMar5, "50")
+        @dtw_Assign(extMar6, "55")
+      %endif
+      
+      %{ Auto-determine # of cols %}
+      @dtw_Assign(extQtyCols, "0")
+      @dtw_Assign(i, "0")
+      %while ("$(extQty$(i))" > "") {
+         @dtw_Add(extQtyCols, "1", extQtyCols)
+         @dtw_Add(i, "1", i)
+      %}        
+      %{ Auto-determine # of rows %}
+      @dtw_Assign(extMarRows, "0")
+      @dtw_Assign(i, "0")
+      %while ("$(extMar$(i))" > "") {
+         @dtw_Add(extMarRows, "1", extMarRows)
+         @dtw_Add(i, "1", i)
+      %}        
+
+      <h4>Price matrix</h4>
+      <table $(contentTable)>
+
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+			<th class="colhdr" rowspan="2">Setup<br>Cost</th> 
+			<th class="colhdr" rowspan="2">Adj<br>Unit<br>Cost</th> 
+			<th class="colhdr" rowspan="2">Target<br>Margin</th> 
+			<th class="colhdr" colspan="$(extQtyCols)">Quantity</th> 
+              </tr>
+              <tr>
+                  @dtw_Assign(i, "0")
+                  %while (i < extQtyCols) {
+                    @Format_Nbr(@ext_rCleanInput($(extQty$(i))), F_extQty, "0", $(amtEditCode), "Y", "", "")
+			  @ext_CleanFormat(F_extQty) 
+  			  <th class="colhdr"><input type="text" id="extQty$(i)" name="extQty$(i)" value="$(F_extQty)" size="7" style="text-align: right;"></th> 
+                    @dtw_Add(i, "1", i)
+                  %}
+              </tr>
+          %endif
+
+            @dtw_Assign(i, "0")
+
+            %while (i < extMarRows) {
+
+              %INCLUDE "SetRowClass.icl"
+
+              @Format_Nbr(@ext_rCleanInput($(extMar$(i))), F_extMar, "2", $(amtEditCode), "", "", "")
+		  @ext_CleanFormat(F_extMar) 
+
+              @dtw_Assign(rowStyle, "")
+		  %if ($(extMar$(i)) >= extMarginDesired )
+                @dtw_Assign(rowStyle, " style=""font-weight: bold; color: #008000; background-color: #FFFFCC;"" ")
+              %endif
+              <tr class="$(rowClass)"$(rowStyle)>
+                  <td class="colalph">$(F_extSetupCost)</td>
+                  <td class="colalph">$(F_extAdjUnitCost)</td>
+                  <td class="colnmbr"><input type="text" id="extMar$(i)" name="extMar$(i)" value="$(F_extMar)" size="8" style="text-align: right;">%</td>
+                  @dtw_Assign(j, "0")
+                  %while (j < extQtyCols) {
+                    @dtw_assign(extPrice, @dtw_rMultiply(@dtw_rAdd(extAdjUnitCost, @dtw_rDivide(extSetupCost, @ext_rCleanInput($(extQty$(j))))), @dtw_rAdd("1", @dtw_rDivide(@ext_rCleanInput($(extMar$(i))), "100"))))
+                    @Format_Nbr(extPrice, F_extPrice, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+			  @ext_CleanFormat(F_extPrice) 
+                    <td class="colnmbr" $(helpCursor) id="price$(i)$(j)"><span title="($(F_extAdjUnitCost)(Unit Cost) + ($(F_extSetupCost)(Setup Cost) / $(extQty$(j))(Qty) )) x (1 + $(F_extMar)% Target Margin)"> $(F_extPrice) </span></td>
+                    @dtw_Add(j, "1", j)
+                  %}
+              </tr>
+              @dtw_Add(i, "1", i)
+            %}
+      </table>
+	<br>
+      <div class="copr">
+		Price Matrix Instructions: <br>
+		Enter desired quantities as positive integers (commas OK; no decimals; no negatives); <br>
+		Enter desired margins as positive percentages with up to 2 decimals (commas OK; decimals OK; no negatives); <br>
+		To reset quantities or margins to default values, enter 'd' in first quantity or margin box; <br>
+		Press calculator button to update prices; <br>
+		Margin above Target $(extMarginDesired)% highlighted as generally acceptable; 
+	</div>
+      </fieldset>
+      </form>
+  %}
+%}
+%{EXT-END: 2009-09-23 ESTIMATOR %}
+
+%FUNCTION(dtw_directcall) Update_Work_File (INOUT CHAR(64)      profileHandle,
+                                                  CHAR(10)      callSubr,
+                                                  CHAR(1)       maintenanceCode,
+                                                  CHAR(32000)   edtVar,
+                                                  CHAR(32000)   errVar,
+                                                  CHAR(1)       error)
+
+{%EXEC {HSCSIM_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %if (updateRowNum > "0")
+      @dtw_assign(START_ROW_NUM,  "$(updateRowNum)")
+  %endif
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(BUILD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@plt@", plantNumber)
+  @Concat_Field("@@item", itemNumber)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @dtw_assign(callSubr, "FILL")
+
+  @Update_Work_File (profileHandle, callSubr, maintenanceCode, edtVar, errVar, error)
+
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;updateRowNum=@dtw_rurlescseq(updateRowNum)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+%}

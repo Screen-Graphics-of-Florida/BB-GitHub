@@ -1,0 +1,576 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Invoice Select                                              *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NumFormat.icl"
+
+%Define {
+  DATABASE                = "*LOCAL"
+  d2wName                 = "SelectInvoice.d2w"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  oeivhhTable             = %table
+  oeivhdTable             = %table
+  oeivhnTable             = %table
+  rows                    = ""
+  orderNumber             = ""
+  saveOrderPKL            = ""
+  printOrdPKLHdr          = ""
+  printInvTotal           = ""
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          @RtvFldDesc("HIAIV#=$(invoiceNumber)", "OEIVHH", "char(HILOC#)", locationNumber) 
+          %if (locationNumber == "320")
+              %INCLUDE "HDSBannerFmtSGMS.htm"
+          %else
+              %INCLUDE "banner.icl"
+          %endif
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td>
+                      @Invoice_Query(profileHandle, dataBaseID, customerNumber, invoiceNumber, invoiceDate, oeivhhTable, oeivhnTable, oeivhdTable)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(DTW_SQL) Invoice_Query(INOUT CHAR(64)   profileHandle,
+				        CHAR(2)    dataBaseID,
+				        DEC(7,0)   customerNumber,	
+				        DEC(7,0)   invoiceNumber,	
+				        DEC(7,0)   invoiceDate,	
+			 	  OUT   oeivhhTable,
+				        oeivhnTable,
+				        oeivhdTable)
+
+{call $(pgmLibrary)HOEINV_W
+
+  %REPORT(oeivhnTable){
+      @dtw_assign(shipToType, "Ship-To")
+      @dtw_assign(shipToName, "")
+
+      %ROW {
+          %if (V_NITYPE == "B")
+              @dtw_assign(billToName, $(V_NINAME))
+              @dtw_assign(billToAdr1, $(V_NIADR1))
+              @dtw_assign(billToAdr2, $(V_NIADR2))
+              @dtw_assign(billToAdr3, $(V_NIADR3))
+              @dtw_assign(billToAdr4, $(V_NIADR4))
+              @dtw_assign(billToAdr5, $(V_NIADR5))
+          %else
+              %if (V_NITYPE == "D")
+                  @dtw_assign(shipToType, "Drop Ship")
+              %endif
+              @dtw_assign(shipToName, $(V_NINAME))
+              @dtw_assign(shipToAdr1, $(V_NIADR1))
+              @dtw_assign(shipToAdr2, $(V_NIADR2))
+              @dtw_assign(shipToAdr3, $(V_NIADR3))
+              @dtw_assign(shipToAdr4, $(V_NIADR4))
+              @dtw_assign(shipToAdr5, $(V_NIADR5))
+          %endif
+      %}
+      %if (shipToName == "")
+          @dtw_assign(shipToName, billToName)
+          @dtw_assign(shipToAdr1, billToAdr1)
+          @dtw_assign(shipToAdr2, billToAdr2)
+          @dtw_assign(shipToAdr3, billToAdr3)
+          @dtw_assign(shipToAdr4, billToAdr4)
+          @dtw_assign(shipToAdr5, billToAdr5)
+      %endif
+  %}
+
+  %REPORT(oeivhhTable){
+	
+      %ROW {
+          @Format_Date(invoiceDate, "H", F_invoiceDate)
+
+          @dtw_assign(logoImage, "$(companyLogo)")
+          @dtwf_exists(logoImage, logoExists)
+
+          <table $(contentTable)>
+	       <colgroup>
+	           <col width="80%">
+	           <col width="15%">
+              <tr>
+                  <td>
+                      <table $(contentTable)>
+                          %if (logoExists == "Y")
+                              <tr><td><img src="$(homeURL)$(logoImage)" alt="" hspace="25%"></td></tr>
+                          %else
+                              @RtvFldDesc("LOLOC#=$(V_HILOC#)", "HDLCTN", "LOLNA1", LOLNA1)
+                              @RtvFldDesc("LOLOC#=$(V_HILOC#)", "HDLCTN", "LOLNA2", LOLNA2)
+                              @RtvFldDesc("LOLOC#=$(V_HILOC#)", "HDLCTN", "LOLNA3", LOLNA3)
+                              @RtvFldDesc("LOLOC#=$(V_HILOC#)", "HDLCTN", "LOLNA4", LOLNA4)
+                              @RtvFldDesc("LOLOC#=$(V_HILOC#)", "HDLCTN", "LOLCTY", LOLCTY)
+                              @RtvFldDesc("LOLOC#=$(V_HILOC#)", "HDLCTN", "LOST", LOST)
+                              @RtvFldDesc("LOLOC#=$(V_HILOC#)", "HDLCTN", "LOZIP", LOZIP)
+                              <tr><td class="dspalph">$(LOLNA1)</td></tr>
+                              <tr><td class="dspalph">$(LOLNA2)</td></tr>
+                              <tr><td class="dspalph">$(LOLNA3)</td></tr>
+                              <tr><td class="dspalph">$(LOLNA4)</td></tr>
+                              <tr><td class="dspalph">$(LOLCTY) $(LOST) $(LOZIP)</td></tr>
+                          %endif
+                      </table>
+                  </td>
+                  <td>
+                      <table $(contentTable)>
+                          <tr><td colspan="2">
+                                  %if (V_HIORD# =="99999999")
+                                      <h1>Summary Invoice</h1>
+                                  %else
+                                      <h1>Invoice</h1>
+                                  %endif
+                              </td>
+                          </tr>
+                          <tr>
+                              <td class="dspalph">Invoice Number:</td>
+                              <td class="dspalph">$(invoiceNumber)</td>
+                          </tr>
+                          <tr><td>&nbsp;</td></tr>
+                          <tr>
+                              <td class="dspalph">Invoice Date:</td>
+                              <td class="dspdate" nowrap>$(F_invoiceDate)</td>
+                          </tr>
+                          %if (V_HIORD# =="99999999")
+                              <tr><td>&nbsp;</td></tr>
+                              <tr>
+                                  <td class="dspalph">Terms:</td>
+                                  <td class="dspdate">$(V_HICTDS)</td>
+                              </tr>
+                          %endif
+                      </table>
+                  </td>
+              </tr>
+          </table>
+
+	   <table $(contentTable)>
+	       <colgroup>
+	           <col width="30%">
+	           <col width="10%">
+	           <col width="30%">
+	           <col width="10%">
+              <tr>
+                  <td class="colhdr">Bill-To</td>
+                  <td>&nbsp;</td>
+                  %if (V_HIORD# !="99999999")
+                      <td class="colhdr">$(shipToType)</td>
+                  %else
+                      <td>&nbsp;</td>
+                  %endif
+                  <td>&nbsp;</td>
+              </tr>
+              <tr valign=top>
+                  <td rowspan="5" class="dspalph"> $(billToName) <br>
+                      %if (billToAdr1 != "")
+                          $(billToAdr1) <br>
+                      %endif
+                      %if (billToAdr2 != "")
+                          $(billToAdr2) <br>
+                      %endif
+                      %if (billToAdr3 != "")
+                          $(billToAdr3) <br>
+                      %endif
+                      %if (billToAdr4 != "")
+                          $(billToAdr4) <br>
+                      %endif
+                      %if (billToAdr5 != "")
+                          $(billToAdr5) <br>
+                      %endif
+                  </td>
+
+                  <td>&nbsp;</td>
+                  %if (V_HIORD# !="99999999")
+                      <td rowspan="5" class="dspalph"> $(shipToName) <br>
+                          %if (shipToAdr1 != "")
+                              $(shipToAdr1) <br>
+                          %endif
+                          %if (shipToAdr2 != "")
+                              $(shipToAdr2) <br>
+                          %endif
+                          %if (shipToAdr3 != "")
+                              $(shipToAdr3) <br>
+                          %endif
+                          %if (shipToAdr4 != "")
+                              $(shipToAdr4) <br>
+                          %endif
+                          %if (shipToAdr5 != "")
+                              $(shipToAdr5) <br>
+                          %endif
+                      </td>
+                  %endif
+              </tr>
+          </table>
+
+          <br>
+
+          %if (V_HIORD# !="99999999")
+              <table $(contentTable)>
+                  <tr><th class="colhdr">Terms</th>
+                      <th class="colhdr">Salesman</th>
+                      <th class="colhdr">Ordered</th>
+                      <th class="colhdr">Required</th>
+                      <th class="colhdr">Reference Number</th>
+                      <th class="colhdr">Ship Via</th>
+                      <th class="colhdr">F.O.B.</th>
+                      <th class="colhdr">Order Number</th>
+                  </tr>
+
+                  @Format_Date(V_HIORDT, "D", F_HIORDT)
+                  @Format_Date(V_HIRQDT, "D", F_HIRQDT)
+
+                  <tr class="oddrow">
+                      <td class="colalph">$(V_HICTDS)</td>
+                      <td class="colalph">$(V_HISLNM)</td>
+                      <td class="coldate">$(F_HIORDT)</td>
+                      <td class="coldate">$(F_HIRQDT)</td>
+                      <td class="colalph">$(V_HIORRF)</td>
+                      <td class="colalph">$(V_HISVDS)</td>
+                      <td class="colalph">$(V_HIFBDS)</td>
+                      <td class="colnmbr">$(V_HIORD#)</td>
+                  </tr>
+              </table>
+          %endif
+
+          @dtw_assign(orderNumber, $(V_HIORD#))
+          @dtw_assign(invoiceMsg1, $(V_HIMSG1))
+          @dtw_assign(invoiceMsg2, $(V_HIMSG2))
+          @dtw_assign(cashDiscMsg, "")
+          %if (V_HICDSC > "0" && V_HICDDT > "0")
+              @Format_Date(V_HICDDT, "H", F_HICDDT)
+              @dtw_assign(cashDiscMsg, "A Cash Discount Of $(V_HICDSC) Is Available Through $(F_HICDDT)")
+          %endif
+       %}
+  %}
+
+  %REPORT(oeivhdTable){
+      %if (orderNumber =="99999999")
+          @dtw_assign(doct, "IVS")
+      %else
+          @dtw_assign(doct, "INV")
+      %endif
+      @dtw_assign(saveOrderPKL, "")
+      %if (orderNumber =="99999999")
+          @dtw_assign(printOrdPKLHdr, "")
+      %else
+          @dtw_assign(printOrdPKLHdr, "Y")
+      %endif
+      @dtw_assign(printInvTotal, "")
+      @RtvFldDesc("DODOCT='$(doct)' and DOAPID='OE'", "HDDOCT", "Char(DOQDEC)", qtyDec)
+      @RtvFldDesc("DODOCT='$(doct)' and DOAPID='OE'", "HDDOCT", "Char(DOPDEC)", priceDec)
+
+          %ROW {
+              %INCLUDE "SetRowClass.icl"
+              %if (V_DITYPE == "SD")
+                  @dtw_tb_rows(oeivhnTable, maxRows)
+                  @dtw_assign(x, "1")
+                  %while((@dtw_tb_rgetv(oeivhnTable, x, "4") != V_DISEQ#) && (x < maxRows))
+                      {@dtw_add(x, "1", x)%}
+                  @dtw_tb_getv(oeivhnTable, x, "5",  shipToNumber)
+                  @dtw_tb_getv(oeivhnTable, x, "7",  shipToName)
+                  @dtw_tb_getv(oeivhnTable, x, "8",  shipToAdr1)
+                  @dtw_tb_getv(oeivhnTable, x, "9",  shipToAdr2)
+                  @dtw_tb_getv(oeivhnTable, x, "10", shipToAdr3)
+                  @dtw_tb_getv(oeivhnTable, x, "11", shipToAdr4)
+                  @dtw_tb_getv(oeivhnTable, x, "12", shipToAdr5)
+              %endif
+              %if (orderNumber =="99999999" && (V_DITYPE == "ON" || (V_DITYPE=="IT" && printOrdPKLHdr=="") || (V_DITYPE=="PL" && printOrdPKLHdr=="")))
+                  %if (saveOrderPKL >"0")
+                      </table>
+                  %endif
+                  @dtw_assign(saveOrderPKL, "$(V_DIOPKL)")
+                  @dtw_assign(printOrdPKLHdr, "Y")
+              %endif
+
+              %if (printOrdPKLHdr == "Y" && (V_DITYPE == "ON" || V_DITYPE == "PL"))
+                  <table $(contentTable)>
+                      %if (V_DITYPE == "ON")
+                          <tr><th class="colhdr">Ship-To $(shipToNumber)</th>	
+                              <th class="colhdr">Order Number</th>
+                              <th class="colhdr">Reference</th>
+                              <th class="colhdr">Salesman</th>
+                          </tr>
+                      %else
+                          <tr><th class="colhdr">Packing List</th>
+                              <th class="colhdr">Shipped</th>
+                              <th class="colhdr">Ship Via</th>
+                          </tr>
+                      %endif
+
+                      %if (V_DITYPE == "ON")
+                          <tr class="$(rowClass)" valign="top">
+                              <td class="colalph" rowspan="6">$(shipToName)
+                                  %if (shipToAdr1 != "")
+                                      <br>$(shipToAdr1)
+                                  %endif
+                                  %if (shipToAdr2 != "")
+                                      <br>$(shipToAdr2)
+                                  %endif
+                                  %if (shipToAdr3 != "")
+                                      <br>$(shipToAdr3)
+                                  %endif
+                                  %if (shipToAdr4 != "")
+                                      <br>$(shipToAdr4)
+                                  %endif
+                                  %if (shipToAdr5 != "")
+                                      <br>$(shipToAdr5)
+                                  %endif
+                              </td>
+        	      	       <td class="colcode">$(V_DIOPKL)</td>
+                              <td class="colcode">$(V_DIALP2)</td>
+                              <td class="colcode">$(V_DIALP3)</td>
+                          </tr>
+                      %else
+                          <tr class="$(rowClass)">
+                              @Format_Date(V_DINUM1, "D", F_DINUM1)
+        	      	       <td class="colcode">$(V_DIOPKL)</td>
+                              <td class="colcode">$(F_DINUM1)</td>
+                              <td class="colcode">$(V_DIALP1)</td>
+                          </tr>
+                      %endif
+                  </table>
+              %endif
+
+              %if (printOrdPKLHdr == "Y")
+                  <table $(contentTable)>
+                  <colgroup>
+                      <col width="10%">
+                      <col width="20%">
+                      <col width="2%">
+                      %if (orderNumber !="99999999")
+                          <col width="10%">
+                      %endif
+                      <col width="10%">
+                      <col width="2%">
+                      <col width="10%">
+                      <col width="2%">
+                      <col width="10%">
+                  </colgroup>
+                  <tr class="$(rowClass)">	
+                      <th class="colhdr">Item <br> Number</th>
+                      <th class="colhdr">Description</th>
+                      <th class="colhdr">UM</th>
+                      %if (orderNumber !="99999999")
+                          <th class="colhdr">Quantity<br>Ordered</th>
+                      %endif
+                      <th class="colhdr">Quantity<br>Shipped</th>
+                      <th class="colhdr">Tax</th>
+                      <th class="colhdr">Unit <br> Price</th>
+                      <th class="colhdr">UP</th>
+                      <th class="colhdr">Extended <br> Price</th>
+                  </tr>
+              %endif
+              @dtw_assign(printOrdPKLHdr, "N")
+
+              %if ((saveAlp1 != $(V_DIALP1) && $(V_DITYPE) == "IT") || ($(V_DITYPE) == "TL" && saveAlp1 != "Totals"))
+                  %if (V_DITYPE == "TL")
+                      @dtw_assign(saveAlp1, "Totals")
+                  %else
+                      @dtw_assign(saveAlp1, $(V_DIALP1))
+                  %endif
+              %endif
+
+              %if (V_DITYPE == "IT")
+                  @Format_Nbr(V_DIQTYO, F_DIQTYO, qtyDec, $(qtyEditCode), "", "", "")
+                  @Format_Nbr(V_DIQTYS, F_DIQTYS, qtyDec, $(qtyEditCode), "", "", "")
+                  @Format_Nbr(V_DISLPR, F_DISLPR, priceDec, $(amtEditCode), "", "", "")
+                  @Format_Nbr(V_DIEXTA, F_DIEXTA, "2", $(amtEditCode), "", "", "")
+                  <tr class="$(rowClass)">
+	      	       <td class="colalph">$(V_DIALP1)</td>
+                      <td class="colalph">$(V_DIALP3)</td>
+                      <td class="colcode">$(V_DISTUM)</td>
+                      %if (orderNumber !="99999999")
+                          <td class="colnmbr">$(F_DIQTYO)</td>
+                      %endif
+                      <td class="colnmbr">$(F_DIQTYS)</td>
+                      <td class="colcode">$(V_DITAXC)</td>
+                      <td class="colnmbr">$(F_DISLPR)</td>
+                      <td class="colcode">$(V_DIPRUM)</td>
+                      <td class="colnmbr">$(F_DIEXTA)</td>
+                  </tr>
+                  %if (V_DIQTYB > "0")
+                      @Format_Nbr(V_DIQTYB, F_DIQTYB, qtyDec, $(qtyEditCode), "", "", "")
+                      <tr class="$(rowClass)">
+                          <td>&nbsp;</td>
+                          <td class="colalph">Backordered Qty:</td>
+                          <td>&nbsp;</td>
+                          <td class="colnmbr">$(F_DIQTYB)</td>
+                          <td colspan="5">&nbsp;</td>
+                      </tr>
+                  %endif
+
+              %elif (V_DITYPE == "RD")
+                  @Format_Date(V_DINUM1, "D", F_DINUM1)
+                  <tr class="$(rowClass)">
+                      <td>&nbsp;</td>
+                      <td class="coldate">&nbsp; &nbsp; Required Date: $(F_DINUM1)</td>
+                      <td colspan="7">&nbsp;</td>
+                  </tr>
+
+              %elif (V_DITYPE == "CI")
+                  <tr class="$(rowClass)">
+                      <td>&nbsp;</td>
+                      <td class="colalph">Your Stock #: $(V_DIALP3)</td>
+                      <td colspan="7">&nbsp;</td>
+                  </tr>
+
+              %elif (V_DITYPE == "BR")
+                  @Format_Nbr(V_DIQTYO, F_DIQTYO, qtyDec, $(qtyEditCode), "", "", "")
+                  @Format_Nbr(V_DIQTYS, F_DIQTYS, qtyDec, $(qtyEditCode), "", "", "")
+                  @Format_Date(V_DINUM1, "D", F_DINUM1)
+                  <tr class="$(rowClass)">
+                     <td>&nbsp;</td>
+                      <td class="coldate">&nbsp; &nbsp; Required Date: $(F_DINUM1)</td>
+                      <td class="colcode"></td>
+                      <td class="colnmbr">$(F_DIQTYO)</td>
+                      <td class="colnmbr">$(F_DIQTYS)</td>
+                      <td colspan="4">&nbsp;</td>
+                  </tr>
+
+              %elif (V_DITYPE == "DS")
+                  @Format_Nbr(V_DIQTYO, F_DIQTYO, qtyDec, $(qtyEditCode), "", "", "")
+                  @Format_Nbr(V_DIQTYS, F_DIQTYS, qtyDec, $(qtyEditCode), "", "", "")
+                  @Format_Date(V_DINUM1, "D", F_DINUM1)
+                  <tr class="$(rowClass)">
+                      <td>&nbsp;</td>
+                      <td class="coldate">&nbsp; &nbsp; Shipped Date: $(F_DINUM1)</td>
+                      <td class="colcode"></td>
+                      <td class="colnmbr">$(F_DIQTYO)</td>
+                      <td class="colnmbr">$(F_DIQTYS)</td>
+                  </tr>
+
+              %elif (V_DITYPE == "ST")
+                  <tr class="$(rowClass)">
+                      <td>&nbsp;</td>
+                      <td class="colalph">&nbsp; &nbsp; Ship-To: $(V_DINUM1) &nbsp; $(V_DIALP3)</td>
+                      <td colspan="7">&nbsp;</td>
+                  </tr>
+
+              %elif (V_DITYPE == "SV")
+                  <tr class="$(rowClass)">
+                      <td>&nbsp;</td>
+                      <td class="colalph">&nbsp; &nbsp; Ship-Via: &nbsp; $(V_DIALP3)</td>
+                      <td colspan="7">&nbsp;</td>
+                  </tr>
+
+              %elif (V_DITYPE == "FE")
+                  <tr class="$(rowClass)">
+                      <td>&nbsp;</td>
+                      <td class="colalph">$(V_DIALP1)</td>
+                      <td colspan="7">&nbsp;</td>
+                  </tr>
+
+              %elif (V_DITYPE == "OI" && V_DIALP1 == "")
+                  <tr class="$(rowClass)">
+                      <td>&nbsp;</td>
+                      <td class="colalph">&nbsp; &nbsp; &nbsp; $(V_DIALP3)</td>
+                      <td colspan="7">&nbsp;</td>
+                  </tr>
+
+              %elif (V_DITYPE == "OI")
+                  @Format_Nbr(V_DIQTYO, F_DIQTYO, qtyDec, $(qtyEditCode), "", "", "")
+                  @Format_Nbr(V_DIQTYS, F_DIQTYS, qtyDec, $(qtyEditCode), "", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">$(V_DIALP1)</td>
+                      <td class="colalph">$(V_DIALP3)</td>
+                      <td class="colcode">$(V_DISTUM)</td>
+                      %if (orderNumber !="99999999")
+                          <td class="colnmbr">$(F_DIQTYO)</td>
+                      %endif
+                      <td class="colnmbr">$(F_DIQTYS)</td>
+                      <td colspan="4">&nbsp;</td>
+                  </tr>
+
+              %elif (V_DITYPE == "CM")
+                  <tr class="$(rowClass)">
+                      <td>&nbsp;</td>
+                      <td class="colalph" colspan="10">$(V_DIALP3)</td>
+                  </tr>
+
+              %elif (V_DITYPE == "LT")
+                  @Format_Nbr(V_DIQTYS, F_DIQTYS, qtyDec, $(qtyEditCode), "", "", "")
+                  <tr class="$(rowClass)">
+                      <td>&nbsp;</td>
+                      <td class="colalph">Lot Number - &nbsp; $(V_DIALP1)</td>
+                      <td colspan="2">&nbsp;</td>
+                      <td class="colnmbr">$(F_DIQTYS)</td>
+                      <td colspan="5">&nbsp;</td>
+                  </tr>
+
+              %elif (V_DITYPE == "TL")
+                  %if (V_DIPRUM == "FT" && printInvTotal == "")
+                      <tr class="$(rowClass)">
+                          %if (orderNumber !="99999999")
+                              <td>&nbsp;</td>
+                          %endif
+                          <td colspan="9"><h2>Invoice Totals:</h2></td>
+                      </tr>
+                      @dtw_assign(printInvTotal, "N")
+                  %endif
+
+                  @Format_Nbr(V_DIEXTA, F_DIEXTA, "2", $(amtEditCode), "", "", "")
+                  <tr>
+                      %if (orderNumber !="99999999")
+                          <td>&nbsp;</td>
+                      %endif
+                      <td class="colnmbr" colspan="7">$(V_DIALP3)</td>
+                      %if (V_DITAXC != "")
+                          <td class="coltotal">$(F_DIEXTA)</td>
+                      %else
+                          <td class="colnmbr">$(F_DIEXTA)</td>
+                      %endif
+                  </tr>
+              %endif
+          %}
+          %if (cashDiscMsg != "")
+              <tr><td>&nbsp;</td></tr>
+              <tr>
+                  <td class="colalph" colspan="5">$(cashDiscMsg)</td>
+              </tr>
+          %endif
+          %if (invoiceMsg1 != "")
+              <tr><td>&nbsp;</td></tr>
+              <tr>
+                  <td class="colalph" colspan="9">$(invoiceMsg1)</td>
+              </tr>
+          %endif
+          %if (invoiceMsg2 != "")
+              <tr><td>&nbsp;</td></tr>
+              <tr>
+                  <td class="colalph" colspan="9">$(invoiceMsg2)</td>
+              </tr>
+          %endif
+      </table>
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(DISPLAY) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}

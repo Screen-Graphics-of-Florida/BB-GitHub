@@ -1,0 +1,769 @@
+%{      This version has been modified to include closed orders and 
+        has had a status filter box added as well as several other 
+        columns of information.
+
+	Department / work center column has been added. Clicking on 
+        that column title toggles back and forth between 
+	the "First Incomplete Department" and the "Last Reported Department".
+        
+
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job:  Manufacturing Order Header                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%{EXT-BEG    %}
+%INCLUDE "EdtVar.icl"
+%INCLUDE "SalesOrderStatus.icl"
+%{EXT-END    %}
+
+%Define {
+  page_title              = "Manufacturing Order *****"
+  d2wName                 = "MfgOrderWithOperations.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;deptView=@dtw_rurlescseq(deptView)"
+  currentURL              = "$(d2wName)/REPORT$(d2wVarBase)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HSI205"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  fldreleased             = ""
+
+%{EXT-BEG    %}
+  deptView                = ""
+%{EXT-END    %}
+%}
+
+%{EXT-BEG    %}
+%FUNCTION(DTW_directcall) Get_MfgOrder_Hours (INOUT DECIMAL(3,0)  plantNumber,
+                                                    CHAR(9)       mfgOrder,
+                                                    DECIMAL(3,0)  laborSeq,
+                                                    DECIMAL(8,0)  orderNumber,
+                                                    DECIMAL(13,2) thours,
+                                                    DECIMAL(13,2) rhours,
+                                                    CHAR(1)       pctView,
+                                                    DECIMAL(3,0)  compPct,
+                                                    CHAR(1)       includeScrap)
+{%EXEC {HSIHRS_W.PGM %}
+%}
+%{EXT-END    %}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+%{EXT-BEG    %}
+  @CustomerUserView(profileHandle, dataBaseID, userPass, shipTo, " ")
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @Decat_Field("@@dptv")   @dtw_assign(deptView, fieldValue)
+      @Decat_Field("@@pctv")   @dtw_assign(pctView, fieldValue)
+      @Decat_Field("@@icmp")   @dtw_assign(inclComponent, fieldValue)
+      @Decat_Field("@@icpl")   @dtw_assign(inclCompleted, fieldValue)
+      @Decat_Field("@@thru")   @dtw_assign(thruReqDate, fieldValue)
+  %endif
+      %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+%{EXT-BEG   %}
+              @dtw_assign(formName, "Chg")
+%{EXT-END   %}
+          <script TYPE="text/javascript">
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\r" + "\r" + text);}
+              function confirmRelease(text) {return confirm("OK To Release?" + "\r" + "\r" + text);}
+              function confirmRecheck(text) {return confirm("OK To Recheck Component Availability?" + "\r" + "\r" + text);}
+%{EXT-BEG   %}
+              %INCLUDE "AJAXRequest.icl"
+              %INCLUDE "SaveCurrentURL.icl"
+%{EXT-END   %}
+              %INCLUDE "NumEdit.icl"
+%{EXT-BEG   %}
+               %INCLUDE "CheckEnterChg.icl"
+%{EXT-END   %}
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchPlant, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                       @dtw_assign(pageID, "MFGORDER")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_PlantName, "OHPLT")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+
+%{EXT-BEG   Added additional fields  %}
+                      @dtw_concat(stmtSQL, " Select OHPLT,OHORD,OHPN,OHCQTY,OHCSDT,OHCDDT,OHOTYP,OHSTC,OHPAPS,OHRORD,OHCPNS,OHHLDC,OHLADT,OHLATY,OHDELD, ", stmtSQL)
+%{EXT-END %}
+
+                      @dtw_concat(stmtSQL, "  coalesce(OEORD#,0) as OEORD#,OESHTO,OEBLTO,OEORTY,OECTRM,OESLSM,OEBDTE,OERQDT,OEORRF,OESVDS ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDMOHM ", fileSQL)
+                      @dtw_concat(fileSQL, " left join OEORHD on OEORD#=OHORD# ", fileSQL)
+
+%{EXT-BEG   Added status for closed orders  %}
+                      @dtw_concat(selectSQL, "(OHSTC='A' or OHSTC='P' or OHSTC='C') ", selectSQL)
+%{EXT-END %}
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @MfgOrder_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) MfgOrder_Query (IN CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)MfgOrderMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+	
+      $(hrTagAttr)	
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Plant</th>
+                      <th class="colhdr">Order<br>Number</th>
+                      <th class="colhdr">Item Number</th>
+                      <th class="colhdr">Reference Number</th>
+
+%{EXT-BEG Add Status as search box header  %}
+                      <th class="colhdr">Status</th>
+%{EXT-END  %}
+                  </tr>
+
+                  <tr><td><input type="text" class="inputnmbr" name="srchPlant" size="3" maxlength="3">
+                          <input type="hidden" name="operPlant" value="=">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchOrder" size="9" maxlength="9">
+                          <input type="hidden" name="operOrder" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchItem" size="15" maxlength="15">
+                          <input type="hidden" name="operItem" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchReference" size="20" maxlength="20">
+                          <input type="hidden" name="operReference" value="LIKE">
+                      </td>
+
+%{EXT-BEG Add Status as search box  %}
+                      <td><input type="text" class="inputalph" name="srchStatus" size="1" maxlength="1">
+                          <input type="hidden" name="operStatus" value="=">
+                      </td>
+%{EXT-END  %}
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a>
+                      </td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchPlant.focus();
+              </script>
+          </form>
+
+%{EXT-BEG  Added additional criteria  %}
+          %if (deptView == "F")
+              @dtw_assign(firstChecked, "CHECKED")
+              @dtw_assign(lastChecked, "")
+          %else
+              @dtw_assign(firstChecked, "")
+              @dtw_assign(lastChecked, "CHECKED")
+          %endif
+%{EXT-END  %}
+	
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_04 == "Y" || sec_07 == "Y" || sec_06 == "Y" || sec_09 == "Y" || sec_10 == "Y"))
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("OHPLT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PLT" title="Sequence By Plant">Plant</a></th>
+              @OrderBy_Sort("OHORD", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ORD" title="Sequence By Order Number)">Order<br>Number</a></th>	
+              @OrderBy_Sort("OHCPNS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CPNS" title="Sequence By Component Shortage)">Shortage</a></th>	
+              @OrderBy_Sort("OHHLDC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=HLDC" title="Sequence By Hold)">On<br>Hold</a></th>	
+              @OrderBy_Sort("OHPN", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PN" title="Sequence By Item Number">Item Number</a></th>
+              <th class="colhdr">Item Description</th>
+              <th class="colhdr">Quantity</th>
+              @OrderBy_Sort("OHCSDT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CSDT" title="Sequence By Start Date">Start Date</a></th>
+              @OrderBy_Sort("OHCDDT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CDDT" title="Sequence By Due Date">Due Date</a></th>
+
+%{EXT-BEG Added additional column headings    %}
+              %if (deptView == "F")
+                  <th class="colhdr"><a href="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;chgDeptView=Y&amp;START_ROW_NUM=$(START_ROW_NUM)" title="Click here to view Last Reported Department">First Incomplete<br>Department</a></th>
+              %else
+                  <th class="colhdr"><a href="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;chgDeptView=Y&amp;START_ROW_NUM=$(START_ROW_NUM)" title="Click here to view First Incomplete Department">Last Reported<br>Department</a></th>
+              %endif
+              <th class="colhdr">Last Activity Date</th>
+              <th class="colhdr">Close Date</th>
+%{EXT-END  %}
+              @OrderBy_Sort("OHOTYP", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=OTYP" title="Sequence By Order Type">Order<br>Type</a></th>
+              @OrderBy_Sort("OHSTC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=STC" title="Sequence By Status">Status</a></th>
+              @OrderBy_Sort("OHPAPS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PAPS" title="Sequence By Print Status">Print<br>Status</a></th>
+              @OrderBy_Sort("OHRORD", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=RORD" title="Sequence By Reference Number">Reference Number</a></th>
+          </tr>		
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Confirm_Desc($(V_OHORD), "", "", "", "", "", confirmDesc)
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(V_OHPLT)&amp;mfgOrder=@dtw_rurlescseq(V_OHORD)")
+	       <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_04 == "Y" || ($(V_OHSTC) == "A" && (sec_07 == "Y" || sec_09 == "Y" || sec_10 == "Y")) || ($(V_OHSTC) == "P" && sec_06 == "Y")))
+                      <td class="opticon">
+                          %if (sec_02 == "Y" || sec_03 == "Y")
+                              <a href="$(homeURL)$(cGIPath)MfgOrderMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          %endif
+                          %if (sec_04 == "Y")
+                              <a href="$(homeURL)$(cGIPath)MfgOrderMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                          %endif
+                          %if (sec_03 == "Y")
+                              <a onClick="return confirmDelete('$(confirmDesc)')" href=$(homeURL)$(cGIPath)MfgOrderMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D>$(deleteImageSml)</a>
+                          %endif
+                          %if ($(V_OHSTC) == "A" && (sec_07 == "Y" || sec_09 == "Y" || sec_10 == "Y"))
+                              %if (sec_07 == "Y")
+                                  <a onClick="return confirmRecheck('$(confirmDesc)')" href="$(homeURL)$(cGIPath)MfgOrderMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=X">$(recheckImage)</a>
+                              %endif
+                              %if (sec_09 == "Y")
+                                  <a href="$(homeURL)$(cGIPath)ComponentMaterial.d2w/REPORT$(maintainVar)">$(compMatlImage)</a>
+                              %endif
+                              %if (sec_10 == "Y")
+                                  <a href="$(homeURL)$(cGIPath)LaborInProcess.d2w/REPORT$(maintainVar)">$(laborIPImage)</a>
+                              %endif
+                          %endif
+                          %if ($(V_OHSTC) == "P" && sec_06 == "Y")
+                              <a onClick="return confirmRelease('$(confirmDesc)')" href="$(homeURL)$(cGIPath)MfgOrderMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=P">$(releaseImage)</a>
+                          %endif
+                      </td>
+                  %endif
+                  @RtvFldDesc("PLPLNT=$(V_OHPLT)", "HDPLNT", "PLNAME", plantName)
+                  @RtvFldDesc("IMITEM='$(V_OHPN)'", "HDIMST", "IMIMDS", itemDesc)
+                  @Format_Nbr($(V_OHCQTY), F_OHCQTY, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  @Format_Date_ISO(V_OHCSDT, "D", F_OHCSDT)
+                  @Format_Date_ISO(V_OHCDDT, "D", F_OHCDDT)
+
+%{EXT-BEG Format dates and First Incomplete Department     %}
+              @dtw_assign(deptDesc, "")
+              @dtw_assign(F_thours, "")
+              @dtw_assign(F_rhours, "")
+              @dtw_assign(F_timeLeft, "")
+              @dtw_assign(F_qtyGood, "")
+              @dtw_assign(workPrice, "0")
+              @dtw_assign(timeLeft, "0")
+              @dtw_assign(laborSeq, "0")
+
+              %if (V_OHORD != "")
+                  %if (V_OHSTC != "C")
+                      %if (V_OHLATY == "CR" && deptView == "F")
+                          @RtvFldDesc("LPPLT=$(V_OHPLT) and LPORD='$(V_OHORD)' ", "HDMLPM", "ifnull(min(LPSEQN),0)", laborSeq)
+                      %else
+                          %if (deptView == "F")
+                              @RtvFldDesc("LPPLT=$(V_OHPLT)  and LPORD='$(V_OHORD)' and LPALTC<>'A' and LPOPRC<>'Y' and LPQTYC+LPRSCR<$(V_OHCQTY) ", "HDMLPM", "ifnull(min(LPSEQN),0)", laborSeq)
+                          %else
+                              @RtvFldDesc("LPPLT=$(V_OHPLT) and LPORD='$(V_OHORD)' and LPALTC<>'A' and LPOPRC<>'Y' and ((LPQTYC+LPRSCR<$(V_OHCQTY) and (LPQTYC<>0 or LPRSCR<>0 or LPACTS<>0 or LPACTD<>0)) or (LPTVQT<>0 and LPFVQT<$(V_OHCQTY))) ", "HDMLPM", "ifnull(max(LPSEQN),0)", laborSeq)
+                              %if (laborSeq == "0")
+                                  @RtvFldDesc("LPPLT=$(V_OHPLT) and LPORD='$(V_OHORD)' and LPALTC<>'A' and (LPQTYC<>0 or LPRSCR<>0 or LPACTS<>0 or LPACTD<>0) ", "HDMLPM", "ifnull(max(LPSEQN),0)", laborSeq)
+                              %endif
+                          %endif
+                      %endif
+
+                      %if (laborSeq > "0")
+                          @RtvFldDesc("LPPLT=$(V_OHPLT) and LPORD='$(V_OHORD)' and LPSEQN=$(laborSeq) ", "HDMLPM", "LPRTYP", routingType)
+                          %if (routingType == "V")
+                              @RtvFldDesc("LPPLT=$(V_OHPLT) and LPORD='$(V_OHORD)' and LPSEQN=$(laborSeq) ", "HDMLPM", "LPFVQT", qtyFromVendor)
+                              @dtw_multiply(qtyFromVendor, "100", percentOfTotal)
+                              @dtw_divide(percentOfTotal, V_OHCQTY, percentOfTotal)
+                              @Format_Nbr($(percentOfTotal), F_percentOfTotal, "0", $(pctEditCode), "", "", "%")
+                          %endif
+                          @RtvFldDesc("LPPLT=$(V_OHPLT) and LPORD='$(V_OHORD)' and LPSEQN=$(laborSeq) ", "HDMWCM join HDMLPM on WCPLT=LPPLT and WCDEPT=LPDEPT and WCWC=LPWC", "WCDESC", deptDesc)
+                          @RtvFldDesc("LPPLT=$(V_OHPLT) and LPORD='$(V_OHORD)' and LPSEQN=$(laborSeq) ", "HDMLPM", "LPQTYC", qtyGood)
+                          @Format_Nbr($(qtyGood), F_qtyGood, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                      %endif
+                      @Format_Nbr(rhours, F_rhours, "2", $(hrsEditCode), "Y", "", "")
+                      @dtw_add(T_thours, thours, T_thours)
+                  %endif
+              %endif
+                  @Format_Date_ISO(V_OHLADT, "D", F_OHLADT)
+                  @Format_Date_ISO(V_OHDELD, "D", F_OHDELD)
+%{EXT-END  %}
+                  @RtvFldDesc("(FLTYPE='MFGORDTYPE' and FLVALU='$(V_OHOTYP)')", "SYFLAG", "FLDESC", otypDesc)
+                  @RtvFldDesc("(FLTYPE='MFGORDSTAT' and FLVALU='$(V_OHSTC)')", "SYFLAG", "FLDESC", stcDesc)
+                  @RtvFldDesc("(FLTYPE='PAPERSW' and FLVALU='$(V_OHPAPS)')", "SYFLAG", "FLDESC", papsDesc)
+                  <td class="colnmbr" $(helpCursor)><span title="$(plantName)">$(V_OHPLT)</span></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(maintainVar)" onclick="$(inquiryWinVar)" title="View Mfg Order">$(V_OHORD)</a></td>
+                  %if (sec_08 == "Y")
+                      <td class="colcode"><a href="$(homeURL)$(cGIPath)ComponentMaterialShortage.d2w/REPORT$(maintainVar)&amp;parentItem=@dtw_rurlescseq(V_OHPN)&amp;parentItemDesc=@dtw_rurlescseq(itemDesc)" title="View Component Material Shortage">$(V_OHCPNS)</a></td>
+                  %else
+                      <td class="colcode">$(V_OHCPNS)</td>
+                  %endif
+                  %if (sec_05 == "Y")
+                      <td class="colcode"><a href="$(homeURL)$(cGIPath)MfgOrderHold.d2w/REPORT$(maintainVar)&amp;parentItem=@dtw_rurlescseq(V_OHPN)&amp;parentItemDesc=@dtw_rurlescseq(itemDesc)" title="View Order Hold">$(V_OHHLDC)</a></td>
+                  %else
+                      <td class="colcode">$(V_OHHLDC)</td>
+                  %endif
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemPlantSelect.d2w/REPORT$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(V_OHPLT)&amp;itemNumber=@dtw_rurlescseq(V_OHPN)" title="View Item/Plant">$(V_OHPN)</a></td>
+                  <td class="colalph">$(itemDesc)</td>
+                  <td class="colnmbr">$(F_OHCQTY)</td>
+                  <td class="colnmbr">$(F_OHCSDT)</td>
+                  <td class="colnmbr">$(F_OHCDDT)</td>
+
+%{EXT-BEG Added additional column data      %}
+                  <td class="colalph">$(deptDesc)</td>
+                  <td class="colnmbr">$(F_OHLADT)</td>
+                  <td class="colnmbr">$(F_OHDELD)</td>
+%{EXT-END  %}
+                  <td class="colcode" $(helpCursor)><span title="$(otypDesc)">$(V_OHOTYP)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(stcDesc)">$(V_OHSTC)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(papsDesc)">$(V_OHPAPS)</span></td>
+                  %if (V_OEORD#>"0")
+                      @RtvFldDesc("CMCUST=$(V_OESHTO)", "HDCUST", "CMCNA1", V_CMCNA1)
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)SalesOrderStatus.d2w/REPORT$(genericVarBase)&amp;shipTo=@dtw_rurlescseq(V_OESHTO)&amp;customerName=@dtw_rurlescseq(V_CMCNA1)&amp;billTo=@dtw_rurlescseq(V_OEBLTO)&amp;orderNumber=@dtw_rurlescseq(V_OEORD#)&amp;orderType=@dtw_rurlescseq(V_OEORTY)&amp;terms=@dtw_rurlescseq(V_OECTRM)&amp;salesmanNumber=@dtw_rurlescseq(V_OESLSM)&amp;orderDate=@dtw_rurlescseq(V_OEBDTE)&amp;reqDate=@dtw_rurlescseq(V_OERQDT)&amp;refNumber=@dtw_rurlescseq(V_OEORRF)&amp;shipVia=@dtw_rurlescseq(V_OESVDS)" title="View Sales Order Status">$(V_OHRORD)</a></td>
+                  %else
+                  <td class="colalph">$(V_OHRORD)</td>
+                  %endif
+	       </tr>
+	   %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+      %INCLUDE "WebReg.icl"
+      %if (formatToPrint != "")
+          @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+      %else
+          %if (orderBy == "")
+              @DTW_ASSIGN(orderBy, "OHPLT,OHORD")
+              @DTW_ASSIGN(orderByDisplay, "Plant Number, Order Number")
+              @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+%{ EXT-BEG  added additional criteria %}
+      %elseif (chgComponent == "Y" && inclComponent == "Y")
+          @dtw_assign(inclComponent, "")
+      %elseif (chgComponent == "Y")
+          @dtw_assign(inclComponent, "Y")
+      %elseif (chgCompleted == "Y" && inclCompleted == "Y")
+          @dtw_assign(inclCompleted, "")
+      %elseif (chgCompleted == "Y")
+          @dtw_assign(inclCompleted, "Y")
+      %elseif (chgDeptView == "Y" && deptView == "F")
+          @dtw_assign(deptView, "L")
+      %elseif (chgDeptView == "Y" && deptView == "L")
+          @dtw_assign(deptView, "F")
+      %elseif (chgPctView == "Y" && pctView == "H")
+          @dtw_assign(pctView, "Q")
+      %elseif (chgPctView == "Y")
+          @dtw_assign(pctView, "H")
+%{ EXT-END  %}
+          %endif
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %endif
+
+%{ EXT-BEG  Added additional criteria  %}
+  @EdtVarErr(profileHandle, typeValue, edtVar)
+  %if (edtVar == "" || deptView == "")
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@dptv", dftDepartment)
+      @Concat_Field("@@pctv", dftPercent)
+      @Concat_Field("@@icmp", dftComponent)
+      @Concat_Field("@@icpl", dftCompleted)
+      @dtw_concat(edtVar, "}{", edtVar)
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+  %else
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@dptv", deptView)
+      @Concat_Field("@@pctv", pctView)
+      @Concat_Field("@@icmp", inclComponent)
+      @Concat_Field("@@icpl", inclCompleted)
+      @Concat_Field("@@thru", thruDate)
+      @dtw_concat(edtVar, "}{", edtVar)
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+  %endif
+%{ EXT-END  %}
+
+      %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "PLT")
+      %if (orderBy == "OHPLT,OHORD")
+          @DTW_ASSIGN(orderBy, "OHPLT DESC,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Plant (descending), Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Plant, Order Number")
+      %endif
+  %elseif (sequence == "ORD")
+      %if (orderBy == "OHORD,OHPLT")
+          @DTW_ASSIGN(orderBy, "OHORD DESC,OHPLT")
+          @DTW_ASSIGN(orderByDisplay, "Order Number (descending), Plant")
+      %else
+          @DTW_ASSIGN(orderBy, "OHORD,OHPLT")
+          @DTW_ASSIGN(orderByDisplay, "Order Number, Plant")
+      %endif
+  %elseif (sequence == "CPNS")
+      %if (orderBy == "OHCPNS,OHPLT,OHORD")
+          @DTW_ASSIGN(orderBy, "OHCPNS DESC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Component Shortage (descending), Plant, Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OHCPNS,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Component Shortage, Plant, Order Number")
+      %endif
+  %elseif (sequence == "HLDC")
+      %if (orderBy == "OHHLDC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderBy, "OHHLDC DESC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Hold (descending), Plant, Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OHHLDC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Hold, Plant, Order Number")
+      %endif
+  %elseif (sequence == "PN")
+      %if (orderBy == "OHPN,OHPLT,OHORD")
+          @DTW_ASSIGN(orderBy, "OHPN DESC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Item Number (descending), Plant, Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OHPN,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Item Number, Plant, Order Number")
+      %endif
+  %elseif (sequence == "CSDT")
+      %if (orderBy == "OHCSDT,OHPLT,OHORD")
+          @DTW_ASSIGN(orderBy, "OHCSDT DESC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Start Date (descending), Plant, Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OHCSDT,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Start Date, Plant, Order Number")
+      %endif
+  %elseif (sequence == "CDDT")
+      %if (orderBy == "OHCDDT,OHPLT,OHORD")
+          @DTW_ASSIGN(orderBy, "OHCDDT DESC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Due Date (descending), Plant, Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OHCDDT,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Due Date, Plant, Order Number")
+      %endif
+  %elseif (sequence == "OTYP")
+      %if (orderBy == "OHOTYP,OHPLT,OHORD")
+          @DTW_ASSIGN(orderBy, "OHOTYP DESC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Order Type (descending), Plant, Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OHOTYP,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Order Type, Plant, Order Number")
+      %endif
+  %elseif (sequence == "STC")
+      %if (orderBy == "OHSTC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderBy, "OHSTC DESC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Status (descending), Plant, Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OHSTC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Status, Plant, Order Number")
+      %endif
+  %elseif (sequence == "PAPS")
+      %if (orderBy == "OHPAPS,OHPLT,OHORD")
+          @DTW_ASSIGN(orderBy, "OHPAPS DESC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Print Status (descending), Plant, Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OHPAPS,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Print Status, Plant, Order Number")
+      %endif
+  %elseif (sequence == "RORD")
+      %if (orderBy == "OHRORD,OHPLT,OHORD")
+          @DTW_ASSIGN(orderBy, "OHRORD DESC,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Reference Number (descending), Plant, Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OHRORD,OHPLT,OHORD")
+          @DTW_ASSIGN(orderByDisplay, "Reference Number, Plant, Order Number")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "dateedit.icl"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchPlant, 3, 0) &&
+                      editdate(document.Search.srchStart) &&
+                      editdate(document.Search.srchDue) &&
+
+%{ EXT-BEG  Add Close Date to advanced search criteria  KM 3/22/10%}
+                      editdate(document.Search.srchClose) &&
+%{ EXT-END  %}
+                      editNum(document.Search.srchAnalyst, 7, 0) &&
+                      editNum(document.Search.srchSlsOrder, 8, 0) &&
+                      editNum(document.Search.srchSlsLine, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "MFGORDERSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                           %INCLUDE "SearchTop.icl"
+
+                          @Default_Zero(srchPlant)
+                          @dtw_assign(srchItem, "")
+                          <tr><td class="dsphdr">Plant</td>
+                              @dtw_assign(operNbr, "operPlant")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchPlant" size="3" maxlength="3"><a href="$(homeURL)$(cGIPath)PlantSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchPlant&amp;fldDesc=plantName" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="plantName" value="$(fieldDesc)" type="text" size="30" maxlength="30" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Order Number</td>
+                              @dtw_assign(operNbr, "operOrder")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchOrder" size="9" maxlength="9"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Component Shortage</td>
+                              @dtw_assign(operNbr, "operCpns")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchCpns" size="1" maxlength="1"> <a href="$(homeURL)$(cGIPath)FlagSearch.d2w/REPORT$(genericVarBase)&amp;flagType=BY&amp;flagSrchHdr=@dtw_rurlescseq("Component Shortage")&amp;docName=Search&amp;fldName=srchCpns&amp;fldDesc=cpnsdesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="cpnsdesc" value="$(fldDesc)"  type="text" size="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">On Hold</td>
+                              @dtw_assign(operNbr, "operHldc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchHldc" size="1" maxlength="1"> <a href="$(homeURL)$(cGIPath)FlagSearch.d2w/REPORT$(genericVarBase)&amp;flagType=YORN&amp;flagSrchHdr=@dtw_rurlescseq("On Hold")&amp;docName=Search&amp;fldName=srchHldc&amp;fldDesc=hldcdesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="hldcdesc" value="$(fldDesc)"  type="text" size="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Item Number</td>
+                              @dtw_assign(operNbr, "operItem")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchItem" size="15" maxlength="15"><a href="$(homeURL)$(cGIPath)ItemSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchItem&amp;fldDesc=itemDescription" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="itemDescription" value="$(fieldDesc)" type="text" size="30" maxlength="30" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Reference Number</td>
+                              @dtw_assign(operNbr, "operReference")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchReference" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Start Date</td>
+                              @dtw_assign(operNbr, "operStart")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchStart" size="6" maxlength="6"><a href="javascript:calWindow('srchStart');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Due Date</td>
+                              @dtw_assign(operNbr, "operDue")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchDue" size="6" maxlength="6"><a href="javascript:calWindow('srchDue');">$(calendarImage)</a></td>
+                          </tr>
+
+%{ EXT-BEG  Add Close Date to advanced search criteria  KM 3/22/10%}
+                          <tr><td class="dsphdr">Close Date</td>
+                              @dtw_assign(operNbr, "operClose")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchClose" size="6" maxlength="6"><a href="javascript:calWindow('srchClose');">$(calendarImage)</a></td>
+                          </tr>
+%{ EXT-END  %}
+
+                          <tr><td class="dsphdr">Order Type</td>
+                              @dtw_assign(operNbr, "operType")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchType" size="1" maxlength="1"> <a href="$(homeURL)$(cGIPath)FlagSearch.d2w/REPORT$(genericVarBase)&amp;flagType=MFGORDTYPE&amp;flagSrchHdr=@dtw_rurlescseq("Mfg Order Type")&amp;docName=Search&amp;fldName=srchType&amp;fldDesc=typedesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="typedesc" value="$(fldDesc)"  type="text" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Status</td>
+                              @dtw_assign(operNbr, "operStatus")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchStatus" size="1" maxlength="1"> <a href="$(homeURL)$(cGIPath)FlagSearch.d2w/REPORT$(genericVarBase)&amp;flagType=MFGORDSTAT&amp;flagSrchHdr=@dtw_rurlescseq("Mfg Order Status")&amp;docName=Search&amp;fldName=srchStatus&amp;fldDesc=statusdesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="statusdesc" value="$(fldDesc)"  type="text" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Print Status</td>
+                              @dtw_assign(operNbr, "operPaper")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchPaper" size="1" maxlength="1"> <a href="$(homeURL)$(cGIPath)FlagSearch.d2w/REPORT$(genericVarBase)&amp;flagType=PAPERSW&amp;flagSrchHdr=@dtw_rurlescseq("Print Status")&amp;docName=Search&amp;fldName=srchPaper&amp;fldDesc=paperdesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="paperdesc" value="$(fldDesc)"  type="text" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Analyst</td>
+                              @dtw_assign(operNbr, "operAnalyst")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchAnalyst" size="7" maxlength="7"><a href="$(homeURL)$(cGIPath)BuyerSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchAnalyst&amp;fldDesc=analystName&amp;buyerAnalyst=Analyst" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="analystName" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Sales Order</td>
+                              @dtw_assign(operNbr, "operSlsOrder")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchSlsOrder" size="8" maxlength="8"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Sales Order Line</td>
+                              @dtw_assign(operNbr, "operSlsLine")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchSlsLine" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Configuration Type</td>
+                              @dtw_assign(operNbr, "operConfigType")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchConfigType" size="5" maxlength="5"> <a href="$(homeURL)$(cGIPath)ConfigHeaderSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldreleased=@dtw_rurlescseq(fldreleased)&amp;fldplt=@dtw_rurlescseq(srchPlant)&amp;flditem=@dtw_rurlescseq(srchItem)&amp;fldtype=srchConfigType&amp;fldid=srchConfigID&amp;fldDesc=configdesc" onclick="$(searchWinVar)">  $(searchImage) </a> <input disabled name="configdesc" value="$(fldDesc)"  type="text" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Configuration ID</td>
+                              @dtw_assign(operNbr, "operConfigID")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchConfigID" size="5" maxlength="5"> <a href="$(homeURL)$(cGIPath)ConfigHeaderSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldreleased=@dtw_rurlescseq(fldreleased)&amp;fldplt=@dtw_rurlescseq(srchPlant)&amp;flditem=@dtw_rurlescseq(srchItem)&amp;fldtype=srchConfigType&amp;fldid=srchConfigID&amp;fldDesc=configdesc" onclick="$(searchWinVar)">  $(searchImage) </a></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchPlant.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("OHPLT", "Plant Number", $(srchPlant), "", operPlant, "N")
+  @Build_WildCard ("OHORD", "Order Number", $(srchOrder), "U", operOrder, "A")
+  @Build_WildCard ("OHCPNS", "Component Shortage", $(srchCpns), "U", operCpns, "A")
+  @Build_WildCard ("OHHLDC", "On Hold", $(srchHldc), "U", operHldc, "A")
+  @Build_WildCard ("OHPN", "Item Number", $(srchItem), "U", operItem, "A")
+  @Build_WildCard ("OHRORD", "Reference Number", $(srchReference), "U", operReference, "A")
+  @Build_WildCard ("OHCSDT", "Start Date", $(srchStart), "", operStart, "I")
+  @Build_WildCard ("OHCDDT", "Due Date", $(srchDue), "", operDue, "I")
+
+%{ EXT-BEG  Add Close Date to advanced search criteria  KM 3/22/10%}
+  @Build_WildCard ("OHDELD", "Close Date", $(srchClose), "", operClose, "I")
+%{ EXT-END  %}
+		
+  @Build_WildCard ("OHOTYP", "Order Type", $(srchType), "U", operType, "A")
+  @Build_WildCard ("OHSTC", "Order Status", $(srchStatus), "U", operStatus, "A")
+  @Build_WildCard ("OHPAPS", "Print Status", $(srchPaper), "U", operPaper, "A")
+  @Build_WildCard ("OHBAC", "Analyst Number", $(srchAnalyst), "", operAnalyst, "N")
+  @Build_WildCard ("OHORD#", "Sales Order Number", $(srchSlsOrder), "", operSlsOrder, "N")
+  @Build_WildCard ("OHORL#", "Sales Line Number", $(srchSlsLine), "", operSlsLine, "N")
+  @Build_WildCard ("OHCFGT", "Configuration Type", $(srchConfigType), "U", operConfigType, "A")
+  @Build_WildCard ("OHCFGI", "Configuration ID", $(srchConfigID), "U", operConfigID, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

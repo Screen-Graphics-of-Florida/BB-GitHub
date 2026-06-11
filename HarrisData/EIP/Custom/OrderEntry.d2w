@@ -1,0 +1,232 @@
+%{  Shareware in which editing has been enhanced.  The standard page will warn the user if an order
+is in the billing cycle, but not if the order has merely been shipped.  
+
+If the user selects to change an order and any detail line on the order has quantity shipped this cycle, they will not be able to change the order.
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Order Entry                                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title = "Order Entry"
+  d2wVarBase = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)"
+  programName= "HOEOEM"
+  zeroOrder  = "00000000"
+  vcf        = "C"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@orderControlNumber", "@dtw_rurlescseq(orderControlNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Display_Error (IN errorMessage) {
+  <html>
+      <head>
+          <script TYPE="text/javascript">
+              alert('$(errorMessage)');
+              window.history.back();
+          </script>
+      </head>
+      <body $(bodyTagAttr)>
+      </body>
+  </html>
+%}
+
+%FUNCTION(DTW_directcall) Copy_Order (INOUT  CHAR(64)     profileHandle,
+				              CHAR(2)      dataBaseID,
+				      	      DECIMAL(8,0) orderControlNumber,
+				      	      CHAR(1)      fromHistory,
+				      	      DECIMAL(8,0) fromOrderNumber,
+				      	      DECIMAL(7,0) customerNumber,
+				      	      CHAR(1)      toOrderType,
+				      	      CHAR(1)      recalcPricing,
+				      	      CHAR(1)      copyComments)
+
+{%EXEC {HOEOEC_W.PGM %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if (sec_01=="N")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          %INCLUDE "OrderEntryProgOpt.icl"
+          %if (oe_sec_01 == "N")
+              @dtw_assign(errorMessage, "You are not authorized to add an order")
+              @Display_Error(errorMessage)
+          %else
+              @dtw_assign(maintCode, "A")
+              @dtw_assign(orderControlNumber, "00000000")
+              @dtw_assign(orderType, $(defaultOrderType))
+              @Assign_OrderControl(profileHandle, dataBaseID, orderType, customerNumber, contactNumber, orderControlNumber, orderNumber, turnaround, maintCode, orderBusy, errorNumber)
+
+              %if (errorNumber == "" && V_HDAPRV != "N")
+                  @dtw_assign(edtVar, "")
+                  @Concat_Field("@@user", userProfile)
+                  @Concat_Field("@@ortx", orderType)
+                  @Concat_Field("@@orty", "Y")
+                  @dtw_concat(edtVar, "}{", edtVar)
+                  @Check_Privileges(edtVar)
+                  @Decat_Field("@@pv01") @dtw_assign(pvAdd, fieldValue)
+                  @Decat_Field("@@nosu") @dtw_assign(userSetup, fieldValue)
+                  %if (userSetup == "Y" && pvAdd != "Y")
+                      @dtw_assign(errorNumber, "HOE0640")
+                  %endif   
+              %endif
+
+              %if (errorNumber != "")
+                  @Ret_Error_Msg(profileHandle, dataBaseID, $(errorNumber), errorMessage)
+                  @Display_Error(errorMessage)
+              %else
+                  @Check_Item_Comments(profileHandle, dataBaseID, itemNumber, vcf, customerNumber, documentType, headerTrailer, vendCustItemsFound)
+                  @dtw_assign(orderVarBase, "$(d2wVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;vendCustItemsFound=@dtw_rurlescseq(vendCustItemsFound)&amp;lineNumber=000&amp;releaseNumber=000&amp;checkCCL=Y")
+                  %if (defaultOrderTab == "8" && sec_12 == "Y")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)EmailFaxRecipient.d2w/REPORT$(orderVarBase)">
+                  %elif (defaultOrderTab == "7")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryMiscChg.d2w/REPORT$(orderVarBase)">
+                  %elif (defaultOrderTab == "6")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryAddress.d2w/DISPLAY$(orderVarBase)">
+                  %elif (defaultOrderTab == "5")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryComments.d2w/COMMENTS$(orderVarBase)">
+                  %elif (defaultOrderTab == "4")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryHeader.d2w/HEADER$(orderVarBase)">
+                  %elif (defaultOrderTab == "3" && vendCustItemsFound == "Y")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryByCustomerItem.d2w/ENTRY$(orderVarBase)">
+                  %elif (defaultOrderTab == "2")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryDetail.d2w/DETAIL$(orderVarBase)">
+                  %else
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryByItem.d2w/ENTRY$(orderVarBase)">
+                  %endif
+              %endif
+          %endif
+      </html>
+  %endif
+%}
+
+%HTML(MOBILE) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "$(docType)"
+  <html>
+      @dtw_assign(orderControlNumber, "00000000")
+      @dtw_assign(orderType, $(defaultOrderType))
+      @Assign_OrderControl(profileHandle, dataBaseID, orderType, customerNumber, contactNumber, orderControlNumber, orderNumber, turnaround, maintCode, orderBusy, errorNumber)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)MbOrderEntry.d2w/ENTRY$(d2wVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;customerCity=@dtw_rurlescseq(customerCity)&amp;customerState=@dtw_rurlescseq(customerState)&amp;customerWhs=@dtw_rurlescseq(customerWhs)&amp;maintenanceCode=A">
+  </html>
+%}
+
+%HTML(COPY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "$(docType)"
+  <html>
+      @dtw_mUPPERCASE(toOrderType)
+      @dtw_assign(maintCode, "A")
+      @dtw_assign(customerNumber, toCustomerNumber)
+      @Assign_OrderControl(profileHandle, dataBaseID, toOrderType, customerNumber, contactNumber, orderControlNumber, zeroOrder, turnaround, maintCode, orderBusy, errorNumber)
+      @Copy_Order(profileHandle, dataBaseID, orderControlNumber, fromHistory, fromOrderNumber, customerNumber, toOrderType, recalcPricing, copyComments)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)OrderEntryOrderReview.d2w/REVIEW$(d2wVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)">
+  </html>
+%}
+
+%HTML(CHANGE) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if ((sec_02=="N" && maintCode=="C") || (sec_04=="N" && maintCode=="X") || (sec_01=="N" && maintCode=="A") || ((sec_01=="N" || sec_05 == "N") && maintCode=="Z"))
+      @dtw_assign(pgmOptAuth, "F")
+  %else
+      @dtw_assign(pgmOptAuth, "")
+  %endif
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      
+  %{ BEGIN MOD Don't allow change if any detail line has quantity shipped this cycle  %}
+      %if (maintCode == "C" && orderBusy != "Y")
+        @RtvFldDesc("ODORD#=$(orderNumber) and ODQSTC>0", "OEORDT", "count(*)", shippedCnt)
+        %if (shippedCnt > "0")
+            @dtw_assign(orderBusy, "Y")
+        %endif
+      %endif
+  %{ END MOD %}
+      
+      %if (orderBusy != "Y")
+         @Assign_OrderControl(profileHandle, dataBaseID, orderType, customerNumber, contactNumber, orderControlNumber, orderNumber, turnaround, maintCode, orderBusy, errorNumber)
+      %endif	
+      %if (orderBusy != "Y")
+          %if (maintCode == "S")
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)OrderShippingEntry.d2w/INPUT$(d2wVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;turnaround=@dtw_rurlescseq(turnaround)">
+          %elif (maintCode == "X")
+              @Process_Order (profileHandle, dataBaseID, orderControlNumber, orderNumber, maintCode)
+              @DTW_ASSIGN(confMessage, "Confirm Close/Cancel Of Order Number $(orderNumber)")
+              @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+              %if (backURL == "")
+                  <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+              %else
+                  <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+              %endif
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)OrderEntryOrderReview.d2w/DISPLAY$(d2wVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;checkCCL=Y">
+          %endif
+      %else
+        %INCLUDE "$(docType)"
+          <html>
+              <head>
+                  %INCLUDE "$(headInclude)"
+                  <script TYPE="text/javascript">
+                      %INCLUDE "Menu.js"
+                  </script>
+                  %INCLUDE "$(genericHead)"
+              </head>
+              <body $(bodyTagAttr)>
+                  <!-- Start Of Banner Code -->
+                  %INCLUDE "banner.icl"
+                  <!-- End Of Banner Code -->
+                      <table $(baseTable)>
+                          <tr valign="top">
+                              @dtw_assign(pageID, "ORDERENTRY")
+                              <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                              <td class="content">
+                                  <table $(contentTable)>
+                              	       <colgroup>
+                              	           <col width="80%">
+                              	           <col width="15%">
+                                      <tr><td><h1>$(page_title)</h1></td>
+                                          <td class="toolbar">
+                                              <a href="javascript:history.back()">$(previousImage)</a>
+                                              %INCLUDE "HelpPage.icl"
+                                          </td>
+                                      </tr>
+                                  </table>
+                                  <table $(contentTable)>
+                                      <tr><td>$(hrTagAttr)</td></tr>
+            	                       <tr><td><div class="error">Order Number $(orderNumber) Is Not Available</div>
+                                      </td></tr>
+                                      <tr><td>$(hrTagAttr)</td></tr>
+                                      <tr><td>%INCLUDE "Copyright.icl"</td></tr>
+                                  </table>
+                              </td>
+                          </tr>
+                      </table>
+                  <!-- Start Of Trailer Code -->
+                  %INCLUDE "trailer.icl"
+                  <!-- End Of Trailer Code -->
+              </body>
+          </html>
+      %endif
+  %endif
+%}
