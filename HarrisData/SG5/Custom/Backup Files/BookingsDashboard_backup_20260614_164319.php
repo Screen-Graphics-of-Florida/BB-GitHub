@@ -6,8 +6,8 @@ require_once 'SetLibraryList.php';
 date_default_timezone_set('America/Chicago');
 
 $now      = new DateTime();
-$dow      = (int)$now->format('w');   // 0=Sun … 6=Sat (week starts Sunday)
-$wkSt     = clone $now; $wkSt->modify('-' . $dow . ' days');
+$dow      = (int)$now->format('N');
+$wkSt     = clone $now; $wkSt->modify('-' . ($dow - 1) . ' days');
 $moSt     = new DateTime($now->format('Y-m-01'));
 $yrSt     = new DateTime($now->format('Y-01-01'));
 $tomorrow = clone $now; $tomorrow->modify('+1 day');

@@ -9,8 +9,8 @@ $period  = isset($_GET['period']) ? $_GET['period']          : 'day';
 $slsName = isset($_GET['name'])   ? trim($_GET['name'])      : '';
 
 $now     = new DateTime();
-$dow     = (int)$now->format('w');   // 0=Sun … 6=Sat (week starts Sunday)
-$wkSt    = clone $now; $wkSt->modify('-' . $dow . ' days');
+$dow     = (int)$now->format('N');
+$wkSt    = clone $now; $wkSt->modify('-' . ($dow - 1) . ' days');
 $moSt    = new DateTime($now->format('Y-m-01'));
 $yrSt    = new DateTime($now->format('Y-01-01'));
 $next    = clone $now; $next->modify('+1 day');
@@ -47,8 +47,6 @@ $sql = "
     SELECT
         h.\"OEORD#\"                                                                   AS ORDNUM,
         h.OEBDTE                                                                       AS BDTE,
-        h.OEORST                                                                       AS ORST,
-        TRIM(CHAR(h.OESHTO))                                                           AS CUSTNUM,
         d.ODOSTP                                                                       AS ODOSTP,
         COALESCE(TRIM(c.CMCNA1), '')                                                   AS CUSTNAME,
         TRIM(d.ODITEM)                                                                 AS ITEM,
@@ -92,8 +90,6 @@ foreach ($rows as $r) {
         $orders[$ord] = array(
             'ordnum'   => $ord,
             'bdte'     => $r['BDTE'],
-            'orst'     => trim((string)$r['ORST']),
-            'custnum'  => trim((string)$r['CUSTNUM']),
             'custname' => $r['CUSTNAME'],
             'lines'    => array(),
             'subtotal' => 0.0,
@@ -121,32 +117,6 @@ foreach ($orders as $ord) {
     $byDate[$key]['total'] += $ord['subtotal'];
 }
 krsort($byDate); // descending by CYMD integer = newer first
-
-$eiBase = 'https://portal.screen-graphics.com:5601';
-
-function buildOrderUrl($eiBase, $eID, $ord, $arInvNum = '') {
-    if ($ord['orst'] === 'C') {
-        $url = $eiBase . '/harris-CGI/SelectOrderHistory.d2w/REPORT'
-            . '?baseVar=BaseConfiguration.icl'
-            . '&portal=CUSTOMER'
-            . '&eID='            . urlencode($eID)
-            . '&customerName='   . urlencode($ord['custname'])
-            . '&customerNumber=' . urlencode($ord['custnum'])
-            . '&orderNumber='    . urlencode($ord['ordnum'])
-            . '&orderSequence=0';
-        if ($arInvNum !== '') {
-            $url .= '&arInvoiceNumber=' . urlencode($arInvNum);
-        }
-        return $url;
-    }
-    return $eiBase . '/harris-CGI/SelectOrder.d2w/REPORT'
-        . '?baseVar=BaseConfiguration.icl'
-        . '&portal=CUSTOMER'
-        . '&eID='            . urlencode($eID)
-        . '&customerName='   . urlencode($ord['custname'])
-        . '&customerNumber=' . urlencode($ord['custnum'])
-        . '&orderNumber='    . urlencode($ord['ordnum']);
-}
 
 function fmt($n) { return '$' . number_format((float)$n, 2); }
 function fmtTs($ts) {
@@ -193,8 +163,6 @@ tr:nth-child(even) td { background: #f7f8fc; }
 .neg { color: #b00; }
 .err { background: #fdd; color: #900; padding: 8px 12px; border-radius: 4px; margin-bottom: 10px; font-family: monospace; }
 .grand-total { background: #fff; border: 2px solid #003087; border-radius: 4px; padding: 8px 16px; display: inline-block; font-size: 16px; font-weight: 700; color: #003087; margin-top: 8px; }
-a.ord-link { color: #6db3ff; text-decoration: none; font-size: 14px; font-weight: 700; }
-a.ord-link:hover { text-decoration: underline; color: #99ccff; }
 .back { display: inline-block; margin-bottom: 10px; color: #003087; text-decoration: none; font-size: 12px; }
 .back:hover { text-decoration: underline; }
 .empty { text-align: center; padding: 30px; color: #888; }
@@ -253,7 +221,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
     <?php foreach ($orders as $ord): ?>
     <div class="order-block">
       <div class="order-header">
-        <a class="ord-link" href="<?php echo htmlspecialchars(buildOrderUrl($eiBase, $eID, $ord)); ?>" target="_blank">Order #<?php echo htmlspecialchars($ord['ordnum']); ?></a>
+        <span class="ord-num">Order #<?php echo htmlspecialchars($ord['ordnum']); ?></span>
         <span class="cust"><?php echo htmlspecialchars($ord['custname']); ?></span>
         <span>Booked Date: <?php echo cymdToDate($ord['bdte']); ?></span>
         <span>Last Updated: <?php echo htmlspecialchars(fmtTs($ord['lastupd'])); ?></span>
