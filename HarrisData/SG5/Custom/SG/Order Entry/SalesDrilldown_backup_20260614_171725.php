@@ -51,9 +51,7 @@ $sql = "
         d.DHSLPR                                                                            AS SLPR,
         d.DHORUF                                                                            AS ORUF,
         CASE WHEN d.DHORUF <> 0 THEN d.DHSLPR * d.DHQSTC / d.DHORUF ELSE 0 END            AS LINEAMT,
-        CASE WHEN h.OESLSM = s.SMSLSM AND s.SMREGN <> 'INACT' THEN TRIM(s.SMSNA1) ELSE 'Ex-Sales' END AS SLSNAME,
-        h.\"OELIV#\"                                                                        AS INVNUM,
-        h.OEBLTO                                                                            AS CUSTNUM
+        CASE WHEN h.OESLSM = s.SMSLSM AND s.SMREGN <> 'INACT' THEN TRIM(s.SMSNA1) ELSE 'Ex-Sales' END AS SLSNAME
     FROM SGHDSDATA.OEORDH d
     JOIN SGHDSDATA.OEORHD h ON d.\"DHORD#\" = h.\"OEORD#\"
     LEFT JOIN SGHDSDATA.HDCUST c ON h.OESHTO = c.CMCUST
@@ -91,8 +89,6 @@ foreach ($rows as $r) {
             'ordnum'   => $ord,
             'invdte'   => $r['INVDTE'],
             'custname' => $r['CUSTNAME'],
-            'invnum'   => (int)$r['INVNUM'],
-            'custnum'  => (int)$r['CUSTNUM'],
             'lines'    => array(),
             'subtotal' => 0.0,
         );
@@ -149,8 +145,6 @@ body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; background: 
 .order-header .ord-num { font-size: 14px; }
 .order-header .cust { color: #a8c4f0; font-weight: 400; }
 .order-header .subtot { margin-left: auto; font-size: 14px; color: #6db3ff; }
-.order-header .inv-link { color: #6db3ff; text-decoration: underline; font-weight: 400; }
-.order-header .inv-link:hover { color: #fff; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th { background: #1a3a6b; color: #c8d8f0; padding: 4px 10px; text-align: right; font-size: 11px; font-weight: 700; white-space: nowrap; }
 th:first-child, th:nth-child(2) { text-align: left; }
@@ -221,16 +215,6 @@ tr:nth-child(even) td { background: #f7f8fc; }
         <span class="ord-num">Order #<?php echo htmlspecialchars($ord['ordnum']); ?></span>
         <span class="cust"><?php echo htmlspecialchars($ord['custname']); ?></span>
         <span>Invoiced Date: <?php echo cymdToDate($ord['invdte']); ?></span>
-        <?php if ($ord['invnum'] > 0):
-            $invUrl = 'https://portal.screen-graphics.com:5601/harris-CGI/SelectInvoice.d2w/DISPLAY'
-                . '?formatToPrint=Y&baseVar=BaseConfiguration.icl&portal=CUSTOMER'
-                . '&eID=' . urlencode($eID)
-                . '&customerNumber=' . $ord['custnum']
-                . '&invoiceDate=' . $ord['invdte']
-                . '&invoiceNumber=' . $ord['invnum'];
-        ?>
-        <span>Invoice: <a class="inv-link" href="<?php echo htmlspecialchars($invUrl); ?>" target="_blank"><?php echo $ord['invnum']; ?></a></span>
-        <?php endif; ?>
         <span class="subtot"><?php echo fmt($ord['subtotal']); ?></span>
       </div>
       <table>

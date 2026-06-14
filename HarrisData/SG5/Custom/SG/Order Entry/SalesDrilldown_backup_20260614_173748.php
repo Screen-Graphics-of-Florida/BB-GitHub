@@ -53,10 +53,11 @@ $sql = "
         CASE WHEN d.DHORUF <> 0 THEN d.DHSLPR * d.DHQSTC / d.DHORUF ELSE 0 END            AS LINEAMT,
         CASE WHEN h.OESLSM = s.SMSLSM AND s.SMREGN <> 'INACT' THEN TRIM(s.SMSNA1) ELSE 'Ex-Sales' END AS SLSNAME,
         h.\"OELIV#\"                                                                        AS INVNUM,
-        h.OEBLTO                                                                            AS CUSTNUM
+        bt.CMCUST                                                                           AS CUSTNUM
     FROM SGHDSDATA.OEORDH d
     JOIN SGHDSDATA.OEORHD h ON d.\"DHORD#\" = h.\"OEORD#\"
-    LEFT JOIN SGHDSDATA.HDCUST c ON h.OESHTO = c.CMCUST
+    LEFT JOIN SGHDSDATA.HDCUST c  ON h.OESHTO = c.CMCUST
+    LEFT JOIN SGHDSDATA.HDCUST bt ON h.OEBLTO  = bt.CMBLTO
     LEFT JOIN SGHDSDATA.HDSLSM s ON h.OESLSM = s.SMSLSM
     WHERE h.OESLSM = $slsNum
       AND d.\"DHSEQ#\" <> 0
