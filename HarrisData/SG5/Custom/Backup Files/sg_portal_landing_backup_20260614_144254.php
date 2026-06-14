@@ -27,13 +27,8 @@ $reportMap = array(
         'OE' => array(
             array(
                 'title' => 'Bookings Dashboard',
-                'desc'  => 'D/W/M/Y bookings by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
+                'desc'  => 'W/M/Y bookings by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
                 'file'  => 'Order%20Entry/BookingsDashboard.php',
-            ),
-            array(
-                'title' => 'Sales Dashboard',
-                'desc'  => 'D/W/M/Y sales by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/SalesDashboard.php',
             ),
         ),
     ),
