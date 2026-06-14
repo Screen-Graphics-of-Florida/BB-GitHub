@@ -45,18 +45,6 @@ $reportMap = array(
                 'file'  => 'Manufacturing/MORequirements.php',
             ),
         ),
-        'PLN' => array(
-            array(
-                'title' => 'Manufacturing Order Requirements',
-                'desc'  => 'Items with net shortage — auto-refreshes every 10 minutes',
-                'file'  => 'Manufacturing/MORequirements.php',
-            ),
-            array(
-                'title' => 'Open Order Line Item Comments',
-                'desc'  => 'Open order lines with ACK comments — sortable, auto-refreshes every 15 min (7am–4pm CT)',
-                'file'  => 'Planning/OpenOrderLineItemComments.php',
-            ),
-        ),
     ),
 );
 
