@@ -275,6 +275,8 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
     <div class="nav-section">
       <div class="nav-header">SG Dashboards</div>
       <a class="nav-item active" href="#">Bookings Dashboard <span class="nw-badge">&#8599;</span></a>
+      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/ShipmentsDashboard.php">Shipments Dashboard <span class="nw-badge">&#8599;</span></a>
+      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/SalesDashboard.php">Sales Dashboard <span class="nw-badge">&#8599;</span></a>
     </div>
   </nav>
 

@@ -31,11 +31,6 @@ $reportMap = array(
                 'file'  => 'Order%20Entry/BookingsDashboard.php',
             ),
             array(
-                'title' => 'Shipments Dashboard',
-                'desc'  => 'Orders shipped today + D/W/M/Y invoice totals by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/ShipmentsDashboard.php',
-            ),
-            array(
                 'title' => 'Sales Dashboard',
                 'desc'  => 'D/W/M/Y sales by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
                 'file'  => 'Order%20Entry/SalesDashboard.php',
