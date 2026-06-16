@@ -51,6 +51,15 @@ $reportMap = array(
             ),
         ),
     ),
+    'SGDINT' => array(
+        'OE' => array(
+            array(
+                'title' => 'CS Data Integrity Dashboard',
+                'desc'  => 'Duplicate PO#s, open order taxes, CC fees, bad customer data, zero-cost lines, QM product class issues',
+                'file'  => 'Order%20Entry/CSDataIntegrityDashboard.php',
+            ),
+        ),
+    ),
     'SGRPT' => array(
         'MFG' => array(
             array(
