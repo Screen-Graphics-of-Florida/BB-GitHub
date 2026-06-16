@@ -23,6 +23,15 @@ $catNames = array(
 
 // Reports keyed by portal => cat => [ [title, desc, file], ... ]
 $reportMap = array(
+    'SGINQ' => array(
+        'OE' => array(
+            array(
+                'title' => 'Customer Service Inquiry',
+                'desc'  => 'Search open and closed orders by customer name, phone, P/O#, city/state, order #, or item #',
+                'file'  => 'Order%20Entry/CustServiceInquiry.php',
+            ),
+        ),
+    ),
     'SGDASH' => array(
         'OE' => array(
             array(
