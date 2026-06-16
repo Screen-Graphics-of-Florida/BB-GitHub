@@ -1,0 +1,484 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: A/R Invoices                                                *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "A/R Invoice"
+  d2wName                 = "ARInvoiceInquiry.d2w"
+  d2wVarBase              = "$(genericVarBase)$(glDDVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;invoiceSequence=@dtw_rurlescseq(invoiceSequence)&amp;glJrnl=@dtw_rurlescseq(glJrnl)&amp;glDDSeq=@dtw_rurlescseq(glDDSeq)&amp;glDDFile=@dtw_rurlescseq(glDDFile)&amp;noMenu=@dtw_rurlescseq(noMenu)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "9999"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @CustomerUserView(profileHandle, dataBaseID, userPass, customerNumber, "Y")
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+               <script TYPE="text/javascript">
+                  %INCLUDE "NewWindowOpen.icl"
+               </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %if (noMenu =="Y")
+                  %INCLUDE "$(inquiryBanner)"
+              %else
+                  %INCLUDE "banner.icl"
+              %endif
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "" && noMenu !="Y")
+                          @dtw_assign(pageID, "ARINVOICE")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %{Header %}
+                              @Invoice_Query(profileHandle,
+                                             dataBaseID,
+                                             invoiceSequence,
+                                             customerNumber,
+                                             customerName,
+                                             customerAdrOne,
+                                             customerAdrTwo,
+                                             customerAdrThree,
+                                             customerCity,
+                                             customerState,
+                                             customerZip,
+                                             locationName,
+                                             locationAdrOne,
+                                             locationAdrTwo,
+                                             locationAdrThree,
+                                             locationCity,
+                                             locationState,
+                                             locationZip,
+                                             invoiceDate,
+                                             invoiceNumber,
+                                             salesmanNumber,
+                                             salesmanName,
+                                             poNumber,
+                                             invoiceAmount,
+                                             termsCode,
+                                             orderNumber,
+                                             orderDate,
+                                             currencyType)
+
+                          %{Distribution %}
+                              @dtw_assign(START_ROW_NUM, "1")
+                              @dtw_assign(RPT_MAX_ROWS, "9999")
+                          %{Debit Records %}
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, "SELECT IDCO#,IDFAC#,IDACCT,IDSACT,IDARTY, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " CASE WHEN IDDRCR='D' Then IDAMT  ", stmtSQL)
+                              @dtw_concat(stmtSQL, "      ELSE                -IDAMT  ", stmtSQL)
+                              @dtw_concat(stmtSQL, " END as D_IDAMT, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " ifnull(CFCFNM,' ') as CFCFNM, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " ifnull(CHCHDS,' ') as CHCHDS, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " ifnull(d.FLDESC,' ') as typeDesc ", stmtSQL)
+                              @dtw_concat(fileSQL, " HDARDS ", fileSQL)
+                              @dtw_concat(fileSQL, " left join HDCFAC b on IDCO#=CFCO# and IDFAC#=CFFAC# ", fileSQL)
+                              @dtw_concat(fileSQL, " left join HDCHRT c on IDACCT=CHACCT and IDSACT=CHSUB ", fileSQL)
+                              @dtw_concat(fileSQL, " left join SYFLAG d on d.FLTYPE='ARDISTTYPE' and trim(IDARTY)=trim(d.FLVALU) ", fileSQL)
+                              @dtw_concat(selectSQL, " IDISEQ=$(invoiceSequence)  ", selectSQL)
+                              %INCLUDE "stmtSQLSelect.icl"
+                              %INCLUDE "stmtSQLTotalRows.icl"
+                              @dtw_concat(stmtSQL, " ORDER BY IDCO#,IDFAC#,IDACCT,IDSACT,IDARTY ", stmtSQL)
+                              %INCLUDE "stmtSQLEnd.icl"
+                              @Distribution_Query(profileHandle, dataBaseID, stmtSQL)
+
+                          %{Payments     %}
+                              @dtw_assign(START_ROW_NUM, "1")
+                              @dtw_assign(RPT_MAX_ROWS, "9999")
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                              @dtw_concat(fileSQL, " ARYPTD ", fileSQL)
+                              @dtw_concat(selectSQL, " YPISEQ=$(invoiceSequence)", selectSQL)
+                              @dtw_concat(selectSQL, " and YPBLTO=$(customerNumber)", selectSQL)
+                              %INCLUDE "stmtSQLSelect.icl"
+                              %INCLUDE "stmtSQLEnd.icl"
+                              %INCLUDE "stmtSQLTotalRows.icl"
+                              @Payments_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %if (noMenu =="Y")
+                  %INCLUDE "$(inquiryTrailer)"
+              %else
+                  %INCLUDE "trailer.icl"
+              %endif
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_directcall) Invoice_Query (IN    CHAR(64) profileHandle,
+			                        CHAR(2)  dataBaseID,
+			                  INOUT DEC(7,0) invoiceSequence,
+			                  INOUT DEC(7,0) customerNumber,
+                                         INOUT CHAR(26) customerName,
+                                         INOUT CHAR(26) customerAdrOne,
+                                         INOUT CHAR(26) customerAdrTwo,
+                                         INOUT CHAR(19) customerAdrThree,
+                                         INOUT CHAR(26) customerCity,
+                                         INOUT CHAR(2)  customerState,
+                                         INOUT CHAR(13) customerZip,
+                                         INOUT CHAR(26) locationName,
+                                         INOUT CHAR(26) locationAdrOne,
+                                         INOUT CHAR(26) locationAdrTwo,
+                                         INOUT CHAR(19) locationAdrThree,
+                                         INOUT CHAR(26) locationCity,
+                                         INOUT CHAR(2)  locationState,
+                                         INOUT CHAR(13) locationZip,
+                                         INOUT DEC(7,0) invoiceDate,
+                                         INOUT DEC(7,0) invoiceNumber,
+                                         INOUT DEC(3,0) salesmanNumber,
+                                         INOUT CHAR(26) salesmanName,
+                                         INOUT CHAR(10) poNumber,
+                                         INOUT DEC(13,2) invoiceAmount,
+                                         INOUT CHAR(2)  termsCode,
+                                         INOUT DEC(8,0) orderNumber,
+                                         INOUT DEC(7,0) orderDate,
+                                         INOUT CHAR(3)  currencyType)
+{ %EXEC {HARINV_W.PGM   %}
+
+  %REPORT{
+      <a NAME="top"></a>
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if (backHome!="")
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(genericVarBase)$(glDDVarBase)&amp;backHome=@dtw_rurlescseq(backHome)&amp;glJrnl=@dtw_rurlescseq(glJrnl)&amp;glDDSeq=@dtw_rurlescseq(glDDSeq)&amp;glDDFile=@dtw_rurlescseq(glDDFile)" title="BackHome">$(portalHome)</a>
+                      %endif
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/ENTRY$(d2wVarBase)&amp;formatToPrint=Y" target=_blank>$(formatPrintDesc)</a>
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <table $(contentTable)>
+              <tr><td><a href="#distribution">Distribution</a></td></tr>
+              <tr><td><a href="#Payments">Payments</a></td></tr>
+              <tr><td>&nbsp;</td></tr>
+          </table>
+      %endif
+
+      <table $(contentTable)>
+          <colgroup>
+              <col width="30%">
+              <col width="10%">
+              <col width="30%">
+              <col width="10%">
+                        			
+          %{Customer %}
+              @dtw_assign(custadr1, "")
+              @dtw_assign(custadr2, "")
+              @dtw_assign(custadr3, "")
+              @dtw_assign(custadr4, "")
+
+              %if (customerCity!="" || customerState!="" || customerZip >"0")
+                  @dtw_assign(cityState,"$(customerCity), $(customerState) $(customerZip)")
+              %endif
+
+              %if (customerAdrOne != "")
+                  @dtw_assign(custadr1, customerAdrOne)
+                  @dtw_assign(adrCount,"1")
+              %elseif (customerAdrTwo != "")
+                  @dtw_assign(custadr1, customerAdrTwo)
+                  @dtw_assign(adrCount,"2")
+              %elseif (customerAdrThree != "")
+                  @dtw_assign(custadr1, customerAdrThree)
+                  @dtw_assign(adrCount,"3")
+              %else
+                  @dtw_assign(custadr1, cityState)
+                  @dtw_assign(adrCount,"4")
+              %endif
+              %if (adrCount <"4")
+                  %if (adrCount<"2" && customerAdrTwo != "")
+                      @dtw_assign(custadr2, customerAdrTwo)
+                      @dtw_assign(adrCount,"2")
+                  %elseif (adrCount<"3" && customerAdrThree != "")
+                      @dtw_assign(custadr2, customerAdrThree)
+                      @dtw_assign(adrCount,"3")
+                  %else
+                      @dtw_assign(custadr2, cityState)
+                      @dtw_assign(adrCount,"4")
+                  %endif
+              %endif
+
+              %if (adrCount <"4")
+                  %if (adrCount<"3" && customerAdrThree != "")
+                      @dtw_assign(custadr3, customerAdrThree)
+                      @dtw_assign(adrCount,"3")
+                  %else
+                      @dtw_assign(custadr3, cityState)
+                      @dtw_assign(adrCount,"4")
+                  %endif
+              %endif
+              %if (adrCount <"4")
+                  @dtw_assign(custadr4, cityState)
+                  @dtw_assign(adrCount,"4")
+              %endif
+
+          %{Location %}
+              @dtw_assign(locadr1, "")
+              @dtw_assign(locadr2, "")
+              @dtw_assign(locadr3, "")
+              @dtw_assign(locadr4, "")
+              @dtw_assign(cityState,"$(locationCity), $(locationState) $(locationZip)")
+
+              %if (customerAdrOne != "")
+                  @dtw_assign(locadr1, locationAdrOne)
+                  @dtw_assign(adrCount,"1")
+              %elseif (customerAdrTwo != "")
+                  @dtw_assign(locadr1, locationAdrTwo)
+                  @dtw_assign(adrCount,"2")
+              %elseif (customerAdrThree != "")
+                  @dtw_assign(locadr1, locationAdrThree)
+                  @dtw_assign(adrCount,"3")
+              %else
+                  @dtw_assign(locadr1, cityState)
+                  @dtw_assign(adrCount,"4")
+              %endif
+
+              %if (adrCount <"4")
+                  %if (adrCount<"2" && locationAdrTwo != "")
+                      @dtw_assign(locadr2, locationAdrTwo)
+                      @dtw_assign(adrCount,"2")
+                  %elseif (adrCount<"3" && locationAdrThree != "")
+                      @dtw_assign(locadr2, locationAdrThree)
+                      @dtw_assign(adrCount,"3")
+                  %else
+                      @dtw_assign(locadr2, cityState)
+                      @dtw_assign(adrCount,"4")
+                  %endif
+              %endif
+
+              %if (adrCount <"4")
+                  %if (adrCount<"3" && locationAdrThree != "")
+                      @dtw_assign(locadr3, locationAdrThree)
+                      @dtw_assign(adrCount,"3")
+                  %else
+                      @dtw_assign(locadr3, cityState)
+                      @dtw_assign(adrCount,"4")
+                  %endif
+              %endif
+
+              %if (adrCount <"4")
+                  @dtw_assign(locadr4, cityState)
+                  @dtw_assign(adrCount,"4")
+              %endif
+
+          <tr>
+              <td class="colhdr">Customer</td>
+              <td>&nbsp;</td>
+              <td class="colhdr">Location</td>
+          </tr>
+
+          <tr><td class="dspalph">$(customerName)</td>
+              <td>&nbsp;</td>
+              <td class="dspalph">$(locationName)</td>
+          </tr>
+
+
+          <tr><td class="dspalph">$(custadr1)</td>
+              <td>&nbsp;</td>
+              <td class="dspalph">$(locadr1)</td>
+          </tr>
+
+          <tr><td class="dspalph">$(custadr2)</td>
+              <td>&nbsp;</td>
+              <td class="dspalph">$(locadr2)</td>
+          </tr>
+
+          <tr><td class="dspalph">$(custadr3)</td>
+              <td>&nbsp;</td>
+              <td class="dspalph">$(locadr3)</td>
+          </tr>
+
+          <tr><td class="dspalph">$(custadr4)</td>
+              <td>&nbsp;</td>
+              <td class="dspalph">$(locadr4)</td>
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          <tr><th class="colhdr"> Invoice<br>Number</th>
+              <th class="colhdr"> Invoice<br>Date</th>
+              <th class="colhdr"> Salesman<br>Number</th>
+              <th class="colhdr"> Salesman<br>Name</th>
+              <th class="colhdr"> Reference<br>Number</th>
+              <th class="colhdr"> Order<br>Number</th>
+              <th class="colhdr"> Order<br>Date</th>
+              <th class="colhdr"> Terms</th>
+              <th class="colhdr"> Invoice<br>Amount</th>
+          </tr>
+
+          @Format_Nbr($(invoiceAmount), F_invoiceAmount, "2", $(amtEditCode), "Y", "", "")
+          @Format_Date(invoiceDate, "D", F_invoiceDate)
+          @Format_Date(orderDate, "D", F_orderDate)
+
+          <tr class="$(rowClass)">
+              <td class="colnmbr">$(invoiceNumber)</td>
+              <td class="coldate">$(F_invoiceDate)</td>
+              <td class="colnmbr">$(salesmanNumber)</td>
+              <td class="colalph">$(salesmanName)</td>
+              <td class="colalph">$(poNumber)</td>
+              @RtvFldDesc("(HHBLTO=$(customerNumber) or HHSHTO=$(customerNumber)) and HHLIV#=$(invoiceNumber)", "OEORHH", "Char(Count(*))", recordsHave)
+              %if (recordsHave>"0")
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerOrderHistory.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;arInvoiceNumber=@dtw_rurlescseq(invoiceNumber)&amp;noMenu=Y" onclick="$(drillDownWinVar)" title="View Customer Order History">$(orderNumber)</a></td>
+              %else
+                  <td class="colnmbr">$(orderNumber)</td>
+              %endif
+              <td class="coldate">$(F_orderDate)</td>
+              <td class="colcode">$(termsCode)</td>
+              <td class="colnmbr">$(F_invoiceAmount)</td>
+          </tr>
+      </table>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Distribution_Query (IN  CHAR(64) profileHandle,
+                                           CHAR(2)   dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (formatToPrint != "Y")
+          <table $(contentTable)>
+              <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+          </table>
+      %endif
+
+      <a name="distribution"></a>
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Distribution</legend>
+          	
+          <table $(contentTable)>
+              %if (sql_Record_Count == "0")
+                  <tr><td class="colalph">No Distribution Found For This Invoice</td></tr>
+              %endif
+
+              %if (sql_Record_Count != "0")
+                  <tr><th class="colhdr">Type</th>
+                      <th class="colhdr">Co/Fac</th>
+                      <th class="colhdr">Name</th>
+                      <th class="colhdr">Account</th>
+                      <th class="colhdr">Description</th>
+                      <th class="colhdr">Amount</th>
+                  </tr>
+              %endif
+
+              %ROW {
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_CoFac("$(V_IDCO#)", "$(V_IDFAC#)", "", F_CoFac)
+                  @Format_Acct("$(V_IDACCT)", "$(V_IDSACT)", "", F_AcctSub)
+                  @Format_Nbr($(V_D_IDAMT), F_IDAMT, "2", $(amtEditCode), "Y", "", "")
+
+                  <tr class="$(rowClass)">
+                      <td class="colalph">$(V_typeDesc)</td>
+                      <td class="colnmbr">$(F_CoFac)</td>
+                      <td class="colalph">$(V_CFCFNM)</td>
+                      <td class="colnmbr">$(F_AcctSub)</td>
+                      <td class="colalph">$(V_CHCHDS)</td>
+                      <td class="colnmbr">$(F_IDAMT)</td>
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Payments_Query (IN  CHAR(64) profileHandle,
+                                       CHAR(2)   dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (formatToPrint != "Y")
+          <table $(contentTable)>
+              <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+          </table>
+      %endif
+
+      <a name="Payments"></a>
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Payments</legend>
+
+          <table $(contentTable)>
+              %if (sql_Record_Count == "0")
+                  <tr><td class="colalph">No Payments Found For This Invoice</td></tr>
+              %endif
+
+              %if (sql_Record_Count != "0")
+                  <tr><th class="colhdr"> Bank</th>
+                      <th class="colhdr"> Date<br>Paid</th>
+                      <th class="colhdr"> Payment<br>Code</th>
+                      <th class="colhdr"> Check</th>
+                      <th class="colhdr"> Pay<br>Amount</th>
+                  </tr>
+              %endif
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+
+                  @Format_Nbr($(V_YPAMT), F_YPAMT, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Date(V_YPBDAT, "D", F_YPBDAT)
+
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr">$(V_YPBANK)</td>
+                      <td class="coldate">$(F_YPBDAT)</td>
+                      <td class="colcode">$(V_YPPYCD)</td>
+                      <td class="colalph">$(V_YPACK#)</td>
+                      <td class="colnmbr">$(F_YPAMT)</td>
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}

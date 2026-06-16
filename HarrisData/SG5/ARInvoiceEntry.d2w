@@ -1,0 +1,540 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: A/R Invoice Entry                                           *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "A/R Invoice Entry"
+  d2wName                 = "ARInvoiceEntry.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fedToGL=@dtw_rurlescseq(fedToGL)&amp;fromCustomer=@dtw_rurlescseq(fromCustomer)&amp;WFReview=@dtw_rurlescseq(WFReview)&amp;wfInstance=@dtw_rurlescseq(wfInstance)&amp;wfInstanceDate=@dtw_rurlescseq(wfInstanceDate)&amp;wfWorkItem=@dtw_rurlescseq(wfWorkItem)&amp;wfWorkItemSequence=@dtw_rurlescseq(wfWorkItemSequence)&amp;wfParticipantId=@dtw_rurlescseq(wfParticipantId)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;maintenanceCode=D"
+  programName             = "HARINE"
+  vldPgmName              = "HARINE_E"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @CustomerUserView(profileHandle, dataBaseID, userPass, customerNumber, "Y")
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      @RtvWFExcptExist(profileHandle, programName, vldPgmName, "E", vldExcptExist)
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(chgForm) {
+                      %if (vldExcptExist == "N")
+                          if (document.Chg.customerNumber.value =="")
+                             {alert("$(reqFieldError)"); return false;}
+                      %endif
+                      if (editNum(document.Chg.customerNumber, 7, 0) &&
+                          editNum(document.Chg.invoiceNumber, 7, 0) &&
+                          editdate(document.Chg.invoiceDate) &&
+                          editNum(document.Chg.distPeriod, 4, 0) &&
+                          editNum(document.Chg.locationNumber, 3, 0) &&
+                          editNum(document.Chg.salesmanNumber, 7, 0) &&
+                          editNum(document.Chg.daysTillDue, 3, 0) &&
+                          editNum(document.Chg.invoiceAmount, 11, 2) &&
+                          editNum(document.Chg.invoiceAcct, 4, 0) &&
+                          editNum(document.Chg.invoiceSub, 4, 0) &&
+                          editNum(document.Chg.invoiceCost, 11, 2) &&
+                          editNum(document.Chg.salesTaxAmount, 11, 2) &&
+                          editNum(document.Chg.salesTaxAcct, 4, 0) &&
+                          editNum(document.Chg.salesTaxSub, 4, 0) &&
+                          editNum(document.Chg.freightAmount, 11, 2) &&
+                          editNum(document.Chg.freightAcct, 4, 0) &&
+                          editNum(document.Chg.freightSub, 4, 0) &&
+                          editNum(document.Chg.specChgAmount, 11, 2) &&
+                          editNum(document.Chg.specChgAcct, 4, 0) &&
+                          editNum(document.Chg.specChgSub, 4, 0))
+                          return true;
+                  }
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+	           %INCLUDE "dateedit.icl"
+	           %INCLUDE "numedit.icl"
+                  %INCLUDE "calendar.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "ARINVOICEENTRY")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A" || WFReview=="Y")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, " Delete From ARIVDW Where DWXHND='$(profileHandle)' @@endsql", stmtSQL)
+                              @SQL_Update(stmtSQL, status)
+
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, " Insert Into ARIVDW (DWXHND,DWISEQ,DWARTY,DWISEQ,DWACCT,DWSACT,DWAMT) ", stmtSQL)
+                              @dtw_concat(stmtSQL, " Select '$(profileHandle)',IDISEQ,IDARTY,IDLINE,IDACCT,IDSUB,IDAMT", stmtSQL)
+                              @dtw_concat(stmtSQL, " From HDARDS ", stmtSQL)
+                              @dtw_concat(stmtSQL, " Where IDBLTO=$(customerNumber) and IDISEQ='$(invoiceSequence)' @@endsql", stmtSQL)
+                              @SQL_Update(stmtSQL, status)
+
+                              @RtvFldDesc("DWXHND='$(profileHandle)' and DWARTY='S'", "ARIVDW", "char(max(DWISEQ))", maxSeqS)
+                              @dtw_assign(x, "1")
+                              %while(x <= "5") {
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_add(maxSeqS, "1", maxSeqS)
+                                  @dtw_concat(stmtSQL, " Insert Into ARIVDW (DWXHND,DWISEQ,DWARTY,DWISEQ,DWACCT,DWSACT,DWAMT) ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " Values('$(profileHandle)',0,'S',$(maxSeqS),0,0,0) @@endsql ", stmtSQL)
+                                  @SQL_Update(stmtSQL, status)
+                                  @dtw_add(x, "1", x)
+                              %}
+
+                              @RtvFldDesc("DWXHND='$(profileHandle)' and DWARTY='I'", "ARIVDW", "char(max(DWISEQ))", maxSeqI)
+                              @dtw_assign(x, "1")
+                              %while(x <= "5") {
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_add(maxSeqI, "1", maxSeqI)
+                                  @dtw_concat(stmtSQL, " Insert Into ARIVDW (DWXHND,DWISEQ,DWARTY,DWISEQ,DWACCT,DWSACT,DWAMT) ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " Values('$(profileHandle)',0,'I',$(maxSeqI),0,0,0) @@endsql ", stmtSQL)
+                                  @SQL_Update(stmtSQL, status)
+                                  @dtw_add(x, "1", x)
+                              %}
+
+                              @RtvFldDesc("DWXHND='$(profileHandle)' and DWARTY='C'", "ARIVDW", "char(max(DWISEQ))", maxSeqC)
+                              @dtw_assign(x, "1")
+                              %while(x <= "5") {
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_add(maxSeqC, "1", maxSeqC)
+                                  @dtw_concat(stmtSQL, " Insert Into ARIVDW (DWXHND,DWISEQ,DWARTY,DWISEQ,DWACCT,DWSACT,DWAMT) ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " Values('$(profileHandle)',0,'C',$(maxSeqC),0,0,0) @@endsql ", stmtSQL)
+                                  @SQL_Update(stmtSQL, status)
+                                  @dtw_add(x, "1", x)
+                              %}
+
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, "Select HDINVC.*, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " (Select Max(IDACCT) from HDARDS Where IDISEQ=IVISEQ and IDARTY='T') as IVSTXA, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " (Select Max(IDSUB) from HDARDS Where IDISEQ=IVISEQ and IDARTY='T') as IVSTXS, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " (Select Max(IDACCT) from HDARDS Where IDISEQ=IVISEQ and IDARTY='F') as IVFRTA, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " (Select Max(IDSUB) from HDARDS Where IDISEQ=IVISEQ and IDARTY='F') as IVFRTS, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " (Select Max(IDACCT) from HDARDS Where IDISEQ=IVISEQ and IDARTY='P') as IVSPCA, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " (Select Max(IDSUB) from HDARDS Where IDISEQ=IVISEQ and IDARTY='P') as IVSPCS ", stmtSQL)
+                              @dtw_concat(stmtSQL, " From HDINVC ", stmtSQL)
+                              @dtw_concat(stmtSQL, "Where IVCUST=$(customerNumber) and IVISEQ=$(invoiceSequence)", stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      <table $(contentTable)>
+    	       <colgroup>
+    	           <col width="80%">
+    	           <col width="15%">
+            <tr><td><h1>$(page_title)</h1></td>
+                <td class="toolbar">
+                    %if ((sec_01 != "N" && (maintenanceCode == "A" || maintenanceCode == "Z")) || (sec_02 != "N" && maintenanceCode == "C") || (maintenanceCode != "A" && maintenanceCode != "C" && maintenanceCode != "D" && maintenanceCode != "Z"))
+                        <a href="javascript:check(document.Chg)">$(selectContinueImage)</a>
+                    %endif
+                    <a href="javascript:history.back()">$(cancelImageMed)</a>
+                    %if (sec_03 != "N" && maintenanceCode == "C" && fedToGL != "T" && V_IVNPOS == ".00" && V_IVACIV == "" && IVORD == "")
+                        <a onClick="return confirmDelete()" href="$(deleteURL)">$(deleteImageMed)</a>
+                    %endif
+                    @dtw_assign(medIcon, "Y")
+                    %INCLUDE "HelpPage.icl"
+                </td>
+            </tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+		
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          %ROW {
+              %if (errFound != "" || WFReview=="Y" || maintenanceCode=="A")
+                  %if (errFound=="" && WFReview=="" && maintenanceCode=="A")
+                      @dtw_assign(edtVar, "")
+                      @dtw_assign(focusField, "customerNumber")
+                  %elif (errFound=="" && WFReview=="Y")
+                      @dtw_assign(focusField, "customerNumber")
+                  %elif (errFound != "")
+                      @dtw_assign(focusField, "")
+                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                      @ErrVarErr(profileHandle, typeError, errVar)
+                      @DecatErr_Field("@@cust", "customerNumber")          @dtw_assign(Err_IVCUST, fieldValue)
+                      @DecatErr_Field("@@blto", "billToCustomerNumber")    @dtw_assign(Err_IVBLTO, fieldValue)
+                      @DecatErr_Field("@@ainv", "invoiceNumber")           @dtw_assign(Err_IVAINV, fieldValue)
+                      @DecatErr_Field("@@ivdt", "invoiceDate")             @dtw_assign(Err_IVIVDT, fieldValue)
+                      @DecatErr_Field("@@per@", "distPeriod")              @dtw_assign(Err_IVPER, fieldValue)
+                      @DecatErr_Field("@@loc@", "locationNumber")          @dtw_assign(Err_IVLOC, fieldValue)
+                      @DecatErr_Field("@@slsm", "salesmanNumber")          @dtw_assign(Err_IVSLSM, fieldValue)
+                      @DecatErr_Field("@@trms", "termsCode")               @dtw_assign(Err_IVTRMS, fieldValue)
+                      @DecatErr_Field("@@ctdt", "daysTillDue")             @dtw_assign(Err_IVCTDT, fieldValue)
+                      @DecatErr_Field("@@arpo", "referenceNumber")         @dtw_assign(Err_IVARPO, fieldValue)
+                      @DecatErr_Field("@@ivam", "invoiceAmount")           @dtw_assign(Err_IVIVAM, fieldValue)
+                      @DecatErr_Field("@@arac", "invoiceAcct")             @dtw_assign(Err_IVARAC, fieldValue)
+                      @DecatErr_Field("@@arsb", "invoiceSub")              @dtw_assign(Err_IVARSB, fieldValue)
+                      @DecatErr_Field("@@ivct", "invoiceCost")             @dtw_assign(Err_IVIVCT, fieldValue)
+                      @DecatErr_Field("@@stax", "salesTaxAmount")          @dtw_assign(Err_IVSTAX, fieldValue)
+                      @DecatErr_Field("@@stxa", "salesTaxAcct")            @dtw_assign(Err_IVSTXA, fieldValue)
+                      @DecatErr_Field("@@stxs", "salesTaxSub")             @dtw_assign(Err_IVSTXS, fieldValue)
+                      @DecatErr_Field("@@frt@", "freightAmount")           @dtw_assign(Err_IVFRT,  fieldValue)
+                      @DecatErr_Field("@@frta", "freightAcct")             @dtw_assign(Err_IVFRTA, fieldValue)
+                      @DecatErr_Field("@@frts", "freightSub")              @dtw_assign(Err_IVFRTS, fieldValue)
+                      @DecatErr_Field("@@spc@", "specChgAmount")           @dtw_assign(Err_IVSPC,  fieldValue)
+                      @DecatErr_Field("@@spca", "specChgAcct")             @dtw_assign(Err_IVSPCA, fieldValue)
+                      @DecatErr_Field("@@spcs", "specChgSub")              @dtw_assign(Err_IVSPCS, fieldValue)
+                  %endif
+
+                  @Decat_Field("@@cust")   @dtw_assign(V_IVCUST, fieldValue)
+                  @Decat_Field("@@blto")   @dtw_assign(V_IVBLTO, fieldValue)
+                  @Decat_Field("@@ainv")   @dtw_assign(V_IVAINV, fieldValue)
+                  @Decat_Field("@@ivdt")   @dtw_assign(V_IVIVDT, fieldValue)
+                  @Decat_Field("@@per@")   @dtw_assign(V_IVPER, fieldValue)
+                  @Decat_Field("@@loc@")   @dtw_assign(V_IVLOC, fieldValue)
+                  @Decat_Field("@@slsm")   @dtw_assign(V_IVSLSM, fieldValue)
+                  @Decat_Field("@@trms")   @dtw_assign(V_IVTRMS, fieldValue)
+                  @Decat_Field("@@ctdt")   @dtw_assign(V_IVCTDT, fieldValue)
+                  @Decat_Field("@@arpo")   @dtw_assign(V_IVARPO, fieldValue)
+                  @Decat_Field("@@ivam")   @dtw_assign(V_IVIVAM, fieldValue)
+                  @Decat_Field("@@arac")   @dtw_assign(V_IVARAC, fieldValue)
+                  @Decat_Field("@@arsb")   @dtw_assign(V_IVARSB, fieldValue)
+                  @Decat_Field("@@ivct")   @dtw_assign(V_IVIVCT, fieldValue)
+                  @Decat_Field("@@stax")   @dtw_assign(V_IVSTAX, fieldValue)
+                  @Decat_Field("@@stxa")   @dtw_assign(V_IVSTXA, fieldValue)
+                  @Decat_Field("@@stxs")   @dtw_assign(V_IVSTXS, fieldValue)
+                  @Decat_Field("@@frt@")   @dtw_assign(V_IVFRT,  fieldValue)
+                  @Decat_Field("@@frta")   @dtw_assign(V_IVFRTA, fieldValue)
+                  @Decat_Field("@@frts")   @dtw_assign(V_IVFRTS, fieldValue)
+                  @Decat_Field("@@spc@")   @dtw_assign(V_IVSPC,  fieldValue)
+                  @Decat_Field("@@spca")   @dtw_assign(V_IVSPCA, fieldValue)
+                  @Decat_Field("@@spcs")   @dtw_assign(V_IVSPCS, fieldValue)
+
+                  %if (errFound=="" && WFReview=="Y")
+                      @DateInputFromCYMD(V_IVIVDT)
+                  %elif (errFound=="" && WFReview=="" && maintenanceCode=="A")
+                      @dtw_assign(focusField, "customerNumber")
+                      @dtw_assign(V_IVCUST, "0")
+                      @dtw_assign(V_CMACCI, "N")
+                      @dtw_assign(V_CMAOVS, "N")
+                  %endif
+
+                  @dtw_assign(errFound, "")
+
+              %elif (maintenanceCode == "Z")
+                  @dtw_assign(V_IVCUST,  "0")
+                  @dtw_assign(focusField, "customerNumber")
+              %else
+                  @DateInputFromCYMD(V_IVIVDT)
+                  @PeriodInputFromCYP(V_IVPER)
+                  @dtw_assign(focusField, "invoiceDate")
+              %endif
+
+              <table $(contentTable)>
+                  @RtvFldDesc("CMCUST=$(V_IVCUST)", "HDCUST", "CMCNA1", customerName)
+                  @SetTextOvr(Err_IVCUST)
+                  <tr><td class="dsphdr"><span $(textOvr)>Ship-To Customer</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr"><input name="customerNumber" type="text" value="$(V_IVCUST)" size="7" maxlength="7"><a href="$(homeURL)$(phpPath)CustomerSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=customerNumber&amp;fldDesc=customerName" onclick="$(searchWinVar)">$(reqFieldChar) $(searchImage) </a><input name="customerName" value="$(customerName)" size="40" type="text" disabled></td>
+                      %else
+                          @Format_Code(V_IVCUST, F_IVCUST)
+                          <td class="inputnmbr"><input name="customerNumber" type="hidden" value="$(V_IVCUST)">$(customerName) $(F_IVCUST)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_IVCUST)
+
+                  %if (V_IVBLTO > "0" && V_IVBLTO != V_IVCUST)
+                      @RtvFldDesc("CMCUST=$(V_IVBLTO)", "HDCUST", "CMCNA1", billToName)
+                      @Format_Code(V_IVBLTO, F_IVBLTO)
+                      <tr><td class="dsphdr"><span $(textOvr)>Bill-To Customer</span></td>
+                          <td class="inputnmbr"><input name="billToCustomerNumber" type="hidden" value="$(V_IVBLTO)">$(billToName) $(F_IVBLTO)</td>
+                      </tr>
+                  %endif
+	   		
+                  @Default_Zero(V_IVAINV)
+                  @SetTextOvr(Err_IVAINV)
+                  <tr><td class="dsphdr"><span $(textOvr)>Invoice</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr"><input name="invoiceNumber" type="text" value="$(V_IVAINV)" size="7" maxlength="7">$(reqFieldChar)</td>
+                      %else
+                          <td class="inputnmbr"><input name="invoiceNumber" type="hidden" value="$(V_IVAINV)">$(V_IVAINV)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_IVAINV)
+
+                  @SetTextOvr(Err_IVIVDT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Invoice Date</span></td>
+                      <td class="inputnmbr"><input name="invoiceDate" value="$(V_IVIVDT)" type="text" size="5" maxlength="6"><a href="javascript:calWindow('invoiceDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_IVIVDT)
+
+                  @SetTextOvr(Err_IVPER)
+                  <tr><td  class="dsphdr"><span $(textOvr)>Distribution Period</span></td>
+                      <td class="inputnmbr"><input name="distPeriod" value="$(V_IVPER)" type="text" size="5" maxlength="4"><a href="$(homeURL)$(phpPath)PeriodSearch.php$(altVarBase)&amp;docName=Chg&amp;periodFld=distPeriod&amp;beginDateFld=begindate&amp;endDateFld=enddate" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="begindate" type="hidden"><input name="enddate" type="hidden"></td>
+                  </tr>
+                  @DspErrMsg(Err_IVPER)
+
+                  @Default_Zero(V_IVLOC)
+                  @RtvFldDesc("LOLOC#=$(V_IVLOC)", "HDLCTN", "LOLNA1", fieldDesc)
+                  @SetTextOvr(Err_IVLOC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Location</span></td>
+                      <td class="inputnmbr"><input name="locationNumber" type="text" value="$(V_IVLOC)" size="5" maxlength="3"><a href="$(homeURL)$(phpPath)LocationSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=locationNumber&amp;fldDesc=locDesc" onclick="$(searchWinVar)"> $(reqFieldChar)  $(searchImage) </a><input name="locDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IVLOC)
+
+                  @Default_Zero(V_IVSLSM)
+                  @RtvFldDesc("SMSLSM=$(V_IVSLSM)", "HDSLSM", "SMSNA1", fieldDesc)
+                  @SetTextOvr(Err_IVSLSM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Salesman</span></td>
+                      <td class="inputnmbr"><input name="salesmanNumber" type="text" value="$(V_IVSLSM)" size="5" maxlength="3"><a href="$(homeURL)$(phpPath)SalesmanSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=salesmanNumber&amp;fldDesc=salesmanName" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="salesmanName" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IVSLSM)
+	   		     		
+                  @RtvFldDesc("TMCTRM='$(V_IVTRMS)'", "HDTRMS", "TMCTDS", fieldDesc)
+                  @SetTextOvr(Err_IVTRMS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Terms Code</span></td>
+                      <td class="inputalph"><input name="termsCode" type="text" value="$(V_IVTRMS)" size="5" maxlength="2"><a href="$(homeURL)$(phpPath)TermsCodeSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=termsCode&amp;fldDesc=termsCodeDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="termsCodeDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IVTRMS)
+
+                  @SetTextOvr(Err_IVCTDT)
+                  <tr><td class="dsphdr"><span $(textOvr)>  or Days Till Due</span></td>
+                      <td class="inputalph"><input name="daysTillDue" type="text" value="$(V_IVCTDT)" size="5" maxlength="3"></td>
+                  </tr>
+                  @DspErrMsg(Err_IVCTDT)
+
+                  @SetTextOvr(Err_IVARPO)
+                  <tr><td class="dsphdr"><span $(textOvr)>Reference Number</span></td>
+                      <td class="inputalph"><input type="text" name="referenceNumber" value="$(V_IVARPO)" size="22" maxlength="22"></td>
+                  </tr>
+                  @DspErrMsg(Err_IVARPO)
+              </table>
+	   		
+              <table $(contentTable)>
+                 <tr><td>&nbsp;</td>
+                     <td class="colhdr">Amount</td>
+                     <td class="colhdr">Account</td>
+                     <td class="colhdr">Description</td>
+                 </tr>
+
+                 @Default_Zero(V_IVARAC)
+                 @Default_Zero(V_IVARSB)
+                 @RtvFldDesc("CHACCT=$(V_IVARAC) and CHSUB=$(V_IVARSB) ", "HDCHRT", "CHCHDS", acctDesc)
+                 @SetTextOvr(Err_IVIVAM)
+                 <tr><td class="dsphdr"><span $(textOvr)>Invoice</span></td>
+                     <td class="inputnmbr"><input type="text" name="invoiceAmount" value="$(V_IVIVAM)" size="15" maxlength="15"></td>
+                     <td class="inputnmbr"><input name="invoiceAcct" value="$(V_IVARAC)" type="text" size="4" maxlength="4"> - <input name="invoiceSub" value="$(V_IVARSB)" type="text" size="4" maxlength="4"> <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=invoiceAcct&amp;subFld=invoiceSub&amp;descFld=invoiceAcctDesc" onclick="$(searchWinVar)">%if (V_HDVLCH=="Y") $(reqFieldChar) %endif $(searchImage) &nbsp; </a></td>
+                     <td class="inputalph"><input disabled name="invoiceAcctDesc" value="$(acctDesc)" type="text" size="30" maxlength="30"></td>
+                 </tr>
+                 @DspErrMsg(Err_IVIVAM)
+
+                 @SetTextOvr(Err_IVIVCT)
+                 <tr><td class="dsphdr"><span $(textOvr)>Cost</span></td>
+                     <td class="inputnmbr"><input type="text" name="invoiceCost" value="$(V_IVIVCT)" size="15" maxlength="15"></td>
+                 </tr>
+                 @DspErrMsg(Err_IVIVCT)
+
+                 @Default_Zero(V_IVSTXA)
+                 @Default_Zero(V_IVSTXS)
+                 @RtvFldDesc("CHACCT=$(V_IVSTXA) and CHSUB=$(V_IVSTXS) ", "HDCHRT", "CHCHDS", acctDesc)
+                 @SetTextOvr(Err_IVSTAX)
+                 <tr><td class="dsphdr"><span $(textOvr)>Sales Tax</span></td>
+                     <td class="inputnmbr"><input type="text" name="salesTaxAmount" value="$(V_IVSTAX)" size="15" maxlength="15"></td>
+                     <td class="inputnmbr"><input name="salesTaxAcct" value="$(V_IVSTXA)" type="text" size="4" maxlength="4"> - <input name="salesTaxSub" value="$(V_IVSTXS)" type="text" size="4" maxlength="4"> <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=salesTaxAcct&amp;subFld=salesTaxSub&amp;descFld=salesTaxAcctDesc" onclick="$(searchWinVar)">%if (V_HDVLCH=="Y") $(reqFieldChar) %endif $(searchImage) </a></td>
+                     <td class="inputalph"><input disabled name="salesTaxAcctDesc" value="$(acctDesc)" type="text" size="30" maxlength="30"></td>
+                 </tr>
+                 @DspErrMsg(Err_IVSTAX)
+
+                 @Default_Zero(V_IVFRTA)
+                 @Default_Zero(V_IVFRTS)
+                 @RtvFldDesc("CHACCT=$(V_IVFRTA) and CHSUB=$(V_IVFRTS) ", "HDCHRT", "CHCHDS", acctDesc)
+                 @SetTextOvr(Err_IVFRT)
+                 <tr><td class="dsphdr"><span $(textOvr)>Freight</span></td>
+                     <td class="inputnmbr"><input type="text" name="freightAmount" value="$(V_IVFRT)" size="15" maxlength="15"></td>
+                     <td class="inputnmbr"><input name="freightAcct" value="$(V_IVFRTA)" type="text" size="4" maxlength="4"> - <input name="freightSub" value="$(V_IVFRTS)" type="text" size="4" maxlength="4"> <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=freightAcct&amp;subFld=freightSub&amp;descFld=freightAcctDesc" onclick="$(searchWinVar)">%if (V_HDVLCH=="Y") $(reqFieldChar) %endif $(searchImage) </a></td>
+                     <td class="inputalph"><input disabled name="freightAcctDesc" value="$(acctDesc)" type="text" size="30" maxlength="30"></td>
+                 </tr>
+                 @DspErrMsg(Err_IVFRT)
+
+                 @Default_Zero(V_IVSPCA)
+                 @Default_Zero(V_IVSPCS)
+                 @RtvFldDesc("CHACCT=$(V_IVSPCA) and CHSUB=$(V_IVSPCS) ", "HDCHRT", "CHCHDS", acctDesc)
+                 @SetTextOvr(Err_IVSPC)
+                 <tr><td class="dsphdr"><span $(textOvr)>Special Charge</span></td>
+                     <td class="inputnmbr"><input type="text" name="specChgAmount" value="$(V_IVSPC)" size="15" maxlength="15"></td>
+                     <td class="inputnmbr"><input name="specChgAcct" value="$(V_IVSPCA)" type="text" size="4" maxlength="4"> - <input name="specChgSub" value="$(V_IVFRTS)" type="text" size="4" maxlength="4"> <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=specChgAcct&amp;subFld=specChgSub&amp;descFld=specChgAcctDesc" onclick="$(searchWinVar)">%if (V_HDVLCH=="Y") $(reqFieldChar) %endif $(searchImage) </a></td>
+                     <td class="inputalph"><input disabled name="specChgAcctDesc" value="$(acctDesc)" type="text" size="30" maxlength="30"></td>
+                 </tr>
+                 @DspErrMsg(Err_IVSPC)
+              </table>
+          %}
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      <table $(contentTable)>
+            <tr>
+                <td class="toolbar">
+                    %if ((sec_01 != "N" && (maintenanceCode == "A" || maintenanceCode == "Z")) || (sec_02 != "N" && maintenanceCode == "C") || (maintenanceCode != "A" && maintenanceCode != "C" && maintenanceCode != "D" && maintenanceCode != "Z"))
+                        <a href="javascript:check(document.Chg)">$(selectContinueImage)</a>
+                    %endif
+                    <a href="javascript:history.back()">$(cancelImageMed)</a>
+                    %if (sec_03 != "N" && maintenanceCode == "C" && fedToGL != "T" && V_IVNPOS == ".00" && V_IVACIV == "" && IVORD == "")
+                        <a onClick="return confirmDelete()" href="$(deleteURL)">$(deleteImageMed)</a>
+                    %endif
+                    @dtw_assign(medIcon, "Y")
+                    %INCLUDE "HelpPage.icl"
+                </td>
+            </tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HARINE_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(WFREVIEW) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @RtvFldDesc("ADINST=$(wfInstance) and ADINDT=$(wfInstanceDate)", "WFDTAA", "ADVAR", V_ADVAR)
+      @dtw_assign(edtVar, V_ADVAR)
+      @dtw_assign(WFReview, "Y")
+      @Decat_Field("@@mncd")   @dtw_assign(maintenanceCode, fieldValue)
+      @Decat_Field("@@cust")   @dtw_assign(customerNumber,  fieldValue)
+      @Decat_Field("@@iseq")   @dtw_assign(invoiceSequence, fieldValue)
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(referenceNumber)
+  @dtw_mUPPERCASE(termsCode)
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@wfid", wfInstance)
+  @Concat_Field("@@wfdt", wfInstanceDate)
+  @Concat_Field("@@wfcn", wfWorkItem)
+  @Concat_Field("@@wfsq", wfWorkItemSequence)
+  @Concat_Field("@@wfpt", wfParticipantId)
+  @Concat_Field("@@cust", customerNumber)
+  @Concat_Field("@@blto", billToCustomerNumber)
+  @Concat_Field("@@ainv", invoiceNumber)
+  @Concat_Field("@@iseq", invoiceSequence)
+  @Concat_Field("@@ivdt", invoiceDate)
+  @Concat_Field("@@per@", distPeriod)
+  @Concat_Field("@@loc@", locationNumber)
+  @Concat_Field("@@slsm", salesmanNumber)
+  @Concat_Field("@@trms", termsCode)
+  @Concat_Field("@@ctdt", daysTillDue)
+  @Concat_Field("@@arpo", referenceNumber)
+  @Concat_Field("@@ivam", invoiceAmount)
+  @Concat_Field("@@arac", invoiceAcct)
+  @Concat_Field("@@arsb", invoiceSub)
+  @Concat_Field("@@ivct", invoiceCost)
+  @Concat_Field("@@stax", salesTaxAmount)
+  @Concat_Field("@@stxa", salesTaxAcct)
+  @Concat_Field("@@stxs", salesTaxSub)
+  @Concat_Field("@@frt@", freightAmount)
+  @Concat_Field("@@frta", freightAcct)
+  @Concat_Field("@@frts", freightSub)
+  @Concat_Field("@@spc@", specChgAmount)
+  @Concat_Field("@@spca", specChgAcct)
+  @Concat_Field("@@spcs", specChgSub)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)ARInvoiceEntryDist.d2w/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound=="")
+      %if (maintenanceCode == "A" && customerNumber == "0")
+          @dtw_assign(customerNumber, "")
+      %endif
+      @Format_ConfMsg_Desc(maintenanceCode, $(customerName), $(customerNumber), "", "", "", "", confMessage)
+      %if (WFReview=="Y")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)WFWorkList.d2w/REPORT$(d2wVarBase)">
+      %elif (maintenanceCode == "D")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)ARInvoice.d2w/REPORT$(genericVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %elif (maintenanceCode == "D")
+      @DecatErr_Field("@@cust", "customerNumber")
+      @Format_ConfMsg_Desc("", $(customerName), $(customerNumber), "<br>$(fieldValue)", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)ARInvoice.d2w/REPORT$(genericVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

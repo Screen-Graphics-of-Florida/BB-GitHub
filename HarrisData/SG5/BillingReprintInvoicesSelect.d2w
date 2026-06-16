@@ -1,0 +1,189 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Billing - Reprint Invoices Selection                        *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Reprint Invoices"
+  d2wName                 = "BillingReprintInvoicesSelect.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;orderBy=@dtw_rurlescseq(orderBy)&amp;backHome=@dtw_rurlescseq(backHome)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  stmtSQL                 = ""
+  haveRec                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "BILLINGREPRINTINV")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select a.*, IREDI  ", stmtSQL)
+                      @dtw_concat(fileSQL, " OEIVRW ", fileSQL)
+                      @dtw_concat(fileSQL, " left join OEIVHH a on a.HIAIV#=IRAIV# ", fileSQL)
+                      @dtw_concat(selectSQL, " IRXHND='$(profileHandle)'", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Reprint_Invoices_Select(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Reprint_Invoices_Select (IN CHAR(64)    profileHandle,
+                                               CHAR(2)     dataBaseID,
+                                               CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              <td class="toolbar">
+                  <a href="javascript:check(document.Chg)">$(selectAcceptImage)</a>
+                  <a href="javascript:history.back()">$(cancelImageLrg)</a>
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+
+      $(hrTagAttr)
+
+      @RtvFldDesc("IRXHND='$(profileHandle)' and IREDI='Y'", "OEIVRW", "char(count(IRAIV#))", ediRcdCount)
+
+      <form class="formClass" name="Chg" METHOD=POST ACTION="$(homeURL)$(cGIPath)$(d2wName)/ACCEPT$(d2wVarBase)">
+          %if (V_HDEDRL>"0" && ediRcdCount>"0")
+              <table $(contentTable)>
+                  <tr><td class="dsphdr">Generate EDI</td>
+                      <td class="inputnmbr"><input name="genEDI" type="radio" VALUE='N' CHECKED>No &nbsp; <input name="genEDI" type="radio" VALUE='Y'>Yes</td>
+                  </tr>
+              </table>
+          %endif
+      </form>
+
+      <table $(contentTable)>
+          <tr>
+              @OrderBy_Sort("HIAIV#", sortVar)
+              <td class="colhdr$(sortVar)">Invoice<br>Number</td>
+              @OrderBy_Sort("HIIVDT", sortVar)
+              <td class="colhdr$(sortVar)">Invoice<br>Date</td>
+              @OrderBy_Sort("HIINVA", sortVar)
+              <td class="colhdr$(sortVar)">Invoice<br>Amount</td>
+              @OrderBy_Sort("HIORD#", sortVar)
+              <td class="colhdr$(sortVar)">Order<br>Number</td>
+              @OrderBy_Sort("HIBLTO", sortVar)
+              <td class="colhdr$(sortVar)">Bill-To<br>Number</td>
+              @OrderBy_Sort("HINAME", sortVar)
+              <td class="colhdr$(sortVar)">Name</td>
+              %if (V_HDEDRL>"0" && ediRcdCount>"0")
+                  <td class="colhdr">EDI</td>
+              %endif
+          </tr>
+		
+          %ROW{
+
+              %INCLUDE "SetRowClass.icl"
+              %if (V_PWSEL == "S")
+                  @dtw_assign(selected, "CHECKED")
+              %else
+                  @dtw_assign(selected, "")
+              %endif
+
+              @dtw_assign(IVDT, $(V_HIIVDT))
+              @Format_Date(V_HIIVDT, "D", F_HIIVDT)
+              @Format_Nbr(V_HIINVA, F_HIINVA, "2", $(amtEditCode), "Y", "", "")
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)SelectInvoice.d2w/DISPLAY$(d2wVarBase)&amp;invoiceNumber=@dtw_rurlescseq(V_HIAIV#)&amp;invoiceDate=@dtw_rurlescseq(IVDT)&amp;customerNumber=@dtw_rurlescseq(V_HIBLTO)&amp;customerName=@dtw_rurlescseq(V_HINAME)&amp;formatToPrint=Y" onclick="$(invoiceWinVar)" title="Invoice Quickview">$(V_HIAIV#)</a></td>
+                  <td class="coldate">$(F_HIIVDT)</td>
+                  <td class="colnmbr">$(F_HIINVA)</td>
+                  <td class="colnmbr">$(V_HIORD#)</td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_HIBLTO)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(V_HIBLTO)</a></td>
+                  <td class="colalph">$(V_HINAME)</td>
+                  %if (V_HDEDRL>"0" && ediRcdCount>"0")
+                      <td class="colalph">$(V_IREDI)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      $(hrTagAttr)
+      <a href="javascript:check(document.Chg)">$(selectAcceptImage)</a>
+      <a href="javascript:history.back()">$(cancelImageLrg)</a>
+      @dtw_assign(medIcon, "Y")
+      %INCLUDE "HelpPage.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data (INOUT CHAR(64)    profileHandle,
+                                               CHAR(2)     dataBaseID,
+                                               CHAR(1)     updCode,
+                                               CHAR(1)     errFound,
+                                               CHAR(32000) edtVar,                             	
+                                               CHAR(32000) errVar)
+{%EXEC {HOEIRS_W.PGM %}
+%}
+
+%HTML(ACCEPT) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(updCode, "U")
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@gedi", genEDI)
+  @Concat_Field("@@orby", orderBy)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @dtw_assign(confMessage, "Selected Invoices have been printed")
+  @Validate_Data(profileHandle, dataBaseID, updCode, errFound, edtVar, errVar)
+  <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)BillingReprintInvoices.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}

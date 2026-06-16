@@ -1,0 +1,666 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: A/R Invoice Entry                                           *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "A/R Invoice Import Entry"
+  d2wName                 = "ARImportInvoiceEntry.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;firstTimeIn=@dtw_rurlescseq(firstTimeIn)&amp;WFReview=@dtw_rurlescseq(WFReview)&amp;invoiceSequence=@dtw_rurlescseq(invoiceSequence)&amp;wfInstance=@dtw_rurlescseq(wfInstance)&amp;wfInstanceDate=@dtw_rurlescseq(wfInstanceDate)&amp;wfWorkItem=@dtw_rurlescseq(wfWorkItem)&amp;wfWorkItemSequence=@dtw_rurlescseq(wfWorkItemSequence)&amp;wfParticipantId=@dtw_rurlescseq(wfParticipantId)&amp;wrnVar=@dtw_rurlescseq(wrnVar)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  refreshURL              = "$(homeURL)$(cGIPath)$(d2wName)/REFRESH$(d2wVarBase)"
+  programName             = "HARINE"
+  vldPgmName              = "HARINE_E"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  LastCol                 = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @RtvFldDesc("(WIXHND,WIINST,WIINDT,WIISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", "ARIVVW", "char(count(*))", recCount)	
+  %if (recCount <= "0")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From ARIVVW Where WIXHND='$(profileHandle)' ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Insert Into ARIVVW (WIXHND,WIINST,       WIINDT,           WIWITM,       WIWISQ,               WIISEQ,             WICUST, WIBLTO, WIAINV, WIIVDT, WIPER, WILOC, WISLSM, WITRMS, WICTDT, WIDUED, WIDSCD, WIDSCT, WIARPO, WIORD, WIORDT, WIBCH, WIIVAM, WIIVCT, WISTAX, WIFRT, WISPC, WIARAC, WIARSB, WISTXA, WISTXS, WIFRTA, WIFRTS, WISPCA, WISPCS) ", stmtSQL)
+      @dtw_concat(stmtSQL, " Select '$(profileHandle)', $(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence), FICUST, FIBLTO, FIAINV, FIIVDT, FIPER, FILOC, FISLSM, FITRMS, FICTDT, FIDUED, FIDSCD, FIDSCT, FIARPO, FIORD, FIORDT, FIBCH, FIIVAM, FIIVCT, FISTAX, FIFRT, FISPC, FIARAC, FIARSB, FISTXA, FISTXS, FIFRTA, FIFRTS, FISPCA, FISPCS ", stmtSQL)
+      @dtw_concat(stmtSQL, " From ARIVIV Where (FIINST,FIINDT,FICLOS,FIISEQ)=($(wfInstance),$(wfInstanceDate),' ',$(invoiceSequence)) ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %endif
+
+  @RtvFldDesc("(WIINST,WIINDT,WIWITM,WIWISQ,WIMODE,WPPTID,WPPART)=($(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),'M',$(wfParticipantId),'$(userProfile)') and WPRVWS in ('Y',' ') ", "WFWITM inner join WFWIPT on (WPINST,WPINDT,WPWITM,WPWISQ)=(WIINST,WIINDT,WIWITM,WIWISQ) ", "char(count(*))", recCount)	
+  %if (recCount<="0")
+      @dtw_assign(userPass,"N")
+  %else
+      @RtvFldDesc("(WIXHND,WIINST,WIINDT,WIISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", "ARIVVW", "char(WIBLTO)", V_WIBLTO)	
+      %if (V_WIBLTO>"0")
+          @CustomerUserView(profileHandle, dataBaseID, userPass, V_WIBLTO, "Y")
+      %else
+          @dtw_assign(userPass,"")
+      %endif
+  %endif
+
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      @RtvFldDesc("(WIXHND,WIINST,WIINDT,WIISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", "ARIVVW", "char(count(*))", recCount)	
+      @dtw_assign(editVariables, "")
+      @dtw_assign(reqrVariables, "")
+      @dtw_assign(ux, "1")
+      %while(ux <= recCount){
+          @dtw_assign(recNbr, ux)
+          %while(@dtw_rlength(recNbr) != "4") {@dtw_insert("0", recNbr, recNbr)%}
+          %if (editVariables != "")
+              @dtw_concat(editVariables, "  &&", editVariables)
+          %endif
+          @dtw_concat(editVariables, " editNum(document.Chg.cust$(recNbr), 7, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.blto$(recNbr), 7, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.aiv$(recNbr), 7, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editdate(document.Chg.ivdt$(recNbr)) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.per$(recNbr), 4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.loc$(recNbr), 3, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.slsm$(recNbr), 3, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.ctdt$(recNbr), 3, 0) && ", editVariables)
+<!--          @dtw_concat(editVariables, " editdate(document.Chg.dued$(recNbr)) && ", editVariables)-->
+<!--          @dtw_concat(editVariables, " editdate(document.Chg.dscd$(recNbr)) && ", editVariables)-->
+<!--          @dtw_concat(editVariables, " editNum(document.Chg.dsct$(recNbr), 11, 2) && ", editVariables)-->
+          @dtw_concat(editVariables, " editNum(document.Chg.ord$(recNbr), 8, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editdate(document.Chg.ordt$(recNbr)) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.bch$(recNbr),  4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.ivam$(recNbr), 11, 2) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.ivct$(recNbr), 11, 2) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.stax$(recNbr), 11, 2) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.frt$(recNbr),  11, 2) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.spc$(recNbr),  11, 2) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.acct$(recNbr), 4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.sub$(recNbr), 4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.stxa$(recNbr), 4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.stxs$(recNbr), 4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.frta$(recNbr), 4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.frts$(recNbr), 4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.spca$(recNbr), 4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.spcs$(recNbr), 4, 0) ", editVariables)
+
+          %if (reqrVariables != "")
+              @dtw_concat(reqrVariables, "  ||", reqrVariables)
+          %endif
+          @dtw_concat(reqrVariables, " document.Chg.cust$(recNbr).value =="""" || ", reqrVariables)
+          @dtw_concat(reqrVariables, " document.Chg.aiv$(recNbr).value =="""" || ", reqrVariables)
+          @dtw_concat(reqrVariables, " document.Chg.per$(recNbr).value =="""" || ", reqrVariables)
+          @dtw_concat(reqrVariables, " document.Chg.loc$(recNbr).value =="""" || ", reqrVariables)
+          @dtw_concat(reqrVariables, " document.Chg.slsm$(recNbr).value ==""""  ", reqrVariables)
+
+          @dtw_add(ux, "1", ux)
+      %}
+
+      @dtw_subtract(ux, "1", LastCol)
+
+      %while(@dtw_rlength(LastCol) != "4") {@dtw_insert("0", LastCol, LastCol)%}
+
+      @RtvWFExcptExist(profileHandle, programName, vldPgmName, "E", vldExcptExist)
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  function validate(chgForm) {
+                      %if (vldExcptExist == "N")
+                          if ($(reqrVariables))
+                             {alert("$(reqFieldError)"); return false;}
+                      %endif
+                      if ($(editVariables))
+                          return true;
+                  }
+                  function confirmRefresh() { return confirm("Confirm refresh of columns")}
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+	              %INCLUDE "dateedit.icl"
+                  %INCLUDE "Menu.js"
+	              %INCLUDE "numedit.icl"
+                  %INCLUDE "calendar.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "ARINVOICEENTRY")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "Select ARIVVW.*  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From ARIVVW ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where (WIXHND,WIINST,WIINDT,WIISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      <table $(contentTable)>
+          <colgroup><col width="80%"><col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              <td class="toolbar">
+                  <a href="javascript:document.Chg.updateOption.value='1E'; check(document.Chg)">$(editNoUpdateSml)</a>
+                  %if ((sec_01 != "N" && (maintenanceCode == "A" || maintenanceCode == "Z")) || (sec_02 != "N" && maintenanceCode == "C") || (maintenanceCode != "A" && maintenanceCode != "C" && maintenanceCode != "D" && maintenanceCode != "Z"))
+                      <a href="javascript:document.Chg.updateOption.value='1U'; check(document.Chg)">$(nextImage)</a>
+                  %endif
+                  %if (sec_03 != "N" && maintenanceCode == "C")
+                      <a onClick="return confirmDelete()" href="$(deleteURL)">$(deleteImageMed)</a>
+                  %endif
+                  <a onClick="return confirmRefresh()" href="$(refreshURL)">$(selectResetImage)</a>
+                  %if (WFReview=="Y")
+                      <a href="$(homeURL)$(cGIPath)WFWorkListOptions.d2w/CANCEL$(d2wVarBase)&amp;refreshD2W=N">$(cancelImageMed)</a>
+                  %endif
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+		
+      @dtw_assign(recNbr, "0")
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          %ROW {
+              @dtw_add(recNbr, "1", recNbr)
+              %while(@dtw_rlength(recNbr) != "4") {@dtw_insert("0", recNbr, recNbr)%}
+
+              %if (errFound != "")
+                  @dtw_assign(focusField, "")
+                  @EdtVarErr(profileHandle, typeValue, edtVar)
+                  @ErrVarErr(profileHandle, typeError, errVar)
+                  @DecatErr_Field("@@cust", "cust$(recNbr)")      @dtw_assign(Err_WICUST, fieldValue)
+                  @DecatErr_Field("@@blto", "blto$(recNbr)")      @dtw_assign(Err_WIBLTO, fieldValue)
+                  @DecatErr_Field("@@ainv", "aiv$(recNbr)")       @dtw_assign(Err_WIAINV, fieldValue)
+                  @DecatErr_Field("@@ivdt", "ivdt$(recNbr)")      @dtw_assign(Err_WIIVDT, fieldValue)
+                  @DecatErr_Field("@@per@", "per$(recNbr)")       @dtw_assign(Err_WIPER, fieldValue)
+                  @DecatErr_Field("@@loc@", "loc$(recNbr)")       @dtw_assign(Err_WILOC, fieldValue)
+                  @DecatErr_Field("@@slsm", "slsm$(recNbr)")      @dtw_assign(Err_WISLSM, fieldValue)
+                  @DecatErr_Field("@@ctrm", "trms$(recNbr)")      @dtw_assign(Err_WITRMS, fieldValue)
+                  @DecatErr_Field("@@ctdt", "ctdt$(recNbr)")      @dtw_assign(Err_WICTDT, fieldValue)
+                  @DecatErr_Field("@@dued", "dued$(recNbr)")      @dtw_assign(Err_WIDUED, fieldValue)
+                  @DecatErr_Field("@@dscd", "dscd$(recNbr)")      @dtw_assign(Err_WIDSCD, fieldValue)
+                  @DecatErr_Field("@@dsct", "dsct$(recNbr)")      @dtw_assign(Err_WIDSCT, fieldValue)
+                  @DecatErr_Field("@@arpo", "arpo$(recNbr)")      @dtw_assign(Err_WIARPO, fieldValue)
+                  @DecatErr_Field("@@ord@", "ord$(recNbr)")       @dtw_assign(Err_WIORD, fieldValue)
+                  @DecatErr_Field("@@ordt", "ordt$(recNbr)")      @dtw_assign(Err_WIORDT, fieldValue)
+                  @DecatErr_Field("@@arbc", "arbc$(recNbr)")      @dtw_assign(Err_WIBCH, fieldValue)
+                  @DecatErr_Field("@@ivam", "ivam$(recNbr)")      @dtw_assign(Err_WIIVAM, fieldValue)
+                  @DecatErr_Field("@@ivct", "ivct$(recNbr)")      @dtw_assign(Err_WIIVCT, fieldValue)
+                  @DecatErr_Field("@@stax", "stax$(recNbr)")      @dtw_assign(Err_WISTAX, fieldValue)
+                  @DecatErr_Field("@@frt@", "frt$(recNbr)")       @dtw_assign(Err_WIFRT,  fieldValue)
+                  @DecatErr_Field("@@spc@", "spc$(recNbr)")       @dtw_assign(Err_WISPC,  fieldValue)
+                  @DecatErr_Field("@@arac", "acct$(recNbr)")      @dtw_assign(Err_WIARAC, fieldValue)
+                  @DecatErr_Field("@@arsb", "sub$(recNbr)")       @dtw_assign(Err_WIARSB, fieldValue)
+                  @DecatErr_Field("@@stxa", "stxa$(recNbr)")      @dtw_assign(Err_WISTXA, fieldValue)
+                  @DecatErr_Field("@@stxs", "stxs$(recNbr)")      @dtw_assign(Err_WISTXS, fieldValue)
+                  @DecatErr_Field("@@frta", "frta$(recNbr)")      @dtw_assign(Err_WIFRTA, fieldValue)
+                  @DecatErr_Field("@@frts", "frts$(recNbr)")      @dtw_assign(Err_WIFRTS, fieldValue)
+                  @DecatErr_Field("@@spca", "spca$(recNbr)")      @dtw_assign(Err_WISPCA, fieldValue)
+                  @DecatErr_Field("@@spcs", "spcs$(recNbr)")      @dtw_assign(Err_WISPCS, fieldValue)
+              %endif
+
+              @dtw_assign(errFound, "")
+
+              @DateInputFromCYMD(V_WIIVDT)
+              @DateInputFromISO(V_WIDUED,F_WIDUED)
+              @DateInputFromISO(V_WIDSCD,F_WIDSCD)
+              @PeriodInputFromCYP(V_WIPER)
+              @DateInputFromCYMD(V_WIORDT)
+              @dtw_assign(focusField, "cust$(LastCol)")
+
+              <table $(contentTable)>
+                  <tr><td><input type="hidden" name="updateOption"></td></tr>
+
+                  @Default_Zero(V_WICUST)
+                  @RtvFldDesc("CMCUST=$(V_WICUST)", "HDCUST", "CMCNA1", fieldDesc)
+                  @SetTextOvr(Err_WICUST)
+                  <tr><td class="dsphdr"><span $(textOvr)>Ship-To Customer</span></td>
+                      <td class="inputnmbr"><input type="text" name="cust$(recNbr)" value="$(V_WICUST)" size="7" maxlength="7">
+                                            <a href="$(homeURL)$(phpPath)CustomerSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=cust$(recNbr)&amp;fldDesc=cust$(recNbr)Name" onclick="$(searchWinVar)">$(reqFieldChar) $(searchImage)</a>
+                                            <input type="text" disabled name="cust$(recNbr)Name" value="$(fieldDesc)" size="40"></td>
+                  </tr>
+                  @DspErrMsg(Err_WICUST)
+
+                  @Default_Zero(V_WIBLTO)
+                  @RtvFldDesc("CMCUST=$(V_WIBLTO)", "HDCUST", "CMCNA1", fieldDesc)
+                  @SetTextOvr(Err_WIBLTO)
+                  <tr><td class="dsphdr"><span $(textOvr)>Bill-To Customer</span></td>
+                      <td class="inputnmbr"><input type="text" name="blto$(recNbr)" value="$(V_WIBLTO)" size="7" maxlength="7">
+                                            <a href="$(homeURL)$(phpPath)CustomerSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=blto$(recNbr)&amp;fldDesc=blto$(recNbr)Name" onclick="$(searchWinVar)">$(searchImage)</a>
+                                            <input type="text" disabled name="blto$(recNbr)Name" value="$(fieldDesc)" size="40"></td>
+                  </tr>
+                  @DspErrMsg(Err_WIBLTO)
+	   		
+                  @Default_Zero(V_WIAINV)
+                  @SetTextOvr(Err_WIAINV)
+                  <tr><td class="dsphdr"><span $(textOvr)>Invoice</span></td>
+                      <td class="inputnmbr"><input type="text" name="aiv$(recNbr)" value="$(V_WIAINV)" size="7" maxlength="7">$(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_WIAINV)
+
+                  @SetTextOvr(Err_WIIVDT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Invoice Date</span></td>
+                      <td class="inputnmbr"><input type="text" name="ivdt$(recNbr)" value="$(V_WIIVDT)" size="7" maxlength="6">
+                                            <a href="javascript:calWindow('ivdt$(recNbr)');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_WIIVDT)
+
+                  @SetTextOvr(Err_WIPER)
+                  <tr><td  class="dsphdr"><span $(textOvr)>Distribution Period</span></td>
+                      <td class="inputnmbr"><input type="text" name="per$(recNbr)" value="$(V_WIPER)" size="7" maxlength="4">
+                                            <a href="$(homeURL)$(phpPath)PeriodSearch.php$(altVarBase)&amp;docName=Chg&amp;periodFld=per$(recNbr)&amp;beginDateFld=begindate&amp;endDateFld=enddate" onclick="$(searchWinVar)">$(reqFieldChar) $(searchImage)</a>
+                                            <input type="hidden" name="begindate">
+                                            <input type="hidden" name="enddate"></td>
+                  </tr>
+                  @DspErrMsg(Err_WIPER)
+
+                  @Default_Zero(V_WILOC)
+                  @RtvFldDesc("LOLOC#=$(V_WILOC)", "HDLCTN", "LOLNA1", fieldDesc)
+                  @SetTextOvr(Err_WILOC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Location</span></td>
+                      <td class="inputnmbr"><input type="text" name="loc$(recNbr)" value="$(V_WILOC)" size="7" maxlength="3">
+                                            <a href="$(homeURL)$(phpPath)LocationSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=loc$(recNbr)&amp;fldDesc=loc$(recNbr)Desc" onclick="$(searchWinVar)">$(reqFieldChar) $(searchImage)</a>
+                                            <input type="text" disabled name="loc$(recNbr)Desc" value="$(fieldDesc)" size="35"></td>
+                  </tr>
+                  @DspErrMsg(Err_WILOC)
+
+                  @Default_Zero(V_WISLSM)
+                  @RtvFldDesc("SMSLSM=$(V_WISLSM)", "HDSLSM", "SMSNA1", fieldDesc)
+                  @SetTextOvr(Err_WISLSM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Salesman</span></td>
+                      <td class="inputnmbr"><input type="text" name="slsm$(recNbr)" value="$(V_WISLSM)" size="7" maxlength="3">
+                                            <a href="$(homeURL)$(phpPath)SalesmanSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=slsm$(recNbr)&amp;fldDesc=slsm$(recNbr)Name" onclick="$(searchWinVar)">$(reqFieldChar) $(searchImage)</a>
+                                            <input type="text" disabled name="slsm$(recNbr)Name" value="$(fieldDesc)" size="35"></td>
+                  </tr>
+                  @DspErrMsg(Err_WISLSM)
+	   		     		
+                  @RtvFldDesc("TMCTRM='$(V_WITRMS)'", "HDTRMS", "TMCTDS", fieldDesc)
+                  @SetTextOvr(Err_WITRMS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Terms Code</span></td>
+                      <td class="inputalph"><input type="text" name="trms$(recNbr)" value="$(V_WITRMS)" size="7" maxlength="2">
+                                            <a href="$(homeURL)$(phpPath)TermsCodeSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=trms$(recNbr)&amp;fldDesc=trms$(recNbr)Desc" onclick="$(searchWinVar)">$(searchImage)</a>
+                                            <input type="text" disabled name="trms$(recNbr)Desc" value="$(fieldDesc)" size="35"></td>
+                  </tr>
+                  @DspErrMsg(Err_WITRMS)
+
+                  @SetTextOvr(Err_WICTDT)
+                  <tr><td class="dsphdr"><span $(textOvr)>  or Days Till Due</span></td>
+                      <td class="inputalph"><input type="text" name="ctdt$(recNbr)" value="$(V_WICTDT)" size="7" maxlength="3"></td>
+                  </tr>
+                  @DspErrMsg(Err_WICTDT)
+
+                  @SetTextOvr(Err_WIDUED)
+                  <tr><td class="dsphdr"><span $(textOvr)>Due Date</span></td>
+                      <td class="inputnmbr"><input type="hidden" name="dued$(recNbr)" value="$(F_WIDUED)" size="7" maxlength="6">$(F_WIDUED)</td>
+<!--                                            <a href="javascript:calWindow('dued$(recNbr)');">$(calendarImage)</a></td>-->
+                  </tr>
+                  @DspErrMsg(Err_WIDUED)
+
+                  @SetTextOvr(Err_WIDSCD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Discount Date</span></td>
+                      <td class="inputnmbr"><input type="hidden" name="dscd$(recNbr)" value="$(F_WIDSCD)" size="7" maxlength="6">$(F_WIDSCD)</td>
+<!--                                            <a href="javascript:calWindow('dscd$(recNbr)');">$(calendarImage)</a></td>-->
+                  </tr>
+                  @DspErrMsg(Err_WIDSCD)
+
+                  @SetTextOvr(Err_WIDSCT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Discount</span></td>
+                      <td class="inputnmbr"><input type="hidden" name="dsct$(recNbr)" value="$(V_WIDSCT)" size="15" maxlength="15">$(V_WIDSCT)</td>
+                  </tr>
+                  @DspErrMsg(Err_WIDSCT)
+
+                  @SetTextOvr(Err_WIARPO)
+                  <tr><td class="dsphdr"><span $(textOvr)>Reference Number</span></td>
+                      <td class="inputalph"><input type="text" name="arpo$(recNbr)" value="$(V_WIARPO)" size="22" maxlength="22"></td>
+                  </tr>
+                  @DspErrMsg(Err_WIARPO)
+
+                  @SetTextOvr(Err_WIORD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Order Number</span></td>
+                      <td class="inputalph"><input type="text" name="ord$(recNbr)" value="$(V_WIORD)" size="15" maxlength="8"></td>
+                  </tr>
+                  @DspErrMsg(Err_WIORD)
+
+                  @SetTextOvr(Err_WIORDT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Order Date</span></td>
+                      <td class="inputnmbr"><input type="text" name="ordt$(recNbr)" value="$(V_WIORDT)" size="15" maxlength="6">
+                                            <a href="javascript:calWindow('ordt$(recNbr)');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_WIORDT)
+
+                  @SetTextOvr(Err_WIBCH)
+                  <tr><td class="dsphdr"><span $(textOvr)>Batch</span></td>
+                      <td class="inputalph"><input type="text" name="bch$(recNbr)" value="$(V_WIBCH)" size="15" maxlength="4"></td>
+                  </tr>
+                  @DspErrMsg(Err_WIBCH)
+              </table>
+	   		
+              <table $(contentTable)>
+                 <tr><td>&nbsp;</td>
+                     <td class="colhdr">Amount</td>
+                     <td class="colhdr">Account</td>
+                     <td class="colhdr">Description</td>
+                 </tr>
+
+                 @Default_Zero(V_WIARAC)
+                 @Default_Zero(V_WIARSB)
+                 @RtvFldDesc("(CHACCT,CHSUB)=($(V_WIARAC),$(V_WIARSB)) ", "HDCHRT", "CHCHDS", fieldDesc)
+                 @SetTextOvr(Err_WIIVAM)
+                 %if (textOvr=="")
+                     @SetTextOvr(Err_WIIVAM)
+                 %endif
+                 <tr><td class="dsphdr"><span $(textOvr)>Invoice</span></td>
+                     <td class="inputnmbr"><input type="text" name="ivam$(recNbr)" value="$(V_WIIVAM)" size="14" maxlength="15"></td>
+                     <td class="inputnmbr"><input type="text" name="acct$(recNbr)" value="$(V_WIARAC)" size="4" maxlength="4"> -
+                                           <input type="text" name="sub$(recNbr)" value="$(V_WIARSB)" size="4" maxlength="4">
+                                           <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=acct$(recNbr)&amp;subFld=sub$(recNbr)&amp;descFld=acct$(recNbr)Desc" onclick="$(searchWinVar)">$(searchImage)</a></td>
+                     <td class="inputalph"><input type="text" disabled name="acct$(recNbr)Desc" value="$(fieldDesc)" size="30" maxlength="30"></td>
+                 </tr>
+                 @DspErrMsg(Err_WIIVAM)
+                 @DspErrMsg(Err_WIARAC)
+
+                 @SetTextOvr(Err_WIIVCT)
+                 <tr><td class="dsphdr"><span $(textOvr)>Cost</span></td>
+                     <td class="inputnmbr"><input type="text" name="ivct$(recNbr)" value="$(V_WIIVCT)" size="14" maxlength="15"></td>
+                 </tr>
+                 @DspErrMsg(Err_WIIVCT)
+
+                 @Default_Zero(V_WISTXA)
+                 @Default_Zero(V_WISTXS)
+                 @RtvFldDesc("(CHACCT,CHSUB)=($(V_WISTXA),$(V_WISTXS)) ", "HDCHRT", "CHCHDS", fieldDesc)
+                 @SetTextOvr(Err_WISTAX)
+                 %if (textOvr=="")
+                     @SetTextOvr(Err_WISTXA)
+                 %endif
+                 <tr><td class="dsphdr"><span $(textOvr)>Sales Tax</span></td>
+                     <td class="inputnmbr"><input type="text" name="stax$(recNbr)" value="$(V_WISTAX)" size="14" maxlength="15"></td>
+                     <td class="inputnmbr"><input type="text" name="stxa$(recNbr)" value="$(V_WISTXA)" size="4" maxlength="4"> -
+                                           <input type="text" name="stxs$(recNbr)" value="$(V_WISTXS)" size="4" maxlength="4">
+                                           <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=stxa$(recNbr)&amp;subFld=stxs$(recNbr)&amp;descFld=stxa$(recNbr)Desc" onclick="$(searchWinVar)">$(searchImage)</a></td>
+                     <td class="inputalph"><input type="text" disabled name="stxa$(recNbr)Desc" value="$(fieldDesc)" size="30" maxlength="30"></td>
+                 </tr>
+                 @DspErrMsg(Err_WISTAX)
+                 @DspErrMsg(Err_WISTXA)
+
+                 @Default_Zero(V_WIFRTA)
+                 @Default_Zero(V_WIFRTS)
+                 @RtvFldDesc("(CHACCT,CHSUB)=($(V_WIFRTA),$(V_WIFRTS)) ", "HDCHRT", "CHCHDS", fieldDesc)
+                 @SetTextOvr(Err_WIFRT)
+                 %if (textOvr=="")
+                     @SetTextOvr(Err_WIFRTA)
+                 %endif
+                 <tr><td class="dsphdr"><span $(textOvr)>Freight</span></td>
+                     <td class="inputnmbr"><input type="text" name="frt$(recNbr)" value="$(V_WIFRT)" size="14" maxlength="15"></td>
+                     <td class="inputnmbr"><input type="text" name="frta$(recNbr)" value="$(V_WIFRTA)" size="4" maxlength="4"> -
+                                           <input type="text" name="frts$(recNbr)" value="$(V_WIFRTS)" size="4" maxlength="4">
+                                           <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=frta$(recNbr)&amp;subFld=frts$(recNbr)&amp;descFld=frta$(recNbr)Desc" onclick="$(searchWinVar)">$(searchImage)</a></td>
+                     <td class="inputalph"><input type="text" disabled name="frta$(recNbr)Desc" value="$(fieldDesc)" size="30" maxlength="30"></td>
+                 </tr>
+                 @DspErrMsg(Err_WIFRT)
+                 @DspErrMsg(Err_WIFRTA)
+
+                 @Default_Zero(V_WISPCA)
+                 @Default_Zero(V_WISPCS)
+                 @RtvFldDesc("(CHACCT,CHSUB)=($(V_WISPCA),$(V_WISPCS)) ", "HDCHRT", "CHCHDS", fieldDesc)
+                 @SetTextOvr(Err_WISPC)
+                 %if (textOvr=="")
+                     @SetTextOvr(Err_WISPCA)
+                 %endif
+                 <tr><td class="dsphdr"><span $(textOvr)>Special Charge</span></td>
+                     <td class="inputnmbr"><input type="text" name="spc$(recNbr)" value="$(V_WISPC)" size="14" maxlength="15"></td>
+                     <td class="inputnmbr"><input type="text" name="spca$(recNbr)" value="$(V_WISPCA)" size="4" maxlength="4"> -
+                                           <input type="text" name="spcs$(recNbr)" value="$(V_WISPCS)" size="4" maxlength="4">
+                                           <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=spca$(recNbr)&amp;subFld=spcs$(recNbr)&amp;descFld=spca$(recNbr)Desc" onclick="$(searchWinVar)">$(searchImage)</a></td>
+                     <td class="inputalph"><input type="text" disabled name="spca$(recNbr)Desc" value="$(fieldDesc)" size="30" maxlength="30"></td>
+                 </tr>
+                 @DspErrMsg(Err_WISPC)
+                 @DspErrMsg(Err_WISPCA)
+              </table>
+          %}
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+      </form>
+      <table $(contentTable)>
+          <tr>
+              <td class="toolbar">
+                  <a href="javascript:document.Chg.updateOption.value='1E'; check(document.Chg)">$(editNoUpdateSml)</a>
+                  %if ((sec_01 != "N" && (maintenanceCode == "A" || maintenanceCode == "Z")) || (sec_02 != "N" && maintenanceCode == "C") || (maintenanceCode != "A" && maintenanceCode != "C" && maintenanceCode != "D" && maintenanceCode != "Z"))
+                      <a href="javascript:document.Chg.updateOption.value='1U'; check(document.Chg)">$(nextImage)</a>
+                  %endif
+                  %if (sec_03 != "N" && maintenanceCode == "C")
+                      <a onClick="return confirmDelete()" href="$(deleteURL)">$(deleteImageMed)</a>
+                  %endif
+                  <a onClick="return confirmRefresh()" href="$(refreshURL)">$(selectResetImage)</a>
+                  %if (WFReview=="Y")
+                      <a href="$(homeURL)$(cGIPath)WFWorkListOptions.d2w/CANCEL$(d2wVarBase)&amp;refreshD2W=N">$(cancelImageMed)</a>
+                  %endif
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar,
+                                        INOUT CHAR(32000) wrnVar)
+{%EXEC {HARINE_W.PGM %}
+%}
+
+%FUNCTION(dtw_directcall) SetApprove_Data(IN    CHAR(64)    profileHandle,
+                                                CHAR(2)     dataBaseID,
+                                                CHAR(1)     approveCode,
+                                                CHAR(32000) edtVar)
+{%EXEC {HWFWIA_S.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(REFRESH) {
+  %INCLUDE "setLibraryList.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From ARIVVW Where WIXHND='$(profileHandle)'", stmtSQL)
+  @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From ARIVDW Where WDXHND='$(profileHandle)'", stmtSQL)
+  @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(WFREVIEW) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @dtw_assign(firstTimeIn, "Y")
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From ARIVVW Where WIXHND='$(profileHandle)'", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From ARIVDW Where WDXHND='$(profileHandle)'", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      @dtw_assign(setFlag, "Y")
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@inst", wfInstance)
+      @Concat_Field("@@indt", wfInstanceDate)
+      @Concat_Field("@@witm", wfWorkItem)
+      @Concat_Field("@@wisq", wfWorkItemSequence)
+      @Concat_Field("@@ptid", wfParticipantId)
+      @dtw_concat(edtVar, "}{", edtVar)
+      @SetApprove_Data(profileHandle, dataBaseID, setFlag, edtVar)
+
+      @RtvFldDesc("(ADINST,ADINDT)=($(wfInstance),$(wfInstanceDate))", "WFDTAA", "ADVAR", V_ADVAR)
+      @dtw_assign(edtVar, V_ADVAR)
+      @dtw_assign(WFReview, "Y")
+      @Decat_Field("@@iseq")   @dtw_assign(invoiceSequence, fieldValue)
+      %if (invoiceSequence=="") @dtw_assign(invoiceSequence,"0") %endif
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Insert Into ARIVVW (WIXHND,WIINST,       WIINDT,           WIWITM,       WIWISQ,               WIISEQ,             WICUST, WIBLTO, WIAINV, WIIVDT, WIPER, WILOC, WISLSM, WITRMS, WICTDT, WIDUED, WIDSCD, WIDSCT, WIARPO, WIORD, WIORDT, WIBCH, WIIVAM, WIIVCT, WISTAX, WIFRT, WISPC, WIARAC, WIARSB, WISTXA, WISTXS, WIFRTA, WIFRTS, WISPCA, WISPCS) ", stmtSQL)
+      @dtw_concat(stmtSQL, " Select '$(profileHandle)', $(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence), FICUST, FIBLTO, FIAINV, FIIVDT, FIPER, FILOC, FISLSM, FITRMS, FICTDT, FIDUED, FIDSCD, FIDSCT, FIARPO, FIORD, FIORDT, FIBCH, FIIVAM, FIIVCT, FISTAX, FIFRT, FISPC, FIARAC, FIARSB, FISTXA, FISTXS, FIFRTA, FIFRTS, FISPCA, FISPCS ", stmtSQL)
+      @dtw_concat(stmtSQL, " From ARIVIV Where (FIINST,FIINDT,FICLOS,FIISEQ)=($(wfInstance),$(wfInstanceDate),' ',$(invoiceSequence)) ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)">
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  %if (updateOption=="")
+      @dtw_assign(updateOption, "1E")
+  %endif
+  @dtw_assign(maintenanceCode, "A")
+
+  %if (firstTimeIn == "")
+      @RtvFldDesc("(WIXHND,WIINST,WIINDT,WIISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", "ARIVVW", "char(count(*))", recCount)	
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From ARIVVW Where WIXHND='$(profileHandle)'", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      @dtw_assign(ux, "1")
+      %while(ux <= recCount){
+          @dtw_assign(recNbr, ux)
+          %while(@dtw_rlength(recNbr) != "4")   {@dtw_insert("0", recNbr, recNbr) %}
+          @dtw_assign(cust, @dtw_rStrip($(cust$(recNbr))))   %if (cust=="")  @dtw_assign(cust, "0") %endif
+          @dtw_assign(blto, @dtw_rStrip($(blto$(recNbr))))   %if (blto=="")  @dtw_assign(blto, "0") %endif
+          @dtw_assign(aiv,  @dtw_rStrip($(aiv$(recNbr))))    %if (aiv=="")   @dtw_assign(aiv, "0")  %endif
+          @dtw_assign(ivdt, @dtw_rStrip($(ivdt$(recNbr))))   %if (ivdt=="")  @dtw_assign(ivdt, "0") %endif @DateToCYMD(ivdt)
+          @dtw_assign(per,  @dtw_rStrip($(per$(recNbr))))    %if (per=="")   @dtw_assign(per, "0")  %endif @PeriodToCYP(per)
+          @dtw_assign(loc,  @dtw_rStrip($(loc$(recNbr))))    %if (loc=="")   @dtw_assign(loc, "0")  %endif
+          @dtw_assign(slsm, @dtw_rStrip($(slsm$(recNbr))))   %if (slsm=="")  @dtw_assign(slsm, "0") %endif
+          @dtw_assign(trms, $(trms$(recNbr)))   %if (trms!="")  @dtw_mUPPERCASE(trms)  %endif
+          @dtw_assign(ctdt, @dtw_rStrip($(ctdt$(recNbr))))   %if (ctdt=="")  @dtw_assign(ctdt, "0") %endif
+          @dtw_assign(dued, @dtw_rStrip($(dued$(recNbr))))   %if (dued=="")  @dtw_assign(dued, "0") %endif @Date_To_ISO(dued,dued)
+          @dtw_assign(dscd, @dtw_rStrip($(dscd$(recNbr))))   %if (dscd=="")  @dtw_assign(dscd, "0") %endif @Date_To_ISO(dscd,dscd)
+          @dtw_assign(dsct, @dtw_rStrip($(dsct$(recNbr))))   %if (dsct=="")  @dtw_assign(dsct, "0") %endif 
+          @dtw_assign(arpo, @dtw_rStrip($(arpo$(recNbr))))   %if (arpo!="")  @dtw_mUPPERCASE(arpo)  %endif
+          @dtw_assign(ord,  @dtw_rStrip($(ord$(recNbr))))    %if (ord=="")   @dtw_assign(ord, "0")  %endif
+          @dtw_assign(ordt, @dtw_rStrip($(ordt$(recNbr))))   %if (ordt=="")  @dtw_assign(ordt, "0") %endif @DateToCYMD(ordt)
+          @dtw_assign(bch,  @dtw_rStrip($(bch$(recNbr))))    %if (bch=="")   @dtw_assign(bch, "0")  %endif
+          @dtw_assign(ivam, @dtw_rStrip($(ivam$(recNbr))))   %if (ivam=="")  @dtw_assign(ivam, "0") %endif
+          @dtw_assign(ivct, @dtw_rStrip($(ivct$(recNbr))))   %if (ivct=="")  @dtw_assign(ivct, "0") %endif
+          @dtw_assign(stax, @dtw_rStrip($(stax$(recNbr))))   %if (stax=="")  @dtw_assign(stax, "0") %endif
+          @dtw_assign(frt,  @dtw_rStrip($(frt$(recNbr))))    %if (frt=="")   @dtw_assign(frt, "0")  %endif
+          @dtw_assign(spc,  @dtw_rStrip($(spc$(recNbr))))    %if (spc=="")   @dtw_assign(spc, "0")  %endif
+          @dtw_assign(acct, @dtw_rStrip($(acct$(recNbr))))   %if (acct=="")  @dtw_assign(acct, "0") %endif
+          @dtw_assign(sub,  @dtw_rStrip($(sub$(recNbr))))    %if (sub=="")   @dtw_assign(sub, "0")  %endif
+          @dtw_assign(stxa, @dtw_rStrip($(stxa$(recNbr))))   %if (stxa=="")  @dtw_assign(stxa, "0") %endif
+          @dtw_assign(stxs, @dtw_rStrip($(stxs$(recNbr))))   %if (stxs=="")  @dtw_assign(stxs, "0") %endif
+          @dtw_assign(frta, @dtw_rStrip($(frta$(recNbr))))   %if (frta=="")  @dtw_assign(frta, "0") %endif
+          @dtw_assign(frts, @dtw_rStrip($(frts$(recNbr))))   %if (frts=="")  @dtw_assign(frts, "0") %endif
+          @dtw_assign(spca, @dtw_rStrip($(spca$(recNbr))))   %if (spca=="")  @dtw_assign(spca, "0") %endif
+          @dtw_assign(spcs, @dtw_rStrip($(spcs$(recNbr))))   %if (spcs=="")  @dtw_assign(spcs, "0") %endif
+
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into ARIVVW (WIXHND,           WIINST,       WIINDT,           WIWITM,       WIWISQ,               WIISEQ,            WICUST, WIBLTO, WIAINV, WIIVDT, WIPER, WILOC, WISLSM, WITRMS,   WICTDT, WIDUED, WIDSCD, WIDSCT, WIARPO,   WIORD, WIORDT, WIBCH, WIIVAM, WIIVCT, WISTAX, WIFRT, WISPC, WIARAC, WIARSB, WISTXA, WISTXS, WIFRTA, WIFRTS, WISPCA, WISPCS) ", stmtSQL)
+          @dtw_concat(stmtSQL, "            Values ('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence),$(cust),$(blto),$(aiv), $(ivdt),$(per), $(loc), $(slsm),'$(trms)',$(ctdt),'$(dued)','$(dscd)',$(dsct),'$(arpo)',$(ord),$(ordt),$(bch),$(ivam),$(ivct),$(stax),$(frt),$(spc),$(acct),$(sub),$(stxa),$(stxs),$(frta),$(frts),$(spca),$(spcs)) ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+ 
+          @dtw_add(ux, "1", ux)
+      %}
+  %endif
+
+  @dtw_assign(firstTimeIn, "")
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@wfid", wfInstance)
+  @Concat_Field("@@wfdt", wfInstanceDate)
+  @Concat_Field("@@wfcn", wfWorkItem)
+  @Concat_Field("@@wfsq", wfWorkItemSequence)
+  @Concat_Field("@@wfpt", wfParticipantId)
+  @Concat_Field("@@iseq", invoiceSequence)
+  @Concat_Field("@@@upd", updateOption)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar, wrnVar)
+  %if (errFound == "" && updateOption=="1U")
+      %if (WFReview == "Y")
+          @dtw_assign(firstTimeIn, "Y")
+      %else
+          @dtw_assign(firstTimeIn, "")
+      %endif
+
+      @RtvFldDesc("(FFIMKY,FFIFIL)=($(wfInstance),'$(importTable)')", "SYMITB", "FFDESC", importTableDescription)
+      @Format_ConfMsg_Desc(maintenanceCode, $(importTableDescription), "$(importTable)-$(importRecordType)-$(interfaceTable)-$(parentInterfaceTable)", "", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)ARImportInvoiceEntryDist.d2w/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

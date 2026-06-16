@@ -1,0 +1,17 @@
+%DEFINE {
+closeImageMed="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgSqNoChange.gif"" title=""Click here to close window"" alt=""Close"">"
+emptyCartImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)cart.gif"" title=""Empty Cart"" alt=""Empty Cart"">"
+goSearchImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgSearch.gif"" title=""Click here to search"" alt=""Search"">"
+goSearchImageLrg="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgSearch.gif"" title=""Click here to search the entire catalog"" alt=""Go"">"
+inStockImage=""
+nextImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgSqRight.gif"" title=""Next page"" alt=""Next"">"
+orderAddToImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)cart.gif"" title=""Add To Cart"" alt=""Add"">"
+orderCancelImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgSqCancel.gif"" title=""Click here to cancel your order"" alt=""Cancel Order"">"
+orderContinueImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgSqContinue.gif"" title=""Click here to continue the order process"" alt=""Continue"">"
+placeOrderImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgSqAccept.gif"" title=""Click here to complete your order"" alt=""Place Order"">"
+previousImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgSqLeft.gif"" title=""Previous page"" alt=""Previous"">"
+selectBackImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgSqLeft.gif"" title=""Previous page"" alt=""Back"">"
+selLeftImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)smPointRightRed.gif"">"
+selRightImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)smPointLeftRed.gif"">"
+viewCartImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)cart.gif"" title=""Click here to view your cart or checkout"" alt=""View Cart"">"
+%}

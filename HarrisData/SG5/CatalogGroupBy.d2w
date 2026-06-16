@@ -1,0 +1,862 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job:  Catalog                                                    *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Catalog Maintenance &nbsp;"
+  d2wName                 = "CatalogGroupBy.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;catalog=@dtw_rurlescseq(catalog)&amp;catalogDesc=@dtw_rurlescseq(catalogDesc)&amp;selectDesc=@dtw_rurlescseq(selectDesc)&amp;recordSequence=@dtw_rurlescseq(recordSequence)&amp;selectRecSQL=@dtw_rurlescseq(selectRecSQL)&amp;selectGroupWork=@dtw_rurlescseq(selectGroupWork)&amp;selectGroupBy=@dtw_rurlescseq(selectGroupBy)&amp;groupBy=@dtw_rurlescseq(groupBy)&amp;totalByQty=@dtw_rurlescseq(totalByQty)&amp;totalByAmt=@dtw_rurlescseq(totalByAmt)&amp;totalByCnt=@dtw_rurlescseq(totalByCnt)&amp;orderBy=@dtw_rurlescseq(orderBy)"
+  nextPrevVar             = "$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_SET_TOTAL_ROWS      = "YES"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  DTW_PAD_PGM_PARMS       = "YES"
+  dspMaxRows              = "10"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  grpFldLvl               = "999"
+%}
+
+%INCLUDE "opersel_bldSQL.icl"
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              function confirmSave() {return confirm("$(saveRecordConf)")}
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "CATALOGGROUPBY")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td>
+                      @dtw_assign(uv_ProductClassName, "IMPCLS")
+                      @dtw_assign(uv_WarehouseName, "IWWHS ")
+                      %INCLUDE "userview.icl"
+
+                      @dtw_assign(stmtSQL, "")
+                      @dtw_concat(stmtSQL, "WITH TOTAL(TOTCNT) AS (SELECT COUNT(*) ", stmtSQL)
+                      @dtw_concat(stmtSQL, " From HDIWHS inner join HDIMST on IWITEM=IMITEM ", stmtSQL)
+                      @dtw_concat(stmtSQL, "             left  join HDIMSX on IWITEM=IXITEM ", stmtSQL)
+                      @dtw_concat(stmtSQL, " $(selectRecSQL) ", stmtSQL)
+                      %if (uv_Sql != "")
+                          @dtw_concat(stmtSQL, " and ($(uv_Sql))", stmtSQL)
+                      %endif
+                      @dtw_concat(stmtSQL, ")", stmtSQL)
+                      @dtw_concat(stmtSQL, " SELECT $(groupBy), count(*) as sumcnt, TOTAL.TOTCNT", stmtSQL)
+                      @dtw_concat(stmtSQL, " From HDIWHS inner join HDIMST on IWITEM=IMITEM ", stmtSQL)
+                      @dtw_concat(stmtSQL, "             left  join HDIMSX on IWITEM=IXITEM ", stmtSQL)
+                      @dtw_concat(stmtSQL, " , TOTAL $(selectRecSQL) ", stmtSQL)
+                      %if (uv_Sql != "")
+                          @dtw_concat(stmtSQL, " and ($(uv_Sql))", stmtSQL)
+                      %endif
+                      @dtw_concat(stmtSQL, " GROUP BY $(groupBy), TOTAL.TOTCNT", stmtSQL)
+                      @dtw_concat(stmtSQL, " ORDER BY $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Item_Select_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Item_Select_Query (IN CHAR(64)    profileHandle,
+				          CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      <a onClick="return confirmSave()" href="$(homeURL)$(cGIPath)$(d2wName)/SAVE$(d2wVarBase)">$(selectSaveImage)</a>
+                      <a href="$(homeURL)$(cGIPath)catalogcriteria.d2w/DISPLAY$(d2wVarBase)" onclick="$(selectionWinVar)">$(selectCriteriaImage)</a>
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/PROCESS$(d2wVarBase)&amp;formatToPrint=Y" target=_blank>$(formatPrintMed)</a>
+                      @dtw_assign(medIcon, "Y")
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+          </tr>
+      </table>
+      <table $(contentTable)>
+          @Format_Header_URL("Catalog", $(catalogDesc), $(catalog), "$(homeURL)$(cGIPath)CatalogSequence.d2w/SELECT$(d2wVarBase)")
+          @Format_Header_URL("Description", $(selectDesc), "", "")
+      </table>
+
+      $(hrTagAttr)
+
+          %if (TOTAL_ROWS > RPT_MAX_ROWS)
+              @DTW_ASSIGN(totalPages, @DTW_RINTDIV(TOTAL_ROWS, RPT_MAX_ROWS))
+              %if (@DTW_RDIVREM(TOTAL_ROWS, RPT_MAX_ROWS) > "0")
+                  @DTW_ADD(totalPages, "1", totalPages)
+	       %endif
+          %else
+              @dtw_assign(totalPages, "1")
+          %endif
+
+          @dtw_add(START_ROW_NUM, RPT_MAX_ROWS, rowIndexNext)
+
+          @dtw_assign(page, @dtw_radd(@dtw_rdivide(@dtw_rsubtract(START_ROW_NUM, "1"), RPT_MAX_ROWS), "1"))
+          @dtw_add(START_ROW_NUM, RPT_MAX_ROWS, rowIndexNext)
+			
+          @dtw_assign(firstRecord, "")
+
+          %ROW{
+              @dtw_assign(selectGroup, selectGroupWork)
+              @dtw_assign(x, "1")
+              %while(x <= "500" && @dtw_rsubstr(selectGroupBy, x) != ""){
+                  @dtw_substr(selectGroupBy, x, "9", " ", fieldName)
+
+                  %if (fieldName == "@@IXCTG1 ")
+                      @dtw_replace(selectGroup, "@@IXCTG1", "$(V_IXCTG1)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXCTG2 ")
+                      @dtw_replace(selectGroup, "@@IXCTG2", "$(V_IXCTG2)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXCTG3 ")
+                      @dtw_replace(selectGroup, "@@IXCTG3", "$(V_IXCTG3)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXCTG4 ")
+                      @dtw_replace(selectGroup, "@@IXCTG4", "$(V_IXCTG4)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXCTG5 ")
+                      @dtw_replace(selectGroup, "@@IXCTG5", "$(V_IXCTG5)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXUXA1 ")
+                      @dtw_replace(selectGroup, "@@IXUXA1", "$(V_IXUXA1)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXUXA2 ")
+                      @dtw_replace(selectGroup, "@@IXUXA2", "$(V_IXUXA2)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXUXA3 ")
+                      @dtw_replace(selectGroup, "@@IXUXA3", "$(V_IXUXA3)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXUXA4 ")
+                      @dtw_replace(selectGroup, "@@IXUXA4", "$(V_IXUXA4)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXUXA5 ")
+                      @dtw_replace(selectGroup, "@@IXUXA5", "$(V_IXUXA5)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXUXN1 ")
+                      @dtw_replace(selectGroup, "@@IXUXN1", "$(V_IXUXN1)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXUXN2 ")
+                      @dtw_replace(selectGroup, "@@IXUXN2", "$(V_IXUXN2)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXUXN3 ")
+                      @dtw_replace(selectGroup, "@@IXUXN3", "$(V_IXUXN3)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXUXN4 ")
+                      @dtw_replace(selectGroup, "@@IXUXN4", "$(V_IXUXN4)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IXUXN5 ")
+                      @dtw_replace(selectGroup, "@@IXUXN5", "$(V_IXUXN5)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMUDA1 ")
+                      @dtw_replace(selectGroup, "@@IMUDA1", "$(V_IMUDA1)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMUDA2 ")
+                      @dtw_replace(selectGroup, "@@IMUDA2", "$(V_IMUDA2)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMUDA3 ")
+                      @dtw_replace(selectGroup, "@@IMUDA3", "$(V_IMUDA3)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMUDA4 ")
+                      @dtw_replace(selectGroup, "@@IMUDA4", "$(V_IMUDA4)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMUDA5 ")
+                      @dtw_replace(selectGroup, "@@IMUDA5", "$(V_IMUDA5)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMUDN1 ")
+                      @dtw_replace(selectGroup, "@@IMUDN1", "$(V_IMUDN1)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMUDN2 ")
+                      @dtw_replace(selectGroup, "@@IMUDN2", "$(V_IMUDN2)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMUDN3 ")
+                      @dtw_replace(selectGroup, "@@IMUDN3", "$(V_IMUDN3)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMUDN4 ")
+                      @dtw_replace(selectGroup, "@@IMUDN4", "$(V_IMUDN4)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMUDN5 ")
+                      @dtw_replace(selectGroup, "@@IMUDN5", "$(V_IMUDN5)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMPCLS ")
+                      @dtw_replace(selectGroup, "@@IMPCLS", "$(V_IMPCLS)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IWPGRP ")
+                      @dtw_replace(selectGroup, "@@IWPGRP", "$(V_IWPGRP)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMITC  ")
+                      @dtw_replace(selectGroup, "@@IMITC", "$(V_IMITC)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IWWHS  ")
+                      @dtw_replace(selectGroup, "@@IWWHS", "$(V_IWWHS)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMITEM ")
+                      @dtw_replace(selectGroup, "@@IMITEM", "$(V_IMITEM)", "1", "a", selectGroup)
+                  %elif (fieldName == "@@IMIMDS ")
+                      @dtw_replace(selectGroup, "@@IMIMDS", "$(V_IMIMDS)", "1", "a", selectGroup)
+                  %endif
+
+                  @dtw_add(x, "9", x)
+              %}
+
+              %if (firstRecord == "")
+                  @Format_Nbr(V_TOTCNT, F_TOTCNT, "0", "1", "Y", "", "")
+                  @dtw_assign(firstRecord, "N")
+                  @dtw_assign(sql_Record_Count, TOTAL_ROWS)
+                  <form class="formClass" METHOD=POST name="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/UPDATE$(d2wVarBase)&amp;updateRowNum=@dtw_rurlescseq($(START_ROW_NUM))">
+                  <div class="page">
+                      %if (formatToPrint != "Y")
+                          Page: $(page) of $(totalPages)
+                          %if (nextPrevPos != "2" && nextPrevVar != "")
+                              %if (START_ROW_NUM > RPT_MAX_ROWS)
+                                  <a href="input$(nextPrevVar)&amp;START_ROW_NUM=@DTW_RSUBTRACT(START_ROW_NUM, RPT_MAX_ROWS)">$(previousImage)</a>
+                              %else
+                                  %if (TOTAL_ROWS > RPT_MAX_ROWS)
+                                      $(nextPrevBlank)
+                                  %endif
+                              %endif
+
+                              %if (TOTAL_ROWS >= rowIndexNext)
+                                  <a href="input$(nextPrevVar)&amp;START_ROW_NUM=$(rowIndexNext)">$(nextImage)</a>
+                              %else
+                                  %if (TOTAL_ROWS > RPT_MAX_ROWS)
+                                      $(nextPrevBlank)
+                                  %endif
+                              %endif
+                          %else
+                              &nbsp; &nbsp; &nbsp;
+                          %endif
+                      %endif
+                      Total Count: $(F_TOTCNT)
+                  </div>
+
+                  <table $(contentTable)> 	
+                      <tr>
+                          @dtw_assign(x, "1")
+                          @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                          %while(x <= "500" && @dtw_rsubstr(selectGroupBy, x) != ""){
+                              @dtw_substr(selectGroupBy, x, "9", " ", fieldName)
+                              %if (fieldName == "@@IXCTG1 ")
+                                  @OrderBy_Sort("IXCTG1", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtCat1" title="Sequence By Category 1">Category 1</a></th>
+                              %elif (fieldName == "@@IXCTG2 ")
+                                  @OrderBy_Sort("IXCTG2", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtCat2" title="Sequence By Category 2">Category 2</a></th>
+                              %elif (fieldName == "@@IXCTG3 ")
+                                  @OrderBy_Sort("IXCTG3", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtCat3" title="Sequence By Category 3">Category 3</a></th>
+                              %elif (fieldName == "@@IXCTG4 ")
+                                  @OrderBy_Sort("IXCTG4", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtCat4" title="Sequence By Category 4">Category 4</a></th>
+                              %elif (fieldName == "@@IXCTG5 ")
+                                  @OrderBy_Sort("IXCTG5", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtCat5" title="Sequence By Category 5">Category 5</a></th>
+                              %elif (fieldName == "@@IXUXA1 ")
+                                  @OrderBy_Sort("IXUXA1", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtAlph1" title="Sequence By $(itemExtAlph1)">$(itemExtAlph1)</a></th>
+                              %elif (fieldName == "@@IXUXA2 ")
+                                  @OrderBy_Sort("IXUXA2", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtAlph2" title="Sequence By $(itemExtAlph2)">$(itemExtAlph2)</a></th>
+                              %elif (fieldName == "@@IXUXA3 ")
+                                  @OrderBy_Sort("IXUXA3", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtAlph3" title="Sequence By $(itemExtAlph3)">$(itemExtAlph3)</a></th>
+                              %elif (fieldName == "@@IXUXA4 ")
+                                  @OrderBy_Sort("IXUXA4", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtAlph4" title="Sequence By $(itemExtAlph4)">$(itemExtAlph4)</a></th>
+                              %elif (fieldName == "@@IXUXA5 ")
+                                  @OrderBy_Sort("IXUXA5", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtAlph5" title="Sequence By $(itemExtAlph5)">$(itemExtAlph5)</a></th>
+                              %elif (fieldName == "@@IXUXN1 ")
+                                  @OrderBy_Sort("IXUXN1", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtNum1" title="Sequence By $(itemExtNum1)">$(itemExtNum1)</a></th>
+                              %elif (fieldName == "@@IXUXN2 ")
+                                  @OrderBy_Sort("IXUXN2", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtNum2" title="Sequence By $(itemExtNum2)">$(itemExtNum2)</a></th>
+                              %elif (fieldName == "@@IXUXN3 ")
+                                  @OrderBy_Sort("IXUXN3", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtNum3" title="Sequence By $(itemExtNum3)">$(itemExtNum3)</a></th>
+                              %elif (fieldName == "@@IXUXN4 ")
+                                  @OrderBy_Sort("IXUXN4", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtNum4" title="Sequence By $(itemExtNum4)">$(itemExtNum4)</a></th>
+                              %elif (fieldName == "@@IXUXN5 ")
+                                  @OrderBy_Sort("IXUXN5", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemExtNum5" title="Sequence By $(itemExtNum5)">$(itemExtNum5)</a></th>
+                              %elif (fieldName == "@@IMUDA1 ")
+                                  @OrderBy_Sort("IMUDA1", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=screenAlpha1" title="Sequence By $(V_CIIAS1)">$(V_CIIAS1)</a></th>
+                              %elif (fieldName == "@@IMUDA2 ")
+                                  @OrderBy_Sort("IMUDA2", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=screenAlpha2" title="Sequence By $(V_CIIAS2)">$(V_CIIAS2)</a></th>
+                              %elif (fieldName == "@@IMUDA3 ")
+                                  @OrderBy_Sort("IMUDA3", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=screenAlpha3" title="Sequence By $(V_CIIAS3)">$(V_CIIAS3)</a></th>
+                              %elif (fieldName == "@@IMUDA4 ")
+                                  @OrderBy_Sort("IMUDA4", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=screenAlpha4" title="Sequence By $(V_CIIAS4)">$(V_CIIAS4)</a></th>
+                              %elif (fieldName == "@@IMUDA5 ")
+                                  @OrderBy_Sort("IMUDA5", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=screenAlpha5" title="Sequence By $(V_CIIAS5)">$(V_CIIAS5)</a></th>
+                              %elif (fieldName == "@@IMUDN1 ")
+                                  @OrderBy_Sort("IMUDN1", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=screenNumeric1" title="Sequence By $(V_CIINS1)">$(V_CIINS1)</a></th>
+                              %elif (fieldName == "@@IMUDN2 ")
+                                  @OrderBy_Sort("IMUDN2", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=screenNumeric2" title="Sequence By $(V_CIINS2)">$(V_CIINS2)</a></th>
+                              %elif (fieldName == "@@IMUDN3 ")
+                                  @OrderBy_Sort("IMUDN3", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=screenNumeric3" title="Sequence By $(V_CIINS3)">$(V_CIINS3)</a></th>
+                              %elif (fieldName == "@@IMUDN4 ")
+                                  @OrderBy_Sort("IMUDN4", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=screenNumeric4" title="Sequence By $(V_CIINS4)">$(V_CIINS4)</a></th>
+                              %elif (fieldName == "@@IMUDN5 ")
+                                  @OrderBy_Sort("IMUDN5", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=screenNumeric5" title="Sequence By $(V_CIINS5)">$(V_CIINS5)</a></th>
+                              %elif (fieldName == "@@IMPCLS ")
+                                  @OrderBy_Sort("IMPCLS", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ProductClass" title="Sequence By Product Class">Product <br> Class</a></th>
+                              %elif (fieldName == "@@IWPGRP ")
+                                  @OrderBy_Sort("IWPGRP", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ProductGroup" title="Sequence By Product Group">Product <br> Group</a></th>
+                              %elif (fieldName == "@@IMITC  ")
+                                  @OrderBy_Sort("IMITC", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=InventoryType" title="Sequence By Inventory Type">Inventory <br> Type</a></th>
+                              %elif (fieldName == "@@IWWHS  ")
+                                  @OrderBy_Sort("IWWHS", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=WarehouseNumber" title="Sequence By Warehouse Number">Whs</a></th>
+                              %elif (fieldName == "@@IMITEM ")
+                                  @OrderBy_Sort("IMITEM", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ItemNumber" title="Sequence By Item Number">Item<br>Number</a></th>
+                              %elif (fieldName == "@@IMIMDS ")
+                                  @OrderBy_Sort("IMIMDS", sortVar)
+                                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ItemDesc" title="Sequence By Item Description">Item<br>Description</a></th>
+                              %endif
+
+                              @dtw_add(x, "9", x)
+                          %}
+
+                          <th class="colhdr"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TotalCnt" title="Sequence By Count">Count</a></th>
+                          <th class="colhdr">Exclude</th>
+
+                          %if (formatToPrint != "Y")
+                              <td><a href="javascript:check(document.Chg)">$(selectUpdateImage)</a></td>
+                          %endif
+                      </tr>
+              %endif
+
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  @dtw_assign(varField, "")
+                  @dtw_assign(x, "1")
+                  %while(x <= "500" && @dtw_rsubstr(selectGroupBy, x) != "") {
+                      @dtw_substr(selectGroupBy, x, "9", " ", fieldName)
+                      @dtw_strip(fieldName, workName)
+                      %if (fieldName == "@@IXCTG1 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXCTG1)", varField)
+                          <td class="colalph">$(V_IXCTG1)</td>
+                      %elif (fieldName == "@@IXCTG2 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXCTG2)", varField)
+                          <td class="colalph">$(V_IXCTG2)</td>
+                      %elif (fieldName == "@@IXCTG3 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXCTG3)", varField)
+                          <td class="colalph">$(V_IXCTG3)</td>
+                      %elif (fieldName == "@@IXCTG4 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXCTG4)", varField)
+                          <td class="colalph">$(V_IXCTG4)</td>
+                      %elif (fieldName == "@@IXCTG5 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXCTG5)", varField)
+                          <td class="colalph">$(V_IXCTG5)</td>
+                      %elif (fieldName == "@@IXUXA1 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXUXA1)", varField)
+                          <td class="colalph">$(V_IXUXA1)</td>
+                      %elif (fieldName == "@@IXUXA2 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXUXA2)", varField)
+                          <td class="colalph">$(V_IXUXA2)</td>
+                      %elif (fieldName == "@@IXUXA3 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXUXA3)", varField)
+                          <td class="colalph">$(V_IXUXA3)</td>
+                      %elif (fieldName == "@@IXUXA4 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXUXA4)", varField)
+                          <td class="colalph">$(V_IXUXA4)</td>
+                      %elif (fieldName == "@@IXUXA5 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXUXA5)", varField)
+                          <td class="colalph">$(V_IXUXA5)</td>
+                      %elif (fieldName == "@@IXUXN1 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXUXN1)", varField)
+                          <td class="colnmbr">$(V_IXUXN1)</td>
+                      %elif (fieldName == "@@IXUXN2 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXUXN2)", varField)
+                          <td class="colnmbr">$(V_IXUXN2)</td>
+                      %elif (fieldName == "@@IXUXN3 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXUXN3)", varField)
+                          <td class="colnmbr">$(V_IXUXN3)</td>
+                      %elif (fieldName == "@@IXUXN4 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXUXN4)", varField)
+                          <td class="colnmbr">$(V_IXUXN4)</td>
+                      %elif (fieldName == "@@IXUXN5 ")
+                          @dtw_concat(varField, "$(workName)$(V_IXUXN5)", varField)
+                          <td class="colnmbr">$(V_IXUXN5)</td>
+                      %elif (fieldName == "@@IMUDA1 ")
+                          @dtw_concat(varField, "$(workName)$(V_IMUDA1)", varField)
+                          <td class="colalph">$(V_IMUDA1)</td>
+                      %elif (fieldName == "@@IMUDA2 ")
+                          @dtw_concat(varField, "$(workName)$(V_IMUDA2)", varField)
+                          <td class="colalph">$(V_IMUDA2)</td>
+                      %elif (fieldName == "@@IMUDA3 ")
+                          @dtw_concat(varField, "$(workName)$(V_IMUDA3)", varField)
+                          <td class="colalph">$(V_IMUDA3)</td>
+                      %elif (fieldName == "@@IMUDA4 ")
+                          @dtw_concat(varField, "$(workName)$(V_IMUDA4)", varField)
+                          <td class="colalph">$(V_IMUDA4)</td>
+                      %elif (fieldName == "@@IMUDA5 ")
+                          @dtw_concat(varField, "$(workName)$(V_IMUDA5)", varField)
+                          <td class="colalph">$(V_IMUDA5)</td>
+                      %elif (fieldName == "@@IMUDN1 ")
+                          @dtw_concat(varField, "$(workName)$(V_IMUDN1)", varField)
+                          <td class="colnmbr">$(V_IMUDN1)</td>
+                      %elif (fieldName == "@@IMUDN2 ")
+                          @dtw_concat(varField, "$(workName)$(V_IMUDN2)", varField)
+                          <td class="colnmbr">$(V_IMUDN2)</td>
+                      %elif (fieldName == "@@IMUDN3 ")
+                          @dtw_concat(varField, "$(workName)$(V_IMUDN3)", varField)
+                          <td class="colnmbr">$(V_IMUDN3)</td>
+                      %elif (fieldName == "@@IMUDN4 ")
+                          @dtw_concat(varField, "$(workName)$(V_IMUDN4)", varField)
+                          <td class="colnmbr">$(V_IMUDN4)</td>
+                      %elif (fieldName == "@@IMUDN5 ")
+                          @dtw_concat(varField, "$(workName)$(V_IMUDN5)", varField)
+                          <td class="colnmbr">$(V_IMUDN5)</td>
+                      %elif (fieldName == "@@IMPCLS ")
+                          @dtw_concat(varField, "$(workName)$(V_IMPCLS)", varField)
+                          <td class="colalph">$(V_IMPCLS)</td>
+                      %elif (fieldName == "@@IWPGRP ")
+                          @dtw_concat(varField, "$(workName)$(V_IWPGRP)", varField)
+                          <td class="colalph">$(V_IWPGRP)</td>
+                      %elif (fieldName == "@@IMITC  ")
+                          @dtw_concat(varField, "$(workName)$(V_IMITC)", varField)
+                          <td class="colcode">$(V_IMITC)</td>
+                      %elif (fieldName == "@@IWWHS  ")
+                          @dtw_concat(varField, "$(workName)$(V_IWWHS)", varField)
+                          <td class="colnmbr">$(V_IWWHS)</td>
+                      %elif (fieldName == "@@IMITEM ")
+                          @dtw_concat(varField, "$(workName)$(V_IMITEM)", varField)
+                          <td class="colalph">$(V_IMITEM)</td>
+                      %elif (fieldName == "@@IMIMDS ")
+                          @dtw_concat(varField, "$(workName)$(V_IMIMDS)", varField)
+                          <td class="colalph">$(V_IMIMDS)</td>
+                      %endif
+
+                      @dtw_add(x, "9", x)
+                  %}
+                  %if (formatToPrint != "Y")
+                      @dtw_assign(disable, "")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)catalogdisplay.d2w/PROCESS$(genericVarBase)&amp;catalog=@dtw_rurlescseq(catalog)&amp;catalogDesc=@dtw_rurlescseq(catalogDesc)&amp;recordSequence=@dtw_rurlescseq(recordSequence)&amp;selectGroup=@dtw_rurlescseq(selectGroup)&amp;selectGroupBy=@dtw_rurlescseq(selectGroupBy)&amp;exclGroupBy=@dtw_rurlescseq(varField)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))" title="View Detail">$(V_SUMCNT)</a></td>
+                  %else
+                      @dtw_assign(disable, "DISABLED")
+                      <td class="colnmbr">$(V_SUMCNT)</td>
+                  %endif
+                  @Check_Exclusion (profileHandle, dataBaseID, catalog, recordSequence, varField, checked)
+                  <td class="colcode"><input type="checkbox" name="excl$(ROW_NUM)" $(checked) $(disable) VALUE='Y'><input type="hidden" name="vrky$(ROW_NUM)" value="$(varField)"></td>		
+              </tr>
+          %}
+      </table>
+      </form>
+      %INCLUDE "PageBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%INCLUDE "catalog.icl"
+
+%HTML(UPDATE) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@ex01", excl1)
+  @Concat_Field("@@ex02", excl2)
+  @Concat_Field("@@ex03", excl3)
+  @Concat_Field("@@ex04", excl4)
+  @Concat_Field("@@ex05", excl5)
+  @Concat_Field("@@ex06", excl6)
+  @Concat_Field("@@ex07", excl7)
+  @Concat_Field("@@ex08", excl8)
+  @Concat_Field("@@ex09", excl9)
+  @Concat_Field("@@ex10", excl10)
+  @Concat_Field("@@vk01", vrky1)
+  @Concat_Field("@@vk02", vrky2)
+  @Concat_Field("@@vk03", vrky3)
+  @Concat_Field("@@vk04", vrky4)
+  @Concat_Field("@@vk05", vrky5)
+  @Concat_Field("@@vk06", vrky6)
+  @Concat_Field("@@vk07", vrky7)
+  @Concat_Field("@@vk08", vrky8)
+  @Concat_Field("@@vk09", vrky9)
+  @Concat_Field("@@vk10", vrky10)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Update_Exclusion (profileHandle, dataBaseID, catalog, recordSequence, edtVar)
+
+  @dtw_assign(START_ROW_NUM,  "$(updateRowNum)")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(PROCESS) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(maintCode, "R")
+  @Catalog_Selection(profileHandle, dataBaseID, maintCode, catalog, recordSequence, orderSequence, selectDesc, newPage, selectGroupBy, selectCriteria)
+
+  @dtw_assign(selectRecSQL, "WHERE IWIWAC=' ' and IMPTYP<>'B' and IMPTYP<>'S' and IXCDYN<>'N' ")
+  @dtw_assign(selectGroupWork, "")
+  @dtw_assign(groupBy, "")
+  @Build_SQL("IXCTG1", "A")
+  @Build_SQL("IXCTG2", "A")
+  @Build_SQL("IXCTG3", "A")
+  @Build_SQL("IXCTG4", "A")
+  @Build_SQL("IXCTG5", "A")
+  @Build_SQL("IXUXA1", "A")
+  @Build_SQL("IXUXA2", "A")
+  @Build_SQL("IXUXA3", "A")
+  @Build_SQL("IXUXA4", "A")
+  @Build_SQL("IXUXA5", "A")
+  @Build_SQL("IXUXN1", "N")
+  @Build_SQL("IXUXN2", "N")
+  @Build_SQL("IXUXN3", "N")
+  @Build_SQL("IXUXN4", "N")
+  @Build_SQL("IXUXN5", "N")
+  @Build_SQL("IXUXD1", "I")
+  @Build_SQL("IXUXD2", "I")
+  @Build_SQL("IXUXD3", "I")
+  @Build_SQL("IXUXD4", "I")
+  @Build_SQL("IXUXD5", "I")
+  @Build_SQL("IMUDA1", "A")
+  @Build_SQL("IMUDA2", "A")
+  @Build_SQL("IMUDA3", "A")
+  @Build_SQL("IMUDA4", "A")
+  @Build_SQL("IMUDA5", "A")
+  @Build_SQL("IMUDN1", "N")
+  @Build_SQL("IMUDN2", "N")
+  @Build_SQL("IMUDN3", "N")
+  @Build_SQL("IMUDN4", "N")
+  @Build_SQL("IMUDN5", "N")
+  @Build_SQL("IMPCLS", "A")
+  @Build_SQL("IWPGRP", "A")
+  @Build_SQL("IMITC", "A")
+  @Build_SQL("IWWHS", "N")
+  @Build_SQL("IMITEM", "A")
+  @Build_SQL("IMIMDS", "A")
+
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, groupBy)
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+	
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(SAVE) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(maintCode, "U")
+  @Catalog_Selection(profileHandle, dataBaseID, maintCode, catalog, recordSequence, orderSequence, selectDesc, newPage, selectGroupBy, selectCriteria)
+  @Format_ConfMsg_Desc("C", $(selectDesc), "", "", "", "", "", confMessage)
+  <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)CatalogSequence.d2w/SELECT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "itemExtCat1")
+      %if (orderBy == "IXCTG1")
+          @DTW_ASSIGN(orderBy, "IXCTG1 DESC")
+          @DTW_ASSIGN(orderByDisplay, "Category 1 (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXCTG1")
+          @DTW_ASSIGN(orderByDisplay, "Category 1")
+      %endif
+  %elif (sequence == "itemExtCat2")
+      %if (orderBy == "IXCTG2")
+          @DTW_ASSIGN(orderBy, "IXCTG2 DESC")
+          @DTW_ASSIGN(orderByDisplay, "Category 2 (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXCTG2")
+          @DTW_ASSIGN(orderByDisplay, "Category 2")
+      %endif
+  %elif (sequence == "itemExtCat3")
+      %if (orderBy == "IXCTG3")
+          @DTW_ASSIGN(orderBy, "IXCTG3 DESC")
+          @DTW_ASSIGN(orderByDisplay, "Category 3 (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXCTG3")
+          @DTW_ASSIGN(orderByDisplay, "Category 3")
+      %endif
+  %elif (sequence == "itemExtCat4")
+      %if (orderBy == "IXCTG4")
+          @DTW_ASSIGN(orderBy, "IXCTG4 DESC")
+          @DTW_ASSIGN(orderByDisplay, "Category 4 (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXCTG4")
+          @DTW_ASSIGN(orderByDisplay, "Category 4")
+      %endif
+  %elif (sequence == "itemExtCat5")
+      %if (orderBy == "IXCTG5")
+          @DTW_ASSIGN(orderBy, "IXCTG5 DESC")
+          @DTW_ASSIGN(orderByDisplay, "Category 5 (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXCTG5")
+          @DTW_ASSIGN(orderByDisplay, "Category 5")
+      %endif
+  %elif (sequence == "itemExtAlph1")
+      %if (orderBy == "IXUXA1")
+          @DTW_ASSIGN(orderBy, "IXUXA1 DESC")
+          @DTW_ASSIGN(orderByDisplay, " $(itemExtAlph1) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXUXA1")
+          @DTW_ASSIGN(orderByDisplay, "Num $(itemExtAlph1)ber")
+      %endif
+  %elif (sequence == "itemExtAlph2")
+      %if (orderBy == "IXUXA2")
+          @DTW_ASSIGN(orderBy, "IXUXA2 DESC")
+          @DTW_ASSIGN(orderByDisplay, " $(itemExtAlph2) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXUXA2")
+          @DTW_ASSIGN(orderByDisplay, " $(itemExtAlph2)")
+      %endif
+  %elif (sequence == "itemExtAlph3")
+      %if (orderBy == "IXUXA3")
+          @DTW_ASSIGN(orderBy, "IXUXA3 DESC")
+          @DTW_ASSIGN(orderByDisplay, " $(itemExtAlph3) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXUXA3")
+          @DTW_ASSIGN(orderByDisplay, " $(itemExtAlph3)")
+      %endif
+  %elif (sequence == "itemExtAlph4")
+      %if (orderBy == "IXUXA4")
+          @DTW_ASSIGN(orderBy, "IXUXA4 DESC")
+          @DTW_ASSIGN(orderByDisplay, " $(itemExtAlph4) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXUXA4")
+          @DTW_ASSIGN(orderByDisplay, " $(itemExtAlph4)")
+      %endif
+  %elif (sequence == "itemExtAlph5")
+      %if (orderBy == "IXUXA5")
+          @DTW_ASSIGN(orderBy, "IXUXA5 DESC")
+          @DTW_ASSIGN(orderByDisplay, " $(itemExtAlph5) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXUXA5")
+          @DTW_ASSIGN(orderByDisplay, " $(itemExtAlph5)")
+      %endif
+  %elif (sequence == "itemExtNum1")
+      %if (orderBy == "IXUXN1")
+          @DTW_ASSIGN(orderBy, "IXUXN1 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtNum1) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXUXN1")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtNum1)")
+      %endif
+  %elif (sequence == "itemExtNum2")
+      %if (orderBy == "IXUXN2")
+          @DTW_ASSIGN(orderBy, "IXUXN2 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtNum2) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXUXN2")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtNum2)")
+      %endif
+  %elif (sequence == "itemExtNum3")
+      %if (orderBy == "IXUXN3")
+          @DTW_ASSIGN(orderBy, "IXUXN3 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtNum3) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXUXN3")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtNum3)")
+      %endif
+  %elif (sequence == "itemExtNum4")
+      %if (orderBy == "IXUXN4")
+          @DTW_ASSIGN(orderBy, "IXUXN4 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtNum4) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXUXN4")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtNum4)")
+      %endif
+  %elif (sequence == "itemExtNum5")
+      %if (orderBy == "IXUXN5")
+          @DTW_ASSIGN(orderBy, "IXUXN5 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtNum5) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IXUXN5")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtNum5)")
+      %endif
+  %elif (sequence == "screenAlpha1")
+      %if (orderBy == "IMUDA1")
+          @DTW_ASSIGN(orderBy, "IMUDA1 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIIAS1) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMUDA1")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIIAS1)")
+      %endif
+  %elif (sequence == "screenAlpha2")
+      %if (orderBy == "IMUDA2")
+          @DTW_ASSIGN(orderBy, "IMUDA2 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIIAS2) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMUDA2")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIIAS2)")
+      %endif
+  %elif (sequence == "screenAlpha3")
+      %if (orderBy == "IMUDA3")
+          @DTW_ASSIGN(orderBy, "IMUDA3 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIIAS3) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMUDA3")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIIAS3)")
+      %endif
+  %elif (sequence == "screenAlpha4")
+      %if (orderBy == "IMUDA4")
+          @DTW_ASSIGN(orderBy, "IMUDA4 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIIAS4) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMUDA4")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIIAS4)")
+      %endif
+  %elif (sequence == "screenAlpha5")
+      %if (orderBy == "IMUDA5")
+          @DTW_ASSIGN(orderBy, "IMUDA5 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIIAS5) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMUDA5")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIIAS5)")
+      %endif
+  %elif (sequence == "screenNumeric1")
+      %if (orderBy == "IMUDN1")
+          @DTW_ASSIGN(orderBy, "IMUDN1 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIINS1) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMUDN1")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIINS1)")
+      %endif
+  %elif (sequence == "screenNumeric2")
+      %if (orderBy == "IMUDN2")
+          @DTW_ASSIGN(orderBy, "IMUDN2 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIINS2) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMUDN2")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIINS2)")
+      %endif
+  %elif (sequence == "screenNumeric3")
+      %if (orderBy == "IMUDN3")
+          @DTW_ASSIGN(orderBy, "IMUDN3 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIINS3) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMUDN3")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIINS3)")
+      %endif
+  %elif (sequence == "screenNumeric4")
+      %if (orderBy == "IMUDN4")
+          @DTW_ASSIGN(orderBy, "IMUDN4 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIINS4) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMUDN4")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIINS4)")
+      %endif
+  %elif (sequence == "screenNumeric5")
+      %if (orderBy == "IMUDN5")
+          @DTW_ASSIGN(orderBy, "IMUDN5 DESC")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIINS5) (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMUDN5")
+          @DTW_ASSIGN(orderByDisplay, "$(V_CIINS5)")
+      %endif
+  %elif (sequence == "ProductGroup")
+      %if (orderBy == "IWPGRP")
+          @DTW_ASSIGN(orderBy, "IWPGRP DESC")
+          @DTW_ASSIGN(orderByDisplay, "Product Group (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IWPGRP")
+          @DTW_ASSIGN(orderByDisplay, "Product Group")
+      %endif
+  %elif (sequence == "InventoryType")
+      %if (orderBy == "IMITC")
+          @DTW_ASSIGN(orderBy, "IMITC DESC")
+          @DTW_ASSIGN(orderByDisplay, "Inventory Type (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMITC")
+          @DTW_ASSIGN(orderByDisplay, "Inventory Type")
+      %endif
+  %elif (sequence == "ProductClass")
+      %if (orderBy == "IMPCLS")
+          @DTW_ASSIGN(orderBy, "IMPCLS DESC")
+          @DTW_ASSIGN(orderByDisplay, "Product Class (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMPCLS")
+          @DTW_ASSIGN(orderByDisplay, "Product Class")
+      %endif
+  %elif (sequence == "WarehouseNumber")
+      %if (orderBy == "IWWHS")
+          @DTW_ASSIGN(orderBy, "IWWHS DESC")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse Number")
+      %endif
+  %elif (sequence == "TotalCnt")
+      %if (orderBy == "SUMCNT")
+          @DTW_ASSIGN(orderBy, "SUMCNT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Total Count (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "SUMCNT")
+          @DTW_ASSIGN(orderByDisplay, "Total Count")
+      %endif
+  %elif (sequence == "ItemNumber")
+      %if (orderBy == "IMITEM")
+          @DTW_ASSIGN(orderBy, "IMITEM DESC")
+          @DTW_ASSIGN(orderByDisplay, " Item Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMITEM")
+          @DTW_ASSIGN(orderByDisplay, "Item Number")
+      %endif
+  %elif (sequence == "ItemDesc")
+      %if (orderBy == "IMIMDS")
+          @DTW_ASSIGN(orderBy, "IMIMDS DESC")
+          @DTW_ASSIGN(orderByDisplay, "Item Description (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IMIMDS")
+          @DTW_ASSIGN(orderByDisplay, "Item Description")
+      %endif
+  %endif
+	
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}

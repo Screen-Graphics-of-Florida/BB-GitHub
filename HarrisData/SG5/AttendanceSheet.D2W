@@ -1,0 +1,475 @@
+%{
+*********************************************************************
+* Copr 1979 2004 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  				                     *
+*  Job: Attendance Review                                           *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "BrowserType.icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+%INCLUDE "storedprocedurevariables.icl"
+
+%Define
+  {	
+    	page_title 	        = "Attendance Sheet"
+       d2wName                 = "AttendanceSheet.d2w"
+       d2wVarBase              = "$(genericVarBase)"
+    	DATABASE                = "*LOCAL"
+    	DTW_DEFAULT_REPORT      = "NO"
+       START_ROW_NUM           = "1"
+	DTW_SET_TOTAL_ROWS 	= "YES"
+	dspMaxRows              = "1000"
+	prtMaxRows              = "1000"
+	currentPage 		= "0"
+	rowCount		= "0"
+	rowIndex		= "1"
+	rowIndexNext		= "1"
+	totalPages		= "0"
+	wildCardSearch          = ""
+	noMsg                   = ""
+
+	etDate		= "0000101"
+	dateNow		= "0000101"
+       empHold         = "0"
+       empCount        = "0"
+       excHold         = ""
+       excDesc         = ""
+       excComment      = ""
+       clockStart      = "&nbsp;"
+       clockEnd        = "&nbsp;"
+       clockLunch      = "&nbsp;"
+       clockReturn     = "&nbsp;"
+       eventDesc       = ""
+       rowsCol1        = "0"
+
+  %}
+
+
+%MACRO_FUNCTION iconException (INOUT icon, desc, comment)
+  {
+       %if (icon == "SI")
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smSick.gif"" alt=""$(desc)")
+       %elif (icon == "VC")
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smVaca.gif"" alt=""$(desc)")
+       %elif (icon == "NW")
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smGone.gif"" alt=""$(desc)")
+       %elif (icon == "OP")
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smHere.gif"" alt=""$(desc)")
+       %elif (icon == "OL")
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smHere.gif"" alt=""$(desc)")
+       %elif (icon == "OC")
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smRoad.gif"" alt=""$(desc)")
+       %elif (icon == "OT")
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smRoad.gif"" alt=""$(desc)")
+       %elif (icon == "OB")
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smRoad.gif"" alt=""$(desc)")
+       %elif (icon == "Lunch")
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smLunch.gif"" alt=""Go To Lunch")
+       %elif (icon == "LW")
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smLW.gif"" alt=""Left - Will Return")
+       %else
+         @dtw_assign(icon, "<img border=""$(imageBorder)"" src=""$(homeURL)$(homePath)Icons/smBlank16x16.gif"" alt=""")
+       %endif
+
+       %if (comment != "")
+         @dtw_concat(icon, " [$(comment)]", icon)
+       %endif
+
+       @dtw_concat(icon, """>", icon)
+  %}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL)
+  {
+       @dtw_replace(workURL, "@@wildCardSearch", "@dtw_rurlescseq(wildCardSearch)", "1", "a", workURL)
+  %}
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL)
+  {
+      %INCLUDE "doctype.icl"
+
+      %if(refresh != "")
+      <!-- Auto Refresh at predetermined intervals -->
+      <meta http-equiv="refresh" content="$(refresh)">
+      %endif
+
+      <html>
+          <head>
+              %INCLUDE "head.icl"
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          @dtw_assign(pageID, "ATTENDANCESHEET")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+
+                          @dtw_date("S", dateNow)
+                          @dtw_substr(dateNow, "3", "6", dateNow)
+                          @dtw_concat("1", dateNow, dateNow)
+
+                          @dtw_assign(stmtSQL, "")
+                          @dtw_concat(stmtSQL, "SELECT EMCOMP, EMFACL, EMLNAM, EMFNAM, EMEMPL, EHDATE, EHTRAN, EHSTRT, EHSTOP, CDCODE, T2.EVDESC AS EVDESC2, T3.EVDESC, CDCMNT ", stmtSQL)
+                          @dtw_concat(stmtSQL, " FROM HREMPL LEFT OUTER JOIN ", stmtSQL)
+                          @dtw_concat(stmtSQL, " (SELECT * FROM HDMECH WHERE F_MAKEDATE(EHDATE) = CURDATE( )", stmtSQL)
+                          @dtw_concat(stmtSQL, " ) T1 ", stmtSQL)
+                          @dtw_concat(stmtSQL, "  ON (EMCOMP = T1.EHCO AND EMFACL = T1.EHFAC AND EMEMPL = T1.EHEMP) ", stmtSQL)
+                          @dtw_concat(stmtSQL, " LEFT OUTER JOIN ", stmtSQL)
+                          @dtw_concat(stmtSQL, " (SELECT HDCALD.*, HDCALM.*, EVDESC FROM HDCALD, HDCALM, HDEVNT WHERE CDCALN = CMCALN AND CDCODE = EVCODE AND EVTYPE = 'E' AND F_MAKEDATE(CDCYMD) = CURDATE( )", stmtSQL)
+                          @dtw_concat(stmtSQL, " ) T2 ", stmtSQL)
+                          @dtw_concat(stmtSQL, "  ON (EMCOMP = T2.CMCO# AND EMFACL = T2.CMFAC# AND EMEMPL = T2.CMEMP#) ", stmtSQL)
+                          @dtw_concat(stmtSQL, " LEFT OUTER JOIN ", stmtSQL)
+                          @dtw_concat(stmtSQL, " (SELECT * FROM HDEVNT WHERE EVTYPE = 'I') T3 ", stmtSQL)
+                          @dtw_concat(stmtSQL, "  ON (T1.EHDTRC = T3.EVCODE) ", stmtSQL)
+                          @dtw_concat(stmtSQL, " WHERE EMPEAC <> 'D'", stmtSQL)
+                          @dtw_concat(stmtSQL, " $(wildCardSearch)", stmtSQL)
+                          @dtw_concat(stmtSQL, " ORDER BY EMCOMP, EMFACL, EMLNAM, EMFNAM, EMEMPL, T1.EHTRAN ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Attendance_Query(profileHandle, dataBaseID, stmtSQL)
+
+                          @dtw_assign(stmtSQL, "")
+                          @dtw_concat(stmtSQL, "SELECT HDCALD.*, EMFNAM, EMLNAM, EVDESC ", stmtSQL)
+                          @dtw_concat(stmtSQL, " FROM HDCALD, HDCALM, HDEVNT, HREMPL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " WHERE CDCALN = CMCALN AND CDCODE = EVCODE AND EVTYPE = 'E' ", stmtSQL)
+                          @dtw_concat(stmtSQL, " AND CMCO# = EMCOMP AND CMFAC# = EMFACL AND CMEMP# = EMEMPL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " AND CDCYMD >= $(dateNow)", stmtSQL)
+                          @dtw_concat(stmtSQL, " $(wildCardSearch)", stmtSQL)
+                          @dtw_concat(stmtSQL, " ORDER BY CDCYMD, EMLNAM, EMFNAM ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Exception_Query(profileHandle, dataBaseID, stmtSQL)
+
+
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %}
+
+%FUNCTION(dtw_sql) Attendance_Query (IN  CHAR(64) profileHandle,
+				          CHAR(2)   dataBaseID,
+                                         CHAR(32000) stmtSQL)
+  {CALL $(pgmLibrary)HSYSQL_W
+      %REPORT{
+          @dtw_assign(hold_TOTAL_ROWS, TOTAL_ROWS)
+          @dtw_divide(hold_TOTAL_ROWS, "2", rowsCol1)
+	   @DTW_FORMAT(rowsCol1, "4", "0", rowsCol1)
+
+          <h1> $(page_title)</h1>
+
+          $(hrTagAttr)
+
+          <table $(contentTable)>
+            <tr>
+              <td>
+                @dtw_assign(dateDisplay, dateNow)
+                @DateFromCYMD(dateDisplay)
+                <h2> Sign In Sheet for $(dateDisplay) @dtw_rTime("C")</h2>
+              </td>
+
+%{BEG: Auto-refresh selection %}
+
+              <td style="font-size: 9pt; text-align: right;">
+                Refresh:
+                <a href="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(genericVarBase)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;refresh=90"
+                   title="click here to refresh every 90 seconds">90</a> |
+                <a href="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(genericVarBase)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;refresh=60"
+                   title="click here to refresh every 60 seconds">60</a> |
+                <a href="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(genericVarBase)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;refresh=30"
+                   title="click here to refresh every 30 seconds">30</a> |
+                <a href="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(genericVarBase)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;refresh="
+                   title="click here to turn auto-refresh off">Off</a>
+              </td>
+
+%{END: Auto-refresh selection %}
+
+            </tr>
+          </table>
+
+          %{Start two column table %}
+          <table border="$(baseTableBorder)" cellpadding="@dtw_radd(baseCellPadding, "5")" cellspacing="@dtw_radd(baseCellSpacing, "5")">
+          <tr><td valign="top">
+
+          <table $(contentTable)>
+
+            <tr>
+              <th class="colhdr">&nbsp;</th>
+              <th class="colhdr">Employee</th>
+              <th class="colhdr">In</th>
+              <th class="colhdr">Lunch</th>
+              <th class="colhdr">Return</th>
+              <th class="colhdr">Out</th>
+            </tr>
+
+          %ROW{
+
+            %if (V_EMEMPL != empHold)     %{New employee %}
+
+              %if (empHold != "0" && empHold != "99999")        %{Not first row, not default row %}
+                %INCLUDE "SetRowClass.icl"
+
+                %if (clockStart != "&nbsp;")
+                    @EditHrsMinNoSec(clockStart)
+                %endif
+
+                %if (clockLunch != "&nbsp;")
+                    @EditHrsMinNoSec(clockLunch)
+                %endif
+
+		 %if (clockReturn != "&nbsp;")
+                   @EditHrsMinNoSec(clockReturn)
+                %endif
+
+                %if (clockEnd != "&nbsp;")
+                   @EditHrsMinNoSec(clockEnd)
+                %endif
+
+                %if (clockLunch != "&nbsp;" && clockReturn == "&nbsp;")
+                  @dtw_assign(excHold, "Lunch")
+                %endif
+
+                @iconException(excHold, excDesc, excComment)
+                  <td class="colcode" style="background-color: $(backGround);"> $(excHold) </td>                                      	
+                  <td class="colalph" style="background-color: $(backGround);"> $(nameDisplay) </td>                                      	
+                  <td class="colnmbr" style="background-color: $(backGround);"> $(clockStart) </td>
+                  <td title="$(eventDesc)" class="colnmbr" style="background-color: $(backGround);"> $(clockLunch) </td>
+                  <td title="$(eventDesc)" class="colnmbr" style="background-color: $(backGround);"> $(clockReturn) </td>                                      	
+                  <td class="colnmbr" style="background-color: $(backGround);"> $(clockEnd) </td>                                      	
+                </tr>
+                @dtw_add(empCount, "1", empCount)
+                %if (@DTW_rFORMAT(empCount, "4", "0") == rowsCol1)
+                  </table></td>
+
+                  <td valign="top">
+                  <table $(contentTable)>
+                    <tr>
+                      <th class="colhdr">&nbsp;</th>
+                      <th class="colhdr">Employee</th>
+                      <th class="colhdr">In</th>
+                      <th class="colhdr">Lunch</th>
+                      <th class="colhdr">Return</th>
+                      <th class="colhdr">Out</th>
+                    </tr>
+
+                    @dtw_divrem(rowsCol1, "2", rowsOdd)                         %{Adjust row color if odd # of rows %}
+                    %if (rowsOdd == "1")
+                      %INCLUDE "SetRowClass.icl"
+                    %endif
+
+                %endif
+
+              %endif
+
+              @dtw_assign(empHold, V_EMEMPL)
+              @dtw_assign(excHold, V_CDCODE)
+              @dtw_assign(excDesc, V_EVDESC2)
+              @dtw_assign(excComment, V_CDCMNT)
+              @dtw_assign(clockStart, "&nbsp;")
+              @dtw_assign(clockEnd, "&nbsp;")
+              @dtw_assign(clockLunch, "&nbsp;")
+              @dtw_assign(clockReturn, "&nbsp;")
+
+              @dtw_assign(nameDisplay, V_EMFNAM)
+              @dtw_strip(nameDisplay, nameDisplay)
+              @dtw_concat(nameDisplay, " ", nameDisplay)
+              @dtw_concat(nameDisplay, V_EMLNAM, nameDisplay)
+
+            %endif
+
+            %if (V_EHTRAN == "10")
+              @dtw_assign(clockStart, V_EHSTRT)
+            %elif (V_EHTRAN == "15")
+              @dtw_assign(clockStart, V_EHSTRT)
+              @dtw_assign(clockEnd, V_EHSTOP)
+            %elif (V_EHTRAN == "50")
+              @dtw_assign(clockLunch, V_EHSTRT)
+              @dtw_assign(eventDesc, V_EVDESC)
+            %elif (V_EHTRAN == "55")
+              @dtw_assign(clockLunch, V_EHSTRT)
+              @dtw_assign(clockReturn, V_EHSTOP)
+              @dtw_assign(eventDesc, V_EVDESC)
+            %endif
+
+          %}
+
+%{ Write last employee %}
+
+                %INCLUDE "SetRowClass.icl"
+		 %if (clockStart != "&nbsp;")
+                    @EditHrsMinNoSec(clockStart)
+                %endif
+
+                %if (clockLunch != "&nbsp;")
+                    @EditHrsMinNoSec(clockLunch)
+                %endif
+
+		 %if (clockReturn != "&nbsp;")
+                   @EditHrsMinNoSec(clockReturn)
+                %endif
+
+                %if (clockEnd != "&nbsp;")
+                   @EditHrsMinNoSec(clockEnd)
+                %endif
+
+                %if (clockLunch != "&nbsp;" && clockReturn == "&nbsp;")
+                  @dtw_assign(excHold, "Lunch")
+                %endif
+
+                @iconException(excHold, excDesc, excComment)
+                <tr>
+                  <td class="colcode" style="background-color: $(backGround);"> $(excHold) </td>                                      	
+                  <td class="colalph" style="background-color: $(backGround);"> $(nameDisplay) </td>                                      	
+                  <td class="colnmbr" style="background-color: $(backGround);"> $(clockStart) </td>
+                  <td title="$(eventDesc)" class="colnmbr" style="background-color: $(backGround);"> $(clockLunch) </td>
+                  <td title="$(eventDesc)" class="colnmbr" style="background-color: $(backGround);"> $(clockReturn) </td>                                      	
+                  <td class="colnmbr" style="background-color: $(backGround);"> $(clockEnd) </td>                                      	
+                </tr>
+
+	  </table>
+
+          </td></tr></table> %{Close two column table %}
+
+          <br>
+      %}
+
+  %}
+
+%FUNCTION(dtw_sql) Exception_Query (IN  CHAR(64) profileHandle,
+				        CHAR(2)   dataBaseID,
+                                       CHAR(32000) stmtSQL)
+  {CALL $(pgmLibrary)HSYSQL_W
+      %REPORT{
+          $(hrTagAttr)
+          <h2> Out of Office / Exceptions </h2>
+
+
+          <table $(contentTable)>
+            <tr>
+              <th class="colhdr">&nbsp;</th>
+              <th class="colhdr">EmpNo</th>
+              <th class="colhdr">From</th>
+              <th class="colhdr">To</th>
+              <th class="colhdr">Code</th>
+              <th class="colhdr">Desc</th>
+              <th class="colhdr">Comment</th>
+            </tr>
+
+          %ROW{
+            %INCLUDE "SetRowClass.icl"
+            %if (V_CDCYMD != etDate)
+              @dtw_assign(etDate, V_CDCYMD)
+              %if(dateNow==V_CDCYMD)
+                @dtw_assign(flagToday, "1")
+              %else
+                @dtw_assign(flagToday, "0")
+              %endif
+              @DateFromCYMD(V_CDCYMD)
+              <tr>
+		<td colspan="6" class="gensubgrp1" style="text-align: left; %if(flagToday=="1") background-color: #FFFF00; %endif ">
+                  %if (flagToday == "1")
+                    Today
+                  %elif (V_CDDYCD == "S")
+		    Sunday
+                  %elif (V_CDDYCD == "M")
+		    Monday
+                  %elif (V_CDDYCD == "T")
+		    Tuesday
+                  %elif (V_CDDYCD == "W")
+		    Wednesday
+                  %elif (V_CDDYCD == "H")
+		    Thursday
+                  %elif (V_CDDYCD == "F")
+		    Friday
+                  %elif (V_CDDYCD == "A")
+		    Saturday
+                  %endif
+                </td>
+                <td class="gensubgrp1" style="text-align: right; %if(flagToday=="1") background-color: #FFFF00; %endif "> $(V_CDCYMD) </td>                                      	
+              </tr>
+            %endif
+
+            @dtw_assign(nameDisplay, V_EMFNAM)
+            @dtw_strip(nameDisplay, nameDisplay)
+            @dtw_concat(nameDisplay, " ", nameDisplay)
+            @dtw_concat(nameDisplay, V_EMLNAM, nameDisplay)
+            @dtw_assign(excHold, V_CDCODE)
+            @dtw_assign(excDesc, V_EVDESC)
+            @dtw_assign(excComment, "")
+            @iconException(excHold, excDesc, excComment)
+
+            <tr>
+              <td class="colcode" style="background-color: $(backGround);"> $(excHold) </td>                                      	
+              <td class="colalph" style="background-color: $(backGround);"> $(nameDisplay) </td>                                      	
+              <td class="colnmbr" style="background-color: $(backGround);"> $(V_CDSTRT) </td>
+              <td class="colnmbr" style="background-color: $(backGround);"> $(V_CDSTOP) </td>
+              <td class="colcode" style="background-color: $(backGround);"> $(V_CDCODE) </td>                                      	
+              <td class="colalph" style="background-color: $(backGround);"> $(V_EVDESC) </td>                                      	
+              <td class="colalph" style="background-color: $(backGround);"> $(V_CDCMNT) </td>                                      	
+            </tr>
+          %}
+	  </table>
+              $(hrTagAttr)
+              %INCLUDE "Copyright.icl"
+      %}
+  %}
+
+%FUNCTION(dtw_sql) Date_Query (IN  CHAR(64) profileHandle,
+				        CHAR(2)   dataBaseID,
+                                       CHAR(32000) stmtSQL)
+  {CALL $(pgmLibrary)HSYSQL_W
+      %REPORT{
+          $(hrTagAttr)
+          <h2> Date  </h2>
+
+
+          <table $(contentTable)>
+            <tr>
+
+              <th class="colhdr"> Date</th>
+
+            </tr>
+
+          %ROW{
+            %INCLUDE "SetRowClass.icl"
+            <tr>
+              <td class="coldate" style="background-color: $(backGround);"> $(V_newDate)</td>                                      	
+            </tr>
+          %}
+	  </table>
+              $(hrTagAttr)
+              %INCLUDE "Copyright.icl"
+      %}
+  %}
+
+%HTML(REPORT)
+  {
+      %INCLUDE "setLibraryList.icl"
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+      @Set_SQL(stmtSQL)
+ %}
+
+%HTML(INPUT)
+  {
+      %INCLUDE "setLibraryList.icl"
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      @Set_SQL(stmtSQL)
+  %}
+

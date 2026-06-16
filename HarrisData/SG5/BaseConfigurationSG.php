@@ -1,0 +1,34 @@
+<?php
+$allowMixedCasePasswords= (string) "N";
+$altBaseVar= (string) "BaseConfigurationSG.icl";
+$anonymousUser= (string) "EIPDEFAULT";
+$anonymousWelcomePage= (string) "AnonymousWelcome.php";
+$baseExportFile= (string) "BaseExport.php";
+$cGIPath= (string) "/harris-CGI/";
+$dataBaseID= (string) "SG";
+$libraryList= array("SGHDSDATA","HDSMODPGM","HDSSTDPGM","SGPGM","SG","QTEMP","QGPL","INFOPRINT","HSSF","RPGMAIL","PROITRG","CURBSTONE","SEQUEL","ROBOTLIB","ZENDSVR");
+$chgLibraryList= (string) "CHGLIBL LIBL( SGHDSDATA HDSMODPGM HDSSTDPGM SGPGM SG QTEMP QGPL INFOPRINT HSSF RPGMAIL PROITRG CURBSTONE SEQUEL ROBOTLIB ZENDSVR)";
+$description= (string) "Screen Graphics Information Portal";
+$distinctSQL= (string) "";
+$fileSQL= (string) "";
+$helpPath= (string) "/HarrisData/EIP/help/";
+$homePath= (string) "/HarrisData/EIP/";
+$homeURL= (string) "https://portal.screen-graphics.com:5601";
+$imagePath= (string) "/HarrisData/EIP/icon/";
+$pgmLibrary= (string) "HDSSTDPGM";
+$phpPath= (string) "/";
+$selectSQL= (string) "";
+$signonURL= (string) "https://portal.screen-graphics.com:5601/eip";
+$sql_Record_Count= (string) "";
+$sysDateFormat= (string) "MDY";
+$title= (string) "EIP";
+$uploadDirectory= (string) "Attachments/";
+$uv_Sql= (string) "";
+$webRegCurFile= (string) "ACTIVE";
+$webRegLibrary= (string) "WEBREG";
+$webRegPath= (string) "/qsys.lib/WEBREG.lib/";
+$xmlPath= (string) "/NetData/XML/";
+require_once 'BaseFormat.php';
+require_once 'BaseIcons.php';
+require_once 'BaseThemesSG.php';
+?>

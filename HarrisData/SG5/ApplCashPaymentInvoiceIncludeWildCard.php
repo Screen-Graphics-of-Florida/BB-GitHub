@@ -1,0 +1,29 @@
+<?php
+$returnValue=Range_WildCard("IVFRT", "Freight", $_POST['frFreight'], $_POST['toFreight'], "", $_POST['operFreight'], "N");
+$returnValue=Range_WildCard("IVSTAX", "Tax", $_POST['frTax'], $_POST['toTax'], "", $_POST['operTax'], "N");
+$returnValue=Range_WildCard("IVSPC", "Special Charge", $_POST['frSpecCharge'], $_POST['toSpecCharge'], "", $_POST['operSpecCharge'], "N");
+$returnValue=Range_WildCard("IVBLTO", "Bill-To", $_POST['frBillTo'], $_POST['toBillTo'], "", $_POST['operBillTo'], "N");
+$returnValue=Build_WildCard("coalesce(aa.CMCNA1U, ' ')", "Bill-To Name", $_POST['srchBillToName'], "U", $_POST['operBillToName'], "A");
+$returnValue=Build_WildCard("IVTRMS", "Terms", $_POST['srchTerms'], "U", $_POST['operTerms'], "A");
+$returnValue=Build_WildCard("coalesce(Upper(TMCTDS), ' ')", "Terms Description", $_POST['srchTermsDesc'], "U", $_POST['operTermsDesc'], "A");
+$returnValue=Range_WildCard("IVDUED", "Due Date", $_POST['frDueDate'], $_POST['toDueDate'], "", $_POST['operDueDate'], "I");
+$returnValue=Range_WildCard("IVIVDT", "Invoice Date", $_POST['frInvoiceDate'], $_POST['toInvoiceDate'], "", $_POST['operInvoiceDate'], "D");
+$returnValue=Build_WildCard("IVARPO", "Reference Number", $_POST['srchPONumber'], "U", $_POST['operPONumber'], "A");
+$returnValue=Range_WildCard("IVORD", "Order Number", $_POST['frOEOrder'], $_POST['toOEOrder'], "", $_POST['operOEOrder'], "N");
+$returnValue=Range_WildCard("IVORDT", "Order Date", $_POST['frOEDate'], $_POST['toOEDate'], "", $_POST['operOEDate'], "D");
+$returnValue=Range_WildCard("IVORLN", "Line Number", $_POST['frOELine'], $_POST['toOELine'], "", $_POST['operOELine'], "N");
+$returnValue=Range_WildCard("IVPLT", "Plant", $_POST['frPlant'], $_POST['toPlant'], "", $_POST['operPlant'], "N");
+$returnValue=Build_WildCard("coalesce(Upper(PLNAME), ' ')", "Plant Name", $_POST['srchPlantName'], "U", $_POST['operPlantName'], "A");
+$returnValue=Build_WildCard("IVMORD", "Mfg Order", $_POST['srchMfgOrder'], "U", $_POST['operMfgOrder'], "A");
+$returnValue=Range_WildCard("IVIVAM", "Invoice Amount", $_POST['frInvoiceAmount'], $_POST['toInvoiceAmount'], "", $_POST['operInvoiceAmount'], "N");
+$returnValue=Range_WildCard("IVLOC", "Location", $_POST['frLocation'], $_POST['toLocation'], "", $_POST['operLocation'], "N");
+$returnValue=Build_WildCard("coalesce(Upper(LOLNA1), ' ')", "Location Name", $_POST['srchLocationName'], "U", $_POST['operLocationName'], "A");
+$returnValue=Range_WildCard("IVSLSM", "Salesman", $_POST['frSalesman'], $_POST['toSalesman'], "", $_POST['operSalesman'], "N");
+$returnValue=Build_WildCard("coalesce(Upper(SMSNA1), ' ')", "Salesman Name", $_POST['srchSalesmanName'], "U", $_POST['operSalesmanName'], "A");
+$returnValue=Range_WildCard("IVCUST", "Ship-To", $_POST['frShipTo'], $_POST['toShipTo'], "", $_POST['operShipTo'], "N");
+$returnValue=Build_WildCard("coalesce(bb.CMCNA1U, ' ')", "Ship-To Name", $_POST['srchShipToName'], "U", $_POST['operShipToName'], "A");
+$returnValue=Range_WildCard("IVPSDT", "Last Posted Date", $_POST['frLastPostedDate'], $_POST['toLastPostedDate'], "", $_POST['operLastPostedDate'], "D");
+$returnValue=Build_WildCard("IVSBCD", "Created By Payment Code", $_POST['srchSubCode'], "U", $_POST['operSubCode'], "A");
+$returnValue=Build_WildCard("coalesce(PSDESCU, ' ')", "Created By Payment Code Description", $_POST['srchSubCodeDesc'], "U", $_POST['operSubCodeDesc'], "A");
+$returnValue=Build_WildCard("IVIVCD", "Invoice Code", $_POST['srchInvoiceCode'], "U", $_POST['operInvoiceCode'], "A");
+?>

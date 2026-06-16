@@ -1,0 +1,282 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Billing - Print Invoices                                    *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Print Invoices"
+  d2wName                 = "BillingPrintInvoices.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;backHome=@dtw_rurlescseq(backHome)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+  advanceSearch           = "N"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function warnInProcess(text) {return confirm("Warning - Batch is currently in process" + "\n" + "\n" + text);}
+              function warnReprint(text) {return confirm("Warning - You have selected to Reprint invoices" + "\n" + "\n" + text);}
+              %INCLUDE "Menu.js"
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchBatch, 4, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "BILLINGPRINTINV")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " OEBIPB ", fileSQL)
+                      @dtw_concat(selectSQL, "(BBSTAT='E' and BBPROC<>'Y') or BBSTAT='P' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Print_Invoices_Selection(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Print_Invoices_Selection (IN CHAR(64)    profileHandle,
+                                                CHAR(2)     dataBaseID,
+                                                CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+         <table $(contentTable)>
+             <colgroup>
+                 <col width="80%">
+                 <col width="15%">
+             <tr><td><h1>$(page_title)</h1></td>
+                 %if (formatToPrint != "Y")
+                     <td class="toolbar">
+                         %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                             <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                         %endif
+                         %INCLUDE "FormatToPrint.icl"
+                         %INCLUDE "HelpPage.icl"
+                     </td>
+                 %endif
+             </tr>
+         </table>
+         %INCLUDE "ConfMessageDisplay.icl"
+	
+         $(hrTagAttr)
+
+         %if (formatToPrint != "Y")
+             <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+                 <table $(quickSearchTable)>
+                     <tr><th class="colhdr">Batch</th>
+                     </tr>
+                     <tr><td class="inputnmbr"><input type="text" name="srchBatch" size="8" maxlength="4">
+                             <input type="hidden" name="operBatch" value=">=">
+                         </td>
+                         <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                     </tr>
+                 </table>
+                 <script TYPE="text/javascript">
+                     document.Search.srchBatch.focus();
+                 </script>
+             </form>
+
+             %INCLUDE "WildCardPage.icl"
+          %endif
+	   		
+          <table $(contentTable)>
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("BBBTCH", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Batch" title="Sequence By Batch Number">Batch<br>Number</a></th>
+                  @OrderBy_Sort("BBSTAT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Status" title="Sequence By Status, Batch Number">Status</a></th>
+                  @OrderBy_Sort("BBSTDT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ShipThru" title="Sequence By Shipments Through, Batch Number">Shipments<br>Through</a></th>
+                  @OrderBy_Sort("BBRODT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=RecurThru" title="Sequence By Recurring Through, Batch Number">Recurring<br>Through</a></th>
+                  @OrderBy_Sort("BBIVDT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=InvDate" title="Sequence By Invoice Date, Batch Number">Invoice<br>Date</a></th>
+                  <th class="colhdr">Locations</th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+
+              %ROW{
+                 %INCLUDE "SetRowClass.icl"
+
+                 @Format_Date(V_BBSTDT, "D", F_BBSTDT)
+                 @Format_Date(V_BBRODT, "D", F_BBRODT)
+                 @Format_Date(V_BBIVDT, "D", F_BBIVDT)
+                 %if (V_BBSTAT=="E")
+                     @dtw_assign(status, "Edited")
+                 %elif (V_BBSTAT=="P" && V_BBPROC=="Y")
+                     @dtw_assign(status, "Print In Process")
+                 %elif (V_BBSTAT=="P")
+                     @dtw_assign(status, "Printed")
+                 %endif
+                 @Format_Confirm_Desc("Batch Number", $(V_BBBTCH), "", "", "", "", confirmDesc)
+
+                 <tr class="$(rowClass)">
+                     <td class="colnmbr">$(V_BBBTCH)</td>
+                     <td class="colalph">
+                         %if (V_BBSTAT=="E")
+                             <a href="$(homeURL)$(cGIPath)BillingPrintInvoicesSelect.d2w/REPORT$(d2wVarBase)&amp;batchNumber=@dtw_rurlescseq(V_BBBTCH)&amp;shipThru=@dtw_rurlescseq(V_BBSTDT)&amp;recurThru=@dtw_rurlescseq(V_BBRODT)&amp;invDate=@dtw_rurlescseq(V_BBIVDT)&amp;fromLoc=@dtw_rurlescseq(V_BBFLOC)&amp;toLoc=@dtw_rurlescseq(V_BBTLOC)" title="Select Batch">$(status)</a>
+                         %elif (V_BBSTAT=="P" && V_BBPROC=="Y")
+                             <a onClick="return warnInProcess('$(confirmDesc)')" href="$(homeURL)$(cGIPath)BillingPrintInvoicesSelect.d2w/REPORT$(d2wVarBase)&amp;batchNumber=@dtw_rurlescseq(V_BBBTCH)&amp;shipThru=@dtw_rurlescseq(V_BBSTDT)&amp;recurThru=@dtw_rurlescseq(V_BBRODT)&amp;invDate=@dtw_rurlescseq(V_BBIVDT)&amp;fromLoc=@dtw_rurlescseq(V_BBFLOC)&amp;toLoc=@dtw_rurlescseq(V_BBTLOC)" title="Select Batch">$(status)</a>
+                         %elif (V_BBSTAT=="P")
+                             <a onClick="return warnReprint('$(confirmDesc)')" href="$(homeURL)$(cGIPath)BillingPrintInvoicesSelect.d2w/REPORT$(d2wVarBase)&amp;batchNumber=@dtw_rurlescseq(V_BBBTCH)&amp;shipThru=@dtw_rurlescseq(V_BBSTDT)&amp;recurThru=@dtw_rurlescseq(V_BBRODT)&amp;invDate=@dtw_rurlescseq(V_BBIVDT)&amp;fromLoc=@dtw_rurlescseq(V_BBFLOC)&amp;toLoc=@dtw_rurlescseq(V_BBTLOC)&amp;reprintInvoice=Y" title="Select Batch">$(status)</a>
+                         %endif
+                     </td>
+                     <td class="coldate">$(F_BBSTDT)</td>
+                     <td class="coldate">$(F_BBRODT)</td>
+                     <td class="coldate">$(F_BBIVDT)</td>
+                     <td class="colcode">
+                         %if (V_BBFLOC=="1" && V_BBTLOC=="999")
+                             All
+                         %else
+                             $(V_BBFLOC) - $(V_BBTLOC)
+                         %endif
+                     </td>
+                 </tr>
+              %}
+          </table>
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+          $(hrTagAttr)
+          %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT)
+{
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "BBBTCH")
+          @DTW_ASSIGN(orderByDisplay, "Batch Number")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT)
+{
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY)
+{
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Batch")
+      %if (orderBy == "BBBTCH")
+          @DTW_ASSIGN(orderBy, "BBBTCH DESC")
+          @DTW_ASSIGN(orderByDisplay, "Batch Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "BBBTCH")
+          @DTW_ASSIGN(orderByDisplay, "Batch Number")
+      %endif
+  %elif (sequence == "Status")
+      %if (orderBy == "BBSTAT,BBBTCH")
+          @DTW_ASSIGN(orderBy, "BBSTAT DESC,BBBTCH")
+          @DTW_ASSIGN(orderByDisplay, "Status (descending), Batch Number")
+      %else
+          @DTW_ASSIGN(orderBy, "BBSTAT,BBBTCH")
+          @DTW_ASSIGN(orderByDisplay, "Status, Batch Number")
+      %endif
+  %elif (sequence == "ShipThru")
+      %if (orderBy == "BBSTDT,BBBTCH")
+          @DTW_ASSIGN(orderBy, "BBSTDT DESC,BBBTCH")
+          @DTW_ASSIGN(orderByDisplay, "Shipments Through (descending), Batch Number")
+      %else
+          @DTW_ASSIGN(orderBy, "BBSTDT,BBBTCH")
+          @DTW_ASSIGN(orderByDisplay, "Shipments Through, Batch Number")
+      %endif
+  %elif (sequence == "RecurThru")
+      %if (orderBy == "BBRODT,BBBTCH")
+          @DTW_ASSIGN(orderBy, "BBRODT DESC,BBBTCH")
+          @DTW_ASSIGN(orderByDisplay, "Recurring Through (descending), Batch Number")
+      %else
+          @DTW_ASSIGN(orderBy, "BBRODT,BBBTCH")
+          @DTW_ASSIGN(orderByDisplay, "Date Deactivated, Batch Number")
+      %endif
+  %elif (sequence == "InvDate")
+      %if (orderBy == "BBIVDT,BBBTCH")
+          @DTW_ASSIGN(orderBy, "BBIVDT DESC,BBBTCH")
+          @DTW_ASSIGN(orderByDisplay, "Invoice Date (descending), Batch Number")
+      %else
+          @DTW_ASSIGN(orderBy, "BBIVDT,BBBTCH")
+          @DTW_ASSIGN(orderByDisplay, "Invoice Date, Batch Number")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(WILDCARD)
+{
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("BBBTCH", "Batch Number", $(srchBatch), "", operBatch, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

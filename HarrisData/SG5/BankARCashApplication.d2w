@@ -1,0 +1,475 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Bank A/R Cash Payment                                       *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ARControl$(dataBaseID).icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Cash Payment"
+  d2wName                 = "BankARCashApplication.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;backHome=@dtw_rurlescseq(backHome)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  noMsg                   = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "DateEdit.icl"
+              %INCLUDE "Menu.js"
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editdate(document.Search.srchDate))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "BANKARCASHAPPLICATION")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_BankName, "YPBANK")
+                      @dtw_assign(uv_CompanyName, "BKCO")
+                      @dtw_assign(uv_FacilityName, "BKFAC")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(distinctSQL, "CHAR(YPBANK)||CHAR(YPBDAT)||CHAR(YPBCH) ", distinctSQL)
+                      @dtw_concat(stmtSQL, " Select YPBANK, YPBDAT, YPBCH, SUM(YPAMT) as YPAMT ", stmtSQL)
+                      @dtw_concat(stmtSQL, "       ,SUM(YPCAMT) as YPCAMT ", stmtSQL)
+                      @dtw_concat(stmtSQL, "       ,count(*) as PMT_COUNT ", stmtSQL)
+                      @dtw_concat(stmtSQL, " ,Max(BKBKNM) as BKBKNM, upper(Max(BKBKNM)) as BKBKNMU,Max(BKBACC) as BKBACC, Max(BKCO) as BKCO, Max(BKFAC) as BKFAC, Max(BKACCT) as BKACCT, Max(BKSUB) as BKSUB, Max(BKCURT) as BKCURT,  ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(max(CHCHDS),' ') as CHCHDS, coalesce(max(CHCHDSU),' ') as CHCHDSU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(max(CYDESC),' ') as CYDESC, coalesce(upper(max(CYDESC)),' ') as CYDESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " ARYPTD ", fileSQL)
+                      @dtw_concat(fileSQL, " inner join HDBANK on BKBANK=YPBANK ", fileSQL)
+                      @dtw_concat(fileSQL, " Left Join ARPYCD on PYPYCD=YPPYCD ", fileSQL)
+                      @dtw_concat(fileSQL, " left join HDCHRT on CHACCT=BKACCT and CHSUB=BKSUB ", fileSQL)
+                      @dtw_concat(fileSQL, " left join HDCTYP on CYTYPE=BKCURT ", fileSQL)
+                      @dtw_concat(selectSQL, " YPAMT<>0 ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Group By YPBANK, YPBDAT, YPBCH ", stmtSQL)
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64) profileHandle,
+                                   CHAR(2)   dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      $(hrTagAttr)
+
+      %if (formatToPrint == "")
+          <form class="formClass" METHOD=POST name="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Bank</th>
+                      <th class="colhdr">Cash Account</th>
+                      <th class="colhdr">Date</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchBank" size="10" maxlength="30">
+                          <input type="hidden" name="operBank" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchAcct" size="10" maxlength="30">
+                          <input type="hidden" name="operAcct" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputnmbr" name="srchDate" size="6" maxlength="6">
+                          <input type="hidden" name="operDate" value="=">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchBank.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+     %endif
+
+      <table $(contentTable)>
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("BKBKNMU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Bank" title="Sequence By Bank, Date">Bank</a></th>
+              @OrderBy_Sort("YPBCH", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Batch" title="Sequence By Batch, Bank, Date">Batch</a></th>
+              @OrderBy_Sort("YPBDAT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Date" title="Sequence By Date, Bank">Date</a></th>
+              @OrderBy_Sort("YPAMT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TotalPaid" title="Sequence By Amount, Bank, Date">Amount</a></th>
+              @OrderBy_Sort("CHCHDSU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Account" title="Sequence By Cash Account, Bank, Date">Cash Account</a></th>
+              %if (V_HDMCRL > "0")
+                  @OrderBy_Sort("CYDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Currency" title="Sequence By Currency, Bank, Date">Currency</a></th>
+                  @OrderBy_Sort("YPCAMT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DomAmount" title="Sequence By Domestic Amount Paid, Bank, Date">Domestic Amount Paid</a></th>
+              %endif
+              @OrderBy_Sort("PMT_COUNT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=NumberPayments" title="Sequence By Number Of Payments, Bank, Date">Number Of Payments</a></th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @Format_Acct("$(V_BKACCT)", "$(V_BKSUB)", "", F_AcctSub)
+              @Format_Nbr($(V_YPAMT), F_YPAMT, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr($(V_YPCAMT), F_YPCAMT, "2", $(amtEditCode), "Y", "", "")
+              @Format_Date(V_YPBDAT, "D", F_YPBDAT)
+
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colalph" $(helpCursor)><span title="$(V_YPBANK)">$(V_BKBKNM)</span></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)ApplCashBatchSelect.php$(altVarBase)&amp;fromBatchNumber=@dtw_rurlescseq(V_YPBCH)&amp;fromBatchDate=@dtw_rurlescseq(V_YPBDAT)&amp;fromBatchBank=@dtw_rurlescseq(V_YPBANK)" title="View Batch">$(V_YPBCH)</a></td>
+                  <td class="colnmbr">$(F_YPBDAT)</td>
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=176&amp;fKey1=YPBCH&amp;fVal1=@dtw_rurlescseq(V_YPBCH)&amp;fKey2=YPBDAT&amp;fVal2=@dtw_rurlescseq(V_YPBDAT)&amp;fKey3=YPBANK&amp;fVal3=@dtw_rurlescseq(V_YPBANK)" title="View Payment History">$(F_YPAMT)</a></td>
+                  <td class="colalph" $(helpCursor)><span title="$(F_AcctSub)">$(V_CHCHDS)</span></td>
+                  %if (V_HDMCRL > "0")
+                      <td class="colalph" $(helpCursor)><span title="$(V_BKCURT)">$(V_CYDESC)</span></td>
+                      <td class="colnmbr">$(F_YPCAMT)</td>
+                  %endif
+                  <td class="colnmbr">$(V_PMT_COUNT)</td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(distinctSQL, "CHAR(YPBANK)||CHAR(YPBDAT)||CHAR(YPBCH) ", distinctSQL)
+  @dtw_concat(stmtSQL, " Select YPBANK, YPBDAT, YPBCH, SUM(YPAMT) as YPAMT ", stmtSQL)
+  @dtw_concat(stmtSQL, "       ,count(*) as PMT_COUNT ", stmtSQL)
+ @dtw_concat(stmtSQL, "        ,Max(BKBKNM) as BKBKNM, upper(Max(BKBKNM)) as BKBKNMU,Max(BKBACC) as BKBACC, Max(BKCO) as BKCO, Max(BKFAC) as BKFAC, Max(BKACCT) as BKACCT, Max(BKSUB) as BKSUB, Max(BKCURT) as BKCURT,  ", stmtSQL)
+  @dtw_concat(stmtSQL, " coalesce(max(CHCHDS),' ') as CHCHDS, coalesce(max(CHCHDSU),' ') as CHCHDSU, ", stmtSQL)
+  @dtw_concat(stmtSQL, " coalesce(max(CYDESC),' ') as CYDESC, coalesce(upper(max(CYDESC)),' ') as CYDESCU ", stmtSQL)
+  @dtw_concat(fileSQL, " ARYPTD ", fileSQL)
+  @dtw_concat(fileSQL, " inner join HDBANK on BKBANK=YPBANK ", fileSQL)
+  @dtw_concat(fileSQL, " Left Join ARPYCD on PYPYCD=YPPYCD ", fileSQL)
+  @dtw_concat(fileSQL, " left join HDCHRT on CHACCT=BKACCT and CHSUB=BKSUB ", fileSQL)
+  @dtw_concat(fileSQL, " left join HDCTYP on CYTYPE=BKCURT ", fileSQL)
+  @dtw_concat(selectSQL, " YPAMT<>0 and (PYTYPE In ('A','C','M','N','U') or (YPPYCD='$(V_CRDPYC)' and YPGDED='G')) ", selectSQL)
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Group By YPBANK, YPBDAT, YPBCH ", stmtSQL)
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @List_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) List_XMLQuery (IN  CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @XMLBeginTag("BankAPDisbursementList")
+          %ROW{
+              @XMLIDTag(V_OPCOMP, "BankAPDisbursement ID")
+                  @XMLTag(V_YPBANK, "Bank")
+                  @XMLTag(V_YPBCH,  "Batch")
+                  @XMLTag(V_YPBDAT, "DatePaid")
+                  @XMLTag(V_YPAMT,  "Amount")
+                  @XMLTag(V_PMT_COUNT, "PaymentCount")
+                  @XMLTag(V_BKBKNM, "BankName")
+                  @XMLTag(V_BKBACC, "BankAccount")
+                  @XMLTag(V_BKCO, "BalanceSheetCompany")
+                  @XMLTag(V_BKFAC, "BalanceSheetFacility")
+                  @XMLTag(V_BKACCT, "CashAccountNumber")
+                  @XMLTag(V_BKSUB, "CashSubaccountNumber")
+                  @XMLTag(V_BKCURT,  "CurrencyType")
+                  @XMLTag(V_BKBLSD,  "StatementDate")
+              @XMLEndTag("BankAPDisbursement")
+          %}
+      @XMLEndTag("BankAPDisbursementList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Bank, Date")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Bank")
+      %if (orderBy == "BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderBy, "BKBKNMU DESC,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Bank (descending), Date")
+      %else
+          @DTW_ASSIGN(orderBy, "BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Bank, Date")
+      %endif
+  %elif (sequence == "Batch")
+      %if (orderBy == "YPBCH,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderBy, "YPBCH DESC,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Batch (descending), Bank, Date")
+      %else
+          @DTW_ASSIGN(orderBy, "YPBCH,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Batch, Bank, Date")
+      %endif
+  %elif (sequence == "Date")
+      %if (orderBy == "YPBDAT,BKBKNMU")
+          @DTW_ASSIGN(orderBy, "YPBDAT DESC,BKBKNMU")
+          @DTW_ASSIGN(orderByDisplay, "Date (descending), Bank")
+      %else
+          @DTW_ASSIGN(orderBy, "YPBDAT,BKBKNMU")
+          @DTW_ASSIGN(orderByDisplay, "Date, Bank")
+      %endif
+  %elif (sequence == "TotalPaid")
+      %if (orderBy == "YPAMT,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderBy, "YPAMT DESC,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Open Payables (descending), Bank, Date")
+      %else
+          @DTW_ASSIGN(orderBy, "YPAMT,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Open Payables, Bank, Date")
+      %endif
+  %elif (sequence == "Account")
+      %if (orderBy == "CHCHDSU,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderBy, "CHCHDSU DESC,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Cash Account (descending), Bank, Date")
+      %else
+          @DTW_ASSIGN(orderBy, "CHCHDSU,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Cash Account, Bank, Date")
+      %endif
+  %elif (sequence == "Currency")
+      %if (orderBy == "CYDESCU,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderBy, "CYDESCU DESC,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Currency (descending), Bank, Date")
+      %else
+          @DTW_ASSIGN(orderBy, "CYDESCU,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Currency, Bank, Date")
+      %endif
+  %elif (sequence == "DomAmount")
+      %if (orderBy == "YPCAMT,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderBy, "YPCAMT DESC,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Domestic Amount Paid (descending), Bank, Date")
+      %else
+          @DTW_ASSIGN(orderBy, "YPCAMT,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Domestic Amount Paid, Bank, Date")
+      %endif
+  %elif (sequence == "NumberPayments")
+      %if (orderBy == "PMT_COUNT,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderBy, "PMT_COUNT DESC,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Number Of Payments (descending), Bank, Date")
+      %else
+          @DTW_ASSIGN(orderBy, "PMT_COUNT,BKBKNMU,YPBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Number Of Payments, Bank, Date")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <link rel=stylesheet type="text/css" href="$(homeURL)$(homePath)$(GLDDStyleSheet)">
+          <script TYPE="text/javascript">
+              %INCLUDE "calendar.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchBatch, 4, 0) &&
+                      editdate(document.Search.srchDate))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "BANKARCASHAPPLSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Bank</td>
+                              @dtw_assign(operNbr, "operBank")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchBank" size="10" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Batch</td>
+                              @dtw_assign(operNbr, "operBatch")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchBatch" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Date</td>
+                              @dtw_assign(operNbr, "operDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchDate" size="6" maxlength="6"><a href="javascript:calWindow('srchDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Cash Account</td>
+                              @dtw_assign(operNbr, "operAcct")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchAcct" size="10" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Bank Account</td>
+                              @dtw_assign(operNbr, "operBankAcct")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchBankAcct" size="10" maxlength="12"></td>
+                          </tr>
+
+                          %if (V_HDMCRL>"0")
+                              <tr><td class="dsphdr">Currency Type</td>
+                                  @dtw_assign(operNbr, "operCurrency")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchCurrency" size="3" maxlength="3"></td>
+                              </tr>
+                          %endif
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchPeriod.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("Upper(BKBKNM)", "Bank", $(srchBank), "U", operBank, "A")
+  @Build_WildCard ("YPBCH", "Batch", $(srchBatch), "", operBatch, "N")
+  @Build_WildCard ("YPBDAT", "Date", $(srchDate), "", operDate, "D")
+  @Build_WildCard ("CHCHDSU", "Cash Account", $(srchAcct), "U", operAcct, "A")
+  @Build_WildCard ("BKBACC", "Bank Account", $(srchBankAcct), "U", operBankAcct, "A")
+  @Build_WildCard ("BKCURT", "Currency Type", $(srchCurrency), "U", operCurrency, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}
