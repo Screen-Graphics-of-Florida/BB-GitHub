@@ -147,7 +147,7 @@ body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;
 .search-card h2 { font-size: 11px; font-weight: 700; color: #003087;
                   text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
 .search-row { display: flex; gap: 10px; align-items: flex-end; }
-.search-row .fg { flex: 0 0 500px; max-width: 500px; }
+.search-row .fg { flex: 1; }
 .fg label { display: block; font-size: 10px; font-weight: 700; color: #5a6478;
             text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
 .fg input { width: 100%; padding: 6px 8px; border: 1px solid #b0bac8;
@@ -405,11 +405,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
           </a>
           <?php else: echo '&mdash;'; endif; ?>
         </td>
-        <td class="L"><?php
-          $oufldr = $ln['OUFLDR'];
-          if (is_numeric($oufldr)) $oufldr = (string)(int)$oufldr;
-          echo htmlspecialchars($oufldr);
-        ?></td>
+        <td class="L"><?php echo htmlspecialchars($ln['OUFLDR']); ?></td>
         <td class="L"><?php echo htmlspecialchars($ln['OUFLDV']); ?></td>
       </tr>
       <?php endforeach; ?>

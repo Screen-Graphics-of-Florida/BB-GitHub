@@ -5,8 +5,11 @@ require_once 'SetLibraryList.php';
 date_default_timezone_set('America/Chicago');
 
 // --- Search parameters ---
-$srchTerm = isset($_GET['q']) ? trim($_GET['q']) : '';
-$searched = ($srchTerm !== '');
+$srchPhone = isset($_GET['phone']) ? trim($_GET['phone']) : '';
+$srchOther = isset($_GET['other']) ? trim($_GET['other']) : '';
+$srchDesc  = isset($_GET['desc'])  ? trim($_GET['desc'])  : '';
+
+$searched = ($srchPhone !== '' || $srchOther !== '' || $srchDesc !== '');
 
 $rows = array(); $err = ''; $rowCount = 0;
 
@@ -15,14 +18,20 @@ function escSql($v) { return str_replace("'", "''", $v); }
 if ($searched) {
     $conn = $i5Connect->getConnection();
 
-    $v = escSql($srchTerm);
-    $extraWhere = "
-      AND (  UPPER(TRIM(u.OUFLDV))       LIKE UPPER('%{$v}%')
-          OR UPPER(TRIM(CHAR(u.OUFLDR))) LIKE UPPER('%{$v}%')
-          OR UPPER(TRIM(d.ODIMDS))       LIKE UPPER('%{$v}%')
-          OR UPPER(TRIM(d.ODITEM))       LIKE UPPER('%{$v}%')
-          OR UPPER(TRIM(h.OEORRF))       LIKE UPPER('%{$v}%')
-          OR UPPER(TRIM(c.CMCNA1))       LIKE UPPER('%{$v}%'))";
+    $orConds = array();
+    if ($srchPhone !== '') {
+        $orConds[] = "UPPER(TRIM(u.OUFLDV)) LIKE UPPER('%" . escSql($srchPhone) . "%')";
+    }
+    if ($srchOther !== '') {
+        $orConds[] = "UPPER(TRIM(u.OUFLDV)) LIKE UPPER('%" . escSql($srchOther) . "%')";
+    }
+    if ($srchDesc !== '') {
+        $orConds[] = "UPPER(TRIM(d.ODIMDS)) LIKE UPPER('%" . escSql($srchDesc) . "%')";
+    }
+
+    $extraWhere = count($orConds)
+        ? "\n      AND (" . implode("\n           OR ", $orConds) . ")"
+        : '';
 
     $sql = "
         SELECT
@@ -146,17 +155,16 @@ body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;
                border-radius: 4px; padding: 14px 16px; margin-bottom: 12px; }
 .search-card h2 { font-size: 11px; font-weight: 700; color: #003087;
                   text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-.search-row { display: flex; gap: 10px; align-items: flex-end; }
-.search-row .fg { flex: 0 0 500px; max-width: 500px; }
+.search-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px 18px; }
+@media (max-width: 700px) { .search-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 440px) { .search-grid { grid-template-columns: 1fr; } }
 .fg label { display: block; font-size: 10px; font-weight: 700; color: #5a6478;
             text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
 .fg input { width: 100%; padding: 6px 8px; border: 1px solid #b0bac8;
             border-radius: 3px; font-size: 13px; }
 .fg input:focus { outline: none; border-color: #003087;
                   box-shadow: 0 0 0 2px rgba(0,48,135,.12); }
-.search-actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.searched-lbl { font-size: 12px; color: #5a6478; }
-.searched-lbl b { color: #003087; }
+.search-actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
 .btn-primary   { background: #003087; color: #fff; border: none;
                  padding: 7px 22px; border-radius: 3px; font-size: 13px;
                  font-weight: 700; cursor: pointer; }
@@ -231,11 +239,18 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
   <div class="search-card">
     <h2>Search Customer Orders</h2>
     <form method="get" action="">
-      <div class="search-row">
+      <div class="search-grid">
         <div class="fg">
-          <label>Search (phone, name, DOT, asset, item description, P/O, customer &mdash; enter partial info)</label>
-          <input type="text" name="q" value="" placeholder="enter any partial value to search across all fields..."
-            autofocus>
+          <label>Phone (enter partial number)</label>
+          <input type="text" name="phone" value="" placeholder="partial phone number...">
+        </div>
+        <div class="fg">
+          <label>Name / DOT / Asset / Other (enter partial info)</label>
+          <input type="text" name="other" value="" placeholder="partial name, DOT, asset, or other...">
+        </div>
+        <div class="fg">
+          <label>Item Description (enter partial info)</label>
+          <input type="text" name="desc" value="" placeholder="partial item description...">
         </div>
       </div>
       <div class="search-actions">
@@ -244,12 +259,11 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
           onclick="window.location='<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>'">
           Clear
         </button>
-        <?php if ($searched): ?>
-        <span class="searched-lbl">Searched for: <b><?php echo htmlspecialchars($srchTerm); ?></b></span>
-        <?php endif; ?>
       </div>
     </form>
-    <p class="search-hint">Contains search &mdash; results limited to 500 lines.</p>
+    <p class="search-hint">
+      Enter partial text in one or both fields &mdash; contains search. Results limited to 500 lines.
+    </p>
   </div>
 
 <?php if ($searched): ?>
@@ -405,11 +419,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
           </a>
           <?php else: echo '&mdash;'; endif; ?>
         </td>
-        <td class="L"><?php
-          $oufldr = $ln['OUFLDR'];
-          if (is_numeric($oufldr)) $oufldr = (string)(int)$oufldr;
-          echo htmlspecialchars($oufldr);
-        ?></td>
+        <td class="L"><?php echo htmlspecialchars($ln['OUFLDR']); ?></td>
         <td class="L"><?php echo htmlspecialchars($ln['OUFLDV']); ?></td>
       </tr>
       <?php endforeach; ?>
