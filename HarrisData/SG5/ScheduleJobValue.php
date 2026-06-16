@@ -1,0 +1,9 @@
+<?php
+$V_J_JNAM=Decat_Field("@@jnam",$edtVar);
+$V_J_JOBD=Decat_Field("@@jobd",$edtVar);
+$V_J_JOBQ=Decat_Field("@@jobq",$edtVar);
+$V_J_JFRQ=Decat_Field("@@jfrq",$edtVar);
+$V_J_JTIM=Decat_Field("@@jtim",$edtVar);
+$V_J_JDAT=Decat_Field("@@jdat",$edtVar);
+$V_J_JDAY=Decat_Field("@@jday",$edtVar);
+?>

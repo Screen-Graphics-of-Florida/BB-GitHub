@@ -1,0 +1,509 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job:  Option Routing                                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Option Routing"
+  d2wName                 = "OptionRouting.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(fromPlant)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;option=@dtw_rurlescseq(option)&amp;feature=@dtw_rurlescseq(feature)&amp;featureDesc=@dtw_rurlescseq(featureDesc)&amp;biLevel=@dtw_rurlescseq(biLevel)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HPD021"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @PlantUserView(profileHandle, dataBaseID, userPass, plantNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NumEdit.icl"
+                  %INCLUDE "CheckEnterSearch.icl"
+                  function validate(searchForm) {
+                      if (editNum(document.Search.srchSeq, 3, 0))
+                          return true;
+                  }
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                           @dtw_assign(pageID, "OPTIONROUTING")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDMFRM ", fileSQL)
+                          @dtw_concat(selectSQL, " (FRPLT=$(plantNumber)", selectSQL)
+                          @dtw_concat(selectSQL, " and FRFEAT='$(option)'", selectSQL)
+                          @dtw_concat(selectSQL, " and FRFITM='$(feature)')", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By FRPLT,FRFEAT,FRFITM,$(orderBy)", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @OptionRouting_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) OptionRouting_Query (IN CHAR(64)    profileHandle,
+                                           CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      @RtvFldDesc("IMITEM='$(option)'", "HDIMST", "IMIMDS", optionDesc)
+
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)OptionRoutingMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %if (sec_01=="Y" && sec_04=="Y" && sql_Record_Count != "0")
+                          <a href="$(homeURL)$(cGIPath)OptionRoutingMaintain.d2w/COPYALL$(d2wVarBase)&amp;maintenanceCode=Z">$(copyAllImageLrg)</a>
+                      %endif
+                      %if (sec_03 == "Y" && sql_Record_Count != "0")
+                          @Format_Confirm_Desc("All Routings", "", "", "", "", "", confirmDesc)
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)OptionRoutingMaintain.d2w/DELETEALL$(d2wVarBase)&amp;maintenanceCode=D">$(deleteAllImageLrg)</a>
+                      %endif
+                      %if (sec_01 == "Y" && sec_04=="Y" && biLevel != "" && sql_Record_Count != "0")
+                          <a href="$(homeURL)$(cGIPath)OptionRoutingBiLevel.d2w/REPORT$(d2wVarBase)&amp;maintenanceCode=Z">$(copyBiLevelImageLrg)</a>
+                      %endif
+                      %if (sec_03 == "Y" && biLevel != "" && sql_Record_Count != "0")
+                          <a href="$(homeURL)$(cGIPath)OptionRoutingBiLevel.d2w/REPORT$(d2wVarBase)&amp;maintenanceCode=D">$(deleteBiLevelImageLrg)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          @Format_Header_URL("Plant", $(plantName), $(plantNumber), "$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(d2wVarBase)")
+          @Format_Header_URL("Option", $(optionDesc), $(option), "$(homeURL)$(cGIPath)Option.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(fromPlant)")
+          %if (feature != "")
+              @Format_Header_URL("Feature", $(featureDesc), $(feature), "$(homeURL)$(cGIPath)Feature.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(fromPlant)")
+          %endif
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+	
+      $(hrTagAttr)	
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Rtg<br>Seq</th>
+                      <th class="colhdr">Dept</th>
+                      <th class="colhdr">Work<br>Center</th>
+                  </tr>
+
+                  <tr><td><input type="text" class="inputnmbr" name="srchSeq" size="3" maxlength="3">
+                          <input type="hidden" name="operSeq" value="=">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchDept" size="5" maxlength="5">
+                          <input type="hidden" name="operDept" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchWc" size="5" maxlength="5">
+                          <input type="hidden" name="operWc" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchSeq.focus();
+              </script>
+          </form>
+	
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y"))
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("FRSEQN", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=SEQN" title="Sequence By Routing Sequence"> Rtg<br>Seq</a></th>
+              @OrderBy_Sort("FRDEPT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DEPT" title="Sequence By Department)"> Dept</a></th>	
+              @OrderBy_Sort("FRWC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=WC" title="Sequence By Work Center"> Work<br>Center</a></th>
+              @OrderBy_Sort("FRRTYP", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=RTYP" title="Sequence By Routing Type">Rtg<br>Typ</a></th>
+              @OrderBy_Sort("FRALTC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ALTC" title="Sequence By Alternate Operation">Alt<br>Opr</a></th>
+              @OrderBy_Sort("FRMHRS", sortVar)
+              <th class="colhdr$(sortVar)" colspan="2"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=MHRS" title="Sequence By Measured Hours">Measured<br>Hours</a></th>
+              @OrderBy_Sort("FRMPON", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=MPON" title="Sequence By Crew Size">Crew<br>Size</a></th>
+              @OrderBy_Sort("FRSUHR", sortVar)
+              <th class="colhdr$(sortVar)" colspan="2"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=SUHR" title="Sequence By Setup Hours">Setup<br>Hours</a></th>
+              @OrderBy_Sort("FRMACH", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=MACH" title="Sequence By Machine Number">Mach#</a></th>
+          </tr>		
+          %INCLUDE "NoRecordsFound.icl"
+
+      %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Confirm_Desc("Routing Sequence", $(V_FRSEQN), "", "", "", "", confirmDesc)
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;sequenceNumber=@dtw_rurlescseq(V_FRSEQN)")
+	       <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y"))
+                      <td class="opticon">
+                          %if (sec_02 == "Y" || sec_03 == "Y")
+                              <a href="$(homeURL)$(cGIPath)OptionRoutingMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          %endif
+                          %if (sec_01=="Y" && sec_04=="Y")
+                              <a href="$(homeURL)$(cGIPath)OptionRoutingMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                           %endif
+                          %if (sec_03 == "Y")
+                              <a onClick="return confirmDelete('$(confirmDesc)')" href=$(homeURL)$(cGIPath)OptionRoutingMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D>$(deleteImageSml)</a>
+                          %endif
+    		           %if (V_FRNTCD == "Y")
+                              <a href="$(homeURL)$(cGIPath)OptionRoutingNotes.d2w/REPORT$(maintainVar)">$(commentExistImage)</a>
+                          %else
+                              <a href="$(homeURL)$(cGIPath)OptionRoutingNotes.d2w/REPORT$(maintainVar)">$(commentImage)</a>
+                          %endif
+                      </td>
+                  %endif
+                  @Format_Nbr($(V_FRMHRS), F_FRMHRS, "4", $(hrsEditCode), "", "", "")
+                  @Format_Nbr($(V_FRMPON), F_FRMPON, "2", $(amtEditCode), "", "", "")
+                  @Format_Nbr($(V_FRSUHR), F_FRSUHR, "2", $(hrsEditCode), "", "", "")
+                  @RtvFldDesc("(FLTYPE='RTGTYPE' and FLVALU='$(V_FRRTYP)')", "SYFLAG", "FLDESC", rtypDesc)
+                  @RtvFldDesc("FLTYPE='ALTOPER' and FLVALU='$(V_FRALTC)'", "SYFLAG", "FLDESC", altcDesc)
+                  @RtvFldDesc("FLTYPE='RTMHRC' and FLVALU='$(V_FRMHRC)'", "SYFLAG", "FLDESC", mhrcDesc)
+                  @RtvFldDesc("FLTYPE='RTSURC' and FLVALU='$(V_FRSURC)'", "SYFLAG", "FLDESC", surcDesc)
+                  <td class="colnmbr">$(V_FRSEQN)</td>
+                  <td class="colalph">$(V_FRDEPT)</td>
+                  <td class="colalph">$(V_FRWC)</td>
+                  <td class="colcode" $(helpCursor)><span title="$(rtypDesc)">$(V_FRRTYP)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(altcDesc)">$(V_FRALTC)</span></td>
+                  <td class="colnmbr">$(F_FRMHRS)</td>
+                  <td class="colcode" $(helpCursor)><span title="$(mhrcDesc)">$(V_FRMHRC)</span></td>
+                  <td class="colnmbr">$(F_FRMPON)</td>
+                  <td class="colnmbr">$(F_FRSUHR)</td>
+                  <td class="colcode" $(helpCursor)><span title="$(surcDesc)">$(V_FRSURC)</span></td>
+                  <td class="colalph">$(V_FRMACH)</td>
+	       </tr>
+	   %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "FRSEQN")
+          @DTW_ASSIGN(orderByDisplay, "Routing Sequence")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "SEQN")
+      %if (orderBy == "FRSEQN")
+          @DTW_ASSIGN(orderBy, "FRSEQN DESC")
+          @DTW_ASSIGN(orderByDisplay, "Routing Sequence (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FRSEQN")
+          @DTW_ASSIGN(orderByDisplay, "Routing Sequence")
+      %endif
+  %elif (sequence == "DEPT")
+      %if (orderBy == "FRDEPT")
+          @DTW_ASSIGN(orderBy, "FRDEPT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Department (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FRDEPT")
+          @DTW_ASSIGN(orderByDisplay, "Department")
+      %endif
+  %elif (sequence == "WC")
+      %if (orderBy == "FRWC")
+          @DTW_ASSIGN(orderBy, "FRWC DESC")
+          @DTW_ASSIGN(orderByDisplay, "Work Center (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FRWC")
+          @DTW_ASSIGN(orderByDisplay, "Work Center")
+      %endif
+  %elif (sequence == "RTYP")
+      %if (orderBy == "FRRTYP")
+          @DTW_ASSIGN(orderBy, "FRRTYP DESC")
+          @DTW_ASSIGN(orderByDisplay, "Routing Type (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FRRTYP")
+          @DTW_ASSIGN(orderByDisplay, "Routing Type")
+      %endif
+  %elif (sequence == "ALTC")
+      %if (orderBy == "FRALTC")
+          @DTW_ASSIGN(orderBy, "FRALTC DESC")
+          @DTW_ASSIGN(orderByDisplay, "Alternate Operation (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FRALTC")
+          @DTW_ASSIGN(orderByDisplay, "Alternate Operation")
+      %endif
+  %elif (sequence == "MHRS")
+      %if (orderBy == "FRMHRS")
+          @DTW_ASSIGN(orderBy, "FRMHRS DESC")
+          @DTW_ASSIGN(orderByDisplay, "Measured Hours (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FRMHRS")
+          @DTW_ASSIGN(orderByDisplay, "Measured Hours")
+      %endif
+  %elif (sequence == "MPON")
+      %if (orderBy == "FRMPON")
+          @DTW_ASSIGN(orderBy, "FRMPON DESC")
+          @DTW_ASSIGN(orderByDisplay, "Crew Size (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FRMPON")
+          @DTW_ASSIGN(orderByDisplay, "Crew Size")
+      %endif
+  %elif (sequence == "SUHR")
+      %if (orderBy == "FRSUHR")
+          @DTW_ASSIGN(orderBy, "FRSUHR DESC")
+          @DTW_ASSIGN(orderByDisplay, "Setup Hours (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FRSUHR")
+          @DTW_ASSIGN(orderByDisplay, "Setup Hours")
+      %endif
+  %elif (sequence == "MACH")
+      %if (orderBy == "FRMACH")
+          @DTW_ASSIGN(orderBy, "FRMACH DESC")
+          @DTW_ASSIGN(orderByDisplay, "Machine Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FRMACH")
+          @DTW_ASSIGN(orderByDisplay, "Machine Number")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchSeq, 3, 0) &&
+                      editNum(document.Search.srchMhrs, 3, 4) &&
+                      editNum(document.Search.srchMpon, 3, 2) &&
+                      editNum(document.Search.srchSuhr, 3, 2))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "OPTIONROUTINGSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Routing Sequence</td>
+                              @dtw_assign(operNbr, "operSeq")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchSeq" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Department</td>
+                              @dtw_assign(operNbr, "operDept")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchDept" size="5" maxlength="5"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Work Center</td>
+                              @dtw_assign(operNbr, "operWc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchWc" size="5" maxlength="5"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Routing Type</td>
+                              @dtw_assign(operNbr, "operRtyp")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchRtyp" size="2" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Alternate Operation</td>
+                              @dtw_assign(operNbr, "operAltc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchAltc" size="2" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Measured Hours</td>
+                              @dtw_assign(operNbr, "operMhrs")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchMhrs" size="8" maxlength="8"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Measured Hours Ref Code</td>
+                              @dtw_assign(operNbr, "operMhrc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchMhrc" size="2" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Crew Size</td>
+                              @dtw_assign(operNbr, "operMpon")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchMpon" size="6" maxlength="6"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Set Up Hours</td>
+                              @dtw_assign(operNbr, "operSuhr")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchSuhr" size="6" maxlength="6"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Set Up Hours Ref Code</td>
+                              @dtw_assign(operNbr, "operSurc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchSurc" size="2" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Machine Number</td>
+                              @dtw_assign(operNbr, "operMach")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchMach" size="5" maxlength="5"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Routing Notes</td>
+                              @dtw_assign(operNbr, "operNtcd")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchNtcd" size="2" maxlength="1"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchSeq.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("FRSEQN", "Routing Sequence", $(srchSeq), "", operSeq, "N")
+  @Build_WildCard ("FRDEPT", "Department", $(srchDept), "U", operDept, "A")
+  @Build_WildCard ("FRWC", "Work Center", $(srchWc), "U", operWc, "A")
+  @Build_WildCard ("FRRTYP", "Routing Type", $(srchRtyp), "U", operRtyp, "A")
+  @Build_WildCard ("FRALTC", "Alternate Operation", $(srchAltc), "U", operAltc, "A")
+  @Build_WildCard ("FRMHRS", "Measured Hours", $(srchMhrs), "", operMhrs, "N")
+  @Build_WildCard ("FRMHRC", "Measured Hours Ref Code", $(srchMhrc), "U", operMhrc, "A")
+  @Build_WildCard ("FRMPON", "Crew Size", $(srchMpon), "", operMpon, "N")
+  @Build_WildCard ("FRSUHR", "Set Up Hours", $(srchSuhr), "", operSuhr, "N")
+  @Build_WildCard ("FRSURC", "Set Up Hours Ref Code", $(srchSurc), "U", operSurc, "A")
+  @Build_WildCard ("FRMACH", "Machine Number", $(srchMach), "U", operMach, "A")
+  @Build_WildCard ("FRNTCD", "Routing Notes", $(srchNtcd), "U", operNtcd, "A")		
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

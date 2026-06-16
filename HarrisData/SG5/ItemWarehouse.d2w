@@ -1,0 +1,536 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Item/Warehouse                                              *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {	
+  page_title              = "Item/Warehouse"
+  d2wName                 = "ItemWarehouse.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;inclActive=@dtw_rurlescseq(inclActive)&amp;inclInactive=@dtw_rurlescseq(inclInactive)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HHDIWU"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  advanceSearch           = "N"
+  inclActive              = ""
+  inclInactive            = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@itemNumber", "@dtw_rurlescseq(itemNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@warehouseNumber", "@dtw_rurlescseq(warehouseNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @ItemUserView(profileHandle, dataBaseID, userPass, itemNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  function confirmDelete(text) {return confirm("$(delRecordConf)" + "\r" + "\r" + text);}
+    	           %INCLUDE "NumEdit.icl"
+                  %INCLUDE "CheckEnterSearch.icl"
+                  function validate(searchForm) {
+                      if (editNum(document.Search.srchWhs, 3, 0))
+                          return true;
+                  }
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          @dtw_assign(pageID, "ITEMWAREHOUSE")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          @dtw_assign(uv_WarehouseName, "IWWHS")
+                          @dtw_assign(uv_ProductClassName, "IMPCLS")
+                          @dtw_assign(uv_ProductGroupName, "IWPGRP")
+                          @dtw_assign(uv_ProdInventoryTypeName, "IMITC")
+                          @dtw_assign(uv_ProdPartTypeName, "IMPTYP")
+                          %INCLUDE "userview.icl"
+
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select IWWHS, IWITEM, IWOHQT, IWOHRC, IWQHSR, IWRESQ, IWQOO, IWDSQO, IWLIST, IWIWAC, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " IMPTYP, IMITC, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " ifnull(WHWHNM,' ') as WHWHNM, upper(ifnull(WHWHNM,' ')) as WHWHNMU ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDIWHS ", fileSQL)
+                          @dtw_concat(fileSQL, " left join HDIMST on IMITEM=IWITEM ", fileSQL)
+                          @dtw_concat(fileSQL, " left join HDWHSM on WHWHS =IWWHS ", fileSQL)
+                          @dtw_concat(selectSQL, "IWITEM='$(itemNumber)' ", selectSQL)
+                          %if ((inclActive == "Y") && (inclInactive != "Y"))
+                              @dtw_concat(selectSQL, "  and IWIWAC=' '", selectSQL)
+                          %elseif ((inclActive != "Y") && (inclInactive == "Y"))
+                              @dtw_concat(selectSQL, "  and IWIWAC>' '", selectSQL)
+                          %elseif ((inclActive != "Y") && (inclInactive != "Y"))
+                              @dtw_concat(selectSQL, "  and IWIWAC=' ' and IWIWAC>' '", selectSQL)
+                          %endif
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @inquiry_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) inquiry_Query (IN   CHAR(64)    profileHandle,
+				        CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td ><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)ItemWarehouseMaintain.d2w/ADD$(d2wVarBase)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          @Format_Header_URL("Item", $(itemDescription), $(itemNumber), "$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(d2wVarBase)")
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+			
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr"> Whs</th>
+                      <th class="colhdr"> Warehouse Name</th>
+                  </tr>
+                  <tr><td class="inputnmbr">
+                          <input type="text" name="srchWhs" size="3" maxlength="3">
+                          <input type="hidden" name="operWhs" value="=">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchName" size="26" maxlength="26">
+                          <input type="hidden" name="operName" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchWhs.focus();
+              </script>
+          </form>
+	
+          %if (inclActive == "Y")
+              @dtw_assign(activeChecked, "CHECKED")
+          %else
+              @dtw_assign(activeChecked, "")
+          %endif
+
+          %if (inclInactive == "Y")
+              @dtw_assign(inactiveChecked, "CHECKED")
+          %else
+              @dtw_assign(inactiveChecked, "")
+          %endif
+
+          @dtw_assign(viewCheckBox, "ItemActive")
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      %if (V_HDPDRL>"0")
+          @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMQUAL", V_IMQUAL)
+      %endif
+
+      %if ((V_HDPDRL > "0" && V_IMQUAL != "Y") || V_HDPDRL == "0")
+          @dtw_assign(includeOnHandRecv, "Y")
+      %else
+          @dtw_assign(includeOnHandRecv, "")
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_04 == "Y"))
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("IWWHS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=warehouseNumber" title="Sequence By Warehouse">Whs</a></th>
+              @OrderBy_Sort("WHWHNMU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=warehouseName" title="Sequence By Warehouse Name, Warehouse">Warehouse Name</a></th>
+              @OrderBy_Sort("IWLIST", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=listPrice" title="Sequence By List Price, Warehouse Name, Warehouse">List<br>Price</a></th>
+              @OrderBy_Sort("IWOHQT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=qtyOnHand" title="Sequence By Quantity On Hand, Warehouse Name, Warehouse">Quantity<br>On Hand</a></th>
+              %if (includeOnHandRecv == "Y")
+                  @OrderBy_Sort("IWOHRC", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=qtyOnHandRecv" title="Sequence By Quantity On Hand Receiving, Warehouse Name, Warehouse">Quantity<br>On Hand<br>Receiving</a></th>
+              %endif
+              @OrderBy_Sort("IWQHSR", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=qtyHeldInStock" title="Sequence By Quantity Held In Stock, Warehouse Name, Warehouse">Quantity<br>Held<br>In Stock</a></th>
+              @OrderBy_Sort("IWRESQ", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=qtyReserved" title="Sequence By Quantity Reserved, Warehouse Name, Warehouse">Quantity<br>Reserved</a></th>
+              %if (V_CIOOIA == "Y")
+                  @OrderBy_Sort("IWQOO", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=qtyOnOrder" title="Sequence By Quantity On Order, Warehouse Name, Warehouse">Quantity<br>On Order</a></th>
+                  @OrderBy_Sort("IWDSQO", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=qtyDropShip" title="Sequence By Quantity Drop Shipped, Warehouse Name, Warehouse">Quantity<br>Drop Shipped</a></th>
+              %endif
+              <th class="colhdr">Quantity<br>Available</th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          @dtw_assign(T_IWOHQT, "0")
+          @dtw_assign(T_IWOHRC, "0")
+          @dtw_assign(T_IWQHSR, "0")
+          @dtw_assign(T_IWRESQ, "0")
+          @dtw_assign(T_IWQOO, "0")
+          @dtw_assign(T_IWDSQO, "0")
+          @dtw_assign(T_qtyAvailable, "0")
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(maintainVar, "$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_IWITEM)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;fromItemNumber=@dtw_rurlescseq(V_IWITEM)&amp;fromWarehouse=@dtw_rurlescseq(V_IWWHS)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+              @Format_Confirm_Desc($(itemDescription), $(itemNumber), $(V_WHWHNM), $(V_IWWHS), "", "", confirmDesc)
+              @Format_Nbr(V_IWLIST, F_IWLIST, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(V_IWOHQT, F_IWOHQT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %if (includeOnHandRecv == "Y")
+                  @Format_Nbr(V_IWOHRC, F_IWOHRC, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %endif
+              @Format_Nbr(V_IWQHSR, F_IWQHSR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_IWRESQ, F_IWRESQ, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %if (V_CIOOIA == "Y")
+                  @Format_Nbr(V_IWQOO, F_IWQOO, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  @Format_Nbr(V_IWDSQO, F_IWDSQO, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %endif
+              @Get_Qty_Avail(profileHandle, dataBaseID, V_IWITEM, V_IWWHS, qtyAvailable)
+              @Format_Nbr($(qtyAvailable), F_qtyAvailable, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+
+              @dtw_add(T_IWOHQT, V_IWOHQT, "15", T_IWOHQT)
+              %if (includeOnHandRecv == "Y")
+                  @dtw_add(T_IWOHRC, V_IWOHRC, "15", T_IWOHRC)
+              %endif
+              @dtw_add(T_IWQHSR, V_IWQHSR, "15", T_IWQHSR)
+              @dtw_add(T_IWRESQ, V_IWRESQ, "15", T_IWRESQ)
+              %if (V_CIOOIA == "Y")
+                  @dtw_add(T_IWQOO, V_IWQOO, "15", T_IWQOO)
+                  @dtw_add(T_IWDSQO, V_IWDSQO, "15", T_IWDSQO)
+              %endif
+              @dtw_add(T_qtyAvailable, qtyAvailable, "15", T_qtyAvailable)
+
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_04 == "Y"))
+                     <td class="opticon">
+                         %if (sec_02 == "Y" || sec_03 == "Y")
+                             <a href="$(homeURL)$(cGIPath)ItemWarehouseMaintain.d2w/MAINTAIN$(maintainVar)&amp;warehouseNumber=@dtw_rurlescseq(V_IWWHS)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                         %endif
+                         %if (sec_04 == "Y")
+                             <a href="$(homeURL)$(cGIPath)ItemWarehouseMaintain.d2w/ADD$(maintainVar)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                         %endif
+                         %if (sec_03 == "Y")
+                             <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)ItemWarehouseMaintain.d2w/Edit_Data$(maintainVar)&amp;warehouseNumber=@dtw_rurlescseq(V_IWWHS)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                         %endif
+                     </td>
+                 %endif
+                  <td class="colnmbr">$(V_IWWHS)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemWarehouseSelect.d2w/REPORT$(maintainVar)&amp;warehouseNumber=@dtw_rurlescseq(V_IWWHS)&amp;warehouseName=@dtw_rurlescseq(V_WHWHNM)" title="View Item/Warehouse"> $(V_WHWHNM)</a></td>
+                  <td class="colnmbr">$(F_IWLIST)</td>
+                  <td class="colnmbr">$(F_IWOHQT)</td>
+                  %if (includeOnHandRecv == "Y")
+                      <td class="colnmbr">$(F_IWOHRC)</td>
+                  %endif
+                  <td class="colnmbr">$(F_IWQHSR)</td>
+                  <td class="colnmbr">$(F_IWRESQ)</td>
+                  %if (V_CIOOIA == "Y")
+                      <td class="colnmbr">$(F_IWQOO)</td>
+                      <td class="colnmbr">$(F_IWDSQO)</td>
+                  %endif
+                  <td class="colnmbr">$(F_qtyAvailable)</td>
+                  %if (V_IWIWAC == "I")
+                      <td class="colicon">$(inactiveImageSml)</td>
+                  %endif
+              </tr>
+          %}
+          %if (sql_Record_Count>"1")
+              %INCLUDE "SetRowClass.icl"
+              @Format_Nbr(T_IWLIST, F_IWLIST, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(T_IWOHQT, F_IWOHQT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %if (includeOnHandRecv == "Y")
+                  @Format_Nbr(T_IWOHRC, F_IWOHRC, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %endif
+              @Format_Nbr(T_IWQHSR, F_IWQHSR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(T_IWRESQ, F_IWRESQ, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %if (V_CIOOIA == "Y")
+                  @Format_Nbr(T_IWQOO, F_IWQOO, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  @Format_Nbr(T_IWDSQO, F_IWDSQO, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %endif
+              @Format_Nbr(T_qtyAvailable, F_qtyAvailable, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              <tr>
+                  %if (formatToPrint == "Y" || (sec_02 == "N" && sec_03 == "N" && sec_04 == "N"))
+                      <td class="colnmbr" colspan="3">Total</td>
+                  %else
+                      <td class="colnmbr" colspan="4">Total</td>
+                  %endif
+                  <td class="coltotal">$(F_IWOHQT)</td>
+                  %if (includeOnHandRecv == "Y")
+                      <td class="coltotal">$(F_IWOHRC)</td>
+                  %endif
+                  <td class="coltotal">$(F_IWQHSR)</td>
+                  <td class="coltotal">$(F_IWRESQ)</td>
+                  %if (V_CIOOIA == "Y")
+                      <td class="coltotal">$(F_IWQOO)</td>
+                      <td class="coltotal">$(F_IWDSQO)</td>
+                  %endif
+                  <td class="coltotal">$(F_qtyAvailable)</td>
+              </tr>
+          %endif
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  @dtw_assign(uv_WarehouseName, "IWWHS")
+  @dtw_assign(uv_ProductClassName, "IMPCLS")
+  @dtw_assign(uv_ProductGroupName, "IWPGRP")
+  @dtw_assign(uv_ProdInventoryTypeName, "IMITC")
+  @dtw_assign(uv_ProdPartTypeName, "IMPTYP")
+  %INCLUDE "userview.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select IWWHS, IWITEM, IWOHQT, IWOHRC, IWQHSR, IWRESQ, IWQOO, IWLIST, IWIWAC, ", stmtSQL)
+  @dtw_concat(stmtSQL, " ifnull(WHWHNM,' ') as WHWHNM, upper(ifnull(WHWHNM,' ')) as WHWHNMU ", stmtSQL)
+  @dtw_concat(fileSQL, " HDIWHS ", fileSQL)
+  @dtw_concat(fileSQL, " left join HDWHSM on IWWHS =IWWHS ", fileSQL)
+  @dtw_concat(selectSQL, "IWITEM='$(itemNumber)' ", selectSQL)
+  %if ((inclActive == "Y") && (inclInactive != "Y"))
+      @dtw_concat(selectSQL, "  and IWIWAC=' '", selectSQL)
+  %elseif ((inclActive != "Y") && (inclInactive == "Y"))
+      @dtw_concat(selectSQL, "  and IWIWAC>' '", selectSQL)
+  %elseif ((inclActive != "Y") && (inclInactive != "Y"))
+      @dtw_concat(selectSQL, "  and IWIWAC=' ' and IWIWAC>' '", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @List_Export_Query(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) List_Export_Query (IN CHAR(64)    profileHandle,
+                                         CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", V_IMIMDS)
+
+      @XMLBeginTag("ItemWarehouseList")
+          %ROW{
+              @Get_Qty_Avail(profileHandle, dataBaseID, V_IWITEM, V_IWWHS, qtyAvailable)
+	       @XMLIDTag("$(V_IWITEM)/$(V_IWWHS)", "ItemWarehouse ID")
+                  @XMLTag(V_IWITEM, "Item")
+                  @XMLTag(V_IMIMDS, "ItemDescription")
+                  @XMLTag(V_IWWHS, "Warehouse")
+                  @XMLTag(V_WHWHNM, "WarehouseName")
+                  @XMLTag(V_IWLIST, "ListPrice")
+                  @XMLTag(V_IWOHQT, "OnHandQuantity")
+                  @XMLTag(V_IWOHRC, "OnHandReceivingQuantity")
+                  @XMLTag(V_IWQHSR, "HeldInStockQuantity")
+                  @XMLTag(V_IWRESQ, "ReservedQuantity")
+                  @XMLTag(V_IWQOO, "OnOrderQuantity")
+                  @XMLTag(qtyAvailable, "AvailableQuantity")
+                  @XMLTag(V_IWIWAC, "ActivityFlag")
+              @XMLEndTag("ItemWarehouse")
+	       %}
+      @XMLEndTag("ItemWarehouseList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse Name, Warehouse")
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %elseif (chgActive == "Y" && inclActive == "Y")
+          @dtw_assign(inclActive, "")
+      %elseif (chgActive == "Y")
+          @dtw_assign(inclActive, "Y")
+      %elseif (chgInactive == "Y" && inclInactive == "Y")
+          @dtw_assign(inclInactive, "")
+      %elseif (chgInactive == "Y")
+          @dtw_assign(inclInactive, "Y")
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %if (inclActive == "" && inclInactive == "" && chgActive != "Y" && chgInactive != "Y")
+      @dtw_assign(inclActive, "Y")
+      @dtw_assign(inclInactive, "")
+  %endif
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit ()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "warehouseNumber")
+      %if (orderBy == "IWWHS")
+          @DTW_ASSIGN(orderBy, "IWWHS DESC")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse")
+      %endif
+  %elseif (sequence == "warehouseName")
+      %if (orderBy == "WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderBy, "WHWHNMU DESC,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse Name (descending), Warehouse")
+      %else
+          @DTW_ASSIGN(orderBy, "WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse Name, Warehouse")
+      %endif
+  %elseif (sequence == "listPrice")
+      %if (orderBy == "IWLIST,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderBy, "IWLIST DESC,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "List Price (descending), Warehouse Name, Warehouse")
+      %else
+          @DTW_ASSIGN(orderBy, "IWLIST,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "List Price, Warehouse Name, Warehouse")
+      %endif
+  %elseif (sequence == "qtyOnHand")
+      %if (orderBy == "IWOHQT,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderBy, "IWOHQT DESC,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity On Hand (descending), Warehouse Name, Warehouse")
+      %else
+          @DTW_ASSIGN(orderBy, "IWOHQT,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity On Hand, Warehouse Name, Warehouse")
+      %endif
+  %elseif (sequence == "qtyOnHandRecv")
+      %if (orderBy == "IWOHRC,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderBy, "IWOHRC DESC,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity On Hand Receiving (descending), Warehouse Name, Warehouse")
+      %else
+          @DTW_ASSIGN(orderBy, "IWOHRC,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity On Hand Receiving, Warehouse Name, Warehouse")
+      %endif
+  %elseif (sequence == "qtyHeldInStock")
+      %if (orderBy == "IWQHSR,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderBy, "IWQHSR DESC,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Held In Stock (descending), Warehouse Name, Warehouse")
+      %else
+          @DTW_ASSIGN(orderBy, "IWQHSR,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Held In Stock, Warehouse Name, Warehouse")
+      %endif
+  %elseif (sequence == "qtyReserved")
+      %if (orderBy == "IWRESQ,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderBy, "IWRESQ DESC,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Reserved (descending), Warehouse Name, Warehouse")
+      %else
+          @DTW_ASSIGN(orderBy, "IWRESQ,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Reserved, Warehouse Name, Warehouse")
+      %endif
+  %elseif (sequence == "qtyOnOrder")
+      %if (orderBy == "IWQOO,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderBy, "IWQOO DESC,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity On Order (descending), Warehouse Name, Warehouse")
+      %else
+          @DTW_ASSIGN(orderBy, "IWQOO,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity On Order, Warehouse Name, Warehouse")
+      %endif
+  %elseif (sequence == "qtyDropShip")
+      %if (orderBy == "IWDSQO,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderBy, "IWDSQO DESC,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Drop Shipped (descending), Warehouse Name, Warehouse")
+      %else
+          @DTW_ASSIGN(orderBy, "IWDSQO,WHWHNMU,IWWHS")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Drop Shipped, Warehouse Name, Warehouse")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+  @Build_WildCard ("IWWHS", "Number", $(srchWhs), "", operWhs, "N")
+  @Build_WildCard ("upper(WHWHNM)", "Name", $(srchName), "U", operName, "A")
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

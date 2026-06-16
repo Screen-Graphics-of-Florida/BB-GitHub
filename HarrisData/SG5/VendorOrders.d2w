@@ -1,0 +1,430 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Vendor Purchase Orders                                      *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Vendor Orders"
+  d2wName                 = "VendorOrders.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(vendorNumber)&amp;vendorName=@dtw_rurlescseq(vendorName)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  DTW_PAD_PGM_PARMS       = "YES"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+  multRemitToVendor       = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@vendorName", "@dtw_rurlescseq(vendorName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@vendorNumber", "@dtw_rurlescseq(vendorNumber)", "1", "a", workURL)
+%}
+	
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @VendorUserView(profileHandle, dataBaseID, userPass, vendorNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+	           %INCLUDE "NumEdit.icl"
+                  %INCLUDE "CheckEnterSearch.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(searchForm) {
+                      if (editNum(document.Search.srchOrder, 8, 0))
+                          return true;
+                  }
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                           @dtw_assign(pageID, "VENDORORDERS")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          @dtw_assign(uv_WarehouseName, "POWHS")
+                          @dtw_assign(uv_VendorName, "POVEND")
+                          @dtw_assign(uv_BuyerName, "POBUYR")
+                          %INCLUDE "userview.icl"
+
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "SELECT POPO, POWHS, POSTAT, POPORF, PODSHP, PORQDT, POTYPE,", stmtSQL)
+                          @dtw_concat(stmtSQL, " POLRDT, POSVSV, POSVDS, POVEND ", stmtSQL)
+                          @dtw_concat(fileSQL, " POPOMS ", fileSQL)
+                          @dtw_concat(selectSQL, "(POVEND=$(vendorNumber) or PORTOV=$(vendorNumber)) and POSTAT='O' ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @Order_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Order_Query (IN   CHAR(64) profileHandle,
+				      CHAR(2)   dataBaseID,
+                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitleWithPrint.icl"
+
+      <table $(contentTable)>
+          @Format_Header_URL("Vendor", $(vendorName), $(vendorNumber), "$(homeURL)$(cGIPath)VendorSelect.d2w/REPORT$(d2wVarBase)")
+      </table>
+
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr"> Reference<br>Number</th>
+                      <th class="colhdr"> Purchase<br>Order</th>
+                      <th class="colhdr">Whs</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchRef" size="15" maxlength="15">
+                          <input type="hidden" name="operRef" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputnmbr" name="srchOrder" size="8" maxlength="8">
+                          <input type="hidden" name="operOrder" value="=">
+                      </td>
+                      <td><input type="text" class="inputnmbr" name="srchWhs" size="2" maxlength="3">
+                          <input type="hidden" name="operWhs" value="=">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchRef.focus();
+              </script>
+          </form>
+
+          %INCLUDE "wildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          @RtvFldDesc("VMRTVD=$(vendorNumber) or VMVEND=$(vendorNumber)", "HDVEND", " char(count(VMVEND))", multRemitToVendor)
+
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              %if (multRemitToVendor > "1")
+                  @OrderBy_Sort("POVEND", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=vendorSearch" title="Sequence By Vendor Number, Purchase Order">Vendor</a></th>	
+              %endif
+              @OrderBy_Sort("POPO ", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=purchaseOrder" title="Sequence By Purchase Order">Purchase<br>Order</a></th>
+              @OrderBy_Sort("POWHS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Whs" title="Sequence By Warehouse, Purchase Order">Whs</a></th>
+              @OrderBy_Sort("POPORF", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Reference" title="Sequence By Reference Number, Purchase Order">Reference<br>Number</a></th>
+              @OrderBy_Sort("PORQDT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=RequireDate" title="Sequence By Required Date, Purchase Order">Required<br>Date</a></th>
+              @OrderBy_Sort("POLRDT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ReceivedDate" title="Sequence By Last Receipt Date, Purchase Order">Last<br>Receipt</a></th>
+              @OrderBy_Sort("POSVDS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ShipVia" title="Sequence By Ship Via, Purchase Order">Ship<br>Via</a></th>
+              @OrderBy_Sort("POTYPE", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=POType" title="Sequence By Order Type, Purchase Order">Order<br>Type</a></th>
+              @OrderBy_Sort("PODSHP", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DropShip" title="Sequence By Drop Shipment, Purchase Order">Drop<br>Ship</a></th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+   			
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Date(V_PORQDT, "D", F_PORQDT)
+              @Format_Date(V_POLRDT, "D", F_POLRDT)
+              @RtvFldDesc("(OTOTCD='$(V_POTYPE)' and OTAPID='PO')", "HDOTYP", "OTDESC", orderTypeDesc)
+
+              <tr class="$(rowClass)">
+                  %if (multRemitToVendor > "1")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)VendorInquiry.d2w/DISPLAY$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(V_POVEND)" onclick="$(inquiryWinVar)" title="Vendor Quickview">$(V_POVEND)</a></td>
+                  %endif
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)SelectPurchaseOrder.d2w/REPORT$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(vendorNumber)&amp;vendorName=@dtw_rurlescseq(vendorName)&amp;purchaseOrderNumber=@dtw_rurlescseq(V_POPO)" title="View Purchase Order">$(V_POPO)</a></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)WarehouseSelect.d2w/REPORT$(genericVarBase)&amp;warehouseNumber=@dtw_rurlescseq(V_POWHS)" title="View Warehouse"> $(V_POWHS)</a></td>
+                  <td class="colalph">$(V_POPORF)</td>
+                  <td class="coldate">$(F_PORQDT)</td>
+                  <td class="coldate">$(F_POLRDT)</td>
+                  <td class="colalph" $(helpCursor)><span title="$(V_POSVSV)">$(V_POSVDS)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(orderTypeDesc)">$(V_POTYPE)</span></td>
+                  %if (V_PODSHP>"0")
+                      @RtvFldDesc("DSVCF='V' and DSVNCS=$(vendorNumber) and DSNMBR=$(V_PODSHP)", "HDDSHP", "DSNAME", dropShipName)
+                      %if (dropShipName>" ")
+                          <td class="colnmbr"><a href="$(homeURL)$(cGIPath)DropShipInquiry.d2w/DISPLAY$(genericVarBase)&amp;dropShipVCF=V&amp;dropShipVendCust=@dtw_rurlescseq(vendorNumber)&amp;dropShipNumber=@dtw_rurlescseq(V_PODSHP)" onclick="$(inquiryWinVar)" title="Drop Ship Quickview">$(V_PODSHP)</a></td>
+                      %else
+                          <td class="colnmbr">$(V_PODSHP)</td>
+                      %endif
+                  %else
+                      <td class="colalph">&nbsp;</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "POPO")
+          @DTW_ASSIGN(orderByDisplay, "Purchase Order")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "vendorSearch")
+      %if (orderBy == "POVEND,POPO")
+          @DTW_ASSIGN(orderBy, "POVEND DESC,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Vendor Number (descending), Purchase Order")
+      %else
+          @DTW_ASSIGN(orderBy, "POVEND,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Vendor Number, Purchase Order")
+      %endif
+  %elif (sequence == "purchaseOrder")
+      %if (orderBy == "POPO ")
+          @DTW_ASSIGN(orderBy, "POPO DESC")
+          @DTW_ASSIGN(orderByDisplay, "Purchase Order (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "POPO ")
+          @DTW_ASSIGN(orderByDisplay, "Purchase Order")
+      %endif
+  %elif (sequence == "Whs")
+      %if (orderBy == "POWHS,POPO")
+          @DTW_ASSIGN(orderBy, "POWHS DESC,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse (descending), Purchase Order (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "POWHS,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse, Purchase Order")
+      %endif
+  %elif (sequence == "Reference")
+      %if (orderBy == "POPORF,POPO")
+          @DTW_ASSIGN(orderBy, "POPORF DESC,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Reference (descending), Purchase Order")
+      %else
+          @DTW_ASSIGN(orderBy, "POPORF,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Reference, Purchase Order")
+      %endif
+  %elif (sequence == "DropShip")
+      %if (orderBy == "PODSHP,POPO")
+          @DTW_ASSIGN(orderBy, "PODSHP DESC,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Drop Ship (descending), Purchase Order")
+      %else
+          @DTW_ASSIGN(orderBy, "PODSHP,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Drop Ship, Purchase Order")
+      %endif
+  %elif (sequence == "RequireDate")
+      %if (orderBy == "PORQDT,POPO")
+          @DTW_ASSIGN(orderBy, "PORQDT DESC,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Required Date (descending), Purchase Order ")
+      %else
+          @DTW_ASSIGN(orderBy, "PORQDT,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Required Date, Purchase Order")
+      %endif
+  %elif (sequence == "POType")
+      %if (orderBy == "POTYPE,POPO")
+          @DTW_ASSIGN(orderBy, "POTYPE DESC,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Type (descending), Purchase Order")
+      %else
+          @DTW_ASSIGN(orderBy, "POTYPE,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Type, Purchase Order")
+      %endif
+  %elif (sequence == "ReceivedDate")
+      %if (orderBy == "POLRDT,POPO")
+          @DTW_ASSIGN(orderBy, "POLRDT DESC,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Last Receipt Date (descending), Purchase Order")
+      %else
+          @DTW_ASSIGN(orderBy, "POLRDT,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Last Receipt Date, Purchase Order")
+      %endif
+  %elif (sequence == "ShipVia")
+      %if (orderBy == "POSVDS,POPO")
+          @DTW_ASSIGN(orderBy, "POSVDS DESC,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Ship Via (descending), Purchase Order")
+      %else
+          @DTW_ASSIGN(orderBy, "POSVDS,POPO")
+          @DTW_ASSIGN(orderByDisplay, "Ship Via, Purchase Order")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchWhs, 3, 0) &&
+                      editNum(document.Search.srchOrder, 8, 0) &&
+                      editdate(document.Search.srchReqDate) &&
+                      editdate(document.Search.srchLastRec))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "VENDORORDERS")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Purchase Order</td>
+                              @dtw_assign(operNbr, "operOrder")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchOrder" size="8" maxlength="8"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Warehouse</td>
+                              @dtw_assign(operNbr, "operWhs")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchWhs" type="text" size="4" maxlength="3"><a href="$(homeURL)$(phpPath)WarehouseSearch.php$(altVarBase)&amp;docName=Search&amp;fldName=srchWhs&amp;fldDesc=warehouseName" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="warehouseName" value="$(fieldDesc)" type="text" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Reference Number</td>
+                              @dtw_assign(operNbr, "operRef")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchRef" size="22" maxlength="22"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Required Date</td>
+                              @dtw_assign(operNbr, "operReqDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchReqDate" type="text" size="6" maxlength="6">
+                                  <a href="javascript:calWindow('srchReqDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Last Receipt</td>
+                              @dtw_assign(operNbr, "operLastRec")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchLastRec" type="text" size="6" maxlength="6">
+                                  <a href="javascript:calWindow('srchLastRec');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Ship Via</td>
+                              @dtw_assign(operNbr, "operShipVia")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchShipVia" type="text" size="4" maxlength="2"><a href="$(homeURL)$(phpPath)ShipViaSearch.php$(altVarBase)&amp;docName=Search&amp;fldName=srchShipVia&amp;fldDesc=shipViaDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="shipViaDesc" type="text" size="35" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Order Type</td>
+                              @dtw_assign(operNbr, "operOrderType")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchOrderType" type="text" value="$(fromField)" size="4" maxlength="1"><a href="$(homeURL)$(cGIPath)OrderTypeSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchOrderType&amp;fldDesc=srchOrderTypeDesc&amp;appID=PO" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchOrderTypeDesc" type="text" size="35" disabled></td>
+                          </tr>
+                		
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchOrder.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("POPORF", "Reference Number", $(srchRef), "U", operRef, "A")
+  @Build_WildCard ("POPO", "Order Number", $(srchOrder), "", operOrder, "N")
+  @Build_WildCard ("POWHS", "Warehouse", $(srchWhs), "", operWhs, "N")
+  @Build_WildCard ("PORQDT", "Required Date", $(srchReqDate), "", operReqDate, "D")
+  @Build_WildCard ("POLRDT", "Last Receipt", $(srchLastRec), "", operLastRec, "D")
+  @Build_WildCard ("POSVSV", "Ship Via", $(srchShipVia), "U", operShipVia, "A")
+  @Build_WildCard ("POTYPE", "Order Type", $(srchOrderType), "U", operOrderType, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

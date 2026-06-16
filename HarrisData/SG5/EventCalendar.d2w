@@ -1,0 +1,783 @@
+%{
+*********************************************************************
+* Copr 1979 2002 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Event Calendar                                              *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "EventCalendar.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "MonthDesc.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Event Calendar"
+  d2wName                 = "EventCalendar.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;dspTime=@dtw_rurlescseq(dspTime)&amp;dspComp=@dtw_rurlescseq(dspComp)&amp;dspOpen=@dtw_rurlescseq(dspOpen)&amp;dspAsgn=@dtw_rurlescseq(dspAsgn)&amp;searchDsp=@dtw_rurlescseq(searchDsp)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  dspMaxRows              = "1000"
+  RPT_MAX_ROWS            = "1000"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+  curYear                 = ""	
+  curMonth                = ""	
+  curDay                  = ""	
+  dayCnt                  = "0"	
+  selMonth                = ""	
+  searchVar               = ""	
+  searchDsp               = ""	
+  startDate               = ""	
+  endDate                 = ""	
+  maxrows                 = ""	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <link rel=stylesheet type="text/css" href="$(homeURL)$(homePath)$(calStyleSheet)">
+          <link rel=stylesheet type="text/css" href="$(homeURL)$(homePath)HDSEventCalendar.css">
+          @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NewWindowOpen.icl"
+                  %INCLUDE "calendarAutoSubmit.icl"
+              </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                       @dtw_assign(pageID, "EVENTCALENDAR")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+
+                  %if (selDate > "0")
+                      @Date_To_ISO("$(selDate)", dateOut)
+                      @dtw_substr(dateOut, "1", "4", calYear)
+                      @dtw_substr(dateOut, "6", "2", calMonth)
+                  %endif
+                  <td class="content">
+                      %if (reload != "N" && V_HDCMRL > "0")
+                          @RetCalEvents(profileHandle, dataBaseID, loadProgram, calYear, calMonth, calWeek, startDate, endDate, reload, pastDue, searchVar, searchDsp)
+                      %endif
+
+                      %if (calView == "D")
+                          @dtw_assign(startDate, calDate)
+                          @dtw_assign(endDate, calDate)
+                      %endif
+                      @dtw_assign(stmtSQL, "")
+                      %if (calView == "P")
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " SYCLPW ", fileSQL)
+                          @dtw_concat(selectSQL, "CEXHND='$(profileHandle)' and CESEQ#<>9999999 ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By CEEVTD,CEEVTT ", stmtSQL)
+                      %else
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " SYCLDM ", fileSQL)
+                          @dtw_concat(selectSQL, "CDYEAR=$(calYear) ", selectSQL)
+                          %if (calView == "M" || calView == "W" || calView == "D")
+                              @dtw_concat(selectSQL, " and CDMNTH=$(calMonth) ", selectSQL)
+                          %endif
+                          %if (calView == "W" || calView == "D")
+                              @dtw_concat(selectSQL, " and CDWEEK=$(calWeek) ", selectSQL)
+                          %endif
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By CDYEAR,CDMNTH,CDWEEK ", stmtSQL)
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Event_Calendar_Query(profileHandle, dataBaseID, stmtSQL)
+                      %if (calView != "M")
+                          $(hrTagAttr)
+                      %endif
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Event_Calendar_Query (IN CHAR(64) profileHandle,
+				             CHAR(2)   dataBaseID,
+                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @dtw_assign(prevMonth, calMonth)
+      @dtw_assign(nextMonth, calMonth)
+      @dtw_assign(prevYear, calYear)
+      @dtw_assign(nextYear, calYear)
+      @dtw_assign(prevWeek, "0")
+      @dtw_assign(nextWeek, "0")
+
+      %if ((calView != "W" && calView != "Y") || (calView == "W" && calWeek == "1"))
+          %if (calMonth == "01")
+              @dtw_assign(prevMonth, "12")
+              @dtw_assign(prevYear, @dtw_rsubtract(calYear, "1"))
+          %elif (calMonth == "12")
+              @dtw_assign(prevMonth, @dtw_rsubtract(calMonth, "1"))
+              @dtw_assign(prevYear, calYear)
+          %else
+              @dtw_assign(prevMonth, @dtw_rsubtract(calMonth, "1"))
+              @dtw_assign(prevYear, calYear)
+          %endif
+      %endif
+      %if (calView == "W")
+          %if (calWeek == "1")
+              @dtw_assign(prevWeek, "5")
+          %else
+              @dtw_assign(prevWeek, @dtw_rsubtract(calWeek, "1"))
+          %endif
+      %endif
+
+      %if ((calView != "W" && calView != "Y") || (calView == "W" && calWeek == "5"))
+          %if (calMonth == "01")
+              @dtw_assign(nextMonth, @dtw_radd(calMonth, "1"))
+              @dtw_assign(nextYear, calYear)
+          %elif (calMonth == "12")
+              @dtw_assign(nextMonth, "1")
+              @dtw_assign(nextYear, @dtw_radd(calYear, "1"))
+          %else
+              @dtw_assign(nextMonth, @dtw_radd(calMonth, "1"))
+              @dtw_assign(nextYear, calYear)
+          %endif
+      %endif
+      %if (calView == "W")
+          %if (calWeek == "5")
+              @dtw_assign(nextWeek, "1")
+          %else
+              @dtw_assign(nextWeek, @dtw_radd(calWeek, "1"))
+          %endif
+      %endif
+
+      %if (calView == "Y")
+          @dtw_assign(prevYear, @dtw_rsubtract(calYear, "1"))
+          @dtw_assign(nextYear, @dtw_radd(calYear, "1"))
+      %else
+          %if (@dtw_rlength(prevMonth) == "1")
+              @dtw_insert("0", prevMonth, "0", "1", prevMonth)
+          %endif
+          %if (@dtw_rlength(nextMonth) == "1")
+              @dtw_insert("0", nextMonth, "0", "1", nextMonth)
+          %endif
+      %endif
+
+      %if (calView == "D")
+          @dtw_assign(prevWeek, "1")
+          @dtw_assign(nextWeek, "1")
+          @dtw_assign(prevDate, calDate)
+          @Calc_ISO_Date(profileHandle, dataBaseID, prevDate, "S", "D", "1")
+          @dtw_assign(prevYear, @dtw_rsubstr(prevDate, "1", "4"))
+          @dtw_assign(prevMonth, @dtw_rsubstr(prevDate, "6", "2"))
+          @dtw_assign(nextDate, calDate)
+          @Calc_ISO_Date(profileHandle, dataBaseID, nextDate, "A", "D", "1")
+          @dtw_assign(nextYear, @dtw_rsubstr(nextDate, "1", "4"))
+          @dtw_assign(nextMonth, @dtw_rsubstr(nextDate, "6", "2"))
+      %endif
+
+      @dtw_tb_rows(monthsTable, maxRows)
+      @dtw_assign(mth, "1")
+      %while((@dtw_tb_rgetv(monthsTable, mth, "1") != calMonth) && (mth < maxRows)) {@dtw_add(mth, "1", mth)%}
+      @dtw_assign(monthDesc, @dtw_tb_rgetv(monthsTable, mth, "2"))
+
+      <form class="formClass" name="Chg" METHOD="POST" action="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=0&amp;calView=M">
+          <table $(calHeaderTable)>
+              <tr>
+                  %if (calView == "P")
+                      <td align="center"><h1>Overdue Events <input type="hidden" name="selDate" size="6" maxlength="6"><a href="javascript:calWindow('selDate');">$(calendarImage)</a><h1></td>
+                      %if (searchDsp != "")
+                          <td class="calsearch">$(searchDsp)</td>
+                      %endif
+                  %else
+                      %if (calView == "M")
+                          @Get_Month_Desc(prevMonth, prevMthDesc)
+                          @Get_Month_Desc(nextMonth, nextMthDesc)
+                      %else
+                          @dtw_assign(prevMthDesc, "$(previousImage)")
+                          @dtw_assign(nextMthDesc, "$(nextImage)")
+                      %endif
+                      @dtw_assign(eventDate, "0")
+                      <td class="calselmth">
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(prevYear)&amp;calMonth=@dtw_rurlescseq(prevMonth)&amp;calWeek=@dtw_rurlescseq(prevWeek)&amp;calDate=@dtw_rurlescseq(prevDate)&amp;calView=@dtw_rurlescseq(calView)" title="View Month">$(prevMthDesc)</a>
+                          %if (calView == "M")
+                              |
+                          %endif
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(nextYear)&amp;calMonth=@dtw_rurlescseq(nextMonth)&amp;calWeek=@dtw_rurlescseq(nextWeek)&amp;calDate=@dtw_rurlescseq(nextDate)&amp;calView=@dtw_rurlescseq(calView)" title="View Month">$(nextMthDesc)</a>
+                          &nbsp; &nbsp;
+                          %if (calView != "Y")
+                              <a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=0&amp;calView=M" title="View Month"> $(monthDesc)</a>
+                          %endif
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=00&amp;calWeek=0&amp;calView=Y" title="View Year">$(calYear)</a>
+                          <input type="hidden" name="selDate" size="6" maxlength="6"><a href="javascript:calWindow('selDate');">$(calendarImage)</a>
+                      </td>
+                      @dtw_assign(medIcon, "Y")
+                      <td align="center"><h1> Event Calendar <a href="$(homeURL)$(cGIPath)EventCalendarSelect.d2w/REPORT$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=@dtw_rurlescseq(calWeek)&amp;calView=@dtw_rurlescseq(calView)&amp;calDate=@dtw_rurlescseq(calDate)&amp;getCurrent=Y">$(searchDesc)</a>%INCLUDE "HelpPage.icl"</h1></td>
+                      %if (searchDsp != "")
+                          <td class="calsearch">$(searchDsp)</td>
+                      %endif
+                      @RtvFldDesc("CEXHND='$(profileHandle)' and CESEQ#<>9999999", "SYCLPW", " char(count(CEEVTD))", pastDueCount)
+                      %if (pastDueCount > "0")
+                          <td class="calpastdue"><a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=@dtw_rurlescseq(calWeek)&amp;calDate=@dtw_rurlescseq(calDate)&amp;calView=P" title="View Overdue Events">$(pastDueImage) </a></td>
+                      %endif
+                  %endif
+              </tr>
+          </table>
+      </form>
+
+          %if (calView == "Y")
+             <table $(calYearTable)>
+                 <tr class="caldayhdr">
+                    <th>Week</th>
+                    <th>Sun</th>
+                    <th>Mon</th>
+                    <th>Tue</th>
+                    <th>Wed</th>
+                    <th>Thu</th>
+                    <th>Fri</th>
+                    <th>Sat</th>
+                 </tr>
+          %elif (calView == "M")
+             <table $(calMonthTable)>
+                 <tr class="caldayhdr">
+                    <th><a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=@dtw_rurlescseq(calWeek)&amp;calDate=@dtw_rurlescseq(calDate)&amp;calView=@dtw_rurlescseq(calView)&amp;reload=Y">$(reloadImage)</a></th>
+                    <th>Sunday</th>
+                    <th>Monday</th>
+                    <th>Tuesday</th>
+                    <th>Wednesday</th>
+                    <th>Thursday</th>
+                    <th>Friday</th>
+                    <th>Saturday</th>
+                 </tr>
+          %else
+              $(hrTagAttr)
+              <table $(calWeekTable)>
+          %endif
+
+          @dtw_assign(dayName, "")
+          @dtw_assign(saveDate, "")
+          @dtw_assign(saveMonth, "")
+          @dtw_assign(saveStartDate, "0")
+          @dtw_assign(selectWeek, "0")
+          @dtw_assign(eventRec, "1")
+
+          %if (dspTime == "Y")
+              @dtw_assign(chgDspTime, "N")
+              @dtw_assign(checkTime, "CHECKED")
+          %else
+              @dtw_assign(chgDspTime, "Y")
+              @dtw_assign(checkTime, "")
+          %endif
+
+          %if (dspOpen == "Y")
+              @dtw_assign(chgDspOpen, "N")
+              @dtw_assign(checkOpen, "CHECKED")
+          %else
+              @dtw_assign(chgDspOpen, "Y")
+              @dtw_assign(checkOpen, "")
+          %endif
+
+          %if (dspComp == "Y")
+              @dtw_assign(chgDspComp, "N")
+              @dtw_assign(checkComp, "CHECKED")
+          %else
+              @dtw_assign(chgDspComp, "Y")
+              @dtw_assign(checkComp, "")
+          %endif
+
+          %if (dspAsgn == "Y")
+              @dtw_assign(chgDspAsgn, "N")
+              @dtw_assign(checkAsgn, "CHECKED")
+          %else
+              @dtw_assign(chgDspAsgn, "Y")
+              @dtw_assign(checkAsgn, "")
+          %endif
+
+          %if (calView == "Y")
+              @dtw_assign(eventsPerDay, "$(eventsPerDayYear)")
+          %else
+              @dtw_assign(eventsPerDay, "$(eventsPerDayMth)")
+          %endif
+
+          %ROW{
+              %if (V_CDWEEK == "00")
+                  @Event_Query(profileHandle, dataBaseID, V_CDDSUN, V_CDDSAT, eventTable)
+                  @dtw_tb_rows(eventTable, maxRows)
+                  @dtw_assign(eventRec, "1")
+              %else
+
+                  %if (calView == "M" || (calView == "Y" && saveStartDate != V_CDDSUN))
+                      @dtw_assign(saveStartDate, "$(V_CDDSUN)")
+
+                      %if (calView == "Y")
+                          @dtw_substr(V_CDDSUN, "6", "2", startMonth)
+                          @dtw_substr(V_CDDSUN, "9", "2", startDay)
+                          @dtw_substr(V_CDDSAT, "6", "2", endMonth)
+                          @dtw_substr(V_CDDSAT, "9", "2", endDay)
+                          @dtw_assign(week, " $(startMonth)/$(startDay) - $(endMonth)/$(endDay) ")
+                          @dtw_assign(selectWeek, "$(V_CDWEEK)")
+                      %else
+                          @dtw_assign(selectWeek, @dtw_radd(selectWeek, "1"))
+                      %endif
+
+                      <tr>
+                          %if (calView == "Y")
+                              <td class="yrselweek"><a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(startMonth)&amp;calView=W&amp;calWeek=@dtw_rurlescseq(selectWeek)&amp;reload=N" title="View Week">$(week)</a></td>
+                          %else
+                              <td class="mthselweek"><a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calView=W&amp;calWeek=@dtw_rurlescseq(selectWeek)&amp;reload=N">$(calSelWeekImage)</a></td>
+                          %endif
+
+                          @dtw_assign(dayCnt, "1")
+                          %while (dayCnt <= "7"){
+                              %if (dayCnt == "1")
+                                  @dtw_assign(eventDate, "$(V_CDDSUN)")
+                              %elif (dayCnt == "2")
+                                  @dtw_assign(eventDate, "$(V_CDDMON)")
+                              %elif (dayCnt == "3")
+                                  @dtw_assign(eventDate, "$(V_CDDTUE)")
+                              %elif (dayCnt == "4")
+                                  @dtw_assign(eventDate, "$(V_CDDWED)")
+                              %elif (dayCnt == "5")
+                                  @dtw_assign(eventDate, "$(V_CDDTHU)")
+                              %elif (dayCnt == "6")
+                                  @dtw_assign(eventDate, "$(V_CDDFRI)")
+                              %elif (dayCnt == "7")
+                                  @dtw_assign(eventDate, "$(V_CDDSAT)")
+                              %endif
+
+                              @dtw_assign(today, "")
+                              @dtw_substr(eventDate, "1", "4", eventYear)
+                              @dtw_substr(eventDate, "6", "2", eventMonth)
+                              @dtw_substr(eventDate, "9", "2", eventDay)
+                              %if (calView == "Y")
+                                  @dtw_assign(dayClass, "calyearday")
+                              %elif (calView == "M")
+                                  %if (eventMonth == calMonth)
+                                      %if (eventYear == curYear && eventMonth == curMonth && eventDay == curDay)
+                                          @dtw_assign(dayClass, "calmthtoday")
+                                          @dtw_assign(today, "(Today)")
+                                      %else
+                                          @dtw_assign(dayClass, "calmthday")
+                                      %endif
+                                  %else
+                                      @dtw_assign(dayClass, "calothday")
+                                  %endif
+                              %endif
+
+                              <td class="$(dayClass)">
+                                  <table $(calDayTable)>
+                                      %if (calView == "M")
+                                          <tr><td><a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(eventYear)&amp;calMonth=@dtw_rurlescseq(eventMonth)&amp;calWeek=1&amp;calView=D&amp;calDate=@dtw_rurlescseq(eventDate)" title="View Day">$(eventDay) $(today)</a></td</tr>
+                                      %endif
+                                      @dtw_assign(eventsExist, "N")
+                                      @dtw_assign(eventCnt, "0")
+                                      %while((eventRec <= maxRows) && (eventCnt < eventsPerDay) && (@dtw_tb_rgetv(eventTable, eventRec, @dtw_tb_rQuerycolnonj(eventTable, "CEEVTD")) <= eventDate)) {
+                                          @dtw_assign(CEEVTD, @dtw_tb_rgetv(eventTable, eventRec, @dtw_tb_rQuerycolnonj(eventTable, "CEEVTD")))
+                                          %if (CEEVTD == eventDate)
+                                              @dtw_assign(CESTAT, @dtw_tb_rgetv(eventTable, eventRec, @dtw_tb_rQuerycolnonj(eventTable, "CESTAT")))
+                                              %if ((dspOpen == "Y" && CESTAT == "O") || (dspComp == "Y" && CESTAT == "C") || (dspAsgn == "Y" && CESTAT == "A"))
+                                                  @dtw_add(eventCnt, "1", eventCnt)
+                                                  @dtw_assign(CEEVTT, @dtw_tb_rgetv(eventTable, eventRec, @dtw_tb_rQuerycolnonj(eventTable, "CEEVTT")))
+                                                  @dtw_assign(CEEURL, @dtw_tb_rgetv(eventTable, eventRec, @dtw_tb_rQuerycolnonj(eventTable, "CEEURL")))
+                                                  @dtw_assign(CEMTHD, @dtw_tb_rgetv(eventTable, eventRec, @dtw_tb_rQuerycolnonj(eventTable, "CEMTHD")))
+                                                  @dtw_assign(CEWKDD, @dtw_tb_rgetv(eventTable, eventRec, @dtw_tb_rQuerycolnonj(eventTable, "CEWKDD")))
+                                                  @dtw_assign(CEIMG, @dtw_tb_rgetv(eventTable, eventRec, @dtw_tb_rQuerycolnonj(eventTable, "CEIMG")))
+                                                  @dtw_qhtmlencode($(CEWKDD), mouseOver)
+
+                                                  %if (CESTAT == "C")
+                                                       @dtw_assign(eventClass, "mthcomp")
+                                                  %elif (CESTAT == "A")
+                                                       @dtw_assign(eventClass, "mthasgn")
+                                                  %else
+                                                       @dtw_assign(eventClass, "mthopen")
+                                                  %endif
+
+                                                  @dtw_assign(imageExists, "")
+                                                  %if (displayImages == "Y" && CEIMG != "")
+                                                      @dtw_assign(eventImage, "$(CEIMG)")
+                                                      @dtwf_exists(eventImage, imageExists)
+                                                  %endif
+
+                                                  @dtw_substr(CEEVTD, "1", "4", eventYear)
+                                                  @dtw_substr(CEEVTD, "6", "2", eventMonth)
+                                                  @dtw_substr(CEEVTD, "9", "2", eventDay)
+
+                                                  @dtw_assign(eventTime, "")
+                                                  %if (dspTime == "Y")
+                                                      %if (@dtw_rlength(CEEVTT) == "5")
+                                                          @dtw_insert("0", CEEVTT, "0", "1", CEEVTT)
+                                                      %endif
+
+                                                      %if (CEEVTT != "0")
+                                                          @dtw_insert(":", CEEVTT, "2", "1", CEEVTT)
+                                                          @dtw_insert(":", CEEVTT, "5", "1", CEEVTT)
+                                                          @dtw_assign(eventTime, @dtw_rsubstr(CEEVTT, "1", "5"))
+                                                      %else
+                                                          @dtw_assign(eventTime, "&nbsp;")
+                                                      %endif
+
+                                                      %if (@dtw_rsubstr(eventTime, "1", "1") == "0")
+                                                          @dtw_assign(eventTime, "@dtw_rsubstr(CEEVTT, "2", "4")")
+                                                      %endif
+                                                  %endif
+
+                                                  %if (eventsExist=="N")
+                                                      @dtw_assign(eventsExist, "Y")
+                                                      <tr><td><ul class="mthlist">
+                                                  %endif
+                                                  <li class="$(eventClass)"><a href="$(homeURL)$(cGIPath)$(CEEURL)&amp;baseVar=@dtw_rurlescseq(baseVar)&amp;eID=@dtw_rurlescseq(eID)&amp;portal=@dtw_rurlescseq(portal)" title="$(CEWKDD)
+                                                              Click To View Event">
+                                                              %if (dspTime == "Y")
+                                                                  <span class="caltime">$(eventTime)</span>
+                                                              %endif
+                                                              $(CEMTHD)
+                                                              %if (imageExists == "Y")
+                                                                  <img src="$(homeURL)$(eventImage)" border="0" alt=""  title="$(CEWKDD)
+                                                                  Click To View Event">
+                                                              %endif
+                                                          </a>
+                                                  </li>
+                                              %endif
+                                          %endif
+                                          @dtw_add(eventRec, "1", eventRec)
+                                      %}
+                                      %if (eventsExist=="Y")
+                                          </ul></td></tr>
+                                      %endif
+                                      %if (eventCnt == eventsPerDay)
+                                          @dtw_assign(CEEVTD, @dtw_tb_rgetv(eventTable, eventRec, @dtw_tb_rQuerycolnonj(eventTable, "CEEVTD")))
+                                          %if (CEEVTD == eventDate)
+                                              <tr class="calmoremsg">
+                                                  <td>
+                                                      %if (calView == "M" && moreMonthImage != "")
+                                                          <a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=1&amp;calView=D&amp;calDate=@dtw_rurlescseq(eventDate)" title="View Day">$(moreMonthImage)</a>
+                                                      %else
+                                                          <a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(@dtw_rsubstr(CEEVTD, "6", "2"))&amp;calWeek=1&amp;calView=D&amp;calDate=@dtw_rurlescseq(eventDate)" title="View Day">$(moreYearImage)</a>
+                                                      %endif
+                                                  </td>
+                                              </tr>
+                                          %endif
+                                      %elif (calView == "M")
+                                          %while(eventCnt < eventsPerDay){
+                                             @dtw_add(eventCnt, "1", eventCnt)
+                                          %}
+                                      %endif
+                                  </table>
+                              </td>
+                              @dtw_add(dayCnt, "1", dayCnt)
+                          %}
+                      </tr>
+
+                  %elif (calView == "D" || calView == "W")
+
+                      %if (calDate != "")
+                          @Event_Query(profileHandle, dataBaseID, calDate, calDate, eventTable)
+                      %else
+                          @Event_Query(profileHandle, dataBaseID, V_CDDSUN, V_CDDSAT, eventTable)
+                      %endif
+                      @dtw_tb_rows(eventTable, eventMaxRows)
+
+                          @dtw_assign(dayCnt, "1")
+                          %while (dayCnt <= "7"){
+                              %if (calDate != "")
+                                  @dtw_assign(eventDate, "$(calDate)")
+                                  @dtw_assign(dayCnt, "7")
+                              %else
+                                  %if (dayCnt == "1")
+                                      @dtw_assign(eventDate, "$(V_CDDSUN)")
+                                  %elif (dayCnt == "2")
+                                      @dtw_assign(eventDate, "$(V_CDDMON)")
+                                  %elif (dayCnt == "3")
+                                      @dtw_assign(eventDate, "$(V_CDDTUE)")
+                                  %elif (dayCnt == "4")
+                                      @dtw_assign(eventDate, "$(V_CDDWED)")
+                                  %elif (dayCnt == "5")
+                                      @dtw_assign(eventDate, "$(V_CDDTHU)")
+                                  %elif (dayCnt == "6")
+                                      @dtw_assign(eventDate, "$(V_CDDFRI)")
+                                  %elif (dayCnt == "7")
+                                      @dtw_assign(eventDate, "$(V_CDDSAT)")
+                                  %endif
+                              %endif
+
+                              @dtw_substr(eventDate, "1", "4", eventYear)
+                              @dtw_substr(eventDate, "6", "2", eventMonth)
+                              @dtw_substr(eventDate, "9", "2", eventDay)
+
+                              @RetDayName(profileHandle, dataBaseID, $(eventDate), dayName)
+                              @DateFromISO("$(eventDate)", CEEVTD)
+
+                              %if (eventYear == curYear && eventMonth == curMonth && eventDay == curDay)
+                                  @dtw_assign(today, "(Today)")
+                              %else
+                                  @dtw_assign(today, "")
+                              %endif
+                              @dtw_tb_rows(monthsTable, maxRows)
+            	               @dtw_assign(mth, "1")
+                              %while((@dtw_tb_rgetv(monthsTable, mth, "1") != eventMonth) && (mth < maxRows))
+                                 {@dtw_add(mth, "1", mth)%}
+                              @dtw_assign(monthDesc2, @dtw_tb_rgetv(monthsTable, mth, "2"))
+                              <tr class="calweekhdr"><td><a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=@dtw_rurlescseq(V_CDWEEK)&amp;calDate=@dtw_rurlescseq(eventDate)&amp;calView=D" title="View Day">$(dayName), $(monthDesc2) $(eventDay), $(eventYear) $(today)</a></td></tr>
+
+                              @dtw_assign(dayTableFlag, "N")
+
+                              @dtw_assign(eventCnt, "0")
+                              @dtw_assign(x, "1")
+                              %while(x <= eventMaxRows) {
+
+                                  %if (@dtw_tb_rgetv(eventTable, x, @dtw_tb_rQuerycolnonj(eventTable, "CEEVTD")) == eventDate)
+                                      @dtw_assign(CESTAT, @dtw_tb_rgetv(eventTable, x, @dtw_tb_rQuerycolnonj(eventTable, "CESTAT")))
+                                      %if ((dspOpen == "Y" && CESTAT == "O") || (dspComp == "Y" && CESTAT == "C") || (dspAsgn == "Y" && CESTAT == "A"))
+                                          @dtw_add(eventCnt, "1", eventCnt)
+                                          @dtw_assign(CEEVTT, @dtw_tb_rgetv(eventTable, x, @dtw_tb_rQuerycolnonj(eventTable, "CEEVTT")))
+                                          @dtw_assign(CEEURL, @dtw_tb_rgetv(eventTable, x, @dtw_tb_rQuerycolnonj(eventTable, "CEEURL")))
+                                          @dtw_assign(CEMTHD, @dtw_tb_rgetv(eventTable, x, @dtw_tb_rQuerycolnonj(eventTable, "CEMTHD")))
+                                          @dtw_assign(CEWKDD, @dtw_tb_rgetv(eventTable, x, @dtw_tb_rQuerycolnonj(eventTable, "CEWKDD")))
+                                          @dtw_assign(CEIMG, @dtw_tb_rgetv(eventTable, x, @dtw_tb_rQuerycolnonj(eventTable, "CEIMG")))
+                                          @dtw_qhtmlencode($(CEWKDD), mouseOver)
+
+                                          %if (CESTAT == "C")
+                                               @dtw_assign(eventClass, "weekcomp")
+                                          %elif (CESTAT == "A")
+                                               @dtw_assign(eventClass, "weekasgn")
+                                          %else
+                                               @dtw_assign(eventClass, "weekopen")
+                                          %endif
+
+                                          @dtw_assign(imageExists, "")
+                                          %if (displayImages == "Y" && CEIMG != "")
+                                              @dtw_assign(eventImage, "$(CEIMG)")
+                                              @dtwf_exists(eventImage, imageExists)
+                                          %endif
+
+                                          @dtw_substr(V_CEEVTD, "1", "4", eventYear)
+                                          @dtw_substr(V_CEEVTD, "6", "2", eventMonth)
+                                          @dtw_substr(V_CEEVTD, "9", "2", eventDay)
+
+                                          @dtw_assign(eventTime, "")
+                                          %if (dspTime == "Y")
+                                              %if (CEEVTT != "0")
+                                                  %if (@dtw_rlength(CEEVTT) == "5")
+                                                      @dtw_insert("0", CEEVTT, "0", "1", CEEVTT)
+                                                  %endif
+                                                  @dtw_insert(":", CEEVTT, "2", "1", CEEVTT)
+                                                  @dtw_insert(":", CEEVTT, "5", "1", CEEVTT)
+                                                  @dtw_assign(eventTime, @dtw_rsubstr(CEEVTT, "1", "5"))
+
+                                                  %if (@dtw_rsubstr(eventTime, "1", "1") == "0")
+                                                      @dtw_assign(eventTime, "@dtw_rsubstr(CEEVTT, "2", "4")")
+                                                  %endif
+                                              %else
+                                                  @dtw_assign(eventTime, "&nbsp;")
+                                              %endif
+                                          %endif
+
+                                          %if (dayTableFlag == "N")
+                                              @dtw_assign(dayTableFlag, "Y")
+                                              <tr><td>
+                                                 <table $(calWeekEventTable)>
+                                                     <tr><td><ul class="mthlist">
+                                          %endif
+
+                                              <li class="$(eventClass)">
+                                                  <a href="$(homeURL)$(cGIPath)$(CEEURL)&amp;baseVar=@dtw_rurlescseq(baseVar)&amp;eID=@dtw_rurlescseq(eID)&amp;portal=@dtw_rurlescseq(portal)" title="View Event">
+                                                      %if (dspTime == "Y")
+                                                          <span class="caltime">$(eventTime)</span>
+                                                      %endif
+                                                      $(CEWKDD)
+                                                      %if (imageExists == "Y")
+                                                          <img src="$(homeURL)$(eventImage)" border="0" alt="">
+                                                      %endif
+                                                  </a>
+                                              </li>
+                                      %endif
+                                  %endif
+                                  @dtw_add(x, "1", x)
+                              %}
+
+                              %if (dayTableFlag == "Y")
+                                              </ul>
+                                              </td>
+                                          </tr>
+                                  </table>
+                                  </td>
+                                  </tr>
+                              %endif
+                              @dtw_add(dayCnt, "1", dayCnt)
+                          %}
+
+                  %elif (calView == "P")
+                      %if (CESTAT == "C")
+                           @dtw_assign(eventClass, "mthcomp")
+                      %elif (CESTAT == "A")
+                           @dtw_assign(eventClass, "mthasgn")
+                      %else
+                           @dtw_assign(eventClass, "mthopen")
+                      %endif
+
+                      @dtw_substr(V_CEEVTD, "1", "4", eventYear)
+                      @dtw_substr(V_CEEVTD, "6", "2", eventMonth)
+                      @dtw_substr(V_CEEVTD, "9", "2", eventDay)
+
+                      %if (V_CESEQ# == "0")
+                          @RetDayName(profileHandle, dataBaseID, $(V_CEEVTD), dayName)
+                          @DateFromISO("$(V_CEEVTD)", CEEVTD)
+                          %if (eventYear == curYear && eventMonth == curMonth && eventDay == curDay)
+                              @dtw_assign(today, "(Today)")
+                          %else
+                              @dtw_assign(today, "")
+                          %endif
+                          @dtw_tb_rows(monthsTable, maxRows)
+        	           @dtw_assign(mth, "1")
+                          %while((@dtw_tb_rgetv(monthsTable, mth, "1") != eventMonth) && (mth < maxRows))
+                             {@dtw_add(mth, "1", mth)%}
+                          @dtw_assign(monthDesc2, @dtw_tb_rgetv(monthsTable, mth, "2"))
+                          <tr><td class="calweekhdr"><a href="$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(d2wVarBase)&amp;calYear=@dtw_rurlescseq(eventYear)&amp;calMonth=@dtw_rurlescseq(eventMonth)&amp;calWeek=1&amp;calDate=@dtw_rurlescseq(V_CEEVTD)&amp;calView=D" title="View Day">$(dayName) - $(monthDesc2) $(eventDay), $(eventYear) $(today)</a></td></tr>
+                      %else
+                          %if (dayName != "")
+                              @dtw_assign(dayName, "")
+                          %endif
+                          @dtw_assign(eventTime, "")
+                          %if (dspTime == "Y")
+                              %if (@dtw_rlength(V_CEEVTT) == "5")
+                                  @dtw_insert("0", V_CEEVTT, "0", "1", V_CEEVTT)
+                              %endif
+
+                              %if (V_CEEVTT != "0")
+                                  @dtw_insert(":", V_CEEVTT, "2", "1", V_CEEVTT)
+                                  @dtw_insert(":", V_CEEVTT, "5", "1", V_CEEVTT)
+                                  @dtw_assign(eventTime, @dtw_rsubstr(V_CEEVTT, "1", "5"))
+                              %else
+                                  @dtw_assign(eventTime, "&nbsp;")
+                              %endif
+
+                              %if (@dtw_rsubstr(eventTime, "1", "1") == "0")
+                                  @dtw_assign(eventTime, "@dtw_rsubstr(V_CEEVTT, "2", "4")")
+                              %endif
+                          %endif
+                          <tr>
+                              <td>
+                                  <ul class="$(eventClass)">
+                                      <li class="$(eventClass)">
+                                          <a href="$(homeURL)$(cGIPath)$(V_CEEURL)&amp;baseVar=@dtw_rurlescseq(baseVar)&amp;eID=@dtw_rurlescseq(eID)&amp;portal=@dtw_rurlescseq(portal)" title="View Event">
+                                              %if (dspTime == "Y")
+                                                  <span class="caltime">$(eventTime)</span>
+                                              %endif
+                                              $(V_CEWKDD)
+                                              %if (imageExists == "Y")
+                                                  <img src="$(homeURL)$(eventImage)" border="0" alt="">
+                                              %endif
+                                          </a>
+                                      </li>
+                                  </ul>
+                              </td>
+                          </tr>
+                      %endif
+                  %endif
+              %endif
+          %}
+          </table>
+
+          <table $(calTrailerTable)>
+              <tr>
+                  <td class="legendtitle">Display:</td>
+                  <td class="legendtime">
+                      <form class="formClass" action="">
+                          <input type="checkbox" name="time"  $(checkTime) onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(genericVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=@dtw_rurlescseq(calWeek)&amp;calDate=@dtw_rurlescseq(calDate)&amp;calView=@dtw_rurlescseq(calView)&amp;dspTime=@dtw_rurlescseq(chgDspTime)&amp;dspComp=@dtw_rurlescseq(dspComp)&amp;dspOpen=@dtw_rurlescseq(dspOpen)&amp;dspAsgn=@dtw_rurlescseq(dspAsgn)&amp;searchDsp=@dtw_rurlescseq(searchDsp)&amp;reload=N'">Time
+                      </form>
+                  </td>
+                  <td class="legendopen">
+                      <form class="formClass" action="">
+                          <input type="checkbox" name="open" $(checkOpen) onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(genericVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=@dtw_rurlescseq(calWeek)&amp;calDate=@dtw_rurlescseq(calDate)&amp;calView=@dtw_rurlescseq(calView)&amp;dspTime=@dtw_rurlescseq(dspTime)&amp;dspComp=@dtw_rurlescseq(dspComp)&amp;dspOpen=@dtw_rurlescseq(chgDspOpen)&amp;dspAsgn=@dtw_rurlescseq(dspAsgn)&amp;searchDsp=@dtw_rurlescseq(searchDsp)&amp;reload=N'">Open
+                      </form>
+                  </td>
+                  <td class="legendassign">
+                      <form class="formClass" action="">
+                          <input type="checkbox" name="assign" $(checkAsgn) onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(genericVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=@dtw_rurlescseq(calWeek)&amp;calDate=@dtw_rurlescseq(calDate)&amp;calView=@dtw_rurlescseq(calView)&amp;dspTime=@dtw_rurlescseq(dspTime)&amp;dspComp=@dtw_rurlescseq(dspComp)&amp;dspOpen=@dtw_rurlescseq(dspOpen)&amp;dspAsgn=@dtw_rurlescseq(chgDspAsgn)&amp;searchDsp=@dtw_rurlescseq(searchDsp)&amp;reload=N'">Assigned
+                      </form>
+                  </td>
+                  %if (calView != "P")
+                      <td class="legendcomp">
+                          <form class="formClass" action="">
+                              <input type="checkbox" name="comp" $(checkComp) onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/CALENDAR$(genericVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=@dtw_rurlescseq(calWeek)&amp;calDate=@dtw_rurlescseq(calDate)&amp;calView=@dtw_rurlescseq(calView)&amp;dspTime=@dtw_rurlescseq(dspTime)&amp;dspComp=@dtw_rurlescseq(chgDspComp)&amp;dspOpen=@dtw_rurlescseq(dspOpen)&amp;dspAsgn=@dtw_rurlescseq(dspAsgn)&amp;searchDsp=@dtw_rurlescseq(searchDsp)&amp;reload=N'">Completed
+                          </form>
+                      </td>
+                  %endif
+              </tr>
+          </table>
+  %}
+%}
+
+%HTML(CALENDAR) {
+  %INCLUDE "setLibraryList.icl"
+  %if (dspTime == "")
+      @dtw_assign(dspTime, displayTime)
+  %endif
+
+  %if (dspAsgn == "")
+      @dtw_assign(dspAsgn, "Y")
+  %endif
+
+  %if (dspOpen == "")
+      @dtw_assign(dspOpen, "Y")
+  %endif
+
+  %if (dspComp == "")
+      @dtw_assign(dspComp, displayComp)
+  %endif
+
+  %if (curYear == "")
+      @dtw_assign(curYear, @dtw_rsubstr(@dtw_rdate("S"), "1", "4"))
+  %endif
+
+  %if (calYear == "")
+      @dtw_assign(calYear, curYear)
+  %endif
+
+  %if (curMonth == "")
+      @dtw_assign(curMonth, @dtw_rsubstr(@dtw_rdate("S"), "5", "2"))
+  %endif
+
+  %if (calMonth == "")
+      @dtw_assign(calMonth, curMonth)
+  %endif
+  @dtw_assign(curDay, @dtw_rsubstr(@dtw_rdate("S"), "7", "2"))
+
+  %if (calWeek == "")
+      @dtw_assign(calWeek, "0")
+  %endif
+
+  %if (calView == "")
+      @dtw_assign(calView, "M")
+  %endif
+
+  @Months_Query(profileHandle, dataBaseID, "MONTHS    ", monthsTable)
+
+  @Set_SQL(stmtSQL)
+%}

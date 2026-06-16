@@ -1,0 +1,458 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Vendor/Customer Item                                        *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "$(vendCustHdg)"
+  d2wName                 = "VendCustItem.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;vendCustNumber=@dtw_rurlescseq(vendCustNumber)&amp;vendCustName=@dtw_rurlescseq(vendCustName)&amp;vendCustFlag=@dtw_rurlescseq(vendCustFlag)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HHDVCM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  helpExt                 = ""
+  vendCustHdg             = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@vendCustFlag", "@dtw_rurlescseq(vendCustFlag)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@vendCustName", "@dtw_rurlescseq(vendCustName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@vendCustNumber", "@dtw_rurlescseq(vendCustNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %if (vendCustFlag == "C")
+      @dtw_assign(vendCustHdg, "Customer Item")
+      @dtw_assign(helpExt, " (Customer)")
+      @dtw_assign(customerNumber, $(vendCustNumber))
+      @CustomerUserView(profileHandle, dataBaseID, userPass, customerNumber, " ")
+  %else
+      @dtw_assign(vendCustHdg, "Vendor Item")
+      @dtw_assign(helpExt, " (Vendor)")
+      @dtw_assign(vendorNumber, $(vendCustNumber))
+      @VendorUserView(profileHandle, dataBaseID, userPass, vendorNumber)
+  %endif
+
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+                  %INCLUDE "CheckEnterSearch.icl"
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NoFormValidate.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          %if (vendCustFlag == "C")
+                              @dtw_assign(pageID, "CUSTOMERITEM")
+                          %else
+                              @dtw_assign(pageID, "VENDORITEM")
+                          %endif
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select VCITEM, VCVCIT, VCVCITU, VCID, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(IMIMDS,' ') as IMIMDS, coalesce(IMIMDSU,' ') as IMIMDSU, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " (Select sum(WILRSQ) from HDVCIW Where WIID=VCID) as TOTQTY ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDVCIT ", fileSQL)
+                          @dtw_concat(fileSQL, " left join HDIMST on IMITEM=VCITEM ", fileSQL)
+                          @dtw_concat(selectSQL, "VCVCF='$(vendCustFlag)' and VCVNCS=$(vendCustNumber) ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @vendcustitem_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) vendcustitem_Query (IN  CHAR(64)    profileHandle,
+                                           CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(vendCustHdg)</h1></td>
+              %if (formatToPrint != "Y")
+                  @dtw_assign(programName, "HHDVCM")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)vendcustitemmaint.d2w/ITEM$(d2wVarBase)&amp;vendCustId=@dtw_rurlescseq(V_VCID)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          %if (vendCustFlag == "C")
+              @Format_Header_URL("Customer", $(vendCustName), $(vendCustNumber), "$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(vendCustNumber)&amp;customerName=@dtw_rurlescseq(vendCustName)")
+          %else
+              @Format_Header_URL("Vendor", $(vendCustName), $(vendCustNumber), "$(homeURL)$(cGIPath)VendorSelect.d2w/REPORT$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(vendCustNumber)&amp;vendorName=@dtw_rurlescseq(vendCustName)")
+          %endif
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+	
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Item Number</th>
+                      <th class="colhdr">Description</th>
+                      <th class="colhdr">$(vendCustHdg)</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchItem" size="20" maxlength="15">
+                          <input type="hidden" name="operItem" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchItemDesc" size="20" maxlength="30">
+                          <input type="hidden" name="operItemDesc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchCustItem" size="20" maxlength="30">
+                          <input type="hidden" name="operCustItem" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchItem.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y"))
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("VCITEM", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=item" title="Sequence By Item Number"> Item Number</a></th>
+              @OrderBy_Sort("IMIMDSU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemDesc" title="Sequence By Description, Item Number"> Description</a></th>
+              @OrderBy_Sort("VCVCIT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=custItem" title="Sequence By $(vendCustHdg), Item Number"> $(vendCustHdg)</a></th>
+              <th class="colhdr">Quantity</th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;vendCustId=@dtw_rurlescseq(V_VCID)&amp;itemNumber=@dtw_rurlescseq(V_VCITEM)&amp;itemDescr=@dtw_rurlescseq(V_IMIMDS)&amp;custItemNo=@dtw_rurlescseq(V_VCVCIT)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+              %INCLUDE "SetRowClass.icl"
+              @Format_Confirm_Desc($(V_VCVCIT), "", $(V_IMIMDS), $(V_VCITEM), "", "", confirmDesc)
+              @Format_Nbr($(V_TOTQTY), F_TOTQTY, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @RtvFldDesc("ICID=$(V_VCID)", "HDVCIC", "char(count(*))", cmtCount)
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y"))
+                      <td class="opticon">
+                          %if (sec_02 == "Y" || sec_03 == "Y")
+                              <a href="$(homeURL)$(cGIPath)vendcustitemmaint.d2w/ITEM$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          %endif
+                          %if (sec_01=="Y" && sec_04=="Y")
+                              <a href="$(homeURL)$(cGIPath)vendcustitemmaint.d2w/ITEM$(maintainVar)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                          %endif
+                          %if (sec_03 == "Y")
+                              <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)vendcustitemmaint.d2w/Edit_Data$(maintainVar)&amp;vendCustHdg=@dtw_rurlescseq(vendCustHdg)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                          %endif
+    		           %if (cmtCount > "0")
+                              <a href="$(homeURL)$(cGIPath)VendCustItemCmt.d2w/REPORT$(maintainVar)&amp;custItemNo=@dtw_rurlescseq(V_VCVCIT)&amp;vendCustHdg=@dtw_rurlescseq(vendCustHdg)">$(commentExistImage)</a>
+                          %else
+                              <a href="$(homeURL)$(cGIPath)VendCustItemCmt.d2w/REPORT$(maintainVar)&amp;custItemNo=@dtw_rurlescseq(V_VCVCIT)&amp;vendCustHdg=@dtw_rurlescseq(vendCustHdg)">$(commentImage)</a>
+                          %endif
+                          <a href="$(homeURL)$(cGIPath)VendCustItemWhs.d2w/REPORT$(maintainVar)&amp;custItemNo=@dtw_rurlescseq(V_VCVCIT)&amp;vendCustHdg=@dtw_rurlescseq(vendCustHdg)">$(whsImageSml)</a>
+                      </td>
+                  %endif
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_VCITEM))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_VCITEM)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_VCITEM)&amp;itemDescription=@dtw_rurlescseq(V_IMIMDS)" title="View Item">$(V_IMIMDS)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(phpPath)VendorDashboard.php$(altVarBase)&amp;vendorNumber=@dtw_rurlescseq(vendCustNumber)&amp;vendorName=@dtw_rurlescseq(vendCustName)&amp;fromItem=@dtw_rurlescseq(V_VCITEM)" title="View Vendor Dashboard">$(V_VCVCIT)</a></td>
+                  <td class="colnmbr">$(F_TOTQTY)</td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select VCITEM, VCVCIT, VCVCITU, VCID, ", stmtSQL)
+  @dtw_concat(stmtSQL, " coalesce(IMIMDS,' ') as IMIMDS, coalesce(IMIMDSU,' ') as IMIMDSU ", stmtSQL)
+  @dtw_concat(fileSQL, " HDVCIT ", fileSQL)
+  @dtw_concat(fileSQL, " left join HDIMST on IMITEM=VCITEM ", fileSQL)
+  @dtw_concat(selectSQL, "VCVCF='$(vendCustFlag)' and VCVNCS=$(vendCustNumber) ", selectSQL)
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @VendCustItem_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) VendCustItem_XMLQuery (IN CHAR(64)    profileHandle,
+                                             CHAR(2)     dataBaseID,
+                                             CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      %if (vendCustFlag == "C")
+          @XMLBeginTag("CustomerItemList")
+	       @XMLIDTag(vendCustNumber, "Customer ID")
+          @XMLTag(vendCustNumber, "CustomerNumber")
+          @XMLTag(vendCustName, "CustomerName")
+      %else
+          @XMLBeginTag("VendorItemList")
+	       @XMLIDTag(vendCustNumber, "Vendor ID")
+          @XMLTag(vendCustNumber, "VendorNumber")
+          @XMLTag(vendCustName, "VendorName")
+      %endif
+          %ROW{
+              %if (vendCustFlag == "C")
+	           @XMLIDTag(V_VCVCIT, "CustomerItemNumber ID")
+                      @XMLTag(V_VCVCIT,  "CustomerItemNumber")
+                      @XMLTag(V_VCITEM, "ItemNumber")
+                      @XMLTag(V_IMIMDS, "ItemDescription")
+              %else
+	           @XMLIDTag(V_VCVCIT, "VendorItemNumber ID")
+                      @XMLTag(V_VCVCIT,  "VendorItemNumber")
+                      @XMLTag(V_VCITEM, "ItemNumber")
+                      @XMLTag(V_IMIMDS, "ItemDescription")
+              %endif
+              %if (vendCustFlag == "C")
+                  @XMLEndTag("CustomerItemNumber")
+              %else
+                  @XMLEndTag("VendorItemNumber")
+              %endif
+          %}
+      %if (vendCustFlag == "C")
+          @XMLEndTag("Customer")
+          @XMLEndTag("CustomerItemList")
+      %else
+          @XMLEndTag("Vendor")
+          @XMLEndTag("VendorItemList")
+      %endif
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "IMIMDSU,VCITEM")
+          @DTW_ASSIGN(orderByDisplay, "Item Description, Item Number")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %if (vendCustFlag == "C")
+      @dtw_assign(vendCustHdg, "Customer Item")
+  %else
+      @dtw_assign(vendCustHdg, "Vendor Item")
+  %endif
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "item")
+      %if (orderBy == "VCITEM")
+          @DTW_ASSIGN(orderBy, "VCITEM DESC")
+          @DTW_ASSIGN(orderByDisplay, "Item Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "VCITEM")
+          @DTW_ASSIGN(orderByDisplay, "Item Number")
+      %endif
+  %elif (sequence == "itemDesc")
+      %if (orderBy == "IMIMDSU,VCITEM")
+          @DTW_ASSIGN(orderBy, "IMIMDSU DESC,VCITEM")
+          @DTW_ASSIGN(orderByDisplay, "Item Description (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IMIMDSU,VCITEM")
+          @DTW_ASSIGN(orderByDisplay, "Item Description, Item Number")
+      %endif
+  %elif (sequence == "custItem")
+      %if (orderBy == "VCVCITU,VCITEM")
+          @DTW_ASSIGN(orderBy, "VCVCITU DESC,VCITEM")
+          @DTW_ASSIGN(orderByDisplay, "$(vendCustHdg) (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "VCVCITU,VCITEM")
+          @DTW_ASSIGN(orderByDisplay, "$(vendCustHdg), Item Number")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+
+  %if (vendCustFlag == "C")
+      @dtw_assign(vendCustHdg, "Customer Item")
+  %else
+      @dtw_assign(vendCustHdg, "Vendor Item")
+  %endif
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (vendCustFlag == "C")
+                      @dtw_assign(pageID, "CUSTITEMMASTERSEARCH")
+                  %else
+                      @dtw_assign(pageID, "VENDITEMMASTERSEARCH")
+                  %endif
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Item Number</td>
+                              @dtw_assign(operNbr, "operItem")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchItem" size="15" maxlength="15"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Item Description</td>
+                              @dtw_assign(operNbr, "operItemDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchItemDesc" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr"> $(vendCustHdg)</td>
+                              @dtw_assign(operNbr, "operCustItem")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCustItem" size="30" maxlength="30"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchItem.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  %if (vendCustFlag == "C")
+      @dtw_assign(vendCustHdg, "Customer Item")
+  %else
+      @dtw_assign(vendCustHdg, "Vendor Item")
+  %endif
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("VCITEM", "Item Number", $(srchItem), "U", operItem, "A")
+  @Build_WildCard ("IMIMDSU", "Item Description", $(srchItemDesc), "U", operItemDesc, "A")
+  @Build_WildCard ("VCVCITU", "$(vendCustHdg)", $(srchCustItem), "U", operCustItem, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

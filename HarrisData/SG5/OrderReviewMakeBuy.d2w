@@ -1,0 +1,494 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Order Review Make/Buy                                       *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "BrowserType.icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Order Review Make/Buy"
+  d2wName                 = "OrderReviewMakeBuy.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=@dtw_rurlescseq(lineNumber)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;orderType=@dtw_rurlescseq(orderType)&amp;orderTypeDesc=@dtw_rurlescseq(orderTypeDesc)&amp;featuredItem=@dtw_rurlescseq(featuredItem)"
+  programName             = "HOEWRT"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  headerTable             = %table
+  detailTable             = %table
+  optionTable             = %table
+  imageExists             = ""
+  tabID                   = "REVIEW"
+  cmtCount                = ""
+  recCount                = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "NewWindowOpen.icl"
+              %INCLUDE "OrderEntryConfirm.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          @dtw_assign(pageID, "ORDERREVIEW")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select OEDTWK.*, OEHDWK.*,", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(IGIGRP,' ') as IGIGRP, coalesce(IGDESC,' ') as IGDESC, coalesce(SPPART,O1IMDS) as SPPART ", stmtSQL)
+                          @dtw_concat(fileSQL, " OEDTWK inner join OEHDWK on O1OCTL=H1OCTL ", fileSQL)
+                          @dtw_concat(fileSQL, "        left join HDIGPD on DGTYPE='F' and O1PLT=DGPLT and O1ITEM=DGITEM ", fileSQL)
+                          @dtw_concat(fileSQL, "        left join HDIGPH on DGTYPE=IGTYPE and DGPLT=IGPLT and DGIGRP=IGIGRP ", fileSQL)
+                          @dtw_concat(fileSQL, "        left join OESPWK on O1OCTL=SPOCTL and O1ORL#=SPORL# ", fileSQL)
+                          @dtw_concat(selectSQL, " O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber)", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By O1OCTL,O1ORL#", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @RtvFldDesc("OPOCTL=$(orderControlNumber) and OPORL#=$(lineNumber)", "OEOPWK", "char(count(*))", recCount)
+                          @Order_Line_Query(profileHandle, dataBaseID, stmtSQL)
+
+                          %if (featuredItem == "F" && recCount != "0")
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, " Select *", stmtSQL)
+                              @dtw_concat(fileSQL, " OEOPWK ", fileSQL)
+                              @dtw_concat(selectSQL, " OPOCTL=$(orderControlNumber) and OPORL#=$(lineNumber) and OPBYMK='M'", selectSQL)
+                              %INCLUDE "stmtSQLSelect.icl"
+                              @dtw_concat(stmtSQL, " Order By OPFEAT,OPOPTN", stmtSQL)
+                              %INCLUDE "stmtSQLEnd.icl"
+                              %INCLUDE "stmtSQLTotalRows.icl"
+                              @Order_Make_Query(profileHandle, dataBaseID, stmtSQL)
+
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, " Select *", stmtSQL)
+                              @dtw_concat(fileSQL, " OEOPWK", fileSQL)
+                              @dtw_concat(selectSQL, " OPOCTL=$(orderControlNumber) and OPORL#=$(lineNumber) and OPBYMK<>'M'", selectSQL)
+                              %INCLUDE "stmtSQLSelect.icl"
+                              @dtw_concat(stmtSQL, " Order By OPFEAT,OPOPTN", stmtSQL)
+                              %INCLUDE "stmtSQLEnd.icl"
+                              %INCLUDE "stmtSQLTotalRows.icl"
+                              @Order_Buy_Query(profileHandle, dataBaseID, stmtSQL)
+                          %endif
+
+                          @RtvFldDesc("O4OCTL=$(orderControlNumber) and O4ORL#=000 and O4DOCT='INT'", "OECMWK", "char(count(*))", cmtCount)
+                          %if (cmtCount > "0")
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, " Select *", stmtSQL)
+                              @dtw_concat(fileSQL, " OECMWK", fileSQL)
+                              @dtw_concat(selectSQL, " O4OCTL=$(orderControlNumber) and O4ORL#=000 and O4DOCT='INT'", selectSQL)
+                              %INCLUDE "stmtSQLSelect.icl"
+                              @dtw_concat(stmtSQL, " Order By O4CSEQ", stmtSQL)
+                              %INCLUDE "stmtSQLEnd.icl"
+                              %INCLUDE "stmtSQLTotalRows.icl"
+                              @Order_Comment_Query(profileHandle, dataBaseID, stmtSQL)
+                          %endif
+                      </td>
+                  </tr>
+              </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Order_Line_Query (IN CHAR(64)    profileHandle,
+                                        CHAR(2)     dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (featuredItem == "F")
+          @RtvFldDesc("OPOCTL=$(orderControlNumber) and OPORL#=$(lineNumber)", "OEOPWK", "char(max(OPFICS)+sum(case when OPBYMK='B' or OPBYMK='S' then OPPOCS*OPQORD else OPCOST*OPQORD end))", cost)
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Update OEDTWK Set O1COST=$(cost), O1UCC1=$(cost)-O1UCC2-O1UCC3-O1UCC4-O1UCC5, O1CPOV='Y' ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber) @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %ENDIF
+
+      %INCLUDE "OrderEntryRetInfo.icl"
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/APPROVE$(d2wVarBase)&amp;recCount=$(recCount)">$(approvedImage)</a>
+                      <a href="$(homeURL)$(cGIPath)OrderReviewItem.d2w/REPORT$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      $(hrTagAttr)
+
+      %ROW {
+          <table $(contentTable)>
+              <tr>
+                  <td>
+                      <table $(contentTable)>
+                          <td class="hdrtitl">Item:</td>
+                          <td class="colalph">
+                              %INCLUDE "SmartPartDisplay.icl"
+                          </td>
+                          @Format_Code(V_O1ITEM, F_O1ITEM)
+                          <td class="colalph">$(F_O1ITEM)</td>
+                          %if (V_IGIGRP != "")
+                              @Format_Header("Family", $(V_IGDESC), $(V_IGIGRP))
+                          %endif
+                          @RtvFldDesc("VMVEND=$(V_O1VEN1)", "HDVEND", "VMVNA1", vendorName)
+                          @Format_Header_URL("Vendor", $(vendorName), $(V_O1VEN1), "$(homeURL)$(phpPath)VendorSearch.php$(altVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=@dtw_rurlescseq(lineNumber)"" title=""Click here to change vendor"" onclick=""$(inquiryWinVar)""")
+                          %if (V_O1RVST == "S")
+                              @dtw_assign(yesChecked, "CHECKED")
+                              @dtw_assign(noChecked, "")
+                          %else
+                              @dtw_assign(noChecked, "CHECKED")
+                              @dtw_assign(yesChecked, "")
+                          %endif
+                          <tr>
+                              <td class="hdrtitl">Suggested P/O:</td>
+                              <td class="hdrdata">
+                                  <input type="radio" name="chgPO" $(yesChecked) onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/SUGPO$(d2wVarBase)&amp;sugPO=S'">Yes
+                                  <input type="radio" name="chgPO" $(noChecked)  onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/SUGPO$(d2wVarBase)&amp;sugPO=R'">No
+                              </td>
+                          </tr>
+                      </table>
+                  </td>
+                  <td>&nbsp;</td>
+                  <td>
+                      <table $(contentTable)>
+                          @Format_Header("Order/Line", "$(V_H1ORD#)&nbsp;/&nbsp;$(lineNumber)", "")
+                          @Format_Nbr(V_O1SLPR, F_O1SLPR, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                          @Format_Header("Selling Price", $(F_O1SLPR), "")
+                          %if (featuredItem == "F")
+                              @RtvFldDesc("OPOCTL=$(orderControlNumber) and OPORL#=$(lineNumber)", "OEOPWK", "char(max(OPFICS)+sum(case when OPBYMK='B' or OPBYMK='S' then OPPOCS*OPQORD else OPCOST*OPQORD end))", totalCost)
+                              @Format_Nbr(totalCost, F_totalCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+                              @Format_Header("Cost", $(F_totalCost), "")
+                          %else
+                              @Format_Nbr(V_O1COST, F_totalCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+                              @Format_Header_URL("Cost", $(F_totalCost), "", "$(homeURL)$(cGIPath)$(d2wName)/CHANGE$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(V_O1ITEM)&amp;itemDesc=@dtw_rurlescseq(V_O1IMDS)&amp;cost=@dtw_rurlescseq(V_O1COST)""  title=""Click here to change cost"" onclick=""$(smallPromptWinVar)""")
+                          %endif
+                      </table>
+                  </td>
+              </tr>
+          </table>
+      %}
+  %}
+%}
+
+%FUNCTION(dtw_sql) Order_Make_Query (IN CHAR(64)    profileHandle,
+                                        CHAR(2)     dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Make</legend>
+          %if (formatToPrint == "")
+              <div class="quickLinksTop">
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/MOVEALL$(d2wVarBase)&amp;makeBuy=B" title="Move all to make">$(botOfFormImage)</a>
+              </div>
+          %endif
+          <table $(contentTable)>
+              <tr><th class="colhdr">Feature</th>
+                  <th class="colhdr">Option</th>
+                  <th class="colhdr">Code</th>
+                  <th class="colhdr">Description</th>
+                  <th class="colhdr">Cost</th>
+              </tr>
+      %ROW {
+              %if (V_OPVCAT == "Y" || V_OPIAVO == "R")
+                  @dtw_assign(rowClass, "selrow")
+              %else
+                  %INCLUDE "SetRowClass.icl"
+              %endif
+              @Format_Nbr(@dtw_rmultiply(V_OPCOST, V_OPQORD), F_OPCOST, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_OPFEAT)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOVE$(d2wVarBase)&amp;feature=@dtw_rurlescseq(V_OPFEAT)&amp;optionItem=@dtw_rurlescseq(V_OPOPTN)&amp;makeBuy=B" title="Move to buy">$(V_OPOPTN)</a></td>
+                  <td class="colalph">$(V_OPDSPC)</td>
+                  <td class="colalph">$(V_OPDESC)</td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)$(d2wName)/CHANGE$(d2wVarBase)&amp;feature=@dtw_rurlescseq(V_OPFEAT)&amp;optionItem=@dtw_rurlescseq(V_OPOPTN)&amp;optionDesc=@dtw_rurlescseq(V_OPDESC)&amp;cost=@dtw_rurlescseq(V_OPCOST)&amp;makeBuy=M"  title="Click here to change cost" onclick="$(smallPromptWinVar)">$(F_OPCOST)</a></td>
+              </tr>
+      %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Order_Buy_Query (IN CHAR(64)    profileHandle,
+                                       CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Buy</legend>
+          %if (formatToPrint == "")
+              <div class="quickLinksTop">
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/SUGPOALL$(d2wVarBase)&amp;sugPO=S">$(selectAllImage)</a>
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/SUGPOALL$(d2wVarBase)&amp;sugPO=B">$(deselectAllImage)</a>
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/MOVEALL$(d2wVarBase)&amp;makeBuy=M" title="Move all to make">$(topOfFormImage)</a>
+              </div>
+          %endif
+          <table $(contentTable)>
+              <tr><th class="colhdr">Sug<br>PO</th>
+                  <th class="colhdr">Feature</th>
+                  <th class="colhdr">Option</th>
+                  <th class="colhdr">Code</th>
+                  <th class="colhdr">Description</th>
+                  <th class="colhdr">Cost</th>
+                  <th class="colhdr">Vendor<br>Installed</th>
+              </tr>
+      %ROW {
+              %if (V_OPVCAT == "Y" || V_OPIAVO == "Y" || V_OPIAVO == "R")
+                  @dtw_assign(rowClass, "selrow")
+              %else
+                  %INCLUDE "SetRowClass.icl"
+              %endif
+              @Format_Nbr(@dtw_rmultiply(V_OPPOCS, V_OPQORD), F_OPPOCS, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+
+              %if (V_OPBYMK == "S")
+                @dtw_assign(sugPOChecked, "checked")
+                @dtw_assign(sugPO, "B")
+              %else
+                @dtw_assign(sugPOChecked, "")
+                @dtw_assign(sugPO, "S")
+              %endif
+
+              <tr class="$(rowClass)">
+                  <td class="colcode"><input type="checkbox" name="sugPO" $(sugPOChecked) onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/SUGPO$(d2wVarBase)&amp;feature=@dtw_rurlescseq(V_OPFEAT)&amp;optionItem=@dtw_rurlescseq(V_OPOPTN)&amp;optionDesc=@dtw_rurlescseq(V_OPDESC)&amp;sugPO=@dtw_rurlescseq(sugPO)'"></td>
+                  <td class="colalph">$(V_OPFEAT)</td>
+                  <td class="colalph">
+                      %if (V_OPIAVO == "Y")
+                          $(V_OPOPTN)
+                      %else
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/MOVE$(d2wVarBase)&amp;feature=@dtw_rurlescseq(V_OPFEAT)&amp;optionItem=@dtw_rurlescseq(V_OPOPTN)&amp;makeBuy=M" title="Move to make">$(V_OPOPTN)</a>
+                      %endif
+                  </td>
+                  <td class="colalph">$(V_OPDSPC)</td>
+                  <td class="colalph">$(V_OPDESC)</td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)$(d2wName)/CHANGE$(d2wVarBase)&amp;feature=@dtw_rurlescseq(V_OPFEAT)&amp;optionItem=@dtw_rurlescseq(V_OPOPTN)&amp;optionDesc=@dtw_rurlescseq(V_OPDESC)&amp;cost=@dtw_rurlescseq(V_OPPOCS)&amp;makeBuy=B"  title="Click here to change cost" onclick="$(smallPromptWinVar)">$(F_OPPOCS)</a></td>
+                  <td class="colcode">
+                      %if (V_OPIAVO == "Y")
+                          $(V_OPIAVO)
+                      %else
+                          &nbsp;
+                      %endif
+                  </td>
+              </tr>
+      %}
+      </table>
+      </fieldset>
+      %if (cmtCount == "0")
+          $(hrTagAttr)
+          %INCLUDE "Copyright.icl"
+      %endif
+  %}
+%}
+
+%FUNCTION(dtw_sql) Order_Comment_Query (IN CHAR(64)    profileHandle,
+                                           CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Comments</legend>
+          <table $(contentTable)>
+      %ROW {
+              <tr><td class="colalph">$(V_O4CMNT)</td></tr>
+      %}
+      </table>
+      </fieldset>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOVE) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Update OEOPWK Set OPBYMK='$(makeBuy)' ", stmtSQL)
+  @dtw_concat(stmtSQL, " Where OPOCTL=$(orderControlNumber) and OPORL#=$(lineNumber) and OPFEAT='$(feature)' and OPOPTN='$(optionItem)' @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOVEALL) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Update OEOPWK a Set OPBYMK='$(makeBuy)' ", stmtSQL)
+  @dtw_concat(stmtSQL, " Where OPOCTL=$(orderControlNumber) and OPORL#=$(lineNumber)  ", stmtSQL)
+  %if (makeBuy == "M")
+      @dtw_concat(stmtSQL, "  and OPIAVO<>'Y' ", stmtSQL)
+  %endif
+  @dtw_concat(stmtSQL, "  @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(APPROVE) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Update OEDTWK Set O1RVST='R' ", stmtSQL)
+  @dtw_concat(stmtSQL, " Where O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber) and O1RVST='Y' @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  @dtw_assign(maintenanceCode, "C")
+  @Format_ConfMsg_Desc(maintenanceCode, "Line", "$(lineNumber)", "", "", "", "", confMessage)
+  <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)OrderReviewItem.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+%}
+
+%HTML(SUGPO) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  %if (feature == "")
+      @dtw_concat(stmtSQL, " Update OEDTWK Set O1RVST='$(sugPO)' ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber) @@endsql ", stmtSQL)
+  %else
+      @dtw_concat(stmtSQL, " Update OEOPWK Set OPBYMK='$(sugPO)' ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where OPOCTL=$(orderControlNumber) and OPORL#=$(lineNumber) and OPFEAT='$(feature)' and OPOPTN='$(optionItem)' @@endsql ", stmtSQL)
+  %endif
+  @SQL_Update(stmtSQL, status)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(SUGPOALL) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Update OEOPWK Set OPBYMK='$(sugPO)' ", stmtSQL)
+  @dtw_concat(stmtSQL, " Where OPOCTL=$(orderControlNumber) and OPBYMK<>'M' @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(UPDATE) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  %if (optionItem != "")
+      %if (makeBuy == "M")
+          @dtw_concat(stmtSQL, " Update OEOPWK Set OPCOST=$(cost) ", stmtSQL)
+      %else
+          @dtw_concat(stmtSQL, " Update OEOPWK Set OPPOCS=$(cost) ", stmtSQL)
+      %endif
+      @dtw_concat(stmtSQL, " Where OPOCTL=$(orderControlNumber) and OPORL#=$(lineNumber) and OPOPTN='$(optionItem)' @@endsql ", stmtSQL)
+  %else
+      @dtw_concat(stmtSQL, " Update OEDTWK Set O1COST=$(cost), O1UCC1=$(cost), O1CPOV='Y' ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber) @@endsql ", stmtSQL)
+  %endif
+  @SQL_Update(stmtSQL, status)
+
+  <script TYPE="text/javascript">
+      opener.location.href=opener.location.href;
+      window.close()
+  </script>
+%}
+
+%HTML(CHANGE) {
+  <html>
+      <head>
+          %INCLUDE "headcmt.icl"
+          <script TYPE="text/javascript">
+              %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "NoFormValidate.icl"
+                  function validate(chgForm) {
+                      if (editNum(document.Chg.cost,13,5))
+                          return true;
+                  }
+          </script>
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          @dtw_assign(displayCloseIcon, "Y")
+          %INCLUDE "$(cmtBanner)"
+          <!-- End Of Banner Code -->
+          <table width="100%" $(contentTable)>
+              <tr valign="top">
+                  <td>
+                      <table $(contentTable)>
+                          <colgroup>
+                              <col width="80%">
+                              <col width="15%">
+                          <tr><td><h1>$(page_title)</h1></td>
+                              %if (formatToPrint != "Y")
+                                  <td class="toolbar">
+                                      <a href="javascript:check(document.Chg)">$(acceptImageLrg)</a>
+                                      %INCLUDE "CloseWindow.icl"
+                                      %INCLUDE "HelpPage.icl"
+                                  </td>
+                              %endif
+                          </tr>
+                      </table>
+
+                      <table $(contentTable)>
+                          %if (optionItem == "")
+                              @Format_Header("Item", $(itemDesc), $(itemNumber))
+                          %else
+                              @Format_Header("Option", $(optionDesc), $(optionItem))
+                          %endif
+                      </table>
+                      $(hrTagAttr)
+                      @dtw_assign(focusField, "quantity")
+
+                      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/UPDATE$(d2wVarBase)&amp;optionItem=@dtw_rurlescseq(optionItem)&amp;makeBuy=@dtw_rurlescseq(makeBuy)">
+                          <table $(contentTable)>
+                              <tr><td class="dsphdr">Cost</td>
+                                  <td class="inputnmbr"><input name="cost" type="text" value="$(cost)" size="15" maxlength="15"></td>
+                              </tr>
+                          </table>
+                      </form>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(cmtTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(CLOSE) {
+  <script TYPE="text/javascript">
+      window.close();
+  </script>
+%}

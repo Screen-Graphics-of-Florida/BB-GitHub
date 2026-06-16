@@ -1,0 +1,175 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Order Entry View Detail                                     *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Order Detail"
+  d2wName                 = "OrderEntryViewDetail.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;vendCustItemsFound=@dtw_rurlescseq(vendCustItemsFound)&amp;fromd2wName=@dtw_rurlescseq(fromd2wName)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  RPT_MAX_ROWS            = "1000"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  retrieveCode            = "R"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function confirmCancel() {return confirm("Confirm Cancel Of Order")}
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\r" + "\r" + text);}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(inquiryBanner)"
+          <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      <td>
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                          @dtw_concat(fileSQL, " OEDTWK ", fileSQL)
+                          @dtw_concat(selectSQL, "O1OCTL=$(orderControlNumber) and O1MNCD<>'D' ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By O1ORL# ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @View_Detail_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(inquiryTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) View_Detail_Query (IN CHAR(64)    profileHandle,
+                                         CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count == "0")
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/CLOSE$(d2wVarBase)">
+      %else
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="85%">
+                  <col width="10%">
+              <tr><td><h1>$(page_title)</h1></td>
+                  <td class="toolbar">
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/CLOSE$(d2wVarBase)">$(closeWinImageLrg)</a>
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              </tr>
+          </table>
+
+          %INCLUDE "OrderEntryHeader.icl"
+    	
+    	   $(hrTagAttr)
+
+          <table $(contentTable)>
+              <tr><th class="colhdr">Item <br> Number</th>
+                  <th class="colhdr">Whs</th>
+                  <th class="colhdr">Description</th>
+                  %if (displaySynonyms == "Y")
+                      <th class="colhdr">Synonym</th>
+                  %endif
+                  <th class="colhdr">Price</th>
+                  <th class="colhdr">Order <br> Quantity</th>
+                  <th class="colhdr">Extended<br>Price</th>
+     %endif
+          %ROW {
+              %if (sql_Record_Count > "0")
+   	           %INCLUDE "SetRowClass.icl"
+                  @Format_Confirm_Desc($(V_O1IMDS), $(V_O1ITEM), "", "", "", "", confirmDesc)
+                  @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(@dtw_rsubtract(V_O1QORD, V_O1QSTD), V_O1SLPR), V_O1ORUF)", ExtendedPrice, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                  @Format_Nbr(V_O1SLPR, F_O1SLPR, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                  @Format_Nbr(V_O1QORD, F_O1QORD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  @DTW_ASSIGN(subTotal, @dtw_radd(subTotal, ExtendedPrice))
+
+                  <tr class="$(rowClass)">
+                      <td class="colalph">$(V_O1ITEM)</td>
+                      <td class="colnmbr">$(V_O1WH)</td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)orderentrydetail.d2w/DETAIL$(d2wVarBase)&amp;lineNumber=@dtw_rurlescseq(V_O1ORL#)&amp;releaseNumber=@dtw_rurlescseq(V_O1BLN#)" title="Update Detail Line">$(V_O1IMDS)</a></td>
+                      %if (displaySynonyms == "Y")
+                           @RtvFldDesc("SYITEM='$(V_O1ITEM)'", "HDSITM", "SYSYNM", synonym)
+                           <td class="colalph">$(synonym)</td>
+                      %endif
+                      %if (V_O1LPOV != "Y" && (V_O1OREC == "S" || V_O1OREC == "X") && (V_O1KIT == "" || (V_O1KIT == "K" && V_O1KTPR == "K")))
+                          <td class="colnmbr"><a href="$(homeURL)$(cGIPath)PricingInquiry.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;itemNumber=@dtw_rurlescseq(V_O1ITEM)&amp;itemDescription=@dtw_rurlescseq(V_O1IMDS)&amp;warehouseNumber=@dtw_rurlescseq(V_O1WH)&amp;productClass=@dtw_rurlescseq(V_O1PCLS)&amp;productGroup=@dtw_rurlescseq(V_O1PGRP)&amp;quantity=@dtw_rurlescseq(V_O1QORD)&amp;orderDate=@dtw_rurlescseq(orderDate)" onclick="$(inquiryWinVar)" title="View Pricing">$(F_O1SLPR)</a></td>
+                      %else
+                          %if (V_O1LPOV == "Y")
+                              <td class="oepriceover" $(helpCursor)><span title="Price has been overridden">$(F_O1SLPR)</span></td>
+                          %else
+                              <td class="colnmbr">$(F_O1SLPR)</td>
+                          %endif
+                      %endif
+                      <td class="colnmbr">$(F_O1QORD)</td>
+                      <td class="colnmbr">$(ExtendedPrice)</td>
+                      <td class="colicon"><a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/REMOVELINE$(d2wVarBase)&amp;lineNumber=@dtw_rurlescseq(V_O1ORL#)">$(deleteImageSml)</a></td>
+   		   </tr>
+              %endif
+           %}
+       %if (sql_Record_Count > "0")
+           </table>
+	    $(hrTagAttr)
+           %INCLUDE "Copyright.icl"
+       %endif
+  %}
+%}
+
+%HTML(VIEW) {
+  %INCLUDE "setLibraryList.icl"
+
+  @Order_Control(profileHandle, dataBaseID, orderControlNumber, retrieveCode, dropShip, edtVar)
+  @Calc_Cost_Price(profileHandle, dataBaseID, orderControlNumber, lineNumber, costPrice)
+  @DTW_ASSIGN(updateTotal, "Y")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(REMOVELINE) {
+  %INCLUDE "setLibraryList.icl"
+
+  @Order_Control(profileHandle, dataBaseID, orderControlNumber, retrieveCode, dropShip, edtVar)
+  @Remove_Line (profileHandle, dataBaseID, orderControlNumber, lineNumber)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(CLOSE) {
+  <script TYPE="text/javascript">
+      opener.location.href='$(homeURL)$(cGIPath)$(fromd2wName)/INPUT$(d2wVarBase)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';
+      window.close();
+  </script>
+%}

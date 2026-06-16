@@ -1,0 +1,556 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Vendor/Customer Fax                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Fax/E-mail"
+  d2wName                 = "VendCustFax.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;vendCustNumber=@dtw_rurlescseq(vendCustNumber)&amp;vendCustName=@dtw_rurlescseq(vendCustName)&amp;vendCustFlag=@dtw_rurlescseq(vendCustFlag)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HHDFMM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  helpExt                 = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@vendCustFlag", "@dtw_rurlescseq(vendCustFlag)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@vendCustName", "@dtw_rurlescseq(vendCustName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@vendCustNumber", "@dtw_rurlescseq(vendCustNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %if (vendCustFlag == "C")
+      @dtw_assign(helpExt, " (Customer)")
+      @dtw_assign(customerNumber, $(vendCustNumber))
+      @CustomerUserView(profileHandle, dataBaseID, userPass, customerNumber, " ")
+  %else
+      @dtw_assign(helpExt, " (Vendor)")
+      @dtw_assign(vendorNumber, $(vendCustNumber))
+      @VendorUserView(profileHandle, dataBaseID, userPass, vendorNumber)
+  %endif
+
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+                  %INCLUDE "CheckEnterSearch.icl"
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NoFormValidate.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          %if (vendCustFlag == "C")
+                              @dtw_assign(pageID, "CUSTOMERFAX")
+                          %else
+                              @dtw_assign(pageID, "VENDORFAX")
+                          %endif
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select FMVCF, FMVNCS, FMCONT, FMDOCT, FMFAX, FMBCC, FMEMAL, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " upper(FMEMAL) as FMEMALU, " , stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(DODESC,' ') as DODESC, upper(coalesce(DODESC,' ')) as DODESCU ", stmtSQL)
+                          %if (V_HDCMRL > "0")
+                              %if (vendCustFlag == "C")
+                                  @dtw_concat(stmtSQL, " , coalesce(CRLNAMU,' ') as LNAMU, CRLNAM as LNAM, CRFNAM as FNAM ", stmtSQL)
+                              %else
+                                  @dtw_concat(stmtSQL, " , coalesce(SRLNAMU,' ') as LNAMU, SRLNAM as LNAM, SRFNAM as FNAM ", stmtSQL)
+                              %endif
+                          %endif
+                          @dtw_concat(fileSQL, " HDVCFM ", fileSQL)
+                          @dtw_concat(fileSQL, " left join HDDOCT on DODOCT=FMDOCT ", fileSQL)
+                          %if (V_HDCMRL > "0")
+                              %if (vendCustFlag == "C")
+                                  @dtw_concat(fileSQL, " left join CRCNTM on CRCONT=FMCONT ", fileSQL)
+                              %else
+                                  @dtw_concat(fileSQL, " left join SRCNTM on SRCONT=FMCONT ", fileSQL)
+                              %endif
+                          %endif
+                          @dtw_concat(selectSQL, " (FMVCF='$(vendCustFlag)' and FMVNCS=$(vendCustNumber))", selectSQL)
+                          %if (V_HDCMRL == "0")
+                               @dtw_concat(selectSQL, " and FMCONT=0 ", selectSQL)
+                          %endif
+                          %if (vendCustFlag == "C")
+                              @dtw_concat(selectSQL, " and (DOAPID='OE' or DOAPID='AR' or DOAPID=' ')", selectSQL)
+                          %else
+                              @dtw_concat(selectSQL, " and (DOAPID='PO' or DOAPID='AP' or DOAPID=' ')", selectSQL)
+                          %endif
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @VendCustFax_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) VendCustFax_Query (IN  CHAR(64)    profileHandle,
+                                          CHAR(2)     dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)VendCustFaxMaint.d2w/FAX$(d2wVarBase)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          %if (vendCustFlag == "C")
+              @Format_Header_URL("Customer", $(vendCustName), $(vendCustNumber), "$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(vendCustNumber)&amp;customerName=@dtw_rurlescseq(vendCustName)")
+          %else
+              @Format_Header_URL("Vendor", $(vendCustName), $(vendCustNumber), "$(homeURL)$(cGIPath)VendorSelect.d2w/REPORT$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(vendCustNumber)&amp;vendorName=@dtw_rurlescseq(vendCustName)")
+          %endif
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Description</th>
+                      %if (V_HDCMRL > "0")
+                          <th class="colhdr">Name</th>
+                      %endif
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchDesc" size="20" maxlength="30">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      %if (V_HDCMRL > "0")
+                          <td><input type="text" class="inputalph" name="srchName" size="20" maxlength="30">
+                              <input type="hidden" name="operName" value="LIKE">
+                          </td>
+                      %endif
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y"))
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("FMDOCT", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Document" title="Sequence By Document Type"> Document</a></th>
+              @OrderBy_Sort("DODESCU", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description" title="Sequence By Description, Document Type"> Description</a></th>
+              %if (V_HDCMRL > "0")
+                  @OrderBy_Sort("FMCONT", sortVar)
+                  <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ContactNumber" title="Sequence By Contact Number, Document Type"> Contact</a></th>
+                  @OrderBy_Sort("LNAMU", sortVar)
+                  <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ContactName" title="Sequence By Contact Name, Document Type"> Name</a></th>
+              %endif
+              @OrderBy_Sort("FMFAX", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=FaxNumber" title="Sequence By Fax Number, Document Type"> Fax Number</a></th>
+              @OrderBy_Sort("FMEMALU", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=EmailAddress" title="Sequence By E-mail Address, Document Type"> E-mail Address</a></th>
+              @OrderBy_Sort("FMBCC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=BCC" title="Sequence By BCC, Document Type">BCC</a></th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %if (V_HDCMRL > "0")
+                  @Format_EmplName(V_FNAM, V_LNAM, "", "", "", "D", F_Name)
+              %endif
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;documentType=@dtw_rurlescseq(V_FMDOCT)&amp;docDescr=@dtw_rurlescseq(V_DODESC)&amp;contactNumber=@dtw_rurlescseq(V_FMCONT)&amp;contactName=@dtw_rurlescseq(F_Name)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+              %INCLUDE "SetRowClass.icl"
+              %if (V_HDCMRL > "0" && V_FMCONT > "0")
+                  @Format_Confirm_Desc($(V_DODESC), $(V_FMDOCT), $(F_Name), $(V_FMCONT), "", "", confirmDesc)
+              %else
+                  @Format_Confirm_Desc($(V_DODESC), $(V_FMDOCT), "", "", "", "", confirmDesc)
+              %endif
+              %if (V_FMBCC == "Y")
+                  @dtw_assign(bccImage, checkImage)
+              %else
+                  @dtw_assign(bccImage, "&nbsp")
+              %endif
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y"))
+                      <td class="opticon">
+                          %if (sec_02 == "Y" || sec_03 == "Y")
+                              <a href="$(homeURL)$(cGIPath)VendCustFaxMaint.d2w/FAX$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          %endif
+                          %if (sec_01=="Y" && sec_04=="Y")
+                              <a href="$(homeURL)$(cGIPath)VendCustFaxMaint.d2w/FAX$(maintainVar)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                          %endif
+                          %if (sec_03 == "Y")
+                              <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)VendCustFaxMaint.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                          %endif
+                      </td>
+                  %endif
+                  <td class="colalph">$(V_FMDOCT)</td>
+                  <td class="colalph">$(V_DODESC)</td>
+                  %if (V_HDCMRL > "0")
+                      @Format_Nbr(V_FMCONT, F_FMCONT, "0", "Z", "", "", "")
+                      <td class="colnmbr">$(F_FMCONT)</td>
+                      <td class="colalph">$(F_Name)</td>
+                  %endif
+                  <td class="colalph">$(V_FMFAX)</td>
+                  <td class="colalph">$(V_FMEMAL)</td>
+                  <td class="colcode">$(bccImage)</td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select FMVCF, FMVNCS, FMCONT, FMDOCT, FMFAX, FMEMAL, ", stmtSQL)
+  @dtw_concat(stmtSQL, " upper(FMEMAL) as FMEMALU, " , stmtSQL)
+  @dtw_concat(stmtSQL, " coalesce(DODESC,' ') as DODESC, upper(coalesce(DODESC,' ')) as DODESCU ", stmtSQL)
+  %if (V_HDCMRL > "0")
+      %if (vendCustFlag == "C")
+          @dtw_concat(stmtSQL, " , coalesce(CRLNAMU,' ') as LNAMU, CRLNAM as LNAM, CRFNAM as FNAM ", stmtSQL)
+      %else
+          @dtw_concat(stmtSQL, " , coalesce(SRLNAMU,' ') as LNAMU, SRLNAM as LNAM, SRFNAM as FNAM ", stmtSQL)
+      %endif
+  %endif
+  @dtw_concat(fileSQL, " HDVCFM ", fileSQL)
+  @dtw_concat(fileSQL, " left join HDDOCT on DODOCT=FMDOCT ", fileSQL)
+  %if (V_HDCMRL > "0")
+      %if (vendCustFlag == "C")
+          @dtw_concat(fileSQL, " left join CRCNTM on CRCONT=FMCONT ", fileSQL)
+      %else
+          @dtw_concat(fileSQL, " left join SRCNTM on SRCONT=FMCONT ", fileSQL)
+      %endif
+  %endif
+  @dtw_concat(selectSQL, " (FMVCF='$(vendCustFlag)' and FMVNCS=$(vendCustNumber))", selectSQL)
+  %if (V_HDCMRL == "0")
+       @dtw_concat(selectSQL, " and FMCONT=0 ", selectSQL)
+  %endif
+  %if (vendCustFlag == "C")
+      @dtw_concat(selectSQL, " and (DOAPID='OE' or DOAPID='AR' or DOAPID=' ')", selectSQL)
+  %else
+      @dtw_concat(selectSQL, " and (DOAPID='PO' or DOAPID='AP' or DOAPID=' ')", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @VendCustFax_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) VendCustFax_XMLQuery (IN CHAR(64)    profileHandle,
+                                            CHAR(2)     dataBaseID,
+                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      %if (vendCustFlag == "C")
+          @XMLBeginTag("CustomerFaxList")
+	       @XMLIDTag(vendCustNumber, "Customer ID")
+          @XMLTag(vendCustNumber, "CustomerNumber")
+          @XMLTag(vendCustName, "CustomerName")
+      %else
+          @XMLBeginTag("VendorFaxList")
+	       @XMLIDTag(vendCustNumber, "Vendor ID")
+          @XMLTag(vendCustNumber, "VendorNumber")
+          @XMLTag(vendCustName, "VendorName")
+      %endif
+          %ROW{
+              @XMLIDTag(V_FMDOCT, "DocumentType ID")
+                  @XMLTag(V_FMDOCT, "DocumentType")
+                  %if (V_HDCMRL > "0")
+                      @XMLTag(V_FMCONT, "ContactNumber")
+                      @XMLTag(V_LNAM, "ContactName")
+                  %endif
+                  @XMLTag(V_DODESC, "DocumentDesc")
+                  @XMLTag(V_FMFAX,  "FaxNumber")
+                  @XMLTag(V_FMEMAL, "EmailAddress")
+              @XMLEndTag("DocumentType")
+          %}
+      %if (vendCustFlag == "C")
+          @XMLEndTag("Customer")
+          @XMLEndTag("CustomerFaxList")
+      %else
+          @XMLEndTag("Vendor")
+          @XMLEndTag("VendorFaxList")
+      %endif
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint == "Y")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "DODESCU,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "Description, Document Type")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Document")
+      %if (orderBy == "FMDOCT")
+          @DTW_ASSIGN(orderBy, "FMDOCT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Document Type (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "Document Type")
+      %endif
+  %elif (sequence == "Description")
+      %if (orderBy == "DODESCU,FMDOCT")
+          @DTW_ASSIGN(orderBy, "DODESCU DESC,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Document Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DODESCU,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "Description, Document Type")
+      %endif
+  %elif (sequence == "ContactNumber")
+      %if (orderBy == "FMCONT,FMDOCT")
+          @DTW_ASSIGN(orderBy, "FMCONT DESC,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "Contact Number (descending), Document Type")
+      %else
+          @DTW_ASSIGN(orderBy, "FMCONT,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "Contact Number, Document Type")
+      %endif
+  %elif (sequence == "ContactName")
+      %if (orderBy == "LNAMU,FMDOCT")
+          @DTW_ASSIGN(orderBy, "LNAMU DESC,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "Contact Name (descending), Document Type")
+      %else
+          @DTW_ASSIGN(orderBy, "LNAMU,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "Contact Name, Document Type")
+      %endif
+  %elif (sequence == "FaxNumber")
+      %if (orderBy == "FMFAX,FMDOCT")
+          @DTW_ASSIGN(orderBy, "FMFAX DESC,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "Fax Number (descending), Document Type")
+      %else
+          @DTW_ASSIGN(orderBy, "FMFAX,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "Fax Number, Document Type")
+      %endif
+  %elif (sequence == "EmailAddress")
+      %if (orderBy == "FMEMALU,FMDOCT")
+          @DTW_ASSIGN(orderBy, "FMEMALU DESC,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "E-mail Address (descending), Document Type")
+      %else
+          @DTW_ASSIGN(orderBy, "FMEMALU,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "E-mail Address, Document Type")
+      %endif
+  %elif (sequence == "BCC")
+      %if (orderBy == "FMBCC,FMDOCT")
+          @DTW_ASSIGN(orderBy, "FMBCC DESC,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "BCC (descending), Document Type")
+      %else
+          @DTW_ASSIGN(orderBy, "FMBCC,FMDOCT")
+          @DTW_ASSIGN(orderByDisplay, "BCC, Document Type")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (vendCustFlag == "C")
+                      @dtw_assign(pageID, "CUSTFAXMASTERSEARCH")
+                  %else
+                      @dtw_assign(pageID, "VENDFAXMASTERSEARCH")
+                  %endif
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Document Type</td>
+                              @dtw_assign(operNbr, "operType")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchType" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="30" maxlength="30"></td>
+                          </tr>
+
+                          %if (V_HDCMRL > "0")
+                              <tr><td class="dsphdr">Contact Number</td>
+                                  @dtw_assign(operNbr, "operContact")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchContact" size="10" maxlength="7"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Contact Name</td>
+                                  @dtw_assign(operNbr, "operName")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchName" size="32" maxlength="32"></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Fax Number</td>
+                              @dtw_assign(operNbr, "operFax")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchFax" size="32" maxlength="32"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">E-mail Address</td>
+                              @dtw_assign(operNbr, "operEmail")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchEmail" size="32" maxlength="256"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchType.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD)  {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("FMDOCT", "Document Type", $(srchType), "U", operType, "A")
+  @Build_WildCard ("upper(DODESC)", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("FMFAX", "Fax Number", $(srchFax), "U", operFax, "A")
+  @Build_WildCard ("upper(FMEMAL)", "E-mail Address", $(srchEmail), "U", operEmail, "A")
+  %if (V_HDCMRL > "0")
+      @Build_WildCard ("FMCONT", "Contact Number", $(srchContact), "", operContact, "N")
+      %if (vendCustFlag == "C")
+          @Build_WildCard ("coalesce(CRLNAMU,' ')", "Contact Name", $(srchName), "U", operName, "A")
+      %else
+          @Build_WildCard ("coalesce(SRLNAMU,' ')", "Contact Name", $(srchName), "U", operName, "A")
+      %endif
+  %endif
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

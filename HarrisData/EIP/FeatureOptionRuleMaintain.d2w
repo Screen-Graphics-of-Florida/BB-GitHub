@@ -1,0 +1,447 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  				                     *
+*  Job: Feature Option Rule Maintenance                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Features And Options Rule Maintenance"
+  d2wName                 = "FeatureOptionRuleMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(fromPlant)&amp;fromName=@dtw_rurlescseq(fromName)&amp;dspConstraint=@dtw_rurlescseq(dspConstraint)&amp;dspParameter=@dtw_rurlescseq(dspParameter)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;groupID=@dtw_rurlescseq(groupID)&amp;testSeq=@dtw_rurlescseq(testSeq)&amp;featItem=@dtw_rurlescseq(featItem)&amp;targetFeat=@dtw_rurlescseq(targetFeat)&amp;targetOpt=@dtw_rurlescseq(targetOpt)&amp;maintenanceCode=D"
+  programName             = "HHDRUM_E"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+				
+%MACRO_FUNCTION SetFieldChecked (IN  field,
+                                 OUT checked)
+{
+  @dtw_assign(checked, "")
+  %if (field == "Y")
+      @dtw_assign(checked, "CHECKED")
+  %endif
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+	       %INCLUDE "NumEdit.icl"
+              function validate(chgForm) {
+                  if (document.Chg.plantNumber.value =="" ||
+                      %if (dspConstraint == "Y")
+                          document.Chg.sourceFeat.value =="")
+                      %else
+                          document.Chg.tableName.value =="" ||
+                          document.Chg.columnName.value =="" ||
+                          document.Chg.conditionVal.value =="")
+                      %endif
+                     {alert("$(reqFieldError)"); return false;}
+                  if (editNum(document.Chg.plantNumber, 3, 0) &&
+                      editNum(document.Chg.testSeq, 6, 1))
+                      return true;
+              }
+              function confirmDelete() {return confirm("$(delRecordConf)")}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "FORULEMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(stmtSQL, "")
+                      %if (maintenanceCode == "A")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, "SELECT * FROM HDRULE ", stmtSQL)
+                          @dtw_concat(stmtSQL, "WHERE RUPLT = $(plantNumber) and RUGPID = '$(groupID)' and RUTSSQ = $(testSeq) and RUFPRT = '$(featItem)' and RUTFET = '$(targetFeat)' and RUTOPT = '$(targetOpt)' ", stmtSQL)
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %if (dspConstraint == "Y")
+          @dtw_concat(page_title, " - Constraint", page_title)
+      %endif
+      %if (dspParameter == "Y")
+          @dtw_concat(page_title, " - Parameter", page_title)
+      %endif
+      %INCLUDE "MaintainTop.icl"
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "groupID")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@plt@", "plantNumber")  @dtw_assign(Err_RUPLT,  fieldValue)
+                          @DecatErr_Field("@@gpid", "groupID")      @dtw_assign(Err_RUGPID, fieldValue)
+                          @DecatErr_Field("@@tssq", "testSeq")      @dtw_assign(Err_RUTSSQ, fieldValue)
+                          @DecatErr_Field("@@fprt", "featItem")     @dtw_assign(Err_RUFPRT, fieldValue)
+                          @DecatErr_Field("@@tfet", "targetFeat")   @dtw_assign(Err_RUTFET, fieldValue)
+                          @DecatErr_Field("@@topt", "targetOpt")    @dtw_assign(Err_RUTOPT, fieldValue)
+                          @DecatErr_Field("@@rule", "ieRule")       @dtw_assign(Err_RURULE, fieldValue)
+                          @DecatErr_Field("@@sfet", "sourceFeat")   @dtw_assign(Err_RUSFET, fieldValue)
+                          @DecatErr_Field("@@sopt", "sourceOpt")    @dtw_assign(Err_RUSOPT, fieldValue)
+                          @DecatErr_Field("@@tbln", "tableName")    @dtw_assign(Err_RUTBLN, fieldValue)
+                          @DecatErr_Field("@@coln", "columnName")   @dtw_assign(Err_RUCOLN, fieldValue)
+                          @DecatErr_Field("@@cond", "conditionVal") @dtw_assign(Err_RUCOND, fieldValue)
+                          @DecatErr_Field("@@fvlu", "fromValue")    @dtw_assign(Err_RUFVLU, fieldValue)
+                          @DecatErr_Field("@@tvlu", "toValue")      @dtw_assign(Err_RUTVLU, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@plt@")   @dtw_assign(V_RUPLT,  fieldValue)
+                      @Decat_Field("@@gpid")   @dtw_assign(V_RUGPID, fieldValue)
+                      @Decat_Field("@@tssq")   @dtw_assign(V_RUTSSQ, fieldValue)
+                      @Decat_Field("@@fprt")   @dtw_assign(V_RUFPRT, fieldValue)
+                      @Decat_Field("@@tfet")   @dtw_assign(V_RUTFET, fieldValue)
+                      @Decat_Field("@@topt")   @dtw_assign(V_RUTOPT, fieldValue)
+                      @Decat_Field("@@rule")   @dtw_assign(V_RURULE, fieldValue)
+                      @Decat_Field("@@sfet")   @dtw_assign(V_RUSFET, fieldValue)
+                      @Decat_Field("@@sopt")   @dtw_assign(V_RUSOPT, fieldValue)
+                      @Decat_Field("@@tbln")   @dtw_assign(V_RUTBLN, fieldValue)
+                      @Decat_Field("@@coln")   @dtw_assign(V_RUCOLN, fieldValue)
+                      @Decat_Field("@@cond")   @dtw_assign(V_RUCOND, fieldValue)
+                      @Decat_Field("@@fvlu")   @dtw_assign(V_RUFVLU, fieldValue)
+                      @Decat_Field("@@tvlu")   @dtw_assign(V_RUTVLU, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          %if (fromPlant > "0")
+                              @dtw_assign(V_RUPLT, fromPlant)
+                          %else
+                              @RtvDftPlant(V_RUPLT, plantName)
+                          %endif
+                          %if (V_RUPLT > "0")
+                              @dtw_assign(focusField, "groupID")
+                          %else
+                              @dtw_assign(focusField, "plantNumber")
+                          %endif
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elif (maintenanceCode == "Z")
+                      @dtw_assign(V_RUGPID, "")
+                      @dtw_assign(V_RUTSSQ, "")
+                      @dtw_assign(V_RUFPRT, "")
+                      @dtw_assign(V_RUTFET, "")
+                      @dtw_assign(V_RUTOPT, "")
+                      @dtw_assign(focusField, "groupID")
+                  %else
+                      @dtw_assign(focusField, "ieRule")
+                  %endif
+
+                  @Default_Zero(V_RUPLT)
+                  @RtvFldDesc("PLPLNT=$(V_RUPLT)", "HDPLNT", "PLNAME", plantName)
+                  @SetTextOvr(Err_RUPLT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Plant Number</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr" colspan="2"><input name="plantNumber" type="text" value="$(V_RUPLT)" size="5" maxlength="3"> $(reqFieldChar) <a href="$(homeURL)$(phpPath)PlantSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=plantNumber&amp;fldDesc=plantName" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="plantName" value="$(plantName)" type="text" size="25"></td>
+                      %else
+                          <td class="inputnmbr" colspan="2"><input name="plantNumber" type="hidden" value="$(V_RUPLT)">$(V_RUPLT) &nbsp; $(plantName)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_RUPLT)
+
+                  @SetTextOvr(Err_RUGPID)
+                  <tr><td class="dsphdr"><span $(textOvr)>Group ID</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input name="groupID" type="text" value="$(V_RUGPID)" size="5" maxlength="5"><a href="$(homeURL)$(cGIPath)FeatureOptionRuleGroupIDSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldPlant=plantNumber&amp;fldPltName=plantName&amp;fldName=groupID&amp;fldDesc=groupIDDesc" onclick="$(searchWinVar)">  $(searchImage) </a><input disabled name="groupIDDesc" value="$(groupIDDesc)" type="text" size="30"></td>
+                      %else
+                          <td class="inputalph"><input name="groupID" type="hidden" value="$(V_RUGPID)" size="5" maxlength="5">$(V_RUGPID)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_RUGPID)
+
+                  @SetTextOvr(Err_RUTSSQ)
+                  <tr><td class="dsphdr"><span $(textOvr)>Test Seq</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr"><input name="testSeq" type="text" value="$(V_RUTSSQ)" size="10" maxlength="8"></td>
+                      %else
+                          <td class="inputnmbr"><input name="testSeq" type="hidden" value="$(V_RUTSSQ)" size="10" maxlength="8">$(V_RUTSSQ)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_RUTSSQ)
+
+                  @dtw_assign(featuredItemDesc, "")
+                  @RtvFldDesc("IMITEM='$(V_RUFPRT)'", "HDIMST", "IMIMDS", featuredItemDesc)
+                  %if (featuredItemDesc =="")
+                      @RtvFldDesc("IGTYPE='F' and IGIGRP='$(V_RUFPRT)' and IGPLT=$(plantNumber)", "HDIGPH", "IGDESC", featuredItemDesc)
+                  %endif
+                  @SetTextOvr(Err_RUFPRT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Featured Item/Family</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input name="featItem" type="text" value="$(V_RUFPRT)" size="15" maxlength="15">
+                          @dtw_assign(searchTitle, "Item Plant")
+                          <a href="$(homeURL)$(cGIPath)itemplantsearch.d2w/ENTRY$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;docName=Chg&amp;fldPlant=plantNumber&amp;fldPltName=plantName&amp;fldName=featItem&amp;fldDesc=featuredItemDesc" onclick="$(searchWinVar)"> $(searchImage) </a>
+                          /
+                          @dtw_assign(searchTitle, "Feature Family")
+                          <a href="$(homeURL)$(cGIPath)ItemGroupSearch.d2w/ENTRY$(genericVarBase)&amp;groupType=F&amp;docName=Chg&amp;fldName=featItem&amp;fldDesc=featuredItemDesc" onclick="$(searchWinVar)"> $(searchImage) </a>
+                          @dtw_assign(searchTitle, "")
+                          <input disabled name="featuredItemDesc" value="$(featuredItemDesc)" type="text" size="30" maxlength="30">
+                      %else
+                          <td class="inputalph"><input name="featItem" type="hidden" value="$(V_RUFPRT)" size="15" maxlength="15">$(V_RUFPRT)
+                      %endif
+                      </td>
+                  </tr>
+                  @DspErrMsg(Err_RUFPRT)
+
+                  @SetTextOvr(Err_RUTFET)
+                  <tr><td class="dsphdr"><span $(textOvr)>Target Feature</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input name="targetFeat" type="text" value="@dtw_rqhtmlencode($(V_RUTFET))" size="15" maxlength="15"><a href="$(homeURL)$(cGIPath)FeatureSearch.d2w/ENTRY$(genericVarBase)&amp;includeBiLevels=Y&amp;docName=Chg&amp;fldPlant=plantNumber&amp;fldPltName=plantName&amp;fldName=targetFeat&amp;fldDesc=targetFeatDesc" onclick="$(searchWinVar)">  $(searchImage) </a><input disabled name="targetFeatDesc" value="$(targetFeatDesc)"  type="text" size="30"></td>
+                      %else
+                          <td class="inputalph"><input name="targetFeat" type="hidden" value="@dtw_rqhtmlencode($(V_RUTFET))" size="15" maxlength="15">$(V_RUTFET)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_RUTFET)
+
+                  @SetTextOvr(Err_RUTOPT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Target Option</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input name="targetOpt" type="text" value="@dtw_rqhtmlencode($(V_RUTOPT))" size="15" maxlength="15"><a href="$(homeURL)$(cGIPath)OptionSearch.d2w/ENTRY$(genericVarBase)&amp;includeBiLevels=Y&amp;docName=Chg&amp;fldPlant=plantNumber&amp;fldPltName=plantName&amp;fldName=targetOpt&amp;fldDesc=targetOptDesc" onclick="$(searchWinVar)">  $(searchImage) </a> <input disabled name="targetOptDesc" value="$(targetOptDesc)"  type="text" size="30"></td>
+                      %else
+                          <td class="inputalph"><input name="targetOpt" type="hidden" value="@dtw_rqhtmlencode($(V_RUTOPT))" size="15" maxlength="15">$(V_RUTOPT)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_RUTOPT)
+
+                  @RtvFldDesc("FLTYPE='RULE' and FLVALU='$(V_RURULE)'", "SYFLAG", "FLDESC", ruledesc)
+                  @SetTextOvr(Err_RURULE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Include/Exclude</span></td>
+                      <td class="inputalph"><input name="ieRule" type="text" value="$(V_RURULE)" size="5" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=RULE&amp;flagSrchHdr=@dtw_rurlescseq("Include/Exclude Rule")&amp;docName=Chg&amp;fldName=ieRule&amp;fldDesc=ruledesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="ruledesc" value="$(ruledesc)"  type="text" size="30" maxlength="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_RURULE)
+
+                  %if (dspConstraint == "Y")
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          @dtw_assign(searchVar, "$(genericVarBase)&amp;includeBiLevels=Y&amp;docName=Chg&amp;fldPlant=plantNumber&amp;fldPltName=plantName")
+                      %else
+                          @dtw_assign(searchVar, "$(genericVarBase)&amp;forPlant=@dtw_rurlescseq(V_RUPLT)&amp;includeBiLevels=Y&amp;docName=Chg")
+                      %endif
+                      @SetTextOvr(Err_RUSFET)
+                      <tr><td class="dsphdr"><span $(textOvr)>Source Feature</span></td>
+                          <td class="inputalph"><input name="sourceFeat" type="text" value="@dtw_rqhtmlencode($(V_RUSFET))" size="15" maxlength="15"> $(reqFieldChar) <a href="$(homeURL)$(cGIPath)FeatureSearch.d2w/ENTRY$(searchVar)&amp;fldName=sourceFeat&amp;fldDesc=sourceFeatDesc" onclick="$(searchWinVar)">  $(searchImage) </a><input disabled name="sourceFeatDesc" value="$(sourceFeatDesc)"  type="text" size="30"></td>
+                      </tr>
+                      @DspErrMsg(Err_RUSFET)
+
+                      @SetTextOvr(Err_RUSOPT)
+                      <tr><td class="dsphdr"><span $(textOvr)>Source Option</span></td>
+                          <td class="inputalph"><input name="sourceOpt" type="text" value="@dtw_rqhtmlencode($(V_RUSOPT))" size="15" maxlength="15"><a href="$(homeURL)$(cGIPath)OptionSearch.d2w/ENTRY$(searchVar)&amp;fldName=sourceOpt&amp;fldDesc=sourceOptDesc" onclick="$(searchWinVar)">  $(searchImage) </a> <input disabled name="sourceOptDesc" value="$(sourceOptDesc)"  type="text" size="30"></td>
+                      </tr>
+                      @DspErrMsg(Err_RUSOPT)
+
+                      <tr><td><input type="hidden" name="ruleType"     value="C"></td>
+                          <td><input type="hidden" name="tableName"    value="$(V_RUTBLN)"></td>
+                      </tr>
+                      <tr><td><input type="hidden" name="columnName"   value="$(V_RUCOLN)"></td>
+                          <td><input type="hidden" name="conditionVal" value="$(V_RUCOND)"></td>
+                      </tr>
+                      <tr><td><input type="hidden" name="fromValue"    value="$(V_RUFVLU)"></td>
+                          <td><input type="hidden" name="toValue"      value="$(V_RUTVLU)"></td>
+                      </tr>
+                  %endif
+
+                  %if (dspParameter == "Y")
+                      @SetTextOvr(Err_RUTBLN)
+                      <tr><td class="dsphdr"><span $(textOvr)>Table Name</span></td>
+                          <td class="inputalph"><input name="tableName" type="text" value="@dtw_rqhtmlencode($(V_RUTBLN))" size="30" maxlength="130"> $(reqFieldChar) </td>
+                      </tr>
+                      @DspErrMsg(Err_RUTBLN)
+
+                      @SetTextOvr(Err_RUCOLN)
+                      <tr><td class="dsphdr"><span $(textOvr)>Column Name</span></td>
+                          <td class="inputalph"><input name="columnName" type="text" value="@dtw_rqhtmlencode($(V_RUCOLN))" size="30" maxlength="130"> $(reqFieldChar) </td>
+                      </tr>
+                      @DspErrMsg(Err_RUCOLN)
+
+                      @SetTextOvr(Err_RUCOND)
+                      <tr><td class="dsphdr"><span $(textOvr)>Condition</span></td>
+                          @dtw_assign(operNbr, "conditionVal")
+                          %if (V_RUCOND == "BETWEEN")
+                              @dtw_assign(S1, "SELECTED")
+                          %elif (V_RUCOND == "=")
+                              @dtw_assign(S2, "SELECTED")
+                          %elif (V_RUCOND == "<>")
+                              @dtw_assign(S3, "SELECTED")
+                          %elif (V_RUCOND == "<")
+                              @dtw_assign(S4, "SELECTED")
+                          %elif (V_RUCOND == "<=")
+                              @dtw_assign(S5, "SELECTED")
+                          %elif (V_RUCOND == ">")
+                              @dtw_assign(S6, "SELECTED")
+                          %elif (V_RUCOND == ">=")
+                              @dtw_assign(S7, "SELECTED")
+                          %endif
+                          <td>%INCLUDE "opersel_Num2_short.icl" $(reqFieldChar) </td>
+                      </tr>
+                      @DspErrMsg(Err_RUCOND)
+
+                      @SetTextOvr(Err_RUFVLU)
+                      <tr><td class="dsphdr"><span $(textOvr)>From Value</span></td>
+                          <td class="inputalph"><input name="fromValue" type="text" value="@dtw_rqhtmlencode($(V_RUFVLU))" size="30" maxlength="30"></td>
+                      </tr>
+                      @DspErrMsg(Err_RUFVLU)
+
+                      @SetTextOvr(Err_RUTVLU)
+                      <tr><td class="dsphdr"><span $(textOvr)>To Value</span></td>
+                          <td class="inputalph"><input name="toValue" type="text" value="@dtw_rqhtmlencode($(V_RUTVLU))" size="30" maxlength="30"></td>
+                      </tr>
+                      @DspErrMsg(Err_RUTVLU)
+
+                      <tr><td><input type="hidden" name="ruleType"    value="P"></td>
+                          <td><input type="hidden" name="sourceFeat"  value="$(V_RUSFET)"></td>
+                          <td><input type="hidden" name="sourceOpt"   value="$(V_RUSOPT)"></td>
+                      </tr>
+                  %endif
+
+              %}	
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(10)    userProfile,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HHDRUM_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(groupID)
+  @dtw_mUPPERCASE(featItem)
+  @dtw_mUPPERCASE(targetFeat)
+  @dtw_mUPPERCASE(targetOpt)
+  @dtw_mUPPERCASE(ruleType)
+  @dtw_mUPPERCASE(ieRule)
+  @dtw_mUPPERCASE(ruleConnect)
+  @dtw_mUPPERCASE(sourceFeat)
+  @dtw_mUPPERCASE(sourceOpt)
+  @dtw_mUPPERCASE(tableName)
+  @dtw_mUPPERCASE(columnName)
+  @dtw_mUPPERCASE(conditionVal)
+  @dtw_mUPPERCASE(fromValue)
+  @dtw_mUPPERCASE(toValue)
+
+  @dtw_assign(plantNumber, @dtw_rstrip(plantNumber))
+  @dtw_assign(testSeq,     @dtw_rstrip(testSeq))
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@plt@", plantNumber)
+  @Concat_Field("@@gpid", groupID)
+  @Concat_Field("@@tssq", testSeq)
+  @Concat_Field("@@fprt", featItem)
+  @Concat_Field("@@tfet", targetFeat)
+  @Concat_Field("@@topt", targetOpt)
+  @Concat_Field("@@type", ruleType)
+  @Concat_Field("@@rule", ieRule)
+  @Concat_Field("@@sfet", sourceFeat)
+  @Concat_Field("@@sopt", sourceOpt)
+  @Concat_Field("@@tbln", tableName)
+  @Concat_Field("@@coln", columnName)
+  @Concat_Field("@@cond", conditionVal)
+  @Concat_Field("@@fvlu", fromValue)
+  @Concat_Field("@@tvlu", toValue)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(userProfile, maintenanceCode, errFound, edtVar, errVar)
+
+  @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+  %if (errFound == "")
+      %if (groupID != "")
+          @RtvFldDesc("RGPLT=$(plantNumber) and RGGPID='$(groupID)'", "HDRGID", "RGRGDS", groupDesc)
+          @Format_ConfMsg_Desc(maintenanceCode, "Test Seq", $(testSeq), $(groupDesc), $(groupID), $(plantName), $(plantNumber), confMessage)
+      %else
+          @Format_ConfMsg_Desc(maintenanceCode, "Target Option", $(targetOpt), "Target Feature", $(targetFeat), $(plantName), $(plantNumber), confMessage)
+      %endif
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)FeatureOptionRule.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(fromPlant)&amp;plantName=@dtw_rurlescseq(fromName)&amp;dspConstraint=@dtw_rurlescseq(dspConstraint)&amp;dspParameter=@dtw_rurlescseq(dspParameter)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %elif (maintenanceCode == "D")
+      @DecatErr_Field("@@rule", "ruledesc")
+      %if (groupID != "")
+          @RtvFldDesc("RGPLT=$(plantNumber) and RGGPID='$(groupID)'", "HDRGID", "RGRGDS", groupDesc)
+          @Format_ConfMsg_Desc("", $(testSeq), $(groupDesc), $(groupID), $(plantName), $(plantNumber), "<br>$(fieldValue)", confMessage)
+      %else
+          @Format_ConfMsg_Desc("", "Target Feature", $(targetFeat), $(plantName), $(plantNumber), "<br>$(fieldValue)", "", confMessage)
+      %endif
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)FeatureOptionRule.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(fromPlant)&amp;plantName=@dtw_rurlescseq(fromName)&amp;dspConstraint=@dtw_rurlescseq(dspConstraint)&amp;dspParameter=@dtw_rurlescseq(dspParameter)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;groupID=@dtw_rurlescseq(groupID)&amp;testSeq=@dtw_rurlescseq(testSeq)&amp;featItem=@dtw_rurlescseq(featItem)&amp;targetFeat=@dtw_rurlescseq(targetFeat)&amp;targetOpt=@dtw_rurlescseq(targetOpt)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

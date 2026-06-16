@@ -1,0 +1,684 @@
+%{
+*********************************************************************
+* Copr 1979 2002 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Customer Contact                                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ARControl$(dataBaseID).icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {	
+  page_title              = "Customer Contacts"
+  d2wName                 = "CustomerContact.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;salesmanNumber=@dtw_rurlescseq(salesmanNumber)&amp;salesmanName=@dtw_rurlescseq(salesmanName)&amp;backHome=@dtw_rurlescseq(backHome)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  currentURL              = "$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;START_ROW_NUM=@dtw_rurlescseq(START_ROW_NUM)"
+  programName             = "HCRCNM_E"
+  programOrderEntry       = "HOEOEM"
+  programNameEvent        = "HCRCEM_E"
+  fileName                = "CRCNTU"
+  fileEvent               = "CRCEVU"	
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  noMsg                   = ""
+  oe_01                   = ""
+%}
+
+%INCLUDE "userdefined_number.icl"
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@maintenanceCode", "@dtw_rurlescseq(maintenanceCode)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "AJAXRequest.icl"
+              %INCLUDE "SaveCurrentURL.icl"
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  %if (customerNumber == "")
+                      if (
+                          editNum(document.Search.srchCust, 7, 0)
+                         )
+                      %endif
+                  return true;
+              }
+              %INCLUDE "Menu.js"
+	       %INCLUDE "numedit.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "CUSTOMERCONTACT")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_CustomerName, "CRCUST")
+	               %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(distinctSQL, "CRCONT", distinctSQL)
+                      @dtw_concat(stmtSQL, " Select distinct CRLNAM, CRFNAM, CRCONT, CRCUST, CRCNAM, CRTITL, CRCITY, CRST, CRZIP, ", stmtSQL)
+                      @dtw_concat(stmtSQL, "                 CRLNAMU, CRFNAMU, CRCNAMU, CRTITLU, CRCITYU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " CMSLSM, coalesce(CMCNA1,' ') as CMCNA1, coalesce(CMCNA1U,' ') as CMCNA1U ", stmtSQL)
+                      @dtw_concat(fileSQL, " CRCNTM left join HDCUST on CMCUST=CRCUST ", fileSQL)
+                      @dtw_concat(fileSQL, "        left join CRCNTU on CUCONT=CRCONT ", fileSQL)
+                      %if (wildCardSearch!="" || customerNumber>"0" || salesmanNumber>"0" || uv_Sql!="")
+                          @dtw_concat(selectSQL, "CRCONT>0 ", selectSQL)
+                      %endif
+                      %if (customerNumber > "0")
+                          @dtw_concat(selectSQL, " and CRCUST=$(customerNumber)", selectSQL)
+                      %endif
+                      %if (salesmanNumber > "0")
+                          @dtw_concat(selectSQL, " and CMSLSM=$(salesmanNumber)", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy)", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Contact_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Contact_Query (IN  CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programOrderEntry, oe_01, oe_02, oe_03, oe_04, oe_05, oe_06, oe_07, oe_08, oe_09, oe_10, oe_11, oe_12, oe_13, oe_14, oe_15)
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      @pgmOptSecurity(profileHandle, dataBaseID, programNameEvent, evtsec_01, evtsec_02, evtsec_03, evtsec_04, evtsec_05, evtsec_06, evtsec_07, evtsec_08, evtsec_09, evtsec_10, evtsec_11, evtsec_12, evtsec_13, evtsec_14, evtsec_15)
+
+      %INCLUDE "stmtSQLTotalRows.icl"
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)CustomerContactMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;forCustomer=@dtw_rurlescseq(customerNumber)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      %if (customerNumber != "")
+          <table $(contentTable)>
+              @Format_Header_URL("Customer", $(customerName), $(customerNumber), "$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(d2wVarBase)")
+          </table>
+      %elif (salesmanNumber > "0")
+          <table $(contentTable)>
+              @Format_Header_URL("Salesman", $(salesmanName), $(salesmanNumber), "$(homeURL)$(cGIPath)SalesmanSelect.d2w/REPORT$(d2wVarBase)")
+          </table>
+      %endif
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      %if (formatToPrint == "")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Name</th>
+                      <th class="colhdr">Company</th>
+                      <th class="colhdr">Title</th>
+                      %if (customerNumber == "")
+                          <th class="colhdr">Customer<br>Number</th>
+                          <th class="colhdr">Customer<br>Name</th>
+                      %endif
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchName" size="10" maxlength="26">
+                          <input type="hidden" name="operName" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchCoName" size="10" maxlength="26">
+                          <input type="hidden" name="operCoName" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchTitle" size="10" maxlength="26">
+                          <input type="hidden" name="operTitle" value="LIKE">
+                      </td>
+                      %if (customerNumber == "")
+                          <td><input type="text" class="inputnmbr" name="srchCust" size="5" maxlength="7">
+                              <input type="hidden" name="operCust" value="=">
+                          </td>
+                          <td><input type="text" class="inputalph" name="srchCustName" size="10" maxlength="26">
+                              <input type="hidden" name="operCustName" value="LIKE">
+                          </td>
+                      %endif
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchName.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y" || oe_01 == "Y"))
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("CRCONT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Contact" title="Sequence By Contact Number"> Contact<br>Number</a></th>
+              @OrderBy_Sort("CRLNAMU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Name" title="Sequence By Name">Name</a></th>
+              @OrderBy_Sort("CRCNAMU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Company" title="Sequence By Company, Name">Company</a></th>
+              @OrderBy_Sort("CRTITLU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Title" title="Sequence By Title, Name">Title</a></th>
+              @OrderBy_Sort("CRCITYU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=City" title="Sequence By City, Name">City</a></th>
+              @OrderBy_Sort("CRST", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=State" title="Sequence By State, Name">State</a></th>
+              @OrderBy_Sort("CRZIP", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Zip" title="Sequence By Zip, Name">Zip</a></th>
+              %if (customerNumber == "")
+                  @OrderBy_Sort("CRCUST", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CustomerNumber" title="Sequence By Customer Number, Name">Customer<br>Number</a></th>
+                  @OrderBy_Sort("CMCNA1U", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CustomerName" title="Sequence By Customer Name, Name">Customer<br>Name</a></th>
+              %endif
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;contactNumber=@dtw_rurlescseq(V_CRCONT)&amp;firstName=@dtw_rurlescseq(V_CRFNAM)&amp;lastName=@dtw_rurlescseq(V_CRLNAM)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+              %INCLUDE "SetRowClass.icl"
+              @Format_EmplName(V_CRFNAM, V_CRLNAM, "", "", "", "D", F_Name)
+              @Format_Confirm_Desc($(F_Name), $(V_CRCONT), "", "", "", "", confirmDesc)
+
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y" || oe_01 == "Y"))
+                      <td class="opticon">
+                          %if (sec_02 == "Y" || sec_03 == "Y")
+                              <a href="$(homeURL)$(cGIPath)CustomerContactMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          %endif
+                          %if (sec_01=="Y" && sec_04=="Y")
+                              <a href="$(homeURL)$(cGIPath)CustomerContactMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                          %endif
+                          %if (sec_03 == "Y")
+                              <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)CustomerContactMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                          %endif
+                          %if (evtsec_01 == "Y")
+                              @dtw_assign(eventImg, addEventImageSml)
+                              @dtw_replace(eventImg, "related", "new", eventImg)
+                              <a href="$(homeURL)$(cGIPath)EventCodeSelection.d2w/REPORT$(genericVarBase)&amp;fileName=@dtw_rurlescseq(fileEvent)&amp;contactNumber=@dtw_rurlescseq(V_CRCONT)&amp;fromContactNumber=@dtw_rurlescseq(V_CRCONT)&amp;origSequence=0&amp;fromD2w=@dtw_rurlescseq(d2wName)" onclick="$(searchWinVar)">$(eventImg)</a>
+                          %endif
+                          %if (oe_01 == "Y"  && V_CRCUST > "0" && V_CRCUST != V_CRMSCC)
+                              <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)OrderEntry.d2w/ENTRY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_CRCUST)&amp;customerName=@dtw_rurlescseq(V_CMCNA1)&amp;contactNumber=@dtw_rurlescseq(V_CRCONT)&amp;orderControlNumber=00000000">$(addOrderImageSml)</a>
+                          %endif
+                      </td>
+                  %endif
+                  <td class="colnmbr">$(V_CRCONT)</td>                                      	
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerContactselect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_CRCUST)&amp;customerName=@dtw_rurlescseq(V_CMCNA1)&amp;contactNumber=@dtw_rurlescseq(V_CRCONT)" title="View Contact">$(F_Name)</a></td>
+                  <td class="colalph">$(V_CRCNAM)</td>
+                  <td class="colalph">$(V_CRTITL)</td>
+                  <td class="colalph">$(V_CRCITY)</td>
+                  <td class="colcode">$(V_CRST)</td>
+                  <td class="colalph">$(V_CRZIP)</td>
+                  %if (customerNumber == "")
+                      %if (V_CRCUST > "0")
+                          <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_CRCUST)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(V_CRCUST)</a></td>
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_CRCUST)&amp;customerName=@dtw_rurlescseq(V_CMCNA1)" title="View Customer">$(V_CMCNA1)</a></td>
+                      %else
+                          <td class="colalph">&nbsp;</td>
+                          <td class="colalph">&nbsp;</td>
+                      %endif
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  @dtw_assign(uv_CustomerName, "CRCUST")
+  %INCLUDE "userview.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(distinctSQL, "CRCONT", distinctSQL)
+  @dtw_concat(stmtSQL, " Select distinct CRLNAM, CRFNAM, CRCONT, CRCUST, CRCNAM, CRTITL, CRCITY, CRST, CRZIP, ", stmtSQL)
+  @dtw_concat(stmtSQL, "                 CRLNAMU, CRFNAMU, CRCNAMU, CRTITLU, CRCITYU, ", stmtSQL)
+  @dtw_concat(stmtSQL, " CMSLSM, coalesce(CMCNA1,' ') as CMCNA1, coalesce(CMCNA1U,' ') as CMCNA1U ", stmtSQL)
+  @dtw_concat(fileSQL, " CRCNTM left join HDCUST on CMCUST=CRCUST ", fileSQL)
+  @dtw_concat(fileSQL, "        left join CRCNTU on CUCONT=CRCONT ", fileSQL)
+  %if (wildCardSearch!="" || customerNumber>"0" || salesmanNumber>"0" || uv_Sql!="")
+      @dtw_concat(selectSQL, "CRCONT>0 ", selectSQL)
+  %endif
+  %if (customerNumber > "0")
+      @dtw_concat(selectSQL, " and CRCUST=$(customerNumber)", selectSQL)
+  %endif
+  %if (salesmanNumber > "0")
+      @dtw_concat(selectSQL, " and CMSLSM=$(salesmanNumber)", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy)", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+
+  @Contact_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) Contact_XMLQuery (IN  CHAR(64)    profileHandle,
+				          CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @XMLBeginTag("CustomerContactList")
+      %if (customerNumber != "")
+          @RtvFldDesc("CMCUST=$(customerNumber)", "HDCUST", "CMCNA1", customerName)
+	       @XMLIDTag(customerNumber, "Customer ID")
+          @XMLTag(customerNumber, "CustomerNumber")
+          @XMLTag(customerName, "CustomerName")
+      %endif
+		
+      %ROW{
+          @XMLIDTag(V_CRCONT, "Contact ID")
+              @XMLTag(V_CRCONT, "ContactNumber")
+              @XMLTag(V_CRLNAM, "LastName")
+              @XMLTag(V_CRFNAM, "FirstName")
+              @XMLTag(@DTW_rCONCAT(V_CRLNAM, @DTW_rCONCAT(", ", V_CRFNAM)), "Name")
+              @XMLTag(V_CRSALU, "Salutation")
+              @XMLTag(V_CRCNAM, "CompanyName")
+              @XMLTag(V_CRTITL, "ContactTitle")
+              @XMLTag(V_CRADR1, "Address1")
+              @XMLTag(V_CRADR2, "Address2")
+              @XMLTag(V_CRADR3, "Address3")
+              @XMLTag(V_CRCITY, "City")
+              @XMLTag(V_CRST, "State")
+              @XMLTag(V_CRZIP, "Zip")
+              %if (customerNumber == "")
+                  @RtvFldDesc("CMCUST=$(V_CRCUST)", "HDCUST", "CMCNA1", customerName)
+                  @XMLTag(V_CRCUST, "CustomerNumber")
+                  @XMLTag(customerName, "CustomerName")
+              %endif
+          @XMLEndTag("Contact")
+	       %}
+      %if (customerNumber != "")
+          @XMLEndTag("Customer")
+      %endif
+      @XMLEndTag("CustomerContactList")
+  %}
+%}
+
+%HTML(EXPORT) {
+   %INCLUDE "setLibraryList.icl"
+   @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+   @XMLInit ()
+   @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+   @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Last Name, First Name")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Contact")
+      %if (orderBy == "CRCONT")
+          @DTW_ASSIGN(orderBy, "CRCONT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Contact Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "CRCONT")
+          @DTW_ASSIGN(orderByDisplay, "Contact Number")
+      %endif
+  %elif (sequence == "Name")
+      %if (orderBy == "CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderBy, "CRLNAMU DESC,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Name (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Name")
+      %endif
+  %elif (sequence == "Company")
+      %if (orderBy == "CRCNAMU,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderBy, "CRCNAMU DESC,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Company (descending), Name")
+      %else
+          @DTW_ASSIGN(orderBy, "CRCNAMU,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Company, Name")
+      %endif
+  %elif (sequence == "Title")
+      %if (orderBy == "CRTITLU,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderBy, "CRTITLU DESC,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Title (descending), Name")
+      %else
+          @DTW_ASSIGN(orderBy, "CRTITLU,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Title, Name")
+      %endif
+  %elif (sequence == "City")
+      %if (orderBy == "CRCITYU,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderBy, "CRCITYU DESC,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "City (descending), Name")
+      %else
+          @DTW_ASSIGN(orderBy, "CRCITYU,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "City, Name")
+      %endif
+  %elif (sequence == "State")
+      %if (orderBy == "CRST,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderBy, "CRST DESC,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "State (descending), Name")
+      %else
+          @DTW_ASSIGN(orderBy, "CRST,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "State, Name")
+      %endif
+  %elif (sequence == "Zip")
+      %if (orderBy == "CRZIP,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderBy, "CRZIP DESC,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Zip (descending), Name")
+      %else
+          @DTW_ASSIGN(orderBy, "CRZIP,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Zip, Name")
+      %endif
+  %elif (sequence == "CustomerNumber")
+      %if (orderBy == "CRCUST,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderBy, "CRCUST DESC,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Customer Number (descending), Name")
+      %else
+          @DTW_ASSIGN(orderBy, "CRCUST,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Customer Number, Name")
+      %endif
+  %elif (sequence == "CustomerName")
+      %if (orderBy == "CMCNA1U,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderBy, "CMCNA1U DESC,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Customer Name (descending), Name")
+      %else
+          @DTW_ASSIGN(orderBy, "CMCNA1U,CRLNAMU,CRFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Customer Name, Name")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  @UserDefined_Query(profileHandle, dataBaseID, "CRCNTU    ", "          ", userDefinedTable)	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "calendar.icl"
+              %INCLUDE "Menu.js"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "CUSTCONTACTSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Contact Number</td>
+                              @dtw_assign(operNbr, "operContact")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchContact" type="text"  size="7" maxlength="7"><a href="$(homeURL)$(cGIPath)customercontactsearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchContact&amp;fldDesc=contactName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="contactName" value="$(contactName)" type="text" disabled size="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Name</td>
+                              @dtw_assign(operNbr, "operName")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchName" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Company</td>
+                              @dtw_assign(operNbr, "operCoName")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCoName" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Title</td>
+                              @dtw_assign(operNbr, "operTitle")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchTitle" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">City</td>
+                              @dtw_assign(operNbr, "operCity")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCity" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">State</td>
+                              @dtw_assign(operNbr, "operState")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchState" size="3" maxlength="2"><a href="$(homeURL)$(phpPath)StateSearch.php$(altVarBase)&amp;docName=Search&amp;fldName=srchState&amp;fldDesc=srchStateDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchStateDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Zip</td>
+                              @dtw_assign(operNbr, "operZip")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchZip" size="14" maxlength="14"></td>
+                          </tr>
+
+                          %if (customerNumber == "")
+                              <tr><td class="dsphdr">Customer Number</td>
+                                  @dtw_assign(operNbr, "operCust")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input name="srchCust" type="text" size="6" maxlength="7"><a href="$(homeURL)$(phpPath)CustomerSearch.php$(altVarBase)&amp;docName=Search&amp;fldName=srchCust&amp;fldDesc=shipToName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="shipToName" size="40" type="text" disabled></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Customer Name</td>
+                                  @dtw_assign(operNbr, "operCustName")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchCustName" size="26" maxlength="26"></td> 		
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Date Inactive</td>
+                              @dtw_assign(operNbr, "operDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDate" size="6" maxlength="6"><a href="javascript:calWindow('srchDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          @dtw_tb_rows(userDefinedTable, userMaxRows)
+                          @dtw_assign(ux, "1")
+                          %while(ux <= userMaxRows){
+                              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFFLDN"), V_UFFLDN)
+                              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFDESC"), V_UFDESC)
+                              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFTYPE"), V_UFTYPE)
+                              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFSIZE"), V_UFSIZE)
+                              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFDECM"), V_UFDECM)
+                              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFVALU"), V_UFVALU)
+                              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFBOXS"), V_UFBOXS)
+                              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFREQF"), V_UFREQF)
+                              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFVLDV"), V_UFVLDV)
+
+                              @dtw_add(V_UFSIZE, V_UFDECM, V_UFSIZE)
+                              %if (V_UFDECM != "0")
+                                  @dtw_add(V_UFSIZE, "2", V_UFSIZE)
+                              %endif
+
+                              @dtw_assign(operNbr, "oper$(V_UFFLDN)")
+                    	       <tr><td class="dsphdr">$(V_UFDESC)</td>
+                                      %if (V_UFTYPE == "A")
+                                          <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                          <td class="inputalph"><input type="text" name="$(V_UFFLDN)" size="$(V_UFSIZE)" maxlength="$(V_UFSIZE)">
+                                      %elif (V_UFTYPE == "C")
+                                          <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                          <td><input type="text" name="$(V_UFFLDN)" size="50" maxlength="50">
+                                      %elif (V_UFTYPE == "N")
+                                          <td>%INCLUDE "opersel_num_short.icl"</td>
+                                          <td class="inputnmbr"><input type="text" name="$(V_UFFLDN)" size="$(V_UFSIZE)" maxlength="$(V_UFSIZE)">
+                                      %elif (V_UFTYPE == "D")
+                                          <td>%INCLUDE "opersel_num_short.icl"</td>
+                                          <td class="inputnmbr"><input type="text" name="$(V_UFFLDN)" size="6" maxlength="6">
+                                          %if (V_UFVLDV != "Y")
+                                              <a href="javascript:calWindow('$(V_UFFLDN)');">$(calendarImage)</a>
+                                          %endif
+                                      %endif
+                                      %if (V_UFVALU == "Y" || V_UFVLDV == "Y")
+                                          <a href="$(homeURL)$(phpPath)UserDefinedSearch.php$(altVarBase)&amp;docName=Search&amp;fileName=$(fileName)&amp;fldName=$(V_UFFLDN)&amp;fldType=$(V_UFTYPE)&amp;fldDesc=$(V_UFDESC)" onclick="$(searchWinVar)"> $(searchImage) </a>
+                                      %endif
+                                  </td>
+                              </tr>
+                              @dtw_add(ux, "1", ux)
+                          %}
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchContact.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("CRCONT", "Contact Number", $(srchContact), "", operContact, "N")
+  @Build_WildCard ("CRLNAMU", "Name", $(srchName), "U", operName, "A")
+  @Build_WildCard ("CRCNAMU", "Company", $(srchCoName), "U", operCoName, "A")
+  @Build_WildCard ("CRTITLU", "Title", $(srchTitle), "U", operTitle, "A")
+  @Build_WildCard ("CRCITYU", "City", $(srchCity), "U", operCity, "A")
+  @Build_WildCard ("CRST", "State", $(srchState), "U", operState, "A")
+  @Build_WildCard ("CRZIP", "Zip", $(srchZip), "U", operZip, "A")
+  %if (customerNumber == "")
+      @Build_WildCard ("CRCUST", "Customer Number", $(srchCust), "", operCust, "N")
+      @Build_WildCard ("CMCNA1U", "Customer Name", $(srchCustName), "U", operCustName, "A")
+  %endif
+  @Build_WildCard ("CRDATI", "Date Inactive", $(srchDate), "", operDate, "I")
+
+  @UserDefined_Query(profileHandle, dataBaseID, "CRCNTU    ", "          ", userDefinedTable)	
+
+  @dtw_tb_rows(userDefinedTable, userMaxRows)
+  @dtw_assign(ux, "1")
+  %while(ux <= userMaxRows){
+      @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFFLDN"), V_UFFLDN)
+      @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFTYPE"), V_UFTYPE)
+      @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFDESC"), V_UFDESC)
+      @dtw_assign(UFFLDN, $(V_UFFLDN))
+      @dtw_assign(outField, $($(UFFLDN)))
+      @dtw_assign(oper, "$(oper$(V_UFFLDN))")
+      %if (outField != "")
+          %if (V_UFTYPE == "A" || V_UFTYPE == "C")
+              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFUPPR"), V_UFUPPR)
+              @dtw_mUPPERCASE(outField)
+              @dtw_replace(outField, "?", "_", "1", "a", outField)
+              @dtw_replace(outField, "*", "%", "1", "a", outField)
+              @Build_WildCard ("$(V_UFFLDN)", "$(V_UFDESC)", $(outField), "", $(oper), "V")
+              @dtw_assign(wildCardTemp, " (CUFLDN = '$(V_UFFLDN)' AND trim(upper(CUFLDV)) $(oper) '$(outField)')")
+         %elif (V_UFTYPE == "N")
+              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFSIZE"), V_UFSIZE)
+              @dtw_tb_getv(userDefinedTable, ux, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFDECM"), V_UFDECM)
+              @Build_User_Number(outField, V_UFSIZE, V_UFDECM, outField)
+              @Build_WildCard ("$(V_UFFLDN)", "$(V_UFDESC)", $(outField), "", $(oper), "V")
+              @dtw_assign(wildCardTemp, " (CUFLDN = '$(V_UFFLDN)' AND CUFLDR $(oper) $(outField))")
+          %elif (V_UFTYPE == "D")
+              @Date_To_ISO("$(outField)", dateOut)
+              @Build_WildCard ("$(V_UFFLDN)", "$(V_UFDESC)", $(outField), "", $(oper), "V")
+              @dtw_assign(wildCardTemp, " (CUFLDN = '$(V_UFFLDN)' AND CUFLDD $(oper) '$(dateOut)')")
+          %endif
+      %endif
+
+      @dtw_concat(userEdtVar, @dtw_rconcat("}{$(V_UFFLDN)", $(outField)), userEdtVar)
+      @dtw_add(ux, "1", ux)
+  %}
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

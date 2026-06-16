@@ -1,0 +1,321 @@
+%{
+*********************************************************************
+* Copr 1979 2005 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Application Control Maintenance                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Application Control Maintenance"
+  d2wName                 = "WFApplicationControlMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromApplProgram=@dtw_rurlescseq(fromApplProgram)&amp;fromApplProcess=@dtw_rurlescseq(fromApplProcess)&amp;fromD2w=@dtw_rurlescseq(fromD2w)&amp;backHome=@dtw_rurlescseq(backHome)&amp;updRecNbr=@dtw_rurlescseq(updRecNbr)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;applProgram=@dtw_rurlescseq(applProgram)&amp;applProcess=@dtw_rurlescseq(applProcess)&amp;maintenanceCode=D"
+  programName             = "HWFAPM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "TimeEdit.icl"
+              function confirmDelete() {return confirm("$(delRecordConf)")}
+              function validate(chgForm) {
+                  if (document.Chg.applProgram.value =="" ||
+                      document.Chg.applProcess.value =="" ||
+                      document.Chg.applDescription.value =="" ||
+                      document.Chg.entryPoint.value =="" ||
+                      document.Chg.entrySequence.value =="")
+                         {alert("$(reqFieldError)"); return false;}
+                  if (editNum(document.Chg.entryPoint, 4, 3) &&
+                      editNum(document.Chg.entrySequence, 4, 3) &&
+                      editdate(document.Chg.fromDate) &&
+                      editTimeHM(document.Chg.fromTime) &&
+                      editdate(document.Chg.toDate) &&
+                      editTimeHM(document.Chg.toTime))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "WFAPPLCONTROLMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      %if (maintenanceCode == "A")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, "Select *  ", stmtSQL)
+                          @dtw_concat(fileSQL, " WFAPCT ", fileSQL)
+                          @dtw_concat(selectSQL, " ACPGM='$(applProgram)' and ACPROC='$(applProcess)' ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=212")
+      %endif
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" onSubmit="return validate(document.Chg)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          %ROW {
+              @dtw_assign(specificWFProcess, V_ACPROC)
+
+              %if (errFound != "" || maintenanceCode == "A")
+                  %if (errFound == "" && maintenanceCode == "A")
+                      @dtw_assign(edtVar, "")
+                      @dtw_assign(focusField, "applProgram")
+                  %else
+                      @dtw_assign(focusField, "")
+                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                      @ErrVarErr(profileHandle, typeError, errVar)
+                      @DecatErr_Field("@@pgm@", "applProgram")           @dtw_assign(Err_ACPGM, fieldValue)
+                      @DecatErr_Field("@@proc", "applProcess")           @dtw_assign(Err_ACPROC, fieldValue)
+                      @DecatErr_Field("@@desc", "applDescription")       @dtw_assign(Err_ACDESC, fieldValue)
+                      @DecatErr_Field("@@stat", "applStatus")            @dtw_assign(Err_ACSTAT, fieldValue)
+                      @DecatErr_Field("@@pont", "entryPoint")            @dtw_assign(Err_ACPONT, fieldValue)
+                      @DecatErr_Field("@@seq@", "entrySequence")         @dtw_assign(Err_ACSEQ, fieldValue)
+                      @DecatErr_Field("@@fdat", "fromDate")              @dtw_assign(Err_ACEFFFDate, fieldValue)
+                      @DecatErr_Field("@@ftim", "fromTime")              @dtw_assign(Err_ACEFFFTime, fieldValue)
+                      @DecatErr_Field("@@tdat", "toDate")                @dtw_assign(Err_ACEFFTDate, fieldValue)
+                      @DecatErr_Field("@@ttim", "toTime")                @dtw_assign(Err_ACEFFTTime, fieldValue)
+                  %endif
+
+                  @Decat_Field("@@pgm@")   @dtw_assign(V_ACPGM, fieldValue)
+                  @Decat_Field("@@proc")   @dtw_assign(V_ACPROC, fieldValue)
+                  @Decat_Field("@@desc")   @dtw_assign(V_ACDESC, fieldValue)
+                  @Decat_Field("@@stat")   @dtw_assign(V_ACSTAT, fieldValue)
+                  @Decat_Field("@@pont")   @dtw_assign(V_ACPONT, fieldValue)
+                  @Decat_Field("@@seq@")   @dtw_assign(V_ACSEQ, fieldValue)
+                  @Decat_Field("@@fdat")   @dtw_assign(V_ACEFFFDate, fieldValue)
+                  @Decat_Field("@@ftim")   @dtw_assign(V_ACEFFFTime, fieldValue)
+                  @Decat_Field("@@tdat")   @dtw_assign(V_ACEFFTDate, fieldValue)
+                  @Decat_Field("@@ttim")   @dtw_assign(V_ACEFFTTime, fieldValue)
+
+                  %if (errFound == "" && maintenanceCode == "A")
+                      @dtw_assign(focusField, "applProgram")
+                      @dtw_assign(entryPoint, "0")
+                      @dtw_assign(entrySequence, "0")
+                  %endif
+
+                  @dtw_assign(errFound, "")
+
+              %elif (maintenanceCode == "Z")
+                  @dtw_assign(focusField, "applProgram")
+                  @TimeStamp_CYMD("$(V_ACEFFF)", V_ACEFFFDate) @DateInputFromCYMD(V_ACEFFFDate)
+                  @TimeStamp_CYMD("$(V_ACEFFT)", V_ACEFFTDate) @DateInputFromCYMD(V_ACEFFTDate)
+                  @TimeStamp_TIME_HM("$(V_ACEFFF)", V_ACEFFFTime)
+                  @TimeStamp_TIME_HM("$(V_ACEFFT)", V_ACEFFTTime)
+              %else
+                  @dtw_assign(focusField, "applDescription")
+                  @TimeStamp_CYMD("$(V_ACEFFF)", V_ACEFFFDate) @DateInputFromCYMD(V_ACEFFFDate)
+                  @TimeStamp_CYMD("$(V_ACEFFT)", V_ACEFFTDate) @DateInputFromCYMD(V_ACEFFTDate)
+                  @TimeStamp_TIME_HM("$(V_ACEFFF)", V_ACEFFFTime)
+                  @TimeStamp_TIME_HM("$(V_ACEFFT)", V_ACEFFTTime)
+              %endif
+
+              <table $(contentTable)>
+                  @SetTextOvr(Err_ACPGM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Program</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input type="text" name="applProgram" value="$(V_ACPGM)" size="30" maxlength="10">$(reqFieldChar)</td>
+                      %else
+                          <td class="inputalph"><input type="hidden" name="applProgram" value="$(V_ACPGM)">$(V_ACPGM) $(fieldDesc)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_ACPGM)
+
+                  @SetTextOvr(Err_ACPROC)
+                  @RtvFldDesc("PRPROC='$(V_ACPROC)'", "WFPRHD", "PRDESC", fieldDesc)
+                  <tr><td class="dsphdr"><span $(textOvr)>Process</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input type="text" name="applProcess" value="$(V_ACPROC)" size="30" maxlength="30"><a href="$(homeURL)$(cGIPath)WFProcessSearch.d2w/REPORT$(genericVarBase)&amp;docName=Chg&amp;fldName=applProcess&amp;fldDesc=applProcessDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a>
+                                                <input type="text" disabled name="applProcessDesc" value="$(fieldDesc)" size="50"></td>
+                      %else
+                          <td class="inputalph"><input type="hidden" name="applProcess" value="$(V_ACPROC)">$(V_ACPROC) $(fieldDesc)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_ACPROC)
+
+                  @SetTextOvr(Err_ACDESC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Description</span></td>
+                      <td class="inputalph"><input type="text" name="applDescription" value="$(V_ACDESC)" size="50" maxlength="50"> $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_ACDESC)
+
+                  @RtvFldDesc("FLTYPE='WFAPPLSTAT' and FLVALU='$(V_ACSTAT)'", "SYFLAG", "FLDESC", fieldDesc)
+                  @SetTextOvr(Err_ACSTAT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Status</span></td>
+                      <td class="inputalph"><input type="text" name="applStatus" value="$(V_ACSTAT)" size="30" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=WFAPPLSTAT&amp;flagSrchHdr=@dtw_rurlescseq("Status")&amp;docName=Chg&amp;fldName=applStatus&amp;fldDesc=applStatusDesc" onclick="$(searchWinVar)">$(searchImage)</a>
+                                            <input type="text" disabled name="applStatusDesc" value="$(fieldDesc)" size="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_ACSTAT)
+
+                  @Default_Zero(V_ACPONT)
+                  @Default_Zero(V_ACSEQ)
+                  @SetTextOvr(Err_ACPONT)
+                  @RtvFldDesc("PDPROC='$(V_ACPROC)' and PDPONT=$(V_ACPONT) and PDSEQ=$(V_ACSEQ) ", "WFPRDT", "PDDESC", fieldDesc)
+                  <tr><td class="dsphdr"><span $(textOvr)>Entry Detail Point</span></td>
+                      <td class="inputnmbr"><input type="text" name="entryPoint" value="$(V_ACPONT)" size="10" maxlength="8">
+                                            <input type="text" name="entrySequence" value="$(V_ACSEQ)" size="10" maxlength="8">
+                                            <a href="$(homeURL)$(cGIPath)WFDetailSearch.d2w/REPORT$(genericVarBase)&amp;docName=Chg&amp;specificWFProcess=@dtw_rurlescseq(specificWFProcess)&amp;fldProc=applProcess&amp;fldProcDesc=applProcessDesc&amp;fldPoint=entryPoint&amp;fldSequence=entrySequence&amp;fldDesc=entrySequenceDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage)</a>
+                                            <input type="text" disabled name="entrySequenceDesc" value="$(fieldDesc)" size="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_ACPONT)
+              </table>
+
+              <table $(contentTable)>
+                  <tr><td class="dsphdr">&nbsp;</td>
+                      <td class="colhdr">Date</td>
+                      <td class="colhdr">Time</td>
+                  </tr>
+
+                  @SetTextOvr(Err_ACEFFFDate)
+	           <tr><td class="dsphdr"><span $(textOvr)>Effective From</span></td>
+                      <td class="inputnmbr"><input type="text" name="fromDate" value="$(V_ACEFFFDate)" size="6" maxlength="6"> 		
+                                            <a href="javascript:calWindow('fromDate');">$(calendarImage)</a></td>
+                      <td class="inputnmbr"><input type="text" name="fromTime" value="$(V_ACEFFFTime)" size="4" maxlength="4"> 		
+                  </tr>
+                  @DspErrMsg(Err_ACEFFFDate)
+
+                  @SetTextOvr(Err_ACEFFTDate)
+	           <tr><td class="dsphdr"><span $(textOvr)>Effective To</span></td>
+                      <td class="inputnmbr"><input type="text" name="toDate" value="$(V_ACEFFTDate)" size="6" maxlength="6">  		
+                                            <a href="javascript:calWindow('toDate');">$(calendarImage)</a></td>
+                      <td class="inputnmbr"><input type="text" name="toTime" value="$(V_ACEFFTTime)" size="4" maxlength="4"> 		
+                  </tr>
+                  @DspErrMsg(Err_ACEFFTDate)
+              </table>
+          %}
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HWFAPM_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  %if (applDescription=="")
+      @RtvFldDesc("ACPGM='$(applProgram)' and ACPROC='$(applProcess)' ", "WFAPCT", "ACDESC", applDescription)
+  %endif
+
+  @dtw_mUPPERCASE(applProgram)
+  @dtw_mUPPERCASE(applProcess)
+  @dtw_mUPPERCASE(applStatus)
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@frm1", fromApplProgram)
+  @Concat_Field("@@frm2", fromApplProcess)
+  @Concat_Field("@@pgm@", applProgram)
+  @Concat_Field("@@proc", applProcess)
+  @Concat_Field("@@desc", applDescription)
+  @Concat_Field("@@stat", applStatus)
+  @Concat_Field("@@pont", entryPoint)
+  @Concat_Field("@@seq@", entrySequence)
+  @Concat_Field("@@fdat", fromDate)
+  @Concat_Field("@@ftim", fromTime)
+  @Concat_Field("@@tdat", toDate)
+  @Concat_Field("@@ttim", toTime)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "" || maintenanceCode == "D")
+      %if (errFound == "")
+          @Format_ConfMsg_Desc(maintenanceCode, $(applDescription), "$(applProgram)-$(applProcess)", "", "", "", "", confMessage)
+      %else
+          @DecatErr_Field("@@pgm@", "applProgram")
+          @Format_ConfMsg_Desc("", $(applDescription), "$(applProgram)-$(applProcess)", "<br>$(fieldValue)", "", "", "", confMessage)
+     %endif
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=212&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;applProgram=@dtw_rurlescseq(applProgram)&amp;applProcess=@dtw_rurlescseq(applProcess)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

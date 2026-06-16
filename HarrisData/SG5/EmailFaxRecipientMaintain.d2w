@@ -1,0 +1,344 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: E-mail/Fax Recipient Maintenance                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "E-mail/Fax Recipient Maintenance"
+  d2wName                 = "EmailFaxRecipientMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;sequenceNumber=@dtw_rurlescseq(sequenceNumber)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;recipientName=@dtw_rurlescseq(recipientName)&amp;maintenanceCode=D"
+  programName             = "HOEEFM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              function validate(chgForm) {
+                  if (document.Chg.documentType.value =="")
+                     {alert("$(reqFieldError)"); return false;}
+                  if (document.Chg.faxNumber.value =="" && document.Chg.emailAddress.value =="")
+                     {alert("Fax Number or E-mail Address must be entered"); return false;}
+                      if (isEmail(document.Chg.emailAddress.value) == false && document.Chg.emailAddress.value !="") {
+                          alert("Please enter a valid email address.");
+                          document.Chg.emailAddress.focus();
+                          return false;
+                      }
+                      return true;
+                  }
+                  function isEmail(string) {
+				      var emails = string.split(',');
+                      for (var i in emails) {
+                          if (emails[i].search(/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/) != -1) {
+                              continue;
+                          } else {return false;}
+                      }
+                      return true;
+                  }
+              function confirmDelete() {return confirm("$(delRecordConf)")}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "EMAILFAXRECIPIENTMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(stmtSQL, "")
+                      %if (maintenanceCode == "A")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, " Select * From OEEFWK ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where EWOCTL=$(orderControlNumber) ", stmtSQL)
+                          @dtw_concat(stmtSQL, " and EWSEQ=$(sequenceNumber) ", stmtSQL)
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      <table $(contentTable)>
+          @Format_Header("Customer", $(customerName), $(customerNumber))
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "documentType")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@doct", "documentType")     @dtw_assign(Err_EWDOCT, fieldValue)
+                          @DecatErr_Field("@@rnam", "recipientName")    @dtw_assign(Err_EWRNAM, fieldValue)
+                          @DecatErr_Field("@@fax@", "faxNumber")        @dtw_assign(Err_EWFAX,  fieldValue)
+                          @DecatErr_Field("@@cptl", "titleLine")        @dtw_assign(Err_EWCPTL, fieldValue)
+                          @DecatErr_Field("@@cpt1", "toLine1")          @dtw_assign(Err_EWCPT1, fieldValue)
+                          @DecatErr_Field("@@cpt2", "toLine2")          @dtw_assign(Err_EWCPT2, fieldValue)
+                          @DecatErr_Field("@@cpt3", "toLine3")          @dtw_assign(Err_EWCPT3, fieldValue)
+                          @DecatErr_Field("@@cpf1", "fromLine1")        @dtw_assign(Err_EWCPF1, fieldValue)
+                          @DecatErr_Field("@@cpf2", "fromLine2")        @dtw_assign(Err_EWCPF2, fieldValue)
+                          @DecatErr_Field("@@cpf3", "fromLine3")        @dtw_assign(Err_EWCPF3, fieldValue)
+                          @DecatErr_Field("@@cpcl", "commentLine")      @dtw_assign(Err_EWCPCL, fieldValue)
+                          @DecatErr_Field("@@emal", "emailAddress")     @dtw_assign(Err_EWEMAL, fieldValue)
+                          @DecatErr_Field("@@bcc@", "emailBCC")         @dtw_assign(Err_EWBCC,  fieldValue)
+                      %endif
+
+                      @Decat_Field("@@doct")   @dtw_assign(V_EWDOCT, fieldValue)
+                      @Decat_Field("@@rnam")   @dtw_assign(V_EWRNAM, fieldValue)
+                      @Decat_Field("@@fax@")   @dtw_assign(V_EWFAX,  fieldValue)
+                      @Decat_Field("@@cptl")   @dtw_assign(V_EWCPTL, fieldValue)
+                      @Decat_Field("@@cpt1")   @dtw_assign(V_EWCPT1, fieldValue)
+                      @Decat_Field("@@cpt2")   @dtw_assign(V_EWCPT2, fieldValue)
+                      @Decat_Field("@@cpt3")   @dtw_assign(V_EWCPT3, fieldValue)
+                      @Decat_Field("@@cpf1")   @dtw_assign(V_EWCPF1, fieldValue)
+                      @Decat_Field("@@cpf2")   @dtw_assign(V_EWCPF2, fieldValue)
+                      @Decat_Field("@@cpf3")   @dtw_assign(V_EWCPF3, fieldValue)
+                      @Decat_Field("@@cpcl")   @dtw_assign(V_EWCPCL, fieldValue)
+                      @Decat_Field("@@emal")   @dtw_assign(V_EWEMAL, fieldValue)
+                      @Decat_Field("@@bcc@")   @dtw_assign(V_EWBCC,  fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(focusField, "documentType")
+                          @dtw_assign(V_EWUVCF, "N")
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %else
+                      @dtw_assign(focusField, "documentType")
+                  %endif
+
+                  @RtvFldDesc("DODOCT='$(V_EWDOCT)' ", "HDDOCT", "DODESC", fieldDesc)
+                  @SetTextOvr(Err_EWDOCT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Document Type</span></td>
+                      <td class="inputalph"><input name="documentType" value="$(V_EWDOCT)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(cGIPath)DocumentTypeSearch.d2w/ENTRY$(genericVarBase)&amp;vendCustFlag=C&amp;docName=Chg&amp;fldName=documentType&amp;fldDesc=documentTypeDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="documentTypeDesc" value="$(fieldDesc)" type="text" size="38" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_EWDOCT)
+
+                  @SetTextOvr(Err_EWRNAM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Recipient Name</span></td>
+                      <td class="inputalph"><input name="recipientName" type="text" value="$(V_EWRNAM)" size="50" maxlength="30"></td>
+                      <td><input name="name" type="hidden"></td>
+                  </tr>
+                  @DspErrMsg(Err_EWRNAM)
+	   		
+                  @SetTextOvr(Err_EWEMAL)
+                  <tr><td class="dsphdr"><span $(textOvr)>E-mail Address</span></td>
+                      <td class="inputalph"><input name="emailAddress" type="text" value="$(V_EWEMAL)" size="50" maxlength="256"><a href="$(homeURL)$(cGIPath)VendCustFaxSearch.d2w/REPORT$(d2wVarBase)&amp;vendCustNumber=@dtw_rurlescseq(customerNumber)&amp;vendCustName=@dtw_rurlescseq(customerName)&amp;vendCustFlag=C&amp;docName=Chg&amp;fldDocType=documentType&amp;fldDocDesc=documentTypeDesc&amp;fldRecName=name&amp;fldEmail=emailAddress&amp;fldFax=faxNumber&amp;fldTitle=titleLine&amp;fldTo1=toLine1&amp;fldTo2=toLine2&amp;fldTo3=toLine3&amp;fldFrom1=fromLine1&amp;fldFrom2=fromLine2&amp;fldFrom3=fromLine3&amp;fldCmt=commentLine" onclick="$(searchWinVar)"> $(searchImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_EWEMAL)
+
+	           @Field_Checked(V_EWBCC, "Y", emailBCCChecked)
+                  @SetTextOvr(Err_EWBCC)
+                  <tr><td class="dsphdr"><span $(textOvr)>BCC</span></td>
+                      <td><input type="checkbox" name="emailBCC" value="Y" $(emailBCCChecked)>
+                  </tr>
+                  @DspErrMsg(Err_EWBCC)
+
+	           @Field_Checked(V_EWUVCF, "Y", updCustFaxChecked)
+                  @SetTextOvr(Err_EWUVCF)
+                  <tr><td class="dsphdr"><span $(textOvr)>Update Customer Fax</span></td>
+                      <td><input type="checkbox" name="updateCustomerFax" value="Y" $(updCustFaxChecked)>
+                  </tr>
+                  @DspErrMsg(Err_EWUVCF)
+              </table>
+			
+              <fieldset class="legendBody">
+                  <legend class="legendTitle">Fax</legend>
+                  <table $(contentTable)>
+
+                  @SetTextOvr(Err_EWFAX)
+                  <tr><td class="dsphdr"><span $(textOvr)>Fax Number</span></td>
+                      <td class="inputalph"><input name="faxNumber" type="text" value="$(V_EWFAX)" size="50" maxlength="32"><a href="$(homeURL)$(cGIPath)VendCustFaxSearch.d2w/REPORT$(d2wVarBase)&amp;vendCustNumber=@dtw_rurlescseq(customerNumber)&amp;vendCustName=@dtw_rurlescseq(customerName)&amp;vendCustFlag=C&amp;docName=Chg&amp;fldDocType=documentType&amp;fldDocDesc=documentTypeDesc&amp;fldRecName=name&amp;fldEmail=emailAddress&amp;fldFax=faxNumber&amp;fldTitle=titleLine&amp;fldTo1=toLine1&amp;fldTo2=toLine2&amp;fldTo3=toLine3&amp;fldFrom1=fromLine1&amp;fldFrom2=fromLine2&amp;fldFrom3=fromLine3&amp;fldCmt=commentLine" onclick="$(searchWinVar)"> $(searchImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_EWFAX)
+	   		
+                  @SetTextOvr(Err_EWCPTL)
+                  <tr><td class="dsphdr"><span $(textOvr)>Title Line</span></td>
+                      <td class="inputalph"><input name="titleLine" type="text" value="$(V_EWCPTL)" size="50" maxlength="40"></td>
+                  </tr>
+                  @DspErrMsg(Err_EWCPTL)
+	   		
+                  @SetTextOvr(Err_EWCPT1)
+                  <tr><td class="dsphdr"><span $(textOvr)>To Line 1</span></td>
+                      <td class="inputalph"><input name="toLine1" type="text" value="$(V_EWCPT1)" size="50" maxlength="40"></td>
+                  </tr>
+                  @DspErrMsg(Err_EWCPT1)
+	   		
+                  @SetTextOvr(Err_EWCPT2)
+                  <tr><td class="dsphdr"><span $(textOvr)>To Line 2</span></td>
+                      <td class="inputalph"><input name="toLine2" type="text" value="$(V_EWCPT2)" size="50" maxlength="40"></td>
+                  </tr>
+                  @DspErrMsg(Err_EWCPT2)
+	   		
+                  @SetTextOvr(Err_EWCPT3)
+                  <tr><td class="dsphdr"><span $(textOvr)>To Line 3</span></td>
+                      <td class="inputalph"><input name="toLine3" type="text" value="$(V_EWCPT3)" size="50" maxlength="40"></td>
+                  </tr>
+                  @DspErrMsg(Err_EWCPT3)
+	   		
+                  @SetTextOvr(Err_EWCPF1)
+                  <tr><td class="dsphdr"><span $(textOvr)>From Line 1</span></td>
+                      <td class="inputalph"><input name="fromLine1" type="text" value="$(V_EWCPF1)" size="50" maxlength="40"></td>
+                  </tr>
+                  @DspErrMsg(Err_EWCPF1)
+	   		
+                  @SetTextOvr(Err_EWCPF2)
+                  <tr><td class="dsphdr"><span $(textOvr)>From Line 2</span></td>
+                      <td class="inputalph"><input name="fromLine2" type="text" value="$(V_EWCPF2)" size="50" maxlength="40"></td>
+                  </tr>
+                  @DspErrMsg(Err_EWCPF2)
+	   		
+                  @SetTextOvr(Err_EWCPF3)
+                  <tr><td class="dsphdr"><span $(textOvr)>From Line 3</span></td>
+                      <td class="inputalph"><input name="fromLine3" type="text" value="$(V_EWCPF3)" size="50" maxlength="40"></td>
+                  </tr>
+                  @DspErrMsg(Err_EWCPF3)
+	   		
+                  @SetTextOvr(Err_EWCPCL)
+                  <tr><td class="dsphdr"><span $(textOvr)>Comment Line</span></td>
+                      <td class="inputalph"><input name="commentLine" type="text" value="$(V_EWCPCL)" size="50" maxlength="40"></td>
+                  </tr>
+                  @DspErrMsg(Err_EWCPCL)
+          </table>
+          </fieldset>
+	   		
+              %}
+	
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HOEEFM_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @yn01_Table_Query(profileHandle, dataBaseID, "YORN      ", yn01Table)
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(documentType)
+  @dtw_mUPPERCASE(faxNumber)
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+      @dtw_assign(sequenceNumber, "0")
+  %endif
+  %if (recipientName == "")
+      %INCLUDE "OrderEntryRetInfo.icl"
+      %if (H1CONT > "0")
+          @dtw_assign(recipientName, contactName)
+      %else
+          @dtw_assign(recipientName, customerName)
+      %endif
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@seq@", sequenceNumber)
+  @Concat_Field("@@doct", documentType)
+  @Concat_Field("@@cust", customerNumber)
+  @Concat_Field("@@rnam", recipientName)
+  @Concat_Field("@@fax@", faxNumber)
+  @Concat_Field("@@cptl", titleLine)
+  @Concat_Field("@@cpt1", toLine1)
+  @Concat_Field("@@cpt2", toLine2)
+  @Concat_Field("@@cpt3", toLine3)
+  @Concat_Field("@@cpf1", fromLine1)
+  @Concat_Field("@@cpf2", fromLine2)
+  @Concat_Field("@@cpf3", fromLine3)
+  @Concat_Field("@@cpcl", commentLine)
+  @Concat_Field("@@emal", emailAddress)
+  %if (emailBCC != "Y") @dtw_assign(emailBCC, "") %endif
+  @Concat_Field("@@bcc@", emailBCC)
+  %if (updateCustomerFax != "Y") @dtw_assign(updateCustomerFax, "N") %endif
+  @Concat_Field("@@uvcf", updateCustomerFax)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      @Format_ConfMsg_Desc(maintenanceCode, $(recipientName), "", "", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)EmailFaxRecipient.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %elif (maintenanceCode == "D")
+      @DecatErr_Field("@@nmbr", "dropShipNumber")
+      @Format_ConfMsg_Desc("", $(recipientName), "", "<br>$(fieldValue)", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)EmailFaxRecipient.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

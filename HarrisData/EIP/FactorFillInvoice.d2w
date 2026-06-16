@@ -1,0 +1,245 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Factor Fill Invoice                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Fill Invoice"
+  d2wName                 = "FactorFillInvoice.d2w"
+  d2wVarBase              = "$(genericVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "999"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  haveRec                 = ""
+  alertMessage            = ""
+%}
+	
+%MACRO_FUNCTION Check_Sel_ByUser (INOUT alertMessage) {
+  @RtvFldDesc("BBSTAT='U' and BBPROC='Y'", "OEBIPB", "char(count(*))", updInvCnt)
+  %if (updInvCnt <= "0")
+      @RtvFldDesc("FCIFMT>' '", "HDFFCT", "FCIFMT", invFormat)
+      %if (invFormat == "D")
+          @RtvFldDesc("DMDATA>' '", "HDFFDT", "char(count(*))", fillInvCnt)
+      %else
+          @RtvFldDesc("SMDATA>' '", "HDFFSM", "char(count(*))", fillInvCnt)
+      %endif
+  %endif
+  @RtvFldDesc("AHSELC='Y' and (AHSUSR<>'$(userProfile)' or AHOTDT<>0 or AHOTSQ<>0) or AHSELC='S' ", "HDFAHD", "char(count(*))", otherUserCnt)
+  %if (otherUserCnt > "0" || fillInvCnt > "0" || updInvCnt > "0")
+      %if (fillInvCnt > "0")
+          @Rtv_Error_Desc("HAR0012", alertMessage)
+      %elif (otherUserCnt > "0" || updInvCnt > "0")
+          @Rtv_Error_Desc("HAR0091", alertMessage)
+      %endif
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)FactorProcess.d2w/REPORT$(d2wVarBase)&amp;alertMessage=@dtw_rurlescseq(alertMessage)">
+  %endif
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "FILLINVOICE")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(uv_BillingLocationName, "AHLOC#")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select distinct AHLOC#, AHCLI#, AHRSEQ, AHICNT, AHCMFG, LOLNA1, FLDESC ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDFAHD ", fileSQL)
+                      @dtw_concat(fileSQL, " left join HDLCTN on LOLOC#=AHLOC# ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYFLAG on FLTYPE='FACTCMTYPE' and FLVALU=AHCMFG ", fileSQL)
+                      @dtw_concat(selectSQL, "AHOTDT=0 ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By AHLOC#, AHCLI#, AHCMFG, AHRSEQ ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Fill_Invoice_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+          %INCLUDE "AlertMessageDisplay.icl"
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Fill_Invoice_Query (IN CHAR(64)    profileHandle,
+                                          CHAR(2)     dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              <td class="toolbar">
+                  <a href="$(homeURL)$(cGIPath)FactorProcess.d2w/REPORT$(d2wVarBase)">$(selectBackImage)</a>
+                  @RtvFldDesc("AHOTDT=0 and AHSELC='Y' and AHSUSR='$(userProfile)'", "HDFAHD", "char(count(AHCLI#))", selRcdCount)
+                  %if (selRcdCount>"0")
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/ACCEPT$(d2wVarBase)&amp;origTranDate=0000000&amp;origTranSeq=00000&amp;tranDate=0000000&amp;tranSeq=00000">$(selectAcceptImage)</a>
+                  %endif
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/SELECTALL$(d2wVarBase)">$(selectAllImage)</a>
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/CLEAR$(d2wVarBase)">$(selectClearImage)</a>
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+
+      %INCLUDE "ConfMessageDisplay.icl"
+      $(hrTagAttr)
+
+      <table $(contentTable)>
+          <tr>
+              <td class="colhdr">Sel</td>
+              <td class="colhdr">Loc</td>
+              <td class="colhdr">Description</td>
+              <td class="colhdr">Client</td>
+              <td class="colhdr">Seq</td>
+              <td class="colhdr">Invoice<br>Count</td>
+              <td class="colhdr">C/M<br>Flag</td>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+	   	
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("AHOTDT=0 and AHLOC#=$(V_AHLOC#) and AHCLI#='$(V_AHCLI#)' and AHRSEQ=$(V_AHRSEQ) and AHCMFG='$(V_AHCMFG)'", "HDFAHD", "AHSELC", recSel)
+              %if (recSel == "Y")
+                  @dtw_assign(selected, "CHECKED")
+              %else
+                  @dtw_assign(selected, "")
+              %endif
+
+              <tr class="$(rowClass)">
+                  <td class="colcode"><input type="checkbox" name="selc" $(selected) onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/UPDATE$(d2wVarBase)&amp;selected=@dtw_rurlescseq(recSel)&amp;location=@dtw_rurlescseq(V_AHLOC#)&amp;client=@dtw_rurlescseq(V_AHCLI#)&amp;recordSeq=@dtw_rurlescseq(V_AHRSEQ)&amp;cmFlag=@dtw_rurlescseq(V_AHCMFG)'" title="Click on box to select/deselect a location"></td>
+                  <td class="colnmbr">$(V_AHLOC#)</td>
+                  <td class="colalph">$(V_LOLNA1)</td>
+                  <td class="colalph">$(V_AHCLI#)</td>
+                  <td class="colnmbr">$(V_AHRSEQ)</td>
+                  <td class="colnmbr">$(V_AHICNT)</td>
+                  <td class="colalph">$(V_FLDESC)</td>
+              </tr>
+          %}
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(CLEAR) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Update HDFAHD Set AHSELC=' ', AHSUSR=' ' ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where AHSELC='Y' @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(SELECTALL) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      @dtw_assign(uv_BillingLocationName, "AHLOC#")
+      %INCLUDE "userview.icl"
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Update HDFAHD Set AHSELC='Y', AHSUSR='$(userProfile)' ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where AHOTDT=0 ", stmtSQL)
+      %if (uv_Sql != "")
+          @dtw_concat(stmtSQL, " and ($(uv_Sql))", stmtSQL)
+      %endif
+      @dtw_concat(stmtSQL, " @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(UPDATE) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      %INCLUDE "stmtSQLClear.icl"
+      %if (selected == "")
+          @dtw_concat(stmtSQL, " Update HDFAHD Set AHSELC='Y', AHSUSR='$(userProfile)' ", stmtSQL)
+      %else
+          @dtw_concat(stmtSQL, " Update HDFAHD Set AHSELC=' ', AHSUSR=' ' ", stmtSQL)
+      %endif
+      @dtw_concat(stmtSQL, " Where AHOTDT=0 and AHLOC#=$(location) and AHCLI#='$(client)' and AHRSEQ=$(recordSeq) and AHCMFG='$(cmFlag)' @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(ACCEPT) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      @RtvFldDesc("AHSELC<>' ' ", "HDFAHD", "char(count(*))", assignCnt)
+      @RtvFldDesc("FCMAXI>0 ", "HDFFCT", "char(FCMAXI)", maxInvPerTrans)
+      %if (assignCnt > "99")
+          @Rtv_Error_Desc("HAR0094", alertMessage)
+          @Set_SQL(stmtSQL)
+      %endif
+      @RtvFldDesc("AHSELC='Y' ", "HDFAHD", "char(sum(AHICNT))", invCount)
+      @RtvFldDesc("FCMAXI>0 ", "HDFFCT", "char(FCMAXI)", maxInvPerTrans)
+      %if (invCount > maxInvPerTrans)
+          @dtw_assign(alertMessage, "Selected invoice count of $(invCount) exceeds the maximum of $(maxInvPerTrans)")
+          @Set_SQL(stmtSQL)
+      %else
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)FactorFillInvoiceSelect.d2w/REPORT$(d2wVarBase)&amp;origTranDate=@dtw_rurlescseq(origTranDate)&amp;origTranSeq=@dtw_rurlescseq(origTranSeq)&amp;tranDate=@dtw_rurlescseq(tranDate)&amp;tranSeq=@dtw_rurlescseq(tranSeq)&amp;tranUser=@dtw_rurlescseq(tranUser)&amp;backHome=$(d2wName)/REPORT">
+      %endif
+  %endif
+%}

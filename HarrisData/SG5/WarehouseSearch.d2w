@@ -1,0 +1,684 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Warehouse Search                                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Warehouse Search"
+  d2wName                 = "WarehouseSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)&amp;touchScreen=@dtw_rurlescseq(touchScreen)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  novcf                   = ""
+  docName                 = ""
+  fldName                 = ""
+  fldDesc                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              %if (touchScreen == "Y")
+                  <link rel=stylesheet type="text/css" href="$(homeURL)$(homePath)HDSTouchScreen.css">
+              %endif
+              <script TYPE="text/javascript">
+                  function selectWarehouse(warehouse, desc){
+                      window.opener.document.$(docName).$(fldName).value = warehouse;
+                      window.opener.document.$(docName).$(fldDesc).value = desc;
+                      %if (touchScreen != "Y")
+                          window.opener.document.$(docName).$(fldName).focus();
+                      %endif
+                      window.close();
+                  }
+    	           %INCLUDE "NumEdit.icl"
+                  %INCLUDE "CheckEnterSearch.icl"
+                  function validate(searchForm) {
+                      if (editNum(document.Search.srchWhs, 3, 0))
+                          return true;
+                  }
+                  %if (touchScreen == "Y")
+                      %INCLUDE "KeyboardFunctionsTS.icl"
+                  %endif
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "$(searchBanner)"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      <td class="content">
+                          @dtw_assign(uv_WarehouseName, "WHWHS")
+                          %INCLUDE "userview.icl"
+
+
+                          %INCLUDE "stmtSQLClear.icl"
+                          %if (moreInfo == "Y")
+                              @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                          %else
+                              @dtw_concat(stmtSQL, " Select WHWHS, WHWHNM, WHCO#, WHFAC#, WHWHCT, WHWHST, WHHWZP, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " upper(WHWHNM) as WHWHNMU, upper(WHWHCT) as WHWHCTU", stmtSQL)
+                          %endif
+                          @dtw_concat(fileSQL, " HDWHSM ", fileSQL)
+                          %if (moreInfo == "Y")
+                              @dtw_concat(selectSQL, "WHWHS=$(warehouseNumber)", selectSQL)
+                          %elseif (wildCardSearch!="" || uv_Sql!="")
+                              @dtw_concat(selectSQL, " WHWHS>0 ", selectSQL)
+                          %endif
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @Warehouse_Search(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "$(searchTrailer)"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+%FUNCTION(dtw_sql) Warehouse_Search (IN  CHAR(64)    profileHandle,
+     	                                  CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (touchScreen == "Y")
+          @dtw_assign(displayCloseIcon, "Y")
+      %endif
+      %INCLUDE "PageTitle.icl"
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Name</th>
+                      <th class="colhdr">Whs</th>
+                  </tr>
+                  <tr>
+                      <td class="inputalph">
+                          %if (touchScreen == "Y")
+                              <input class="input" id="srchName" onfocus="kbActive(this, 'keyboard');" name="srchName" type="text" size="20" maxlength="30">
+                              <input type="hidden" id="submitSearch">
+                          %else
+                              <input type="text" name="srchName" size="20" maxlength="30">
+                          %endif
+                          <input type="hidden" name="operName" value="LIKE">
+                      </td>
+                      <td class="inputnmbr">
+                          %if (touchScreen == "Y")
+                              <input class="input" id="srchWhs" onfocus="kbActive(this, 'numericKeyboard');" name="srchWhs" type="text" size="3" maxlength="3">
+                          %else
+                              <input type="text" name="srchWhs" size="3" maxlength="3">
+                          %endif
+                          <input type="hidden" name="operWhs" value="=">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              %if (touchScreen != "Y")
+                  <script TYPE="text/javascript">
+                      document.Search.srchName.focus();
+                  </script>
+              %endif
+          </form>
+
+          %if (touchScreen == "Y")
+             @dtw_assign(pageSelectList, "N")
+             @dtw_assign(wildCardDefault, "N")
+             @dtw_assign(advanceSearch, "N")
+          %endif
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @OrderBy_Sort("WHWHS", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Number" title="Sequence By Warehouse Number"> Number</a></th>
+                  @OrderBy_Sort("WHWHNMU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Name"  title="Sequence By Name, Number"> Name</a></th>
+                  @OrderBy_Sort("WHCO#", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CoFac" title="Sequence By Co/Fac, Name, Number"> Co/Fac</a></th>
+                  @OrderBy_Sort("WHWHCTU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=City" title="Sequence By City, Name, Number"> City</a></th>
+                  @OrderBy_Sort("WHWHST", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=State" title="Sequence By State, Name, Number"> State</a></th>
+                  @OrderBy_Sort("WHHWZP", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Zip" title="Sequence By Zip, Name, Number"> Zip</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif		
+
+              %ROW{
+                  @Format_Quote(V_WHWHNM, F_WHWHNM)
+
+    	           %if (moreInfo != "Y")	
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          <td class="colnmbr">$(V_WHWHS)</td>                                      	
+                          <td class="colalph"><a href="javascript:selectWarehouse($(V_WHWHS), '$(F_WHWHNM)')" title="Select Warehouse">$(V_WHWHNM)</a></td>
+
+                          @Format_CoFac("$(V_WHCO#)", "$(V_WHFAC#)", "", F_CoFac)
+                          <td class="colalph">$(F_CoFac)</td>
+                          <td class="colalph">$(V_WHWHCT)</td>
+                          <td class="colcode">$(V_WHWHST)</td>
+                          <td class="colalph">$(V_WHHWZP)</td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;warehouseNumber=@dtw_rurlescseq(V_WHWHS)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      %{ More Information Screen %}
+
+                      <tr><td><a href="javascript:selectWarehouse($(V_WHWHS),'$(F_WHWHNM)')" title="Select Warehouse">$(selectImageLrg)</a>
+                          </td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Warehouse Number</td>
+                          <td class="dspalph">$(V_WHWHS)</td>
+                      </tr>
+    	   		
+                      <tr><td class="dsphdr">Warehouse Name</td>
+                          <td class="dspalph">$(V_WHWHNM)</td>
+                      </tr>
+    	   		
+                      @RtvFldDesc("CFCO#=$(V_WHCO#) and CFFAC#=$(V_WHFAC#)", "HDCFAC", "CFCFNM", fieldDesc)
+                      <tr><td class="dsphdr">Company/Facility</td>
+                          <td class="dspalph">$(fieldDesc)</td></tr>
+
+                      %if (V_WHWHAD!="")		
+                          <tr><td class="dsphdr">Address Line One</td>
+                              <td class="dspalph">$(V_WHWHAD)</td></tr>
+                      %endif
+
+                      %if (V_WHWHA2!="")		
+                          <tr><td class="dsphdr">Address Line Two</td>
+                              <td class="dspalph">$(V_WHWHA2)</td></tr>
+                      %endif
+    	   			
+                      %if (V_WHWHCT!="")		
+                          <tr><td class="dsphdr">City</td>
+                              <td class="dspalph">$(V_WHWHCT)</td></tr>
+                      %endif
+
+                      %if (V_WHWHST!="")		
+                          @RtvFldDesc("STID='$(V_WHWHST)'", "HDSTID", "STDESC", fieldDesc)
+                          <tr><td class="dsphdr">State</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+
+                      %if (V_WHHWZP!="")		
+                          <tr><td class="dsphdr">Zip</td>
+                              <td class="dspalph">$(V_WHHWZP)</td></tr>
+                      %endif
+
+                      %if (V_WHCTRY!="")		
+                          @RtvFldDesc("CNCTCD='$(V_WHCTRY)'", "HDCTRY", "CNCDES", fieldDesc)
+                          <tr><td class="dsphdr">Country</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>			
+                      %endif
+
+                      %if (V_WHSCHD!="")		
+                          @RtvFldDesc("SMSCHD=$(V_WHSCHD)", "HDSCHM", "SMDESC", fieldDesc)
+                          <tr><td class="dsphdr">Schedule</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+
+                      %if (V_WHPSEG!="")		
+                          <tr><td class="dsphdr">Page Segment Name</td>
+                              <td class="dspalph">$(V_WHPSEG)</td></tr>
+                      %endif
+
+                      %if (V_WHTCVA!="0")
+                          @Format_Acct("$(V_WHTCVA)", "$(V_WHTCVS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Transfer Cost Variance Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                      %endif
+        			
+                      %if (V_WHSTKL!="")
+                          @RtvYNDesc($(V_WHSTKL), fieldDesc)
+                          <tr><td class="dsphdr">Stock Locator Active</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+
+                      %if (V_WHACS!="")
+                          @RtvYNDesc($(V_WHACS), fieldDesc)
+                          <tr><td class="dsphdr">Auto Update Item Stock Loc</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+
+                      %if (V_WHMRPN!="")
+                          @RtvYNDesc($(V_WHMRPN), fieldDesc)
+                          <tr><td class="dsphdr">MRP Netable Warehouse</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+
+                      %if (V_WHABCI!="")
+                          @RtvYNDesc($(V_WHABCI), fieldDesc)
+                          <tr><td class="dsphdr">ABC Analysis By Inventory Type</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+
+                      %if (V_WHVLA!=".000")		
+                          @Format_Nbr(@dtw_rmultiply(V_WHVLA, "100"), F_WHVLA, "1", $(pctEditCode), "", "", "")
+                          <tr><td class="dsphdr"> Acceptance Limit Percentage Class A</td>
+                              <td class="dspnmbr">$(F_WHVLA)</td></tr>
+                      %endif
+
+                      %if (V_WHVLB!=".000")		
+                          @Format_Nbr(@dtw_rmultiply(V_WHVLB, "100"), F_WHVLB, "1", $(pctEditCode), "", "", "")
+                          <tr><td class="dsphdr"> Acceptance Limit Percentage Class B</td>
+                              <td class="dspnmbr">$(F_WHVLB)</td></tr>
+                      %endif
+
+                      %if (V_WHVLC!=".000")		
+                          @Format_Nbr(@dtw_rmultiply(V_WHVLC, "100"), F_WHVLC, "1", $(pctEditCode), "", "", "")
+                          <tr><td class="dsphdr"> Acceptance Limit Percentage Class C</td>
+                              <td class="dspnmbr">$(F_WHVLC)</td></tr>
+                      %endif
+
+                      %if (V_WHCAW!="0")		
+                          <tr><td class="dsphdr"> Cycle Days Class A</td>
+                              <td class="dspnmbr">$(V_WHCAW)</td></tr>
+                      %endif
+
+                      %if (V_WHCBW!="0")		
+                          <tr><td class="dsphdr"> Cycle Days Class B</td>
+                              <td class="dspnmbr">$(V_WHCBW)</td></tr>
+                      %endif
+
+                      %if (V_WHCCW!="0")		
+                          <tr><td class="dsphdr"> Cycle Days Class C</td>
+                              <td class="dspnmbr">$(V_WHCCW)</td></tr>
+                      %endif
+
+                      %if (V_WHPCA!="0")		
+                          <tr><td class="dsphdr"> Percentage For Class A</td>
+                              <td class="dspnmbr">$(V_WHPCA)</td></tr>
+                      %endif
+
+                      %if (V_WHPCB!="0")		
+                          <tr><td class="dsphdr"> Percentage For Class B</td>
+                              <td class="dspnmbr">$(V_WHPCB)</td></tr>
+                      %endif
+
+                      %if (V_WHUVRA!="0")
+                          @Format_Acct("$(V_WHUVRA)", "$(V_WHUVRS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Unvouchered Receipts Expense Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                      %endif
+        			
+                      %if (V_WHPRVA!="0")		
+                          @Format_Acct("$(V_WHPRVA)", "$(V_WHPRVS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Standard Variance Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                      %endif
+        			
+                      %if (V_WHFGHA!="0")		
+                          @Format_Acct("$(V_WHFGHA)", "$(V_WHFGHS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Freight Expense Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                      %endif
+        			
+                      %if (V_WHFGVA!="0")		
+                          @Format_Acct("$(V_WHFGVA)", "$(V_WHFGVS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Freight Variance Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                      %endif
+        			
+                      %if (V_WHSLTA!="0")		
+                          @Format_Acct("$(V_WHSLTA)", "$(V_WHSLTS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Sales Tax Expense Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                      %endif
+        			
+                      %if (V_WHSTVA!="0")		
+                          @Format_Acct("$(V_WHSTVA)", "$(V_WHSTVS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Sales Tax Variance Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                      %endif
+        			
+                      %if (V_WHSPGA!="0")		
+                          @Format_Acct("$(V_WHSPGA)", "$(V_WHSPCS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Special Charge Expense Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                      %endif
+    	   		
+                      %if (V_WHSCVA!="0")		
+                          @Format_Acct("$(V_WHSCVA)", "$(V_WHSCVS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Special Charge Variance Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                      %endif
+
+                      %if (V_COSMC1 != "")	
+                          %if (V_WHMC1A!="0")		
+                              @Format_Acct("$(V_WHMC1A)", "$(V_WHMC1S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC1) Expense Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+            			
+                          %if (V_WHMV1A!="0")		
+                              @Format_Acct("$(V_WHMV1A)", "$(V_WHMV1S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC1) Variance Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+                      %endif	
+
+                      %if (V_COSMC2 != "")	
+                          %if (V_WHMC2A!="0")		
+                              @Format_Acct("$(V_WHMC2A)", "$(V_WHMC2S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC2) Expense Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+            			
+                          %if (V_WHMV2A!="0")		
+                              @Format_Acct("$(V_WHMV2A)", "$(V_WHMV2S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC2) Variance Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+                      %endif	
+
+                      %if (V_COSMC3 != "")	
+                          %if (V_WHMC3A!="0")		
+                              @Format_Acct("$(V_WHMC3A)", "$(V_WHMC3S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC3) Expense Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+            			
+                          %if (V_WHMV3A!="0")		
+                              @Format_Acct("$(V_WHMV3A)", "$(V_WHMV3S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC3) Variance Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+                      %endif	
+
+                      %if (V_COSMC4 != "")	
+                          %if (V_WHMC4A!="0")		
+                              @Format_Acct("$(V_WHMC4A)", "$(V_WHMC4S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC4) Expense Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+            			
+                          %if (V_WHMV4A!="0")		
+                              @Format_Acct("$(V_WHMV4A)", "$(V_WHMV4S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC4) Variance Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+                      %endif	
+
+                      %if (V_COSMC5 != "")	
+                          %if (V_WHMC5A!="0")		
+                              @Format_Acct("$(V_WHMC5A)", "$(V_WHMC5S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC5) Expense Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+            			
+                          %if (V_WHMV5A!="0")		
+                              @Format_Acct("$(V_WHMV5A)", "$(V_WHMV5S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC5) Variance Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+                      %endif	
+
+                      %if (V_COSMC6 != "")	
+                          %if (V_WHMC6A!="0")		
+                              @Format_Acct("$(V_WHMC6A)", "$(V_WHMC6S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC6) Expense Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+            			
+                          %if (V_WHMV6A!="0")		
+                              @Format_Acct("$(V_WHMV6A)", "$(V_WHMV6S)", "Y", F_AcctSub)
+                              <tr><td class="dsphdr">$(V_COSMC6) Variance Account</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif	
+                      %endif	
+
+                  %endif
+              %}
+          </table>
+	   %if (moreInfo != "Y")	
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+	   %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+      %if (touchScreen == "Y")
+         %INCLUDE "KeyboardTS.icl"
+      %endif
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "WHWHNMU,WHWHS")
+      @DTW_ASSIGN(orderByDisplay, "Name, Number")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(orderBy, "WHWHS")
+
+  @RtvFldDesc("COSMC1<>' '", "POCTRL", "COSMC1", V_COSMC1)
+  @RtvFldDesc("COSMC2<>' '", "POCTRL", "COSMC2", V_COSMC2)
+  @RtvFldDesc("COSMC3<>' '", "POCTRL", "COSMC3", V_COSMC3)
+  @RtvFldDesc("COSMC4<>' '", "POCTRL", "COSMC4", V_COSMC4)
+  @RtvFldDesc("COSMC5<>' '", "POCTRL", "COSMC5", V_COSMC5)
+  @RtvFldDesc("COSMC6<>' '", "POCTRL", "COSMC6", V_COSMC6)
+
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY){
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Number")
+      %if (orderBy == "WHWHS")
+          @DTW_ASSIGN(orderBy, "WHWHS DESC")
+          @DTW_ASSIGN(orderByDisplay, "Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "Number")
+      %endif
+  %elseif (sequence == "Name")
+      %if (orderBy == "WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderBy, "WHWHNMU DESC,WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "Name (descending), Number")
+      %else
+          @DTW_ASSIGN(orderBy, "WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "Name, Number")
+      %endif
+  %elseif (sequence == "CoFac")
+      %if (orderBy == "WHCO#,WHFAC#,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderBy, "WHCO# DESC,WHFAC#,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "Co/Fac (descending), Name, Number")
+      %else
+          @DTW_ASSIGN(orderBy, "WHCO#,WHFAC#,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "Co/Fac, Name, Number")
+      %endif
+  %elseif (sequence == "City")
+      %if (orderBy == "WHWHCTU,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderBy, "WHWHCTU DESC,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "City (descending), Name, Number")
+      %else
+          @DTW_ASSIGN(orderBy, "WHWHCTU,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "City, Name, Number")
+      %endif
+  %elseif (sequence == "State")
+      %if (orderBy == "WHWHST,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderBy, "WHWHST DESC,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "State (descending), Name, Number")
+      %else
+          @DTW_ASSIGN(orderBy, "WHWHST,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "State, Name, Number")
+      %endif
+  %elseif (sequence == "Zip")
+      %if (orderBy == "WHHWZP,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderBy, "WHHWZP DESC,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "Zip (descending), Name, Number")
+      %else
+          @DTW_ASSIGN(orderBy, "WHHWZP,WHWHNMU,WHWHS")
+          @DTW_ASSIGN(orderByDisplay, "Zip, Name, Number")
+      %endif
+  %endif
+ 		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "WAREHOUSESEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Warehouse Name</td>
+                              @dtw_assign(operNbr, "operName")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchName" size="26" maxlength="26"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Address</td>
+                              <td>&nbsp;</td>
+                              <td class="inputalph"><input type="text" name="srchAddress" size="26" maxlength="26"></td>	
+                          </tr>
+
+                          <tr><td class="dsphdr">State</td>
+                              @dtw_assign(operNbr, "operState")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchState" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Zip</td>
+                              @dtw_assign(operNbr, "operZip")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchZip" size="14" maxlength="14"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Stock Locator Active</td>
+                              @dtw_assign(operNbr, "operStkLoc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchStkLoc" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Country</td>
+                              @dtw_assign(operNbr, "operCountry")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCountry" size="3" maxlength="3"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchName.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("WHWHS", "Number", $(srchWhs), "", operWhs, "N")
+  @Build_WildCard ("upper(WHWHNM)", "Warehouse Name", $(srchName), "U", operName, "A")
+
+  @dtw_assign(srchAddress,@dtw_rstrip(srchAddress))
+  %if (srchAddress != "")
+      @Build_WildCard ("WHWHAD", "Address", $(srchAddress), "U", "LIKE", "V")
+      @dtw_mUPPERCASE(srchAddress)
+      @dtw_replace(srchAddress, "?", "_", "1", "a", srchAddress)
+      @dtw_replace(srchAddress, "*", "%", "1", "a", srchAddress)
+      @dtw_concat(wildCardTemp, " (trim(upper(WHWHAD)) LIKE '$(srchAddress)'", wildCardTemp)
+      @dtw_concat(wildCardTemp, " OR   trim(upper(WHWHA2)) LIKE '$(srchAddress)'", wildCardTemp)
+      @dtw_concat(wildCardTemp, " OR   trim(upper(WHWHCT)) LIKE '$(srchAddress)')", wildCardTemp)
+  %endif
+ 		
+  @Build_WildCard ("WHWHST", "State", $(srchState), "U", operState, "A")
+  @Build_WildCard ("WHHWZP", "Zip", $(srchZip), "U", operZip, "A")
+  @Build_WildCard ("WHSTKL", "Stock Locator Active", $(srchStkLoc), "U", operStkLoc, "A")
+  @Build_WildCard ("WHCTRY", "Country", $(srchCountry), "U", operCountry, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

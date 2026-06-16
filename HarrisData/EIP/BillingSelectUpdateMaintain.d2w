@@ -1,0 +1,371 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Billing - Select Update Maintain                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "Select Update"
+  d2wName                 = "BillingSelectUpdateMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;batchNumber=@dtw_rurlescseq(batchNumber)&amp;turnaround=@dtw_rurlescseq(turnaround)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;billToNumber=@dtw_rurlescseq(billToNumber)&amp;backHome=@dtw_rurlescseq(backHome)&amp;updRecNbr=@dtw_rurlescseq(updRecNbr)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  sec_03                  = "N"
+  billToName              = ""
+  billToAdr1              = ""
+  billToAdr2              = ""
+  billToAdr3              = ""
+  billToCity              = ""
+  billToState             = ""
+  billToZip               = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              function validate(chgForm) {
+                  if (editNum(document.Chg.freight, 7, 2) &&
+                      editNum(document.Chg.specialChg, 7, 2) &&
+                      editNum(document.Chg.stateTaxAmt, 7, 2) &&
+                      editNum(document.Chg.countyTaxAmt, 7, 2) &&
+                      editNum(document.Chg.cityTaxAmt, 7, 2) &&
+                      editNum(document.Chg.loc1TaxAmt, 7, 2) &&
+                      editNum(document.Chg.loc2TaxAmt, 7, 2) &&
+                      editNum(document.Chg.loc3TaxAmt, 7, 2))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "BILLINGSELUPD")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select *", stmtSQL)
+                      @dtw_concat(fileSQL, " HDCUST", fileSQL)
+                      @dtw_concat(selectSQL, "CMCUST=$(billToNumber)", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Select_Update_BillTo(profileHandle, dataBaseID, stmtSQL)
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select a.*, b.* ", stmtSQL)
+                      @dtw_concat(fileSQL, " OEORHP a", fileSQL)
+                      @dtw_concat(fileSQL, " inner join OEORHD b on a.IHORD#=b.OEORD# ", fileSQL)
+                      @dtw_concat(selectSQL, "IHTURN=$(turnaround)", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Select_Update_Maintain(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Select_Update_BillTo (IN CHAR(64)    profileHandle,
+                                            CHAR(2)     dataBaseID,
+                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %ROW {
+          @dtw_assign(billToName, $(V_CMCNA1))
+          @dtw_assign(billToAdr1,  V_CMCNA2)
+          @dtw_assign(billToAdr2,  V_CMCNA3)
+          @dtw_assign(billToAdr3,  V_CMCNA4)
+          @dtw_assign(billToCity,  V_CMCCTY)
+          @dtw_assign(billToState, V_CMST)
+          @dtw_assign(billToZip,   V_CMZIP)
+      %}
+  %}
+%}
+
+%FUNCTION(dtw_sql) Select_Update_Maintain (IN CHAR(64)    profileHandle,
+                                              CHAR(2)     dataBaseID,
+                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "MaintainTop.icl"
+      $(hrTagAttr)
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  @RtvFldDesc("OTAPID='OE' and OTOTCD='$(V_OEORTY)'", "HDOTYP", "OTAATX", accessTax)
+                  %if (accessTax=="Y" && V_HDTXRL=="0" && V_OEORTY!="I")
+                      @dtw_assign(disableTax, "")
+                  %else
+                      @dtw_assign(disableTax, "DISABLED")
+                  %endif
+                  %if (V_OEORTY=="I")
+                      @dtw_assign(disableAll, "DISABLED")
+                  %else
+                      @dtw_assign(disableAll, "")
+                  %endif
+
+                  %if (errFound != "")
+                      @dtw_assign(focusField, "")
+                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                      @ErrVarErr(profileHandle, typeError, errVar)
+                      @DecatErr_Field("@@frt@", "freight")         @dtw_assign(Err_FRT,  fieldValue)
+                      @DecatErr_Field("@@schg", "specialChg")      @dtw_assign(Err_SCHG, fieldValue)
+                      @DecatErr_Field("@@stta", "stateTaxAmt")     @dtw_assign(Err_STTA, fieldValue)
+                      @DecatErr_Field("@@cnta", "countyTaxAmt")    @dtw_assign(Err_CNTA, fieldValue)
+                      @DecatErr_Field("@@ctta", "cityTaxAmt")      @dtw_assign(Err_CTTA, fieldValue)
+                      @DecatErr_Field("@@l1ta", "loc1TaxAmt")      @dtw_assign(Err_L1TA, fieldValue)
+                      @DecatErr_Field("@@l2ta", "loc2TaxAmt")      @dtw_assign(Err_L2TA, fieldValue)
+                      @DecatErr_Field("@@l3ta", "loc3TaxAmt")      @dtw_assign(Err_L3TA, fieldValue)
+                      @DecatErr_Field("@@taxd", "taxDefDesc")      @dtw_assign(Err_TAXD, fieldValue)
+
+                      @Decat_Field("@@frt@")   @dtw_assign(V_FRT,  fieldValue)
+                      @Decat_Field("@@schg")   @dtw_assign(V_SCHG, fieldValue)
+                      @Decat_Field("@@stta")   @dtw_assign(V_STTA, fieldValue)
+                      @Decat_Field("@@cnta")   @dtw_assign(V_CNTA, fieldValue)
+                      @Decat_Field("@@ctta")   @dtw_assign(V_CTTA, fieldValue)
+                      @Decat_Field("@@l1ta")   @dtw_assign(V_L1TA, fieldValue)
+                      @Decat_Field("@@l2ta")   @dtw_assign(V_L2TA, fieldValue)
+                      @Decat_Field("@@l3ta")   @dtw_assign(V_L3TA, fieldValue)
+                      @Decat_Field("@@sttx")   @dtw_assign(V_STTX, fieldValue)
+                      @Decat_Field("@@cntx")   @dtw_assign(V_CNTX, fieldValue)
+                      @Decat_Field("@@cttx")   @dtw_assign(V_CTTX, fieldValue)
+                      @Decat_Field("@@loc1")   @dtw_assign(V_LOC1, fieldValue)
+                      @Decat_Field("@@loc2")   @dtw_assign(V_LOC2, fieldValue)
+                      @Decat_Field("@@loc3")   @dtw_assign(V_LOC3, fieldValue)
+
+                      @dtw_assign(errFound, "")
+
+                  %else
+                      %if (V_OEORTY=="I")
+                          @dtw_assign(focusField, "")
+                      %else
+                          @dtw_assign(focusField, "freight")
+                      %endif
+                      @dtw_assign(V_FRT,  V_IHOFRT)
+                      @dtw_assign(V_SCHG, V_IHOMSG)
+                      @RtvFldDesc("TATURN=$(V_IHTURN) and TAORD#=$(V_IHORD#)", "OETAXA", "char(sum(TASTTA))", V_STTA)
+                      @RtvFldDesc("TATURN=$(V_IHTURN) and TAORD#=$(V_IHORD#)", "OETAXA", "char(sum(TACNTA))", V_CNTA)
+                      @RtvFldDesc("TATURN=$(V_IHTURN) and TAORD#=$(V_IHORD#)", "OETAXA", "char(sum(TACTTA))", V_CTTA)
+                      @RtvFldDesc("TATURN=$(V_IHTURN) and TAORD#=$(V_IHORD#)", "OETAXA", "char(sum(TAL1TA))", V_L1TA)
+                      @RtvFldDesc("TATURN=$(V_IHTURN) and TAORD#=$(V_IHORD#)", "OETAXA", "char(sum(TAL2TA))", V_L2TA)
+                      @RtvFldDesc("TATURN=$(V_IHTURN) and TAORD#=$(V_IHORD#)", "OETAXA", "char(sum(TAL3TA))", V_L3TA)
+                      @dtw_assign(V_STTX, V_OESTTX)
+                      @dtw_assign(V_CNTX, V_OECNTX)
+                      @dtw_assign(V_CTTX, V_OECTTX)
+                      @dtw_assign(V_LOC1, V_OELOC1)
+                      @dtw_assign(V_LOC2, V_OELOC2)
+                      @dtw_assign(V_LOC3, V_OELOC3)
+
+                  %endif
+
+                  <tr><td class="dsphdr">Order Number</td>
+                      <td class="dspnmbr">$(V_IHORD#)</td>
+                      <td rowspan="5" class="dspalph"> $(billToName) <br>
+                          %if (billToAdr1 != "")
+                              $(billToAdr1) <br>
+                          %endif
+                          %if (billToAdr2 != "")
+                              $(billToAdr2) <br>
+                          %endif
+                          %if (billToAdr3 != "")
+                              $(billToAdr3) <br>
+                          %endif
+                          $(billToCity), $(billToState) $(billToZip)
+                      </td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Turnaround Number</td>
+                      <td class="dspnmbr">$(V_IHTURN)</td>
+                  </tr>
+
+                  @RtvFldDesc("OTAPID='OE' and OTOTCD='$(V_OEORTY)'", "HDOTYP", "OTDESC", orderTypeDesc)
+                  @Format_Code(V_OEORTY, F_OEORTY)
+                  <tr><td class="dsphdr">Order Type</td>
+                      <td class="dspalph">$(orderTypeDesc) &nbsp; $(F_OEORTY)</td>
+                  </tr>
+
+                  @SetTextOvr(Err_FRT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Freight</span></td>
+                      <td class="inputnmbr"><input name="freight" type="text" value="$(V_FRT)" size="10" maxlength="10" $(disableAll)></td>
+                  </tr>
+                  @DspErrMsg(Err_FRT)
+
+                  @SetTextOvr(Err_SCHG)
+                  <tr><td class="dsphdr"><span $(textOvr)>Special Charges</span></td>
+                      <td class="inputalph"><input name="specialChg" type="text" value="$(V_SCHG)" size="10" maxlength="10" $(disableAll)></td>
+                  </tr>
+                  @DspErrMsg(Err_SCHG)
+    	
+                  @SetTextOvr(Err_STTA)
+                  <tr><td class="dsphdr"><span $(textOvr)>State Sales Tax</span></td>
+                      <td class="inputalph"><input name="stateTaxAmt" type="text" value="$(V_STTA)" size="10" maxlength="10" $(disableTax)></td>
+                  </tr>
+                  @DspErrMsg(Err_STTA)
+    	   		
+                  @SetTextOvr(Err_CNTA)
+                  <tr><td class="dsphdr"><span $(textOvr)>County Sales Tax</span></td>
+                      <td class="inputnmbr"><input name="countyTaxAmt" type="text" value="$(V_CNTA)" size="10" maxlength="10" $(disableTax)></td>
+                  </tr>
+                  @DspErrMsg(Err_CNTA)
+
+                  @SetTextOvr(Err_CTTA)
+                  <tr><td class="dsphdr"><span $(textOvr)>City Sales Tax</span></td>
+                      <td class="inputnmbr"><input name="cityTaxAmt" type="text" value="$(V_CTTA)" size="10" maxlength="10" $(disableTax)></td>
+                  </tr>
+                  @DspErrMsg(Err_CTTA)
+    	      		
+                  @SetTextOvr(Err_L1TA)
+                  <tr><td class="dsphdr"><span $(textOvr)>Local 1 Tax</span></td>
+                      <td class="inputalph"><input name="loc1TaxAmt" type="text" value="$(V_L1TA)" size="10" maxlength="10" $(disableTax)></td>
+                  </tr>
+                  @DspErrMsg(Err_L1TA)
+    	      		
+                  @SetTextOvr(Err_L2TA)
+                  <tr><td class="dsphdr"><span $(textOvr)>Local 2 Tax</span></td>
+                      <td class="inputalph"><input name="loc2TaxAmt" type="text" value="$(V_L2TA)" size="10" maxlength="10" $(disableTax)></td>
+                  </tr>
+                  @DspErrMsg(Err_L2TA)
+    	      		
+                  @SetTextOvr(Err_L3TA)
+                  <tr><td class="dsphdr"><span $(textOvr)>Local 3 Tax</span></td>
+                      <td class="inputalph"><input name="loc3TaxAmt" type="text" value="$(V_L3TA)" size="10" maxlength="10" $(disableTax)></td>
+                  </tr>
+                  @DspErrMsg(Err_L3TA)
+
+                  @SetTextOvr(Err_TAXD)
+                  <tr>
+                      @RtvFldDesc("TDSTCD='$(V_STTX)' and TDCNYC=$(V_CNTX) and TDCTYC=$(V_CTTX) and TDLOC1=$(V_LOC1) and TDLOC2=$(V_LOC2) and TDLOC3=$(V_LOC3)", "HDTAXD", "TDTDSC", fieldDesc)
+                      <td class="dsphdr"><span $(textOvr)>Tax Definition</span></td>
+                      <td class="inputnmbr"><input name="taxDefDesc" value="$(fieldDesc)" type="text" size="35" disabled><input name="stateCode" type="hidden" value="$(V_STTX)" size="2" maxlength="2"><input name="countyTaxCode" type="hidden" value="$(V_CNTX)" size="3" maxlength="3"><input name="cityTaxCode" type="hidden" value="$(V_CTTX)" size="5" maxlength="5"><input name="loc1Code" type="hidden" value="$(V_LOC1)" size="4" maxlength="4"><input name="loc2Code" type="hidden" value="$(V_LOC2)" size="4" maxlength="4"><input name="loc3Code" type="hidden" value="$(V_LOC3)" size="4" maxlength="4">
+                      %if (V_OEORTY!="I")
+                          <a href="$(homeURL)$(cGIPath)TaxDefinitionSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;forState=&amp;fldState=stateCode&amp;fldCnty=countyTaxCode&amp;fldCity=cityTaxCode&amp;fldLoc1=loc1Code&amp;fldLoc2=loc2Code&amp;fldLoc3=loc3Code&amp;fldDesc=taxDefDesc" onclick="$(searchWinVar)"> $(searchImage) </a>
+                      %endif
+                      </td>
+                  </tr>
+                  @DspErrMsg(Err_TAXD)
+
+                  %if (V_OEFL07=="0")
+                      @SetTextOvr(Err_BSTS)
+                      <tr><td class="dsphdr">Omit This Cycle</td>
+                          <td class="inputnmbr"><input name="status" type="radio" VALUE='N' CHECKED>No &nbsp; <input name="status" type="radio" VALUE='Y'>Yes</td>
+                      </tr>
+                      @DspErrMsg(Err_BSTS)
+                  %else
+                      @SetTextOvr(Err_BSTS)
+                      <tr><td class="dsphdr">Cancel/Hold Shipment</td>
+                          <td class="inputnmbr"><input name="status" type="radio" VALUE=' ' CHECKED>No &nbsp;<input name="status" type="radio" VALUE='C'>Cancel &nbsp; <input name="status" type="radio" VALUE='H'>Hold</td>
+                      </tr>
+                      @DspErrMsg(Err_BSTS)
+                  %endif
+
+                  <tr>
+                      <td>
+                          <input name="disableAll" type="hidden" VALUE=$(disableAll)>
+                          <input name="disableTax" type="hidden" VALUE=$(disableTax)>
+                          <input name="orderType"  type="hidden" VALUE=$(V_OEORTY)>
+                      </td>
+                  </tr>
+              %}	
+          </table>
+
+          %if (focusField != "")
+              <script TYPE="text/javascript">
+                  document.Chg.$(focusField).focus();
+              </script>
+          %endif
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HOEUSL_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@turn", turnaround)
+  @Concat_Field("@@ord#", orderNumber)
+  @Concat_Field("@@bsts", status)
+  @Concat_Field("@@user", userProfile)
+  %if (disableAll != "DISABLED")
+      @Concat_Field("@@frt@", freight)
+      @Concat_Field("@@schg", specialChg)
+  %endif
+  %if (disableTax != "DISABLED")
+      @Concat_Field("@@stta", stateTaxAmt)
+      @Concat_Field("@@cnta", countyTaxAmt)
+      @Concat_Field("@@ctta", cityTaxAmt)
+      @Concat_Field("@@l1ta", loc1TaxAmt)
+      @Concat_Field("@@l2ta", loc2TaxAmt)
+      @Concat_Field("@@l3ta", loc3TaxAmt)
+  %endif
+  %if (orderType != "I")
+      @Concat_Field("@@sttx", stateCode)
+      @Concat_Field("@@cntx", countyTaxCode)
+      @Concat_Field("@@cttx", cityTaxCode)
+      @Concat_Field("@@loc1", loc1Code)
+      @Concat_Field("@@loc2", loc2Code)
+      @Concat_Field("@@loc3", loc3Code)
+  %endif
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      @dtw_assign(maintenanceCode, "C")
+      @Format_ConfMsg_Desc(maintenanceCode, "Batch Number", "$(batchNumber)", "Turnaround", $(turnaround), "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)BillingSelectUpdate.d2w/REPORT$(d2wVarBase)&amp;rerunEdit=Y&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

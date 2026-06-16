@@ -1,0 +1,525 @@
+%{
+*********************************************************************
+* Copr 1979 2005 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Work Item History                                           *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {	
+  page_title              = "Work Item History"
+  d2wName                 = "WFHistory.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;inclMyItem=@dtw_rurlescseq(inclMyItem)&amp;inclPass=@dtw_rurlescseq(inclPass)&amp;inclFail=@dtw_rurlescseq(inclFail)&amp;inclActv=@dtw_rurlescseq(inclActv)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  noMsg                   = ""
+  inclMyItem              = ""
+  inclPass                = ""
+  inclFail                = ""
+  inclActv                = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "WFWORKITEMREQUESTHISTORY")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select a.*, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " Date(INTSTP) as INDateStart, Time(INTSTP) as INTimeStart, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(USDESC,' ') as USDESC, coalesce(USDESCU,' ') as USDESCU,  ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(PRDESC,' ') as PRDESC, coalesce(PRDESCU,' ') as PRDESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " WFINST a ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYUSER on USUSER=a.INIUSR ", fileSQL)
+                      @dtw_concat(fileSQL, " left join WFPRHD on PRPROC=a.INPROC ", fileSQL)
+                      @dtw_concat(selectSQL, " (ININST=0 ", selectSQL)
+                      %if (inclPass == "Y")
+                          @dtw_concat(selectSQL, " or (INSTAT='P' ", selectSQL)
+                          @dtw_concat(selectSQL, " and not exists (select * from WFWITM where WIINST=a.ININST and WIINDT=a.ININDT)) ", selectSQL)
+                      %endif
+                      %if (inclFail == "Y")
+                          @dtw_concat(selectSQL, " or (INSTAT=' ' ", selectSQL)
+                          @dtw_concat(selectSQL, " and not exists (select * from WFWITM where WIINST=a.ININST and WIINDT=a.ININDT)) ", selectSQL)
+                      %endif
+                      %if (inclActv == "Y")
+                          @dtw_concat(selectSQL, " or (INSTAT='S')  ", selectSQL)
+                          @dtw_concat(selectSQL, " or (exists (select * from WFWITM Where WIINST=a.ININST and WIINDT=a.ININDT))", selectSQL)
+                      %endif
+                      @dtw_concat(selectSQL, ") ", selectSQL)
+                      %if (inclMyItem == "Y")
+                          @dtw_concat(selectSQL, " and INIUSR='$(userProfile)'", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          %INCLUDE "AlertMessageDisplay.icl"
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      $(hrTagAttr)
+
+      %if (formatToPrint == "")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr>
+                      <th class="colhdr">Description</th>
+                      <th class="colhdr">Initial User</th>
+                      <th class="colhdr">Process</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchDesc" size="15" maxlength="40">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchUser" size="15" maxlength="30">
+                          <input type="hidden" name="operUser" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchProcess" size="15" maxlength="50">
+                          <input type="hidden" name="operProcess" value="LIKE">
+                      </td>
+                      <td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>
+
+          %if (inclMyItem == "Y")
+              @dtw_assign(myItemChecked, "CHECKED")
+          %else
+              @dtw_assign(myItemChecked, "")
+          %endif
+
+          %if (inclPass == "Y")
+              @dtw_assign(passChecked, "CHECKED")
+          %else
+              @dtw_assign(passChecked, "")
+          %endif
+
+          %if (inclFail == "Y")
+              @dtw_assign(failChecked, "CHECKED")
+          %else
+              @dtw_assign(failChecked, "")
+          %endif
+
+          %if (inclActv == "Y")
+              @dtw_assign(actvChecked, "CHECKED")
+          %else
+              @dtw_assign(actvChecked, "")
+          %endif
+
+          @dtw_assign(viewCheckBox, d2wName)
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("ININST", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Instance"     title="Sequence By Instance">Instance</a></th>
+              @OrderBy_Sort("INDESCU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description"  title="Sequence By Description, Instance">Description</a></th>
+              @OrderBy_Sort("USDESCU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=User"         title="Sequence By Initial User, Instance">Initial User</a></th>
+              @OrderBy_Sort("INDateStart", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DateStart"    title="Sequence By Date Started, Instance">Date Started</a></th>
+              @OrderBy_Sort("INTimeStart", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TimeStart"    title="Sequence By Time Started, Instance">Time Started</a></th>
+              @OrderBy_Sort("PRDESCU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Process"      title="Sequence By Process, Instance">Process</a></th>
+              <th class="colhdr">Status</th>
+          </tr>
+
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (V_INSTAT=="S")
+                  @dtw_assign(workItemStatus, "Waiting To Start")
+              %else
+                  @RtvFldDesc("WIINST=$(V_ININST) and WIINDT=$(V_ININDT)", "WFWITM", "CHAR(Count(*))", activeWorkItem)
+                  %if (activeWorkItem>"0")
+                      @dtw_assign(workItemStatus, "In Process")
+                  %else
+                      %if (V_INSTAT=="P")
+                          @dtw_assign(workItemStatus, "Passed")
+                      %else
+                          @dtw_assign(workItemStatus, "Failed")
+                      %endif
+                  %endif
+              %endif
+              @DateFromISO(V_INDateStart, F_INDateStart)
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr">$(V_ININST)</td>                                      	
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)WFHistorySelect.d2w/REPORT$(d2wVarBase)&amp;wfInstance=@dtw_rurlescseq(V_ININST)&amp;wfInstanceDate=@dtw_rurlescseq(V_ININDT)&amp;fromD2w=@dtw_rurlescseq(d2wName)" title="View Work Item">$(V_INDESC)</a></td>
+                  <td class="colalph" $(helpCursor)><span title="$(V_INIUSR)">$(V_USDESC)</span></td>                                      	
+                  <td class="colalph">$(F_INDateStart)</td>                                      	
+                  <td class="colalph">$(V_INTimeStart)</td>                                      	
+                  <td class="colalph" $(helpCursor)><span title="$(V_INPROC)">$(V_PRDESC)</span></td>                                      	
+                  <td class="colalph" $(helpCursor)><span title="$(V_INSTAT)">$(workItemStatus)</span></td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select a.*, ", stmtSQL)
+  @dtw_concat(stmtSQL, " Date(INTSTP) as INDateStart, Time(INTSTP) as INTimeStart, ", stmtSQL)
+  @dtw_concat(stmtSQL, " coalesce(USDESC,' ') as USDESC, coalesce(USDESCU,' ') as USDESCU,  ", stmtSQL)
+  @dtw_concat(stmtSQL, " coalesce(PRDESC,' ') as PRDESC, coalesce(PRDESCU,' ') as PRDESCU ", stmtSQL)
+  @dtw_concat(fileSQL, " WFINST a ", fileSQL)
+  @dtw_concat(fileSQL, " left join SYUSER on USUSER=a.INIUSR ", fileSQL)
+  @dtw_concat(fileSQL, " left join WFPRHD on PRPROC=a.INPROC ", fileSQL)
+  @dtw_concat(selectSQL, " (ININST=0 ", selectSQL)
+  %if (inclPass == "Y")
+      @dtw_concat(selectSQL, " or (not exists (select * from WFWIHS where WHFAIL='F' and WHINST=a.ININST and WHINDT=a.ININDT) ", selectSQL)
+      @dtw_concat(selectSQL, " and not exists (select * from WFWITM where WIINST=a.ININST and WIINDT=a.ININDT)) ", selectSQL)
+  %endif
+  %if (inclFail == "Y")
+      @dtw_concat(selectSQL, " or (exists (select * from WFWIHS where WHFAIL='F' and WHINST=a.ININST and WHINDT=a.ININDT)", selectSQL)
+      @dtw_concat(selectSQL, " and not exists (select * from WFWITM where WIINST=a.ININST and WIINDT=a.ININDT)) ", selectSQL)
+  %endif
+  %if (inclActv == "Y")
+      @dtw_concat(selectSQL, " or (exists (select * from WFWITM  Where WIINST=a.ININST and WIINDT=a.ININDT))", selectSQL)
+  %endif
+  @dtw_concat(selectSQL, ") ", selectSQL)
+  %if (inclMyItem == "Y")
+      @dtw_concat(selectSQL, " and INIUSR='$(userProfile)'", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @List_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) List_XMLQuery (IN  CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @XMLBeginTag("WFHistoryList")
+          %ROW{
+              @XMLIDTag("$(V_ININST)-$(V_ININDT)", "Instance ID")
+                  @XMLTag(V_ININST, "Instance")
+                  @XMLTag(V_ININDT, "InstanceDate")
+                  @XMLTag(V_INDESC, "Description")
+                  @XMLTag(V_INPROC, "Process")
+                  @XMLTag(V_INENTR, "EntryActivity")
+                  @XMLTag(V_INIUSR, "InitialUser")
+                  @XMLTag(V_INIWS,  "InitialWorkstation")
+                  @XMLTag(V_INAPID, "ApplicationId")
+                  @XMLTag(V_INCMPL, "Completed")
+              @XMLEndTag("Instance")
+          %}
+      @XMLEndTag("WFHistoryList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "ININST")
+          @DTW_ASSIGN(orderByDisplay, "Instance")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %elif (chgMyItem == "Y" && inclMyItem == "Y")
+          @dtw_assign(inclMyItem, "")
+      %elif (chgMyItem == "Y")
+          @dtw_assign(inclMyItem, "Y")
+      %elif (chgPass == "Y" && inclPass == "Y")
+          @dtw_assign(inclPass, "")
+      %elif (chgPass == "Y")
+          @dtw_assign(inclPass, "Y")
+      %elif (chgFail == "Y" && inclFail == "Y")
+          @dtw_assign(inclFail, "")
+      %elif (chgFail == "Y")
+          @dtw_assign(inclFail, "Y")
+      %elif (chgActv == "Y" && inclActv == "Y")
+          @dtw_assign(inclActv, "")
+      %elif (chgActv == "Y")
+          @dtw_assign(inclActv, "Y")
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %if (inclMyItem=="" && inclPass=="" && inclFail==""  && inclActv=="" && chgMyItem!="Y" && chgPass!="Y" && chgFail!="Y" && chgActv!="Y")
+      @dtw_assign(inclMyItem, "Y")
+      @dtw_assign(inclPass, "Y")
+      @dtw_assign(inclFail, "Y")
+      @dtw_assign(inclActv, "Y")
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Instance")
+      %if (orderBy == "ININST")
+          @DTW_ASSIGN(orderBy, "ININST DESC")
+          @DTW_ASSIGN(orderByDisplay, "Instance (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "ININST")
+          @DTW_ASSIGN(orderByDisplay, "Instance")
+      %endif
+  %elif (sequence == "Description")
+      %if (orderBy == "INDESCU,ININST")
+          @DTW_ASSIGN(orderBy, "INDESCU DESC,ININST")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Instance")
+      %else
+          @DTW_ASSIGN(orderBy, "INDESCU,ININST")
+          @DTW_ASSIGN(orderByDisplay, "Description, Instance")
+      %endif
+  %elif (sequence == "User")
+      %if (orderBy == "USDESCU,ININST")
+          @DTW_ASSIGN(orderBy, "USDESCU DESC,ININST")
+          @DTW_ASSIGN(orderByDisplay, "Initial User (descending), Instance")
+      %else
+          @DTW_ASSIGN(orderBy, "USDESCU,ININST")
+          @DTW_ASSIGN(orderByDisplay, "Initial User, Instance")
+      %endif
+  %elif (sequence == "DateStart")
+      %if (orderBy == "INDateStart,INTimeStart,ININST")
+          @DTW_ASSIGN(orderBy, "INDateStart DESC,INTimeStart DESC,ININST")
+          @DTW_ASSIGN(orderByDisplay, "Date Started (descending), Time Started (descending), Instance")
+      %else
+          @DTW_ASSIGN(orderBy, "INDateStart,INTimeStart,ININST")
+          @DTW_ASSIGN(orderByDisplay, "Date Started, Time Started, Instance")
+      %endif
+  %elif (sequence == "TimeStart")
+      %if (orderBy == "INTimeStart,INDateStart,ININST")
+          @DTW_ASSIGN(orderBy, "INTimeStart DESC,INDateStart DESC,ININST")
+          @DTW_ASSIGN(orderByDisplay, "Time Started (descending), Date Started (descending), Instance")
+      %else
+          @DTW_ASSIGN(orderBy, "INTimeStart,INDateStart,ININST")
+          @DTW_ASSIGN(orderByDisplay, "Time Started, Date Started, Instance")
+      %endif
+  %elif (sequence == "Process")
+      %if (orderBy == "PRDESCU,ININST")
+          @DTW_ASSIGN(orderBy, "PRDESCU DESC,ININST")
+          @DTW_ASSIGN(orderByDisplay, "Process (descending), Instance")
+      %else
+          @DTW_ASSIGN(orderBy, "PRDESCU,ININST")
+          @DTW_ASSIGN(orderByDisplay, "Process, Instance")
+      %endif
+  %endif
+	
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "timeedit.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchInstance, 15, 0) &&
+                      editdate(document.Search.srchFromDateStart) &&
+                      editdate(document.Search.srchToDateStart) &&
+                      editTimeHM(document.Search.srchFromTimeStart) &&
+                      editTimeHM(document.Search.srchToTimeStart))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "WFWORKITEMREQHISTORYSRCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Instance</td>
+                              @dtw_assign(operNbr, "operInstance")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchInstance" size="15" maxlength="15"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="15" maxlength="40"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Initial User</td>
+                              @dtw_assign(operNbr, "operUser")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchUser" size="15" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Date Started</td>
+                              @dtw_assign(operNbr, "operDate")
+                              <td>%INCLUDE "opersel_num2_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchFromDateStart" type="text" size="6" maxlength="6">
+                                  <a href="javascript:calWindow('srchFromDateStart');">$(calendarImage)</a></td>
+                              <td class="inputnmbr"><input name="srchToDateStart" type="text" size="6" maxlength="6">
+                                  <a href="javascript:calWindow('srchToDateStart');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Time Started</td>
+                              @dtw_assign(operNbr, "operTime")
+                              <td>%INCLUDE "opersel_num2_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchFromTimeStart" type="text" size="4" maxlength="4"></td>
+                              <td class="inputnmbr"><input name="srchToTimeStart" type="text" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Process</td>
+                              @dtw_assign(operNbr, "operProcess")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchProcess" size="15" maxlength="50"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchInstance.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("ININST",  "Instance", $(srchInstance), "", operInstance, "N")
+  @Build_WildCard ("INDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("USDESCU",  "Initial User", $(srchUser), "U", operUser, "A")
+  @Range_WildCard ("DATE(INTSTP)", "Date Started", $(srchFromDateStart), $(srchToDateStart), "", operDate, "TSD")
+  @Range_WildCard ("TIME(INTSTP)", "Time Started", $(srchFromTimeStart), $(srchToTimeStart), "", operTime, "TST")
+  @Build_WildCard ("PRDESCU",  "Process", $(srchProcess), "U", operProcess, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

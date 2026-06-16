@@ -1,0 +1,190 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Order Entry Comments Copy                                   *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Order Entry Comments Copy"
+  d2wName                 = "OrderEntryCommentsCopy.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;detailLine=@dtw_rurlescseq(detailLine)&amp;documentType=@dtw_rurlescseq(documentType)&amp;docDescription=@dtw_rurlescseq(docDescription)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "9999"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %if (lineNumber > "0")
+      @dtw_assign(tabID, "ITEMCOMMENT")
+  %else
+      @dtw_assign(tabID, "COMMENT")
+  %endif
+
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "OrderEntryConfirm.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onLoad="window.focus()" onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(distinctSQL, "DODOCT concat DODESC ", distinctSQL)
+                      @dtw_concat(stmtSQL, " Select distinct DODOCT, DODESC, upper(DODESC) as DODESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDDOCT ", fileSQL)
+                      @dtw_concat(selectSQL, " DODOCT<>'$(documentType)' and (DOAPID='OE' or DOAPID='  ') ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By DODOCT ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @OrderComment_Copy_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+     </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) OrderComment_Copy_Query (IN CHAR(64)    profileHandle,
+                                               CHAR(2)     dataBaseID,
+                                               CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(commentType) $(page_title)</h1></td>
+              <td class="toolbar">
+                  %INCLUDE "CloseWindow.icl"
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          @Format_Header("Customer", $(customerName), $(customerNumber))
+          @Format_Header("Document", $(docDescription), $(documentType))
+          %if (itemNumber != "")
+              @Format_Header("Item", $(itemDescription), $(itemNumber))
+          %endif
+      </table>
+
+      $(searchhrTagAttr)
+
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Copy To</legend>
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/ACCEPT$(d2wVarBase)&amp;recCount=@dtw_rurlescseq(sql_Record_Count)">
+      <table $(contentTable)>
+          <tr>
+              <th class="colhdr">None</th>
+              <th class="colhdr">Add To</th>
+              <th class="colhdr">Replace</th>
+              <th class="colhdr">Document</th>
+              <th class="colhdr">Description</th>
+              <th><a href="javascript:check(document.Chg)">&nbsp; $(selectAcceptImage)</a></th>
+          </tr>
+          @dtw_assign(recNbr, "0")
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_add(recNbr, "1", recNbr)
+              %while(@dtw_rlength(recNbr) != "2") {@dtw_insert("0", recNbr, recNbr)%}
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colcode"><input name="cpy$(recNbr)" type="radio" VALUE='N' CHECKED></td>
+                  <td class="colcode"><input name="cpy$(recNbr)" type="radio" VALUE='A'></td>
+                  <td class="colcode"><input name="cpy$(recNbr)" type="radio" VALUE='R'></td>
+                  <td class="colalph">$(V_DODOCT)</td>
+                  <td class="colalph">$(V_DODESC)<input name="doc$(recNbr)" type="hidden" VALUE="$(V_DODOCT)"></td>
+              </tr>
+          %}
+      </table>
+      </form>
+      </fieldset>
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(COPY) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ACCEPT) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(ux, "1")
+  %while(ux <= recCount){
+      @dtw_assign(recNbr, ux)
+      %while(@dtw_rlength(recNbr) != "2")   {@dtw_insert("0", recNbr, recNbr) %}
+      @dtw_assign(cpy, $(cpy$(recNbr)))
+      @dtw_assign(doc, $(doc$(recNbr)))
+
+      %if (cpy != "N" && doc != "")
+          %if (cpy == "R")
+              %INCLUDE "stmtSQLClear.icl"
+              @dtw_concat(stmtSQL, " Delete From OECMWK Where O4OCTL=$(orderControlNumber) and O4ORL#=$(detailLine) and O4DOCT='$(doc)' ", stmtSQL)
+              @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+              @SQL_Update(stmtSQL, status)
+          %endif
+
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into OECMWK (O4OCTL,O4ORL#,O4BLN#,O4DOCT,O4CSEQ,O4CMNT,O4CSR) ", stmtSQL)
+          %if (cpy == "R")
+              @dtw_concat(stmtSQL, " Select O4OCTL,O4ORL#,O4BLN#,'$(doc)',O4CSEQ,O4CMNT,O4CSR ", stmtSQL)
+          %else
+              @dtw_concat(stmtSQL, " Select O4OCTL,O4ORL#,O4BLN#,'$(doc)',O4CSEQ+1000,O4CMNT,O4CSR ", stmtSQL)
+          %endif
+          @dtw_concat(stmtSQL, " From OECMWK Where O4OCTL=$(orderControlNumber) and O4ORL#=$(detailLine) and O4DOCT='$(documentType)'  ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+      @dtw_add(ux, "1", ux)
+  %}
+
+  <script TYPE="text/javascript">
+      opener.location.href=opener.location.href;
+      window.close()
+  </script>
+%}

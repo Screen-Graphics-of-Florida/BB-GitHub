@@ -1,0 +1,179 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: XML Extract                                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "ErrorMessage.icl"
+
+%Define {	
+  page_title              = "XML Compose"
+  d2wName                 = "XMLExtract.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;xmlLibrary=@dtw_rurlescseq(xmlLibrary)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  xmlFile                 = "XML"
+%}
+
+%MESSAGE {
+    100 : "No Row Found" : Continue
+    +default : { %} : Continue
+    -default : { @ErrorMsg() %} : Exit
+  %}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%HTML(EXTRACT) {
+  %INCLUDE "setLibraryList.icl"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              function validate(chgForm) {
+                  if (document.Chg.dadFileName.value =="" ||
+                      document.Chg.xmlFileName.value =="")
+                     {alert("$(reqFieldError)"); return false;}
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "XMLEXTRACT")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "MaintainTop.icl"
+                      %INCLUDE "ConfMessageDisplay.icl"
+                      $(hrTagAttr)
+                      %INCLUDE "RequiredField.icl"
+                      %INCLUDE "ErrorDisplay.icl"
+                      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)">
+                          <table $(contentTable)>
+                              @SetTextOvr(Err_DADFIL)
+                              <tr><td class="dsphdr"><span $(textOvr)>DAD File</span></td>
+                                  <td class="inputalph"><input name="dadFileName" type="text" value="$(dadFileDft)" size="50" maxlength="100"> $(reqFieldChar) </td>
+                              </tr>
+                              @DspErrMsg(Err_DADFIL)
+
+                              <tr><td class="dsphdr"><span $(textOvr)>XML File</span></td>
+                                  <td class="inputalph"><input name="xmlFileName" type="text" value="$(xmlFileDft)" size="50" maxlength="100"> $(reqFieldChar) </td>
+                              </tr>
+                          </table>
+                          <script TYPE="text/javascript">
+                              document.Chg.dadFileName.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_directcall) create_XML (IN  CHAR(32000) stmtSQL,
+			               OUT CHAR(5)     status)
+  {%EXEC {HSYSQL_U.PGM %}
+%}
+
+%FUNCTION(DTW_directcall) generate_XML (IN CHAR(512) 	DAD,
+					    CHAR(32)	resultTable,
+					    CHAR(32)	resultColumn,
+					    CHAR(32)    validColumn,
+					    INTEGER	overrideType,
+					    CHAR(32)	override,
+					    INTEGER	maxRows,
+					    INTEGER	numRows,
+					    INTEGER	returnCode,
+					    CHAR(1024)	returnMsg) {
+  %EXEC {HSYXML_WS.PGM %}
+%}
+
+%FUNCTION(DTW_directcall) check_XML (INOUT CHAR(2) 	fileStatus) {
+  %EXEC {HSYXML_C.PGM %}
+%}
+
+%function(DTW_SQL) get_XML() {
+  Select db2xml.Content(xml_data, '$(xmlPath)$(xmlFileName)') from $(xmlLibrary).xml
+%}
+
+%HTML(PROCESS) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(stmtSQL, "delete from $(xmlLibrary)/xml where xml_data is not null @@endsql ")
+  @dtw_assign(status, " ")
+  @create_XML(stmtSQL, status)
+
+  @dtw_assign(DAD, "$(dadFileName)")
+  @dtw_assign(resultTable, "$(xmlLibrary).xml")
+  @dtw_assign(resultColumn, "xml_data")
+  @dtw_assign(validColumn, "")
+  @dtw_assign(overrideType, "0")
+  @dtw_assign(override, "")
+  @dtw_assign(maxRows, "1000")
+  @dtw_assign(numRows, "")
+  @dtw_assign(returnCode, "")
+  @dtw_assign(returnMsg, "")
+  @generate_XML(DAD, resultTable, resultColumn, validColumn, overrideType, override, maxRows, numRows, returnCode, returnMsg)
+
+  @check_XML(xmlFileExists)
+  %if (xmlFileExists == "Y")
+      @get_XML()
+      @DTW_ASSIGN(confMessage, "Confirm Extract of $(dadFileName) to $(xmlPath)$(xmlFileName)")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/EXTRACT$(genericVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)&amp;xmlLibrary=@dtw_rurlescseq(xmlLibrary)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %else
+      @dtw_assign(Err_DADFIL, "DAD File was not successfully processed")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/EXTRACT$(d2wVarBase)&amp;Err_DADFIL=@dtw_rurlescseq(Err_DADFIL)&amp;dadFileDft=@dtw_rurlescseq(dadFileName)&amp;xmlFileDft=@dtw_rurlescseq(xmlFileName)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @RtvFileLib(xmlFile, xmlLibrary)
+
+  %if (xmlLibrary == "")
+      <script TYPE="text/javascript">
+          alert("Extract file $(xmlFile) not found in schema list");
+          history.back();
+      </script>
+  %else
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/EXTRACT$(genericVarBase)&amp;xmlLibrary=@dtw_rurlescseq(xmlLibrary)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtwf_exists(dadFileName, dadFileExists)
+  %if (dadFileExists == "Y")
+      <div id="wait" style="position: absolute; top: 200; left: 200; visibility: visible; font-size: 28pt; color: red;">
+          <script language="JavaScript">
+              document.write("Composing... Please Wait");
+          </script>
+      </div>
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/PROCESS$(d2wVarBase)&amp;dadFileName=@dtw_rurlescseq(dadFileName)&amp;xmlFileName=@dtw_rurlescseq(xmlFileName)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %else
+      @dtw_assign(Err_DADFIL, "DAD File not found in FFI Path")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/EXTRACT$(d2wVarBase)&amp;Err_DADFIL=@dtw_rurlescseq(Err_DADFIL)&amp;dadFileDft=@dtw_rurlescseq(dadFileName)&amp;xmlFileDft=@dtw_rurlescseq(xmlFileName)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

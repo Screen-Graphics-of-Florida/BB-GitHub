@@ -1,0 +1,452 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Employee Deduction Maintenance                              *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "Employee.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "Employee Deduction Maintenance"
+  d2wName                 = "EmplMaintainDed.d2w"
+  d2wVarBase              = "$(genericVarBase)$(employeeVarBase)&amp;backHome=@dtw_rurlescseq(backHome)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;deductionNumber=@dtw_rurlescseq(deductionNumber)&amp;maintenanceCode=D"
+  programName             = "HHREDM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+  @dtw_replace(workURL, "@@deductionNumber", "@dtw_rurlescseq(deductionNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@fromD2w", "@dtw_rurlescseq(fromD2w)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "EmplUV.icl"
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(chgForm) {
+                      if (document.Chg.bypassAccum.value =="")
+                          {alert("$(reqFieldError)"); return false;}
+                      if (editNum(document.Chg.deductionNumber, 3, 0) &&
+                          editNum(document.Chg.deductionAmount, 5, 2) &&
+                          editNum(document.Chg.deductionPercent, 2, 3) &&
+                          editNum(document.Chg.calcMethod, 2, 0) &&
+                          editNum(document.Chg.deductionLimit, 7, 2) &&
+                          editNum(document.Chg.accumAmount, 5, 2) &&
+                          editNum(document.Chg.inceptionToDate, 7, 2) &&
+                          editNum(document.Chg.countyFips, 3, 0) &&
+                          editdate(document.Chg.effectiveDate, 4, 0) &&
+                          editdate(document.Chg.expirationDate))
+                          return true;
+                  }
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+	           %INCLUDE "numedit.icl"
+                  %INCLUDE "dateedit.icl"
+                  %INCLUDE "calendar.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "EMPLDEDMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, "Select * From HREDED Where EDCOMP = $(prCompany) and EDFACL = $(prFacility) and EDEMPL = $(prEmployee) and EDDDNO = $(deductionNumber)", stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      <table $(contentTable)>
+          @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+          <tr><td><h2>$(F_EmpName)</h2></td></tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"		
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;warningFlag=@dtw_rurlescseq(warningFlag)">
+          <table $(contentTable)>
+              %ROW {
+
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "deductionNumber")
+                      %else
+                          @dtw_assign(focusField, "calcMethod")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@ddno", "deductionNumber")   @dtw_assign(Err_EDDDNO, fieldValue)
+                          @DecatErr_Field("@@amt@", "deductionAmount")   @dtw_assign(Err_EDAMT, fieldValue)
+                          @DecatErr_Field("@@pct@", "deductionPercent")  @dtw_assign(Err_EDPCT, fieldValue)
+                          @DecatErr_Field("@@mthd", "calcMethod")        @dtw_assign(Err_EDMTHD, fieldValue)
+                          @DecatErr_Field("@@limt", "deductionLimit")    @dtw_assign(Err_EDLIMT, fieldValue)
+                          @DecatErr_Field("@@bpac", "bypassAccum")       @dtw_assign(Err_EDPBAC, fieldValue)
+                          @DecatErr_Field("@@acum", "accumAmount")       @dtw_assign(Err_EDACUM, fieldValue)
+                          @DecatErr_Field("@@itd@", "inceptionToDate")   @dtw_assign(Err_EDITD, fieldValue)
+                          @DecatErr_Field("@@efdt", "effectiveDate")     @dtw_assign(Err_EDEFDT, fieldValue)
+                          @DecatErr_Field("@@exdt", "expirationDate")    @dtw_assign(Err_EDEXDT, fieldValue)
+                          @DecatErr_Field("@@pin@", "personalId")        @dtw_assign(Err_EDPIN, fieldValue)
+                          @DecatErr_Field("@@case", "caseNumber")        @dtw_assign(Err_EDCASE, fieldValue)
+                          @DecatErr_Field("@@cnty", "countyName")        @dtw_assign(Err_EDCNTY, fieldValue)
+                          @DecatErr_Field("@@cnfn", "countyFips")        @dtw_assign(Err_EDCNFN, fieldValue)
+
+                      %endif
+
+                      @Decat_Field("@@ddno")   @dtw_assign(V_EDDDNO, fieldValue)
+                      @Decat_Field("@@amt@")   @dtw_assign(V_EDAMT, fieldValue)
+                      @Decat_Field("@@pct@")   @dtw_assign(V_EDPCT, fieldValue)
+                      @Decat_Field("@@mthd")   @dtw_assign(V_EDMTHD, fieldValue)
+                      @Decat_Field("@@limt")   @dtw_assign(V_EDLIMT, fieldValue)
+                      @Decat_Field("@@bpac")   @dtw_assign(V_EDBPAC, fieldValue)
+                      @Decat_Field("@@acum")   @dtw_assign(V_EDACUM, fieldValue)
+                      @Decat_Field("@@itd@")   @dtw_assign(V_EDITD, fieldValue)
+                      @Decat_Field("@@efdt")   @dtw_assign(V_EDEFDT, fieldValue)
+                      @Decat_Field("@@exdt")   @dtw_assign(V_EDEXDT, fieldValue)
+                      @Decat_Field("@@pin@")   @dtw_assign(V_EDPIN, fieldValue)
+                      @Decat_Field("@@case")   @dtw_assign(V_EDCASE, fieldValue)
+                      @Decat_Field("@@cnty")   @dtw_assign(V_EDCNTY, fieldValue)
+                      @Decat_Field("@@cnfn")   @dtw_assign(V_EDCNFN, fieldValue)
+                      @Decat_Field("@@tstp")   @dtw_assign(V_EDTSTP, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(focusField, "deductionNumber")
+                          @dtw_assign(deductionNumber, "")
+                          @dtw_assign(V_EDLIMT, "9999999.99")
+                          @dtw_assign(V_EDBPAC, "N")
+                      %else
+                          @dtw_assign(focusField, "calcMethod")
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elseif (maintenanceCode == "Z")
+                      @dtw_assign(V_EDDDNO, "")
+                      @dtw_assign(V_EDYTD, "0")
+                      @dtw_assign(V_EDITD, "0")
+                      @DateInputFromCYMD(V_EDEFDT)
+                      @DateInputFromCYMD(V_EDEXDT)
+                      @dtw_assign(V_EDPCT, "@dtw_rformat(@dtw_rmultiply(V_EDPCT, "100"),"","3")")
+                      @dtw_assign(focusField, "deductionNumber")
+                  %else
+                      @Format_Nbr($(V_EDYTD), F_EDYTD, "2", $(hrsEditCode), "", "", "")
+                      @Format_Code(V_EDDDNO, F_EDDDNO)
+                      @Format_Code(V_EDMTHD, F_EDMTHD)
+                      @DateInputFromCYMD(V_EDEFDT)
+                      @DateInputFromCYMD(V_EDEXDT)
+                      @dtw_assign(V_EDPCT, "@dtw_rformat(@dtw_rmultiply(V_EDPCT, "100"),"","3")")
+                      @dtw_assign(focusField, "calcMethod")
+                  %endif
+
+                  %if (maintenanceCode == "A")
+                          @dtw_assign(deductionDesc, "")
+                      @SetTextOvr(Err_EDDDNO)
+                      <tr><td class="dsphdr"><span $(textOvr)>Deduction Number</span></td>
+                          <td class="inputnmbr"><input name="deductionNumber" VALUE="$(V_EDDDNO)" type="text" size="4" maxlength="3">
+                                                <a href="$(homeURL)$(cGIPath)DeductionSearch3.d2w/ENTRY$(d2wVarBase)&amp;docName=Chg&amp;fldName=deductionNumber&amp;fldDesc=deductionDesc&amp;fldCalcMethod=calcMethod&amp;fldPriority=priority&amp;fldCycle=cycle" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="deductionDesc" value="$(deductionDesc)" size="20" maxlength="20"></td>
+                      </tr>
+                      @DspErrMsg(Err_EDDDNO)
+                  %elseif (maintenanceCode=="Z")
+                      @dtw_assign(deductionDesc, "")
+                      @SetTextOvr(Err_EDDDNO)
+                      <tr><td class="dsphdr"><span $(textOvr)>Deduction Number</span></td>
+                          <td class="inputnmbr"><input name="deductionNumber" VALUE="$(V_EDDDNO)" type="text" size="4" maxlength="3">
+                                                <a href="$(homeURL)$(cGIPath)DeductionSearch4.d2w/ENTRY$(d2wVarBase)&amp;docName=Chg&amp;fldName=deductionNumber&amp;fldDesc=deductionDesc&amp;fldPriority=priority&amp;fldCycle=cycle" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="deductionDesc" value="$(deductionDesc)" size="20" maxlength="20"></td>
+                      </tr>
+                      @DspErrMsg(Err_EDDDNO)
+                  %else
+                      @RtvFldDesc("HVDDNO=$(deductionNumber) ", "HRDEDM", "CHAR(HVDDNM)", deductionDesc)
+                      <tr><td class="dsphdr"><span $(textOvr)>Deduction</span></td>
+                          <td class="dspalph">$(deductionDesc)</td>
+                          <td class="inputnmbr"><input name="deductionNumber" type="hidden" value="$(V_EDDDNO)" size="3" maxlength="3">$(F_EDDDNO)</td>
+                      </tr>
+                      @DspErrMsg(Err_EDDDNO)
+                  %endif
+
+                  %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                      <tr><td class="dsphdr"><span $(textOvr)>Priority</span></td>
+                          <td class="inputnmbr"><input name="priority" type="text" value="$(priority)" size="3" maxlength="3" disabled> </td>
+                      <tr>
+                  %else
+                      @RtvFldDesc("HVDDNO=$(deductionNumber) ", "HRDEDM", "(HVPRTY)", priority)
+                      <tr><td class="dsphdr"><span $(textOvr)>Priority</span></td>
+                          <td class="dspalph">$(priority)</td>
+                          <td class="inputnmbr"><input name="priority" type="hidden" value="$(priority)" size="3" maxlength="3"> </td>
+                      <tr>
+                  %endif
+
+                  %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                      <tr><td class="dsphdr"><span $(textOvr)>Cycle</span></td>
+                          <td class="inputnmbr"><input name="cycle" type="text" value="$(cycle)" size="1" maxlength="1" disabled> </td>
+                      </tr>
+                  %else
+                      @RtvFldDesc("HVDDNO=$(deductionNumber) ", "HRDEDM", "(HVCYCL)", cycle)
+                      <tr><td class="dsphdr"><span $(textOvr)>Cycle</span></td>
+                          <td class="dspalph">$(cycle)</td>
+                          <td class="inputnmbr"><input name="cycle" type="hidden" value="$(cycle)" size="1" maxlength="1"> </td>
+                      <tr>
+                  %endif
+
+                  @dtw_assign(cMethod,$(V_EDMTHD))
+                  %while(@dtw_rlength(cMethod) != "2") {@dtw_insert("0", cMethod, cMethod)%}
+ 	              @RtvFldDesc("FLTYPE='DEDCALCMTH' and FLVALU='$(cMethod)'", "SYFLAG", "FLDESC", fieldDesc) 	
+                  @SetTextOvr(Err_EDMTHD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Calculation Method</span></td>
+                      <td class="inputalph"><input name="calcMethod" type="text" value="$(V_EDMTHD)" size="2" maxlength="2">
+                                            <a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=DEDCALCMTH&amp;flagSrchHdr=@dtw_rurlescseq("Ded Calc Method")&amp;docName=Chg&amp;fldName=calcMethod&amp;fldDesc=calcMethodDesc" onclick="$(searchWinVar)"> $(searchImage) </a>                                            
+                                            <input name="calcMethodDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_EDMTHD)
+
+                  @SetTextOvr(Err_EDAMT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Deduction Amount</span></td>
+                      <td class="inputnmbr"><input name="deductionAmount" type="text" value="$(V_EDAMT)" size="7" maxlength="8"> </td>
+                  </tr>
+                  @DspErrMsg(Err_EDAMT)
+
+                  @SetTextOvr(Err_EDPCT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Deduction Percent</span></td>
+                      <td class="inputnmbr"><input name="deductionPercent" type="text" value="$(V_EDPCT)" size="5" maxlength="6"> </td>
+                  </tr>
+                  @DspErrMsg(Err_EDPCT)
+
+                  @SetTextOvr(Err_EDLIMT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Deduction Limit</span></td>
+                      <td class="inputnmbr"><input name="deductionLimit" type="text" value="$(V_EDLIMT)" size="9" maxlength="10"> </td>
+                  </tr>
+                  @DspErrMsg(Err_EDLIMT)
+
+                  @RtvYNDesc($(V_EDBPAC), fieldDesc)
+                  @SetTextOvr(Err_EDBPAC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Bypass Accumulation</span></td>
+                      <td class="inputalph"><input name="bypassAccum" type="text" value="$(V_EDBPAC)" size="1" maxlength="1">
+                                            <a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=YORN&amp;flagSrchHdr=@dtw_rurlescseq("Bypass Accumulation")&amp;docName=Chg&amp;fldName=bypassAccum&amp;fldDesc=bypassAccumDesc" onclick="$(searchWinVar)">$(reqFieldChar) $(searchImage) </a>                                                                                        
+                                            <input name="bypassAccumDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_EDBPAC)
+
+
+                  @SetTextOvr(Err_EDACUM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Accumulated Amount Due</span></td>
+                      <td class="inputnmbr"><input name="accumAmount" type="text" value="$(V_EDACUM)" size="7" maxlength="8"> </td>
+                  </tr>
+                  @DspErrMsg(Err_EDACUM)
+
+                  <tr><td class="dsphdr"><span $(textOvr)>Year To Date Amount</span></td>
+                      <td class="inputnmbr">$(F_EDYTD)</td>
+                  </tr>
+
+                  @SetTextOvr(Err_EDITD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Inception To Date Amount</span></td>
+                      <td class="inputnmbr"><input name="inceptionToDate" type="text" value="$(V_EDITD)" size="9" maxlength="10"> </td>
+                  </tr>
+                  @DspErrMsg(Err_EDITD)
+
+                  @SetTextOvr(Err_EDEFDT)
+	           <tr><td class="dsphdr"><span $(textOvr)>Effective Date</span></td>
+                      <td class="inputnmbr"><input type="text" name="effectiveDate" value="$(V_EDEFDT)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('effectiveDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_EDEFDT)
+
+                  @SetTextOvr(Err_EDEXDT)
+	           <tr><td class="dsphdr"><span $(textOvr)>Expiration Date</span></td>
+                      <td class="inputnmbr"><input type="text" name="expirationDate" value="$(V_EDEXDT)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('expirationDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_EDEXDT)
+
+                  @SetTextOvr(Err_EDPIN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Personal ID Number</span></td>
+                      <td class="inputalph"><input name="personalId" type="text" value="$(V_EDPIN)" size="10" maxlength="10"> </td>
+                  </tr>
+                  @DspErrMsg(Err_EDPIN)
+
+                  @SetTextOvr(Err_EDCASE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Case Number</span></td>
+                      <td class="inputalph"><input name="caseNumber" type="text" value="$(V_EDCASE)" size="20" maxlength="20"> </td>
+                  </tr>
+                  @DspErrMsg(Err_EDCASE)
+
+                  @SetTextOvr(Err_EDCNTY)
+                  <tr><td class="dsphdr"><span $(textOvr)>County Name</span></td>
+                      <td class="inputalph"><input name="countyName" type="text" value="$(V_EDCNTY)" size="20" maxlength="20"> </td>
+                  </tr>
+                  @DspErrMsg(Err_EDCNTY)
+
+                  @SetTextOvr(Err_EDCNFN)
+                  <tr><td class="dsphdr"><span $(textOvr)>County FIPS Code</span></td>
+                      <td class="inputnmbr"><input name="countyFips" type="text" value="$(V_EDCNFN)" size="3" maxlength="3"> </td>
+                  </tr>
+                  @DspErrMsg(Err_EDCNFN)
+                  
+                  <tr><td><input name="timeStamp" type="hidden" value="$(V_EDTSTP)"></td></tr>
+              %}
+          </table>
+
+          %if (errFound == "" && (maintenanceCode == "A" || maintenanceCode == "Z"))
+              <script TYPE="text/javascript">
+                  document.Chg.$(focusField).focus();
+              </script>
+          %endif
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     warningFlag,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HHREDM_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  @RtvFldDesc("EMCOMP=$(prCompany) and EMFACL=$(prFacility) and EMEMPL=$(prEmployee)", "HREMPL", "EMTYPE", PAYTYPECODE)
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F" || (sec_06 == "N" && PAYTYPECODE == "H") || (sec_07 == "N" && PAYTYPECODE != "H"))
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @deductionMethod_Query(profileHandle, dataBaseID, "DEDCALCMTH ", deductionMethodTable)
+	   @dtw_tb_insertrow(deductionMethodTable, "0", "1")
+	   @dtw_tb_setv(deductionMethodTable, "", "1", "1")
+	   @dtw_tb_setv(deductionMethodTable, "", "1", "2")
+      @yn01_Table_Query(profileHandle, dataBaseID, "YORN      ", yn01Table)
+	   @dtw_tb_insertrow(yn01Table, "0", "1")
+	   @dtw_tb_setv(yn01Table, "", "1", "1")
+	   @dtw_tb_setv(yn01Table, "", "1", "2")
+
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(deductionNumber,@dtw_rstrip(deductionNumber))
+  @dtw_assign(deductionAmount,@dtw_rstrip(deductionAmount))
+  @dtw_assign(deductionPercent,@dtw_rstrip(deductionPercent))
+  @dtw_assign(calcMethod,@dtw_rstrip(calcMethod))
+  @dtw_assign(deductionLimit,@dtw_rstrip(deductionLimit))
+  @dtw_assign(accumAmount,@dtw_rstrip(accumAmount))
+  @dtw_assign(inceptionToDate,@dtw_rstrip(inceptionToDate))
+  @dtw_assign(effectiveDate,@dtw_rstrip(effectiveDate))
+  @dtw_assign(expirationDate,@dtw_rstrip(expirationDate))
+  @dtw_assign(countyFips,@dtw_rstrip(countyFips))
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@comp", prCompany)
+  @Concat_Field("@@facl", prFacility)
+  @Concat_Field("@@empl", prEmployee)
+  @Concat_Field("@@pecp", hrCompany)
+  @Concat_Field("@@pemp", hrEmployee)
+  @Concat_Field("@@ddno", deductionNumber)
+  @Concat_Field("@@amt@", deductionAmount)
+  @Concat_Field("@@pct@", deductionPercent)
+  @Concat_Field("@@mthd", calcMethod)
+  @Concat_Field("@@limt", deductionLimit)
+  @Concat_Field("@@acum", accumAmount)
+  @Concat_Field("@@bpac", bypassAccum)
+  @Concat_Field("@@itd@", inceptionToDate)
+  @Concat_Field("@@efdt", effectiveDate)
+  @Concat_Field("@@exdt", expirationDate)
+  @Concat_Field("@@pin@", personalId)
+  @Concat_Field("@@case", caseNumber)
+  @Concat_Field("@@cnty", countyName)
+  @Concat_Field("@@cnfn", countyFips)
+  @Concat_Field("@@tstp", timeStamp)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, warningFlag, errFound, edtVar, errVar)
+  @DecatErr_Field("@@ddno", "deductionNumber")   @dtw_assign(Err_EDDDNO, fieldValue)
+  
+  @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+  %if (errFound == "")
+      @Format_ConfMsg_Desc(maintenanceCode, $(F_EmpName), $(prEmployee), "Deduction", $(deductionNumber), "", "", confMessage)
+      %if (maintenanceCode == "D")
+          %if ((fromD2w != "") && (fromD2w != "EmployeeDedSelect.d2w"))
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)employeeDeductions.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %endif
+      %elseif (fromD2w != "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)employeeDeductions.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %elif ((maintenanceCode == "C" || maintenanceCode == "D") && errFound != "" && fieldValue != "")
+      @DecatErr_Field("@@ddno", "deductionNumber")
+      @Format_ConfMsg_Desc("E", $(F_EmpName), $(prEmployee), "Deduction ", $(deductionNumber), "<br>$(fieldValue)", "", confMessage)
+      %if (fromD2w != "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)employeeDeductions.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;deductionNumber=@dtw_rurlescseq(deductionNumber)&amp;errFound=@dtw_rurlescseq(errFound)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;warningFlag=@dtw_rurlescseq(warningFlag)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+
+%}

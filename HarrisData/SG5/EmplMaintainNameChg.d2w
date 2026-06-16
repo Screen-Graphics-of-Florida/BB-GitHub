@@ -1,0 +1,296 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Employee Name Change Maintenance                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "Employee.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "Employee Name Change Maintenance"
+  d2wName                 = "EmplMaintainNameChg.d2w"
+  d2wVarBase              = "$(genericVarBase)$(employeeVarBase)&amp;nameChangeSequence=@dtw_rurlescseq(nameChangeSequence)&amp;backHome=@dtw_rurlescseq(backHome)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=D"
+  dateNameChanged         = ""
+  programName             = "HHREMU"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+  @dtw_replace(workURL, "@@nameChangeSequence", "@dtw_rurlescseq(nameChangeSequence)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@fromD2w", "@dtw_rurlescseq(fromD2w)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "EmplUV.icl"
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(chgForm) {
+                      if (document.Chg.prevLastName.value =="" ||
+                          document.Chg.prevFirstName.value =="")
+                          {alert("$(reqFieldError)"); return false;}
+                      if (editdate(document.Chg.dateNameChanged))
+                          return true;
+                  }
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+                  %INCLUDE "dateedit.icl"
+                  %INCLUDE "calendar.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "NAMECHGMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                      @dtw_assign(stmtSQL, "")
+                      %if (maintenanceCode == "A")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                          @dtw_concat(stmtSQL, " FROM HRNMCH ", stmtSQL)
+                          @dtw_concat(stmtSQL, " WHERE NCCOMP=$(prCompany) and NCFACL=$(prFacility) and NCPREM=$(prEmployee) and NCSEQ=$(nameChangeSequence) and NCSPDP=0", stmtSQL)
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_NameChange_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_NameChange_Query (IN CHAR(64)    profileHandle,
+                                                 CHAR(2)     dataBaseID,
+                                                 CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      <table $(contentTable)>
+          @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+          <tr><td><h2>$(F_EmpName)</h2></td></tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"		
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "prevLastName")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@plst", "prevLastName")      @dtw_assign(Err_NCPLST, fieldValue)
+                          @DecatErr_Field("@@pfrs", "prevFirstName")     @dtw_assign(Err_NCPFRS, fieldValue)
+                          @DecatErr_Field("@@pmid", "prevMiddle")        @dtw_assign(Err_NCPMID, fieldValue)
+                          @DecatErr_Field("@@date", "dateNameChanged")   @dtw_assign(Err_NCDATE, fieldValue)
+                          @DecatErr_Field("@@resn", "nameChangeReason")  @dtw_assign(Err_NCRESN, fieldValue)
+                          @DecatErr_Field("@@ddno", "workStation")       @dtw_assign(Err_NCDDNO, fieldValue)
+                          @DecatErr_Field("@@tstp", "timeStamp")         @dtw_assign(Err_TSTP, fieldValue)
+
+                      %endif
+
+                      @Decat_Field("@@plst")   @dtw_assign(V_NCPLST, fieldValue)
+                      @Decat_Field("@@pfrs")   @dtw_assign(V_NCPFRS, fieldValue)
+                      @Decat_Field("@@pmid")   @dtw_assign(V_NCPMID, fieldValue)
+                      @Decat_Field("@@date")   @dtw_assign(V_NCDATE, fieldValue)
+                      @Decat_Field("@@resn")   @dtw_assign(V_NCRESN, fieldValue)
+                      @Decat_Field("@@tstp")   @dtw_assign(V_NCTSTP, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(focusField, "prevLastName")
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elif (maintenanceCode == "Z")
+                      @dtw_assign(V_EDDDNO, "")
+                      @dtw_assign(focusField, "prevLastName")
+                  %else
+                      @DateInputFromCYMD(V_NCDATE)
+                      @dtw_assign(focusField, "prevLastName")
+                  %endif
+                  
+                  @SetTextOvr(Err_TSTP)
+                  <tr><td class="dsphdr"><span $(textOvr)></span></td>
+                  	  <td><input name="timeStamp" type="hidden" value="$(V_NCTSTP)"></td> 
+                  </tr>
+                  @DspErrMsg(Err_TSTP)
+
+                  @SetTextOvr(Err_NCDDNO)
+                  <tr><td class="dsphdr"><span $(textOvr)></span></td>
+                  	  <td><input name="workStation" type="hidden" value="$(V_NCTSTP)"></td> 
+                  </tr>
+                  @DspErrMsg(Err_NCDDNO)
+                  
+                  %if (maintenanceCode == "A")
+                      @dtw_assign(nameChangeSequence, "00")
+                  %else
+                      <tr><td class="dsphdr">Sequence Number</td>
+                          <td class="dspalph">$(nameChangeSequence)</td>
+                      </tr>
+                  %endif
+
+                  @SetTextOvr(Err_NCPLST)
+                  <tr><td class="dsphdr"><span $(textOvr)>Previous Last Name</span></td>
+                      <td class="inputalph"><input name="prevLastName" type="text" value="$(V_NCPLST)" size="18" maxlength="18"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_NCPLST)
+
+                  @SetTextOvr(Err_NCPFRS)
+                  <tr><td class="dsphdr"><span $(textOvr)>First Name</span></td>
+                      <td class="inputalph"><input name="prevFirstName" type="text" value="$(V_NCPFRS)" size="18" maxlength="18"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_NCPFRS)
+
+                  @SetTextOvr(Err_NCPMID)
+                  <tr><td class="dsphdr"><span $(textOvr)>Middle Initial</span></td>
+                      <td class="inputalph"><input name="prevMiddle" type="text" value="$(V_NCPMID)" size="1" maxlength="1"> </td>
+                  </tr>
+                  @DspErrMsg(Err_NCPMID)
+
+                  @SetTextOvr(Err_NCDATE)
+	           <tr><td class="dsphdr"><span $(textOvr)>Date Name Changed</span></td>
+                      <td class="inputnmbr"><input type="text" name="dateNameChanged" value="$(V_NCDATE)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('dateNameChanged');"> $(reqFieldChar) $(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_NCDATE)
+
+                  @SetTextOvr(Err_NCRESN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Reason For Name Change</span></td>
+                      <td class="inputalph"><input name="nameChangeReason" type="text" value="$(V_NCRESN)" size="23" maxlength="23"> </td>
+                  </tr>
+                  @DspErrMsg(Err_NCRESN)
+              %}
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HHRNCU_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(dateNameChanged,@dtw_rstrip(dateNameChanged))
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@comp", prCompany)
+  @Concat_Field("@@facl", prFacility)
+  @Concat_Field("@@prem", prEmployee)
+  @Concat_Field("@@pecp", hrCompany)
+  @Concat_Field("@@peem", hrEmployee)
+  @Concat_Field("@@seq@", nameChangeSequence)
+  @Concat_Field("@@plst", prevLastName)
+  @Concat_Field("@@pfrs", prevFirstName)
+  @Concat_Field("@@pmid", prevMiddle)
+  @Concat_Field("@@date", dateNameChanged)
+  @Concat_Field("@@resn", nameChangeReason)
+  @Concat_Field("@@ddno", workStation)  
+  @Concat_Field("@@tstp", timeStamp)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+  @DecatErr_Field("@@plst", "prevLastName")      @dtw_assign(Err_NCPLST, fieldValue)
+  
+  %if (errFound == "")
+      @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+      @Format_ConfMsg_Desc(maintenanceCode, $(F_EmpName), $(prEmployee), "Name Change", $(dateNameChanged), "", "", confMessage)
+      %if (fromD2w == "EmployeeNameChanges2.d2w")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)employeeNameChanges2.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+          %if (backURL == "")
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=193&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %endif
+      %endif
+  %elif ((maintenanceCode == "C" || maintenanceCode == "D") && errFound != "" && fieldValue != "")
+      @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+      @Format_ConfMsg_Desc("E", $(F_EmpName), $(prEmployee), "Name Change", $(dateNameChanged), "<br>$(fieldValue)", "", confMessage)
+      %if (fromD2w == "EmployeeNameChanges2.d2w")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)employeeNameChanges2.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+      	  %if (backURL == "")
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=193&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %endif
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;errFound=@dtw_rurlescseq(errFound)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+
+%}

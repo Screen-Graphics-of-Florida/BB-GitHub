@@ -1,0 +1,648 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Transfer Update                                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {	
+  page_title              = "Transfer Update"
+  d2wName                 = "TransferUpdate.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;transferTicket=@dtw_rurlescseq(transferTicket)&amp;fromTo=@dtw_rurlescseq(fromTo)&amp;transferTime=@dtw_rurlescseq(transferTime)&amp;fromWhs=@dtw_rurlescseq(fromWhs)&amp;fromWhsName=@dtw_rurlescseq(fromWhsName)&amp;toWhs=@dtw_rurlescseq(toWhs)&amp;toWhsName=@dtw_rurlescseq(toWhsName)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  currentURL              = "$(d2wName)/REPORT$(d2wVarBase)&amp;START_ROW_NUM=@dtw_rurlescseq(START_ROW_NUM)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "9999"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  advanceSearch           = "N"
+  workStation             = "BROWSER"
+  smlCheck                = "$(wfActivityImage)"
+  smlPrint                = "$(formatPrintMed)"
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script type="text/javascript">
+              function confirmDeleteTicket() {return confirm("Confirm Delete of Transfer Ticket");}
+              function confirmAccept() {return confirm("Confirm Accept of Transfer Ticket");}
+              function confirmPrint() {return confirm("Confirm Print of Transfer Ticket");}
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "AJAXRequest.icl"
+              %INCLUDE "SaveCurrentURL.icl"
+              %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+           </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "TRANSFERUPDATE")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select POSGPT.*, POSGPO.*, HDIMST.*, coalesce(DGIGRP,' ') as DGIGRP, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(IXCTG1,' ') as IXCTG1, coalesce(IXCTG2,' ') as IXCTG2, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(IXCTG3,' ') as IXCTG3, coalesce(IXCTG4,' ') as IXCTG4, coalesce(IXCTG5,' ') as IXCTG5, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(WHWHNM,' ') as WHWHNM ", stmtSQL)
+                      @dtw_concat(fileSQL, " POSGPT inner join POSGPO on PSREQN=PTREQN and PSITEM=PTITEM ", fileSQL)
+                      @dtw_concat(fileSQL, "        inner join HDIMST on PSITEM=IMITEM ", fileSQL)
+                      @dtw_concat(fileSQL, "        left  join HDIGPD on PSITEM=DGITEM and DGTYPE='S' ", fileSQL)
+                      @dtw_concat(fileSQL, "        left  join HDIMSX on PSITEM=IXITEM ", fileSQL)
+                      @dtw_concat(fileSQL, "        left  join HDWHSM on PSWHS=WHWHS ", fileSQL)
+                      @dtw_concat(selectSQL, "PTTNBR=$(transferTicket) ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Transfer_Update(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Transfer_Update (IN CHAR(64)    profileHandle,
+				        CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+         @dtw_replace(smlCheck, "Display list of Activities", "", smlCheck)
+         @dtw_replace(smlPrint, "Click here for printer friendly version", "Print Transfer Ticket", smlPrint)
+         <table $(contentTable)>
+             <colgroup>
+                 <col width="80%">
+                 <col width="15%">
+             <tr><td><h1>$(page_title)</h1></td>
+                 %if (formatToPrint != "Y")
+                     @RtvFldDesc("PTTNBR=$(transferTicket)", "POSGPT", " char(count(*))", rcdCnt)
+                     <td class="toolbar">
+                         %if ((fromTo == "F" && transferTime == "") || (fromTo == "T" && transferTime != ""))
+                             %if (rcdCnt > "0")
+                                 <a onClick="return confirmAccept()" href="$(homeURL)$(cGIPath)$(d2wName)/ACCEPT$(d2wVarBase)">$(acceptImageLrg)</a>
+                             %endif
+                         %endif
+                         %if (fromTo == "F")
+                             <a href="$(homeURL)$(cGIPath)TransferTicket.d2w/REPORT$(genericVarBase)&amp;warehouseNumber=@dtw_rurlescseq(fromWhs)&amp;warehouseName=@dtw_rurlescseq(fromWhsName)">$(cancelImageLrg)</a>
+                             %if (transferTime == "")
+                                 <a href="$(homeURL)$(cGIPath)TransferUpdateQty.d2w/MAINTAIN$(d2wVarBase)&amp;warehouseNumber=@dtw_rurlescseq(toWhs)&amp;warehouseName=@dtw_rurlescseq(toWhsName)&amp;maintenanceCode=A" onclick="$(smallPromptWinVar)">$(addImageMed)</a>
+                             %endif
+                         %else
+                             <a href="$(homeURL)$(cGIPath)TransferTicket.d2w/REPORT$(genericVarBase)&amp;warehouseNumber=@dtw_rurlescseq(toWhs)&amp;warehouseName=@dtw_rurlescseq(toWhsName)">$(cancelImageLrg)</a>
+                         %endif
+                         %if (rcdCnt > "0")
+                             <a onClick="return confirmPrint()"  href="$(homeURL)$(cGIPath)$(d2wName)/REPRINT$(d2wVarBase)">$(smlPrint)</a>
+                         %endif
+                         %if (fromTo == "F")
+                             <a onClick="return confirmDeleteTicket()" href="$(homeURL)$(cGIPath)$(d2wName)/CANCEL$(d2wVarBase)&amp;maintenanceCode=D">$(deleteImageMed)</a>
+                         %endif
+                         @dtw_assign(medIcon, "Y")
+                         %INCLUDE "HelpPage.icl"
+                     </td>
+                 %endif
+             </tr>
+         </table>
+
+         <table $(contentTable)>
+             @Format_Header("Ticket Number", $(transferTicket), "")
+             @Format_Header("From Warehouse", $(fromWhsName), $(fromWhs))
+             @Format_Header("To Warehouse", $(toWhsName), $(toWhs))
+         </table>
+         %INCLUDE "ConfMessageDisplay.icl"
+         $(hrTagAttr)
+
+         %if (formatToPrint != "Y")
+             <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+                 <table $(quickSearchTable)>
+                     <tr>
+                         <th class="colhdr">Item Number</th>
+                         <th class="colhdr">Description</th>
+                         %if (V_CITRUD > "0")
+                             <th class="colhdr">$(itemExtCat$(V_CITRUD))</th>
+                         %endif
+                     </tr>
+                     <tr>
+                         <td class="inputnmbr"><input type="text" name="srchItem" size="10" maxlength="15">
+                             <input type="hidden" name="operItem" value="LIKE">
+                         </td>
+                         <td class="inputnmbr"><input type="text" name="srchDesc" size="10" maxlength="30">
+                             <input type="hidden" name="operDesc" value="LIKE">
+                         </td>
+                         %if (V_CITRUD > "0")
+                             <td class="inputalph"><input type="text" class="inputalph" name="srchCAT" size="5" maxlength="15">
+                                                   <input type="hidden" name="operCAT" value="LIKE">
+                             </td>
+                         %endif
+                         <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                     </tr>
+                 </table>
+                 <script TYPE="text/javascript">
+                     document.Search.srchItem.focus();
+                 </script>
+             </form>
+
+              %if (sql_Record_Count > RPT_MAX_ROWS)  %{Assign Paging Values %}
+                  @DTW_ASSIGN(totalPages, @DTW_RINTDIV(sql_Record_Count, RPT_MAX_ROWS))
+                  %if (@DTW_RDIVREM(sql_Record_Count, RPT_MAX_ROWS) > "0")
+                      @DTW_ADD(totalPages, "1", totalPages)
+                  %endif
+              %else
+                  @DTW_ASSIGN(totalPages, "1")
+              %endif
+
+              @dtw_assign(page, @dtw_radd(@dtw_rdivide(@dtw_rsubtract(START_ROW_NUM, "1"), RPT_MAX_ROWS), "1"))
+              @dtw_add(START_ROW_NUM, RPT_MAX_ROWS, rowIndexNext)
+
+              <div class="page">Page:
+                  %if (sql_Record_Count > RPT_MAX_ROWS && pageSelectList == "Y")
+                      @dtw_format(@dtw_rdivide(sql_Record_Count, RPT_MAX_ROWS), "5", "1", loop)
+                      @dtw_assign(cnt, "1")
+                      <select class="page" name="goToPage" id="goToPage" onChange="goToPage(this.options[this.selectedIndex].value)">
+                          <option value="$(homeURL)$(cGIPath)$(d2wName)/INPUT$(nextPrevVar)&amp;START_ROW_NUM=1&amp;RPT_MAX_ROWS=$(RPT_MAX_ROWS)">1
+                          %while(@dtw_rformat(cnt, "5", "1") < loop){
+                              @dtw_assign(pageValue, @dtw_radd(@dtw_rmultiply(cnt, RPT_MAX_ROWS), "1"))
+                              @dtw_add(cnt, "1", cnt)
+                              %if (cnt == page)
+                                  <option value="$(homeURL)$(cGIPath)$(d2wName)/INPUT$(nextPrevVar)&amp;START_ROW_NUM=$(pageValue)&amp;RPT_MAX_ROWS=$(RPT_MAX_ROWS)" SELECTED>$(cnt)
+                              %else
+                                  <option value="$(homeURL)$(cGIPath)$(d2wName)/INPUT$(nextPrevVar)&amp;START_ROW_NUM=$(pageValue)&amp;RPT_MAX_ROWS=$(RPT_MAX_ROWS)">$(cnt)
+                              %endif
+                          %}
+                      </select>
+                  %else
+                      $(page)
+                  %endif
+                  of $(totalPages)
+                  %if (nextPrevPos != "2" && nextPrevVar != "")
+                      %if (START_ROW_NUM > RPT_MAX_ROWS)
+                          <a href="input$(nextPrevVar)&amp;START_ROW_NUM=@DTW_RSUBTRACT(START_ROW_NUM, RPT_MAX_ROWS)&amp;RPT_MAX_ROWS=$(RPT_MAX_ROWS)">$(previousImage)</a>
+                      %else
+                          %if (sql_Record_Count > RPT_MAX_ROWS)
+                              $(nextPrevBlank)
+                          %endif
+                      %endif
+
+                      %if (sql_Record_Count >= rowIndexNext)
+                          <a href="input$(nextPrevVar)&amp;START_ROW_NUM=$(rowIndexNext)&amp;RPT_MAX_ROWS=$(RPT_MAX_ROWS)">$(nextImage)</a>
+                      %else
+                          %if (sql_Record_Count > RPT_MAX_ROWS)
+                              $(nextPrevBlank)
+                          %endif
+                      %endif
+                  %endif
+
+                  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, w_wildCardSearch, w_orderBy, orderByDisplay, wildCardDisplay)
+                  %if (wildCardDisplay != "")
+                      <a href="$(homeURL)$(cGIPath)WildCardDisplay.d2w/DISPLAY$(genericVarBase)$(orderByVarBase)$(wildCardVarBase)&amp;userProfile=@dtw_rurlescseq(userProfile)&amp;fromd2wName=@dtw_rurlescseq(d2wName)&amp;fromPageTitle=@dtw_rurlescseq(page_title)" onclick="$(wildCardWinVar)">$(wildViewImage)</a>
+                  %endif
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=$(advSrchVar)">$(wildClearImage)</a>
+              </div>
+          %endif
+	   		
+          <table $(contentTable)>
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  %if (fromTo == "F" && transferTime == "")
+                      <th class="colhdr">$(optionHeading)</th>
+                  %endif
+                  @OrderBy_Sort("PSITEM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Item" title="Sequence By Item Number, Whs">Item Number</a></th>
+                  @OrderBy_Sort("IMIMDS", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Desc" title="Sequence By Description, Item Number">Description</a></th>
+                  %if (V_CITRUD > "0")
+                      @OrderBy_Sort("IXCTG$(V_CITRUD)", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Cat" title="Sequence By $(itemExtCat$(V_CITRUD)), Item Number">$(itemExtCat$(V_CITRUD))</a></th>
+                  %endif
+                  @OrderBy_Sort("PSSQOR", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=SugQty" title="Sequence By Requested Quantity, Item Number">Requested<br>Quantity</a></th>
+                  @OrderBy_Sort("PSTQTY", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TransQty" title="Sequence By Transfer Quantity, Item Number">Transfer<br>Quantity</a></th>
+                  %if (V_CIASUB == "Y")
+                      @OrderBy_Sort("DGIGRP", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Group" title="Sequence By Substitution Group, Item Number">Substitution<br>Group</a></th>
+                      @OrderBy_Sort("PTNOSB", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=NoSub" title="Sequence By No Substitutes, Item Number">No<br>Sub</a></th>
+                      @OrderBy_Sort("PSRITM", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ReqItem" title="Sequence By Requested Item Number, Item Number">Requested<br>Item Number</a></th>
+                  %endif
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Nbr(V_PSSQOR, F_PSSQOR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_PTTQTY, F_PTTQTY, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Confirm_Desc($(V_IMIMDS), $(V_PSITEM), $(V_WHWHNM), $(V_PSWHS), $(V_VMVNA1), $(V_PSVEND), confirmDesc)
+
+              <tr class="$(rowClass)">
+                  %if (fromTo == "F" && transferTime == "")
+                      <td class="opticon">
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/DELETE$(d2wVarBase)&amp;reqNumber=@dtw_rurlescseq(V_PSREQN)&amp;itemNumber=@dtw_rurlescseq(V_PSITEM)&amp;itemDescription=@dtw_rurlescseq(V_IMIMDS)&amp;manualAdd=@dtw_rurlescseq(V_PTMADD)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                      </td>
+                  %endif
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_PSITEM))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_PSITEM)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_PSITEM)&amp;itemDescription=@dtw_rurlescseq(V_IMIMDS)" title="View Item">$(V_IMIMDS)</a></td>
+                  %if (V_CITRUD > "0")
+                      <td class="colalph">$(V_IXCTG$(V_CITRUD))</td>
+                  %endif
+                  <td class="colnmbr">$(F_PSSQOR)</td>
+                  <td class="colnmbr">
+                      %if (fromTo == "F" || transferTime != "")
+                          <a href="$(homeURL)$(cGIPath)TransferUpdateQty.d2w/MAINTAIN$(d2wVarBase)&amp;reqNumber=@dtw_rurlescseq(V_PSREQN)&amp;itemNumber=@dtw_rurlescseq(V_PSITEM)&amp;itemDescription=@dtw_rurlescseq(V_IMIMDS)&amp;warehouseNumber=@dtw_rurlescseq(V_PSWHS)&amp;warehouseName=@dtw_rurlescseq(V_WHWHNM)&amp;fromTransferQty=@dtw_rurlescseq(V_PTTQTY)" title="Update Transfer Quantity" onclick="$(smallPromptWinVar)">$(F_PTTQTY)</a>
+                      %else
+                          $(F_PTTQTY)
+                      %endif
+                  </td>
+                  %if (V_CIASUB == "Y")
+                      <td class="colalph">
+                          %if (V_DGIGRP != "" && fromTo == "F")
+                              <a href="$(homeURL)$(cGIPath)TransferSubstituteItems.d2w/REPORT$(genericVarBase)&amp;transferTicket=0&amp;itemNumber=@dtw_rurlescseq(V_PSITEM)&amp;whsNumber=@dtw_rurlescseq(V_PSWHS)&amp;viewWhs=@dtw_rurlescseq(V_PSWHS)&amp;orderQty=@dtw_rurlescseq(V_PSSQOR)&amp;subGroup=@dtw_rurlescseq(V_DGIGRP)&amp;reqNumber=@dtw_rurlescseq(V_PSREQN)&amp;transStatus=@dtw_rurlescseq(V_PTTRST)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))" onclick="$(orderEntryWinVar)" title="Click here to view substitute items">$(V_DGIGRP)</a>
+                          %else
+                              $(V_DGIGRP)
+                          %endif
+                      </td>
+                      <td class="colcode">
+                          %if (V_PTNOSB == "Y")
+                              $(smlCheck)
+                          %else
+                              &nbsp;
+                          %endif
+                      </td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_PTSITM))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_PTSITM)</a></td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Reprint_Ticket (INOUT CHAR(10) workStation,
+                                                CHAR(10) userProfile,
+                                                CHAR(8)  ticket)
+{%EXEC {HIVTRT_W.PGM %}
+%}
+
+%FUNCTION(dtw_directcall) Gen_Transfer_Ticket (INOUT CHAR(10) workStation,
+                                                     CHAR(10) userProfile,
+                                                     CHAR(8)  ticket,
+                                                     CHAR(3)  fromWhs,
+                                                     CHAR(3)  toWhs)
+{%EXEC {HIVTRG.PGM %}
+%}
+
+%FUNCTION(DTW_directcall) Accept_Ticket (INOUT CHAR(1)     errFound,
+                                               CHAR(32000) edtVar,                             	
+                                               CHAR(32000) errVar)
+						
+{%EXEC {HIVTRU_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "Item Number")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %if (updRecNbr > "0")
+      @dtw_assign(START_ROW_NUM, updRecNbr)
+      @dtw_assign(updRecNbr, "")
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(CANCEL) {	
+  %INCLUDE "setLibraryList.icl"
+  %if (transferTime != "")
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@tnbr", transferTicket)
+      @Concat_Field("@@reqn", reqNumber)
+      @Concat_Field("@@mncd", maintenanceCode)
+      @Concat_Field("@@user", userProfile)
+      @dtw_concat(edtVar, "}{", edtVar)
+      @Accept_Ticket(errFound, edtVar, errVar)
+  %endif
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Update POSGPT Set PTTRST='R', PTTNBR=0 Where PTTNBR=$(transferTicket) @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From IVTRTK Where TTTNBR=$(transferTicket) @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+  
+  %if (fromTo == "F")
+      @dtw_assign(whsNumber, fromWhs)
+      @dtw_assign(whsName, fromWhsName)
+  %else
+      @dtw_assign(whsNumber, toWhs)
+      @dtw_assign(whsName, toWhsName)
+  %endif
+  @Format_ConfMsg_Desc(maintenanceCode, "Transfer Ticket", $(transferTicket), "", "", "", "", confMessage)
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)TransferTicket.d2w/REPORT$(genericVarBase)&amp;warehouseNumber=@dtw_rurlescseq(whsNumber)&amp;warehouseName=@dtw_rurlescseq(whsName)&amp;confMessage=@dtw_rurlescseq(confMessage)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+%}
+
+%HTML(DELETE) {	
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  %if (manualAdd == "Y")
+      @dtw_concat(stmtSQL, " Delete From POSGPT ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where PTREQN='$(reqNumber)' and PTITEM='$(itemNumber)' @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From POSGPO ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where PSREQN='$(reqNumber)' and PSITEM='$(itemNumber)' @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %else
+      @dtw_concat(stmtSQL, " Update POSGPT Set PTTRST='R', PTTNBR=0 ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where PTREQN='$(reqNumber)' and PTITEM='$(itemNumber)' @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %endif
+  @Format_ConfMsg_Desc(maintenanceCode, $(itemDescription), $(itemNumber), "", "", "", "", confMessage)
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+%}
+
+%HTML(ACCEPT) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@tnbr", transferTicket)
+  @Concat_Field("@@reqn", reqNumber)
+  @Concat_Field("@@mncd", fromTo)
+  @Concat_Field("@@user", userProfile)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Accept_Ticket(errFound, edtVar, errVar)
+  %if (fromTo == "F")
+      @dtw_assign(whsNumber, fromWhs)
+      @dtw_assign(whsName, fromWhsName)
+  %else
+      @dtw_assign(whsNumber, toWhs)
+      @dtw_assign(whsName, toWhsName)
+  %endif
+  @dtw_assign(confMessage, "Ticket Number $(transferTicket) has been transferred")
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)TransferTicket.d2w/REPORT$(genericVarBase)&amp;warehouseNumber=@dtw_rurlescseq(whsNumber)&amp;warehouseName=@dtw_rurlescseq(whsName)&amp;confMessage=@dtw_rurlescseq(confMessage)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+%}
+
+%HTML(REPRINT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_assign(ticket, transferTicket)
+  @dtw_assign(confMessage, "Ticket Number $(transferTicket) has been submitted to print")
+  %while(@dtw_rlength(ticket) != "8") {@dtw_insert("0", ticket, ticket)%}
+  @Reprint_Ticket(workStation, userProfile, ticket)
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Item")
+      %if (orderBy == "PSITEM,PSWHS")
+          @DTW_ASSIGN(orderBy, "PSITEM DESC,PSWHS")
+          @DTW_ASSIGN(orderByDisplay, "Item Number (descending), Warehouse")
+      %else
+          @DTW_ASSIGN(orderBy, "PSITEM,PSWHS")
+          @DTW_ASSIGN(orderByDisplay, "Item Number, Warehouse")
+      %endif
+  %elif (sequence == "Desc")
+      %if (orderBy == "IMIMDSU,PSITEM")
+          @DTW_ASSIGN(orderBy, "IMIMDSU DESC,PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IMIMDSU,PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "Description, Item Number")
+      %endif
+  %elif (sequence == "Cat")
+      %if (orderBy == "IXCTG$(V_CITRUD),PSITEM")
+          @DTW_ASSIGN(orderBy, "IXCTG$(V_CITRUD) DESC,PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtCat$(V_CITRUD)) (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IXCTG$(V_CITRUD),PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "$(itemExtCat$(V_CITRUD)), Item Number")
+      %endif
+  %elif (sequence == "SugQty")
+      %if (orderBy == "PSSQOR,PSITEM")
+          @DTW_ASSIGN(orderBy, "PSSQOR DESC,PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "Requested Quantity (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "PSSQOR,PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "Requested Quantity, Item Number")
+      %endif
+  %elif (sequence == "TransQty")
+      %if (orderBy == "PTTQTY,PSITEM")
+          @DTW_ASSIGN(orderBy, "PTTQTY DESC,PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "Transfer Quantity (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "PTTQTY,PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "Transfer Quantity, Item Number")
+      %endif
+  %elif (sequence == "ReqItem")
+      %if (orderBy == "PTSITM,PSITEM")
+          @DTW_ASSIGN(orderBy, "PTSITM DESC,PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "Requested Item Number (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "PTSITM,PSITEM")
+          @DTW_ASSIGN(orderByDisplay, "Requested Item Number, Item Number")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(WILDCARD)
+{
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("PSITEM", "Item Number", $(srchItem), "U", operItem, "A")
+  @Build_WildCard ("IMIMDSU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("IXCTG$(V_CITRUD)", "$(itemExtCat$(V_CITRUD))", $(srchCAT), "U", operCAT, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}
+
+%HTML(ADD) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              function validate(chgForm) {
+                  var fwhs = parseInt(document.Chg.fromWhs.value);
+                  var twhs = parseInt(document.Chg.toWhs.value);
+                  if (fwhs == twhs)
+                     {alert("To Warehouse cannot be the same as the From Warehouse");
+                             return false;}
+                  if (editNum(document.Chg.toWhs, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "TRANSFERUPDATE")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      <table $(contentTable)>
+                          <colgroup>
+                              <col width="80%">
+                              <col width="15%">
+                          <tr><td><h1>Add Transfer Ticket</h1></td>
+                              <td class="toolbar">
+                                  %INCLUDE "MaintainTopNoTable.icl"
+                              </td>
+                          </tr>
+                      </table>
+
+                      <table $(contentTable)>
+                          @Format_Header("From Warehouse", $(fromWhsName), $(fromWhs))
+                      </table>
+
+                      $(hrTagAttr)
+                      %INCLUDE "RequiredField.icl"
+                      %INCLUDE "ErrorDisplay.icl"
+
+                      <form class="formClass" METHOD=POST name=Chg ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Warehouse$(genericVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+                          <table $(contentTable)>
+
+                              @dtw_assign(focusField, "toWhs")
+
+                              %if (errFound != "" || maintenanceCode == "A")
+                                  %if (errFound == "" && maintenanceCode == "A")
+                                      @dtw_assign(edtVar, "")
+                                  %else
+                                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                                      @ErrVarErr(profileHandle, typeError, errVar)
+                                      @dtw_assign(Err_Add, "Invalid To Warehouse")
+                                  %endif
+
+                                  @Decat_Field("@@twhs")   @dtw_assign(toWhs,  fieldValue)
+
+                                  @dtw_assign(errFound, "")
+
+                              %endif
+
+                                  @SetTextOvr(Err_Add)
+                                  <tr><td class="dsphdr"><span $(textOvr)>To Warehouse</span></td>
+                                      <td class="inputnmbr"><input name="toWhs" value="$(toWhs)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)WarehouseSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=toWhs&amp;fldDesc=toWhsName" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a> <input name="toWhsName" value="" type="text" size="30" maxlength="30">
+                                                            <input name="fromWhs" value="$(fromWhs)" type="hidden">
+                                                            <input name="fromWhsName" value="$(fromWhsName)" type="hidden">
+                                      </td>
+                                  </tr>
+                                  @DspErrMsg(Err_Add)
+                          </table>
+
+                          <script TYPE="text/javascript">
+                              document.Chg.$(focusField).focus();
+                          </script>
+
+                      </form>
+                      %INCLUDE "MaintainBottom.icl"
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(Edit_Warehouse) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@fwhs", fromWhs)
+  @Concat_Field("@@twhs", toWhs)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @RtvFldDesc("WHWHS=$(toWhs)", "HDWHSM", "WHWHNM", toWhsName)
+
+  %if (toWhsName != "")
+      @dtw_assign(ticket, "ADD")
+      @dtw_assign(fWhs, fromWhs)
+      @dtw_assign(tWhs, toWhs)
+      %while(@dtw_rlength(fWhs) != "3") {@dtw_insert("0", fWhs, fWhs)%}
+      %while(@dtw_rlength(tWhs) != "3") {@dtw_insert("0", tWhs, tWhs)%}
+      @Gen_Transfer_Ticket(workStation, userProfile, ticket, fWhs, tWhs)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(genericVarBase)&amp;fromTo=F&amp;transferTicket=@dtw_rurlescseq(ticket)&amp;fromWhs=@dtw_rurlescseq(fromWhs)&amp;fromWhsName=@dtw_rurlescseq(fromWhsName)&amp;toWhs=@dtw_rurlescseq(toWhs)&amp;toWhsName=@dtw_rurlescseq(toWhsName)">
+  %else
+      @dtw_assign(errFound, "Y")
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/ADD$(genericVarBase)&amp;fromWhs=@dtw_rurlescseq(fromWhs)&amp;fromWhsName=@dtw_rurlescseq(fromWhsName)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

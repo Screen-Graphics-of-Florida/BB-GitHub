@@ -1,0 +1,263 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Cost Summary Detail Cost Inquiry                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Cost Summary Detail Cost Inquiry"
+  d2wName                 = "CostSummaryDetCostInquiry.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;costSet=@dtw_rurlescseq(costSet)&amp;costCategory=@dtw_rurlescseq(costCategory)&amp;totalCost=@dtw_rurlescseq(totalCost)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  nextPrevVar             = "$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  displayCloseIcon        = "Y"
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+   %INCLUDE "$(docType)"
+   <html>
+       <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+       </head>
+
+       <body $(bodyTagAttr) onLoad="window.focus()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(inquiryBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      @DateTodayCYMD(todayCYMD)
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select DCSEQN, DCCELM, DCCMET, DCFELM, '' as PSCPN, 0 as WKAMT, 0 as WKRATE, DCCAMT ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDMDCM ", fileSQL)
+                      @dtw_concat(selectSQL, " DCCSET=$(costSet) and DCPLT=$(plantNumber) and DCPN='$(itemNumber)' and DCCCAT=$(costCategory) ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @RtvFldDesc("$(selectSQL)", "$(fileSQL)", "char(count(*))", sql_Record_Count)
+                      @RtvFldDesc("PSPPLT=$(plantNumber) and PSPPN='$(itemNumber)' and PSSTDT<=$(todayCYMD) and PSDSDT>=$(todayCYMD) ", "HDMPSM left join HDMCMM on PSPPLT=CMPLT and PSCPN=CMPN and $(costSet)=CMCSET", "char(count(*))", my_sql_Record_Count)
+                      %if (my_sql_Record_Count > "0")
+                          @dtw_add(sql_Record_Count, my_sql_Record_Count, sql_Record_Count)
+                          @dtw_concat(stmtSQL, "Union ", stmtSQL)
+                          @dtw_concat(stmtSQL, "Select PSSEQN as DCSEQN, 0 as DCCELM, '' as DCCMET, 0 as DCFELM, PSCPN, round((1.00+PSSCPP)*PSQPER,5) as WKAMT, CMUCC$(costCategory) as WKRATE, coalesce(dec(round((1.00+PSSCPP)*PSQPER*CMUCC$(costCategory),5),17,5),0) as DCCAMT", stmtSQL)
+                          @dtw_concat(stmtSQL, " From HDMPSM left join HDMCMM on PSPPLT=CMPLT and PSCPN=CMPN and $(costSet)=CMCSET", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where PSPPLT=$(plantNumber) and PSPPN='$(itemNumber)' and PSSTDT<=$(todayCYMD) and PSDSDT>=$(todayCYMD) ", stmtSQL)
+                      %endif
+                      %if (sql_Record_Count > "0")
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %else
+                          @dtw_assign(stmtSQL, "Select FLTYPE From SYFLAG Where FLTYPE='NoRecFnd'")
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @CostSummaryDetailCost_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(inquiryTrailer)"
+          <!-- End Of Trailer Code -->
+     </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) CostSummaryDetailCost_Query (IN CHAR(64)    profileHandle,
+                                                   CHAR(2)     dataBaseID,
+                                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+      @RtvFldDesc("STCSET=$(costSet)", "SCMSTM", "STCSLD", setDescription)
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLC$(costCategory)LD", categoryDescription)
+      @Format_Nbr(totalCost, F_totalCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+      <table $(contentTable)>
+          @Format_Header("Plant", $(plantName), $(plantNumber))
+          @Format_Header("Item", $(itemDescription), $(itemNumber))
+          @Format_Header("Cost Set", $(setDescription), $(costSet))
+          @Format_Header("Cost Category", $(categoryDescription), $(costCategory))
+          @Format_Header("Total Cost", $(F_totalCost), "")
+      </table>
+
+      $(inquiryhrTagAttr)
+
+      <table $(contentTable)>
+          <tr><td > %INCLUDE "AssignPageValue.icl" </td></tr>
+      </table>
+
+      <table $(contentTable)>
+          @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+          <tr>
+              @OrderBy_Sort("DCSEQN", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=seqNumber" title="Sequence By Routing Sequence"> Rtg<br>Seq</a></th>
+              @OrderBy_Sort("DCCELM", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=costElem" title="Sequence By Cost Element"> Cost<br>Elem</a></th>
+              @OrderBy_Sort("DCCMET", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=costMeth" title="Sequence By Cost Method"> Cost<br>Meth</a></th>
+              @OrderBy_Sort("DCFELM", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=factElem" title="Sequence By Factored Element"> Fact<br>Elem</a></th>
+              <th class="colhdr"> Fact Elem<br>Cost Meth</th>
+              @OrderBy_Sort("PSCPN", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=compItem" title="Sequence By Component Item"> Component</th>
+              <th class="colhdr"> Amount</th>
+              <th class="colhdr"> Rate</th>
+              @OrderBy_Sort("DCCAMT", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=costAmt" title="Sequence By Cost"> Cost</a></th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_assign(V_WKFMET, " ")
+              %if (V_PSCPN == "")
+                  @dtw_assign(edtVar, "")
+                  @Concat_Field("@@plt@", plantNumber)
+                  @Concat_Field("@@item", itemNumber)
+                  @Concat_Field("@@cset", costSet)
+                  @Concat_Field("@@seqn", V_DCSEQN)
+                  @Concat_Field("@@celm", V_DCCELM)
+                  @Concat_Field("@@cmet", V_DCCMET)
+                  @Concat_Field("@@felm", V_DCFELM)
+                  @Concat_Field("@@camt", V_DCCAMT)
+                  @dtw_concat(edtVar, "}{", edtVar)
+                  @Get_Cost_Detail(edtVar)
+
+                  @Decat_Negative("@@amt@")   @dtw_assign(V_WKAMT , fieldValue)
+                  @Decat_Negative("@@rate")   @dtw_assign(V_WKRATE, fieldValue)
+                  @Decat_Field("@@fmet")      @dtw_assign(V_WKFMET, fieldValue)
+              %endif
+
+              @Format_Nbr(V_DCSEQN, F_DCSEQN, "0", "4", "", "", "")
+              @Format_Nbr(V_DCCELM, F_DCCELM, "0", "4", "", "", "")
+              @Format_Nbr(V_DCFELM, F_DCFELM, "0", "4", "", "", "")
+              @Format_Nbr(V_WKAMT, F_WKAMT, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(V_WKRATE, F_WKRATE, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(V_DCCAMT, F_DCCAMT, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+
+              %INCLUDE "SetRowClass.icl"
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr">$(F_DCSEQN)</td>
+                  <td class="colnmbr">$(F_DCCELM)</td>
+                  <td class="colcode">$(V_DCCMET)</td>
+                  <td class="colnmbr">$(F_DCFELM)</td>
+                  <td class="colcode">$(V_WKFMET)</td>
+                  <td class="colalph">$(V_PSCPN)</td>
+                  <td class="colnmbr">$(F_WKAMT)</td>
+                  <td class="colnmbr">$(F_WKRATE)</td>
+                  <td class="colnmbr">$(F_DCCAMT)</td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      $(inquiryhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Get_Cost_Detail (INOUT  CHAR(32000) edtVar)
+{%EXEC {HPD097_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "DCSEQN,DCCELM")
+      @DTW_ASSIGN(orderByDisplay, "Routing Sequence, Cost Element")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "DCSEQN,DCCELM")
+      @DTW_ASSIGN(orderByDisplay, "Routing Sequence, Cost Element")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "seqNumber")
+      %if (orderBy == "DCSEQN,DCCELM")
+          @DTW_ASSIGN(orderBy, "DCSEQN DESC,DCCELM")
+          @DTW_ASSIGN(orderByDisplay, "Routing Sequence (descending), Cost Element")
+      %else
+          @DTW_ASSIGN(orderBy, "DCSEQN,DCCELM")
+          @DTW_ASSIGN(orderByDisplay, "Routing Sequence, Cost Element")
+      %endif
+  %elif (sequence == "costElem")
+      %if (orderBy == "DCCELM,DCSEQN")
+          @DTW_ASSIGN(orderBy, "DCCELM DESC,DCSEQN")
+          @DTW_ASSIGN(orderByDisplay, "Cost Element (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "DCCELM,DCSEQN")
+          @DTW_ASSIGN(orderByDisplay, "Cost Element")
+      %endif
+  %elif (sequence == "costMeth")
+      %if (orderBy == "DCCMET,DCSEQN")
+          @DTW_ASSIGN(orderBy, "DCCMET DESC,DCSEQN")
+          @DTW_ASSIGN(orderByDisplay, "Cost Method (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "DCCMET,DCSEQN")
+          @DTW_ASSIGN(orderByDisplay, "Cost Method")
+      %endif
+  %elif (sequence == "factElem")
+      %if (orderBy == "DCFELM,DCCELM,DCSEQN")
+          @DTW_ASSIGN(orderBy, "DCFELM DESC,DCSEQN,DCCELM")
+          @DTW_ASSIGN(orderByDisplay, "Factored Element (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "DCFELM,DCSEQN,DCCELM")
+          @DTW_ASSIGN(orderByDisplay, "Factored Element")
+      %endif
+  %elif (sequence == "compItem")
+      %if (orderBy == "PSCPN,DCSEQN,DCCELM")
+          @DTW_ASSIGN(orderBy, "PSCPN DESC,DCSEQN,DCCELM")
+          @DTW_ASSIGN(orderByDisplay, "Component Item (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "PSCPN,DCSEQN,DCCELM")
+          @DTW_ASSIGN(orderByDisplay, "Component Item")
+      %endif
+  %elif (sequence == "costAmt")
+      %if (orderBy == "DCCAMT,DCSEQN")
+          @DTW_ASSIGN(orderBy, "DCCAMT DESC,DCSEQN")
+          @DTW_ASSIGN(orderByDisplay, "Cost Amount (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "DCCAMT,DCSEQN")
+          @DTW_ASSIGN(orderByDisplay, "Cost Amount")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}

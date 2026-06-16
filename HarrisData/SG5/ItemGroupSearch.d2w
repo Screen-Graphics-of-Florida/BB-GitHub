@@ -1,0 +1,242 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Item Group Search                                           *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "$(groupTypeDesc) Search"
+  d2wName                 = "ItemGroupSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;groupType=@dtw_rurlescseq(groupType)&amp;docName=@dtw_rurlescseq(docName)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldName                 = ""
+  fldDesc                 = ""
+  advanceSearch           = "N"
+  groupTypeDesc           = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @RtvFldDesc("(FLTYPE='ITMGRPTYPE' and FLVALU='$(groupType)')", "SYFLAG", "FLDESC", groupTypeDesc)
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectItemGroup(itemGroup, desc){
+                  window.opener.document.$(docName).$(fldName).value = itemGroup;
+                  window.opener.document.$(docName).$(fldDesc).value = desc;
+                  window.opener.document.$(docName).$(fldName).focus();
+                  window.close();
+              }
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, "Select IGIGRP, IGPLT, IGDESC, IGDESCU ", stmtSQL)
+                      %if (groupType == "F")
+                          @dtw_concat(stmtSQL, " , coalesce(PLNAME,' ') as PLNAME, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(upper(PLNAME),' ') as PLNAMEU ", stmtSQL)
+                      %endif
+                      @dtw_concat(fileSQL, " HDIGPH ", fileSQL)
+                      %if (groupType == "F")
+                          @dtw_concat(fileSQL, " inner join HDPLNT on IGPLT=PLPLNT ", fileSQL)
+                      %endif
+                      @dtw_concat(selectSQL, "IGTYPE='$(groupType)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @ItemGroup_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) ItemGroup_Search (IN CHAR(64) profileHandle,
+				         CHAR(2)   dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      $(searchhrTagAttr)
+      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+          <table $(quickSearchTable)>
+              <tr><th class="colhdr">Description</th>
+                  <th class="colhdr">$(groupTypeDesc)</th>
+                  %if (groupType == "F")
+                      <th class="colhdr">Plant</th>
+                  %endif
+              </tr>
+              <tr><td class="inputalph">
+                      <input type="text" name="srchDesc" size="10" maxlength="30">
+                      <input type="hidden" name="operDesc" value="LIKE">
+                  </td>
+                  <td class="inputalph">
+                      <input type="text" name="srchItemGroup" size="7" maxlength="4">
+                      <input type="hidden" name="operItemGroup" value="LIKE">
+                  </td>
+                  %if (groupType == "F")
+                      <td><input type="text" class="inputnmbr" name="srchPlant" size="3" maxlength="3">
+                          <input type="hidden" name="operPlant" value="=">
+                      </td>
+                  %endif
+                  <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+              </tr>
+          </table>
+          <script TYPE="text/javascript">
+              document.Search.srchDesc.focus();
+          </script>
+      </form>
+
+      %INCLUDE "WildCardPage.icl"
+
+      <table $(contentTable)>
+          <tr>	
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("IGIGRP", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemGroup" title="Sequence By $(groupTypeDesc), Description">$(groupTypeDesc)</a></th>
+              @OrderBy_Sort("IGDESCU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=description" title="Sequence By Description, Item Group"> Description</a></th>
+              %if (groupType == "F")
+                  @OrderBy_Sort("IGPLT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlantNumber" title="Sequence By Plant, Group ID">Plant</a></th>
+                  @OrderBy_Sort("PLNAMEU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlantName" title="Sequence By Plant Name">Plant Name</a></th>
+              %endif
+          </tr>
+
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Quote(V_IGIGRP, F_IGIGRP)
+              @Format_Quote(V_IGDESC, F_IGDESC)
+
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_IGIGRP)</td>
+                  <td class="colalph"><a href="javascript:selectItemGroup('$(F_IGIGRP)','$(F_IGDESC)')" title="Select Item Group">$(V_IGDESC)</a></td>
+                  %if (groupType == "F")
+                      <td class="colnmbr">$(V_IGPLT)</td>
+                      <td class="colalph">$(V_PLNAME)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "IGDESCU,IGIGRP")
+      @DTW_ASSIGN(orderByDisplay, "Description, Item Group")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "description")
+      %if (orderBy == "IGDESCU, IGIGRP")
+          @DTW_ASSIGN(orderBy, "IGDESCU DESC, IGIGRP")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Item Group")
+      %else
+          @DTW_ASSIGN(orderBy, "IGDESCU, IGIGRP")
+          @DTW_ASSIGN(orderByDisplay, "Description, Item Group")
+      %endif
+  %elif (sequence == "itemGroup")
+      %if (orderBy == "IGIGRP")
+          @DTW_ASSIGN(orderBy, "IGIGRP DESC")
+          @DTW_ASSIGN(orderByDisplay, "Item Group (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IGIGRP")
+          @DTW_ASSIGN(orderByDisplay, "Item Group")
+      %endif
+  %elif (sequence == "PlantNumber")
+      %if (orderBy == "IGPLT,IGIGRP")
+          @DTW_ASSIGN(orderBy, "IGPLT DESC,IGIGRP")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number (descending), $(groupTypeDesc)")
+      %else
+          @DTW_ASSIGN(orderBy, "IGPLT,IGIGRP")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number, $(groupTypeDesc)")
+      %endif
+  %elif (sequence == "PlantName")
+      %if (orderBy == "PLNAMEU,IGIGRP")
+          @DTW_ASSIGN(orderBy, "PLNAMEU DESC,IGIGRP")
+          @DTW_ASSIGN(orderByDisplay, "Plant Name (descending), $(groupTypeDesc)")
+      %else
+          @DTW_ASSIGN(orderBy, "PLNAMEU,IGIGRP")
+          @DTW_ASSIGN(orderByDisplay, "Plant Name, $(groupTypeDesc)")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("upper(IGDESC)", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("IGIGRP", "Item Group", $(srchItemGroup), "U", operItemGroup, "A")
+  @Build_WildCard ("IGPLT", "Plant Number", $(srchPlant), "", operPlant, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

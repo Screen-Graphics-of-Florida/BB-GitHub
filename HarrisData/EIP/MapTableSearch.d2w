@@ -1,0 +1,434 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Map Table Search                                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Map Table Search"
+  d2wName                 = "MapTableSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;specificMapKey=@dtw_rurlescseq(specificMapKey)&amp;docName=@dtw_rurlescseq(docName)&amp;fldMapKey=@dtw_rurlescseq(fldMapKey)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldName                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL)  {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %if (specificMapKey == "")
+                  function selectMapTable(mapKey,interfaceTable, interfaceTableDescription){
+                      window.opener.document.$(docName).$(fldMapKey).value = mapKey;
+                      window.opener.document.$(docName).$(fldName).value = interfaceTable;
+                      window.opener.document.$(docName).$(fldDesc).value = interfaceTableDescription;
+                      window.opener.document.$(docName).$(fldMapKey).focus();
+                      window.close();
+                  }
+              %else
+                  function selectMapTable(interfaceTable, interfaceTableDescription){
+                      window.opener.document.$(docName).$(fldName).value = interfaceTable;
+                      window.opener.document.$(docName).$(fldDesc).value = interfaceTableDescription;
+                      window.opener.document.$(docName).$(fldName).focus();
+                      window.close();
+                  }
+              %endif
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      %if (specificMapKey != "")
+          @dtw_assign(mapKey, specificMapKey)
+      %endif
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select a.*,  ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(b.MFDESC,' ') as ParentMFDESC, coalesce(b.MFDESCU,' ') as ParentMFDESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYMMTB a ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYMMTB b on b.MFMPKY=a.MFMPKY and b.MFMFIL=a.MFPFIL ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, " a.MFMPKY=$(mapKey) and a.MFMFIL='$(interfaceTable)' ", selectSQL)
+                      %elif (specificMapKey != "")
+                          @dtw_concat(selectSQL, " a.MFMPKY=$(specificMapKey) ", selectSQL)
+                      %elif (wildCardSearch!="")
+                          @dtw_concat(selectSQL, " a.MFMPKY>' ' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+
+                      %if (moreInfo == "Y")
+                          @dtw_assign(SAVE_ROW_NUM, START_ROW_NUM)
+                          @dtw_assign(SAVE_MAX_ROWS, RPT_MAX_ROWS)
+                          @dtw_assign(START_ROW_NUM, "1")
+                          @dtw_assign(RPT_MAX_ROWS, "9999")
+
+                          %{Column %}
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select SYMMCL.*, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(MFDESC,' ') as MFDESC, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(PMPRMD,' ') as PMPRMD ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From SYMMCL", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMMTB on MFMPKY=MDMPKY and MFMFIL=MDMFIL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join WFPARM on PMPARM=MDPARM ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where MDMPKY=$(mapKey) and MDMFIL='$(interfaceTable)' and MDDPOS>0 ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Order By MFDESC,MDMFIL,MDDPOS,MDMFLD ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Process_Select_Column(profileHandle, dataBaseID, stmtSQL)
+
+                          @dtw_assign(START_ROW_NUM, SAVE_ROW_NUM)
+                          @dtw_assign(RPT_MAX_ROWS, SAVE_MAX_ROWS)
+                      %endif
+
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      %if (specificMapKey != "")
+          <table $(contentTable)>
+              @RtvFldDesc("MHMPKY=$(specificMapKey)", "SYMMHD", "MHDESC", mapKeyDescription)
+              @RtvFldDesc("MHMPKY=$(specificMapKey)", "SYMMHD", "MHWPGM", mapWFProgram)
+              @Format_Header("Map Definition", $(mapKeyDescription), $(mapWFProgram))
+          </table>
+      %endif
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr>
+                      <th class="colhdr">Description</th>
+                      <th class="colhdr">Interface Table</th>
+                      <th class="colhdr">Parent Interface Table</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchDesc" size="15" maxlength="50">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchTable" size="10" maxlength="10">
+                          <input type="hidden" name="operTable" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchParent" size="10" maxlength="10">
+                          <input type="hidden" name="operParent" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>	
+
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @OrderBy_Sort("MFDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description" title="Sequence By Description, Interface Table">Description</a></th>
+                  @OrderBy_Sort("MFMFIL", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Table"       title="Sequence By Interface Table">Interface Table</a></th>
+                  @OrderBy_Sort("ParentMFDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Parent"      title="Sequence By Parent Interface Table, Interface Table">Parent Interface Table</a></th>
+              </tr>
+
+              %INCLUDE "NoRecordsFound.icl"
+      %endif		
+              %ROW{
+                  @Format_Quote(V_MFMFIL, F_MFMFIL)
+                  @Format_Quote(V_MFDESC, F_MFDESC)
+
+                  %if (moreInfo != "Y")	
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          %if (specificMapKey == "")
+                              <td class="colalph"><a href="javascript:selectMapTable($(V_MFMPKY),'$(F_MFMFIL)','$(F_MFDESC)')" title="Select Interface Table">$(V_MFDESC)</a></td>
+                              <td class="colalph" $(helpCursor)><span title="$(V_MFMPKY)">$(V_MHDESC)</span></td>
+                          %else
+                              <td class="colalph"><a href="javascript:selectMapTable('$(F_MFMFIL)','$(F_MFDESC)')" title="Select Interface Table">$(V_MFDESC)</a></td>
+                          %endif
+                          <td class="colalph">$(V_MFMFIL)</td>                                      	
+                          <td class="colalph" $(helpCursor)><span title="$(V_MFPFIL)">$(V_ParentMFDESC)</span></td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)$(orderByVarBase)&amp;mapKey=@dtw_rurlescseq(V_MFMPKY)&amp;interfaceTable=@dtw_rurlescseq(V_MFMFIL)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      <table $(contentTable)>
+                          <tr><td>
+                              %if (specificMapKey == "")
+                                  <a href="javascript:selectMapTable($(V_MFMPKY),'$(F_MFMFIL)','$(F_MFDESC)')" title="Select Interface Table">$(selectImageLrg)</a>
+                              %else
+                                  <a href="javascript:selectMapTable('$(F_MFMFIL)','$(F_MFDESC)')" title="Select Interface Table">$(selectImageLrg)</a>
+                              %endif
+                          </td></tr>
+                      </table>
+
+                      <table $(contentTable)>
+                          %if (specificMapKey == "")
+                              <tr><td class="dsphdr">Map Definition</td>
+                                  @Format_Code(V_MFMPKY, F_MFMPKY)
+                                  <td class="dspalph">$(V_MHDESC) $(F_MFMPKY)</td></tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Interface Table</td>
+                              <td class="dspalph">$(V_MFMFIL)</td></tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              <td class="dspalph">$(V_MFDESC)</td></tr>
+
+                          <tr><td class="dsphdr">Import Key Column</td>
+                              <td class="dspalph">$(V_MFIKYF)</td></tr>
+
+                          <tr><td class="dsphdr">Table Key Column</td>
+                              <td class="dspalph">$(V_MFTKYF)</td></tr>
+
+                          <tr><td class="dsphdr">Parent Key Column</td>
+                              <td class="dspalph">$(V_MFPKYF)</td></tr>
+
+                          <tr><td class="dsphdr">Parent Interface Table</td>
+                              @Format_Code(V_MFPFIL, F_MFPFIL)
+                              <td class="dspalph">$(V_ParentMFDESC) $(F_MFPFIL)</td></tr>
+
+                          @RtvFldDesc("FLTYPE='BY' and FLVALU='$(V_MFPRMR)'", "SYFLAG", "FLDESC", fieldDesc)
+                          <tr><td class="dsphdr">Workflow Parameter Required</td>
+                              @Format_Code(V_MFPRMR, F_MFPRMR)
+                              <td class="dspalph">$(fieldDesc) $(F_MFPRMR)</td>
+                      </table>
+                  %endif
+              %}
+          </table>
+      %if (moreInfo != "Y")	
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+      %endif	   	
+  %}
+%}
+
+%FUNCTION(dtw_sql) Process_Select_Column (IN  CHAR(64)    profileHandle,
+                                              CHAR(2)     dataBaseID,
+                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Column</legend>
+          <table $(contentTable)>
+              <tr>
+                  <th class="colhdr">Column</th>
+                  <th class="colhdr">Description</th>
+                  <th class="colhdr">Note</th>
+                  <th class="colhdr">Column Type</th>
+                  <th class="colhdr">Numeric Stored</th>
+                  <th class="colhdr">Normal Balance</th>
+                  <th class="colhdr">Default Logic</th>
+                  <th class="colhdr">Workflow Parameter</th>
+              </tr>
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colalph">$(V_MDMFLD)</td>                                      	
+                      <td class="colalph">$(V_MDDESC)</td>                                      	
+                      %if (V_MDNOTE != "")
+                          <td class="colcode" $(helpCursor)><span title="$(V_MDNOTE)">Y</span></td>                                      	
+                      %else
+                          <td class="colalph">&nbsp;</td>                                      	
+                      %endif
+                      <td class="colcode">$(V_MDFLDT)</td>                                      	
+                      <td class="colcode">$(V_MDSTOR)</td>                                      	
+                      <td class="colcode">$(V_MDNAB)</td>                                      	
+                      <td class="colcode">$(V_MDDLGC)</td>
+                      <td class="colalph" $(helpCursor)><span title="$(V_PMPRMD)">$(V_MDPARM)</span></td>
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "MFDESCU,MFMFIL")
+      @DTW_ASSIGN(orderByDisplay, "Description, Interface Table")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+
+  %if (sequence == "Description")
+      %if (orderBy == "MFDESCU,MFMFIL")
+          @DTW_ASSIGN(orderBy, "MFDESCU DESC,MFMFIL")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Interface Table")
+      %else
+          @DTW_ASSIGN(orderBy, "MFDESCU,MFMFIL")
+          @DTW_ASSIGN(orderByDisplay, "Description, Interface Table")
+      %endif
+  %elif (sequence == "Table")
+      %if (orderBy == "MFMFIL")
+          @DTW_ASSIGN(orderBy, "MFMFIL DESC")
+          @DTW_ASSIGN(orderByDisplay, "Interface Table (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "MFMFIL")
+          @DTW_ASSIGN(orderByDisplay, "Interface Table")
+      %endif
+  %elif (sequence == "Parent")
+      %if (orderBy == "ParentMFDESCU,MFMFIL")
+          @DTW_ASSIGN(orderBy, "ParentMFDESCU DESC,MFMFIL")
+          @DTW_ASSIGN(orderByDisplay, "Parent Interface Table (descending), Interface Table")
+      %else
+          @DTW_ASSIGN(orderBy, "ParentMFDESCU,MFMFIL")
+          @DTW_ASSIGN(orderByDisplay, "Parent Interface Table, Interface Table")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "MAPTABLESEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="15" maxlength="50"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Interface Table</td>
+                              @dtw_assign(operNbr, "operTable")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchTable" size="10" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Parent Interface Table</td>
+                              @dtw_assign(operNbr, "operParent")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchParent" size="10" maxlength="10"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchDesc.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("a.MFDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("a.MFMFIL", "Interface Table", $(srchTable), "U", operTable, "A")
+  @Build_WildCard ("coalesce(b.MFDESCU,' ')", "Parent Interface Table", $(srchParent), "U", operParent, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

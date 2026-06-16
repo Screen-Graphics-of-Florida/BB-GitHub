@@ -1,0 +1,86 @@
+%{
+*********************************************************************
+* Copr 1979 2001 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  				                                     *
+*  Job: Keyboard - Touch Screen                                     *
+*********************************************************************
+%}
+
+<div id="keyboard">
+  <div id="kbalpha" class="kbDiv" style="width: 31.9em;">
+    <div id="kbData" class="kbB"></div>
+    <div id="kbCancel" class="kbBalt" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);"><span class="kbText">Cancel</span></div>
+    <div id="kb26" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">1</div>
+    <div id="kb27" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">2</div>
+    <div id="kb28" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">3</div>
+    <div id="kb29" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">4</div>
+    <div id="kb30" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">5</div>
+    <div id="kb31" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">6</div>
+    <div id="kb32" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">7</div>
+    <div id="kb33" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">8</div>
+    <div id="kb34" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">9</div>
+    <div id="kb36" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">0</div>
+    <div id="kb37" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">-</div>
+    <div id="kbBack" class="kbBalt" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);"><span class="kbText">Back</span></div>
+    <div class="kbB" id="kbP1">&nbsp;</div>
+    <div id="kb0" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">Q</div>
+    <div id="kb1" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">W</div>
+    <div id="kb2" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">E</div>
+    <div id="kb3" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">R</div>
+    <div id="kb4" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">T</div>
+    <div id="kb5" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">Y</div>
+    <div id="kb6" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">U</div>
+    <div id="kb7" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">I</div>
+    <div id="kb8" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">O</div>
+    <div id="kb9" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">P</div>
+    <div class="kbB" id="kbP2">&nbsp;</div>
+    <div id="kbClear" class="kbBalt" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);"><span class="kbText">Clear</span></div>
+    <div class="kbB" id="kbS1">&nbsp;</div>
+    <div id="kb10" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">A</div>
+    <div id="kb11" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">S</div>
+    <div id="kb12" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">D</div>
+    <div id="kb13" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">F</div>
+    <div id="kb14" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">G</div>
+    <div id="kb15" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">H</div>
+    <div id="kb16" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">J</div>
+    <div id="kb17" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">K</div>
+    <div id="kb18" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">L</div>
+    <div class="kbB" id="kbS2">&nbsp;</div>
+    <div id="kbShift" class="kbBalt" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);"><span class="kbText">Aa</span></div>
+    <div class="kbB" id="kbS3">&nbsp;</div>
+    <div class="kbB" id="kbP3">&nbsp;</div>
+    <div id="kb19" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">Z</div>
+    <div id="kb20" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">X</div>
+    <div id="kb21" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">C</div>
+    <div id="kb22" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">V</div>
+    <div id="kb23" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">B</div>
+    <div id="kb24" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">N</div>
+    <div id="kb25" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">M</div>
+    <div id="kb35" class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">.</div>
+    <div id="kbSwitch" class="kbBalt" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);"><span class="kbText">Special</span></div>
+    <div id="kbSpace"  class="kbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);"><span class="kbText">Space</span></div>
+    <div id="kbReturn" class="kbBalt" onclick="kbPress(this);"><span class="kbText">Enter</span></div>
+  </div>
+</div>
+<div id="numericKeyboard">
+  <div id="nkbData" class="nkbB"></div>
+  <div id="nkbCancel" class="kbBalt" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);"><span class="kbText">Cancel</span></div>
+  <div id="nkb6" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">7</div>
+  <div id="nkb7" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">8</div>
+  <div id="nkb8" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">9</div>
+  <div id="nkbBack" class="kbBalt" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);"><span class="kbText">Back</span></div>
+  <div id="nkb3" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">4</div>
+  <div id="nkb4" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">5</div>
+  <div id="nkb5" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">6</div>
+  <div id="nkbClear" class="kbBalt" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);"><span class="kbText">Clear</span></div>
+  <div id="nkb0" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">1</div>
+  <div id="nkb1" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">2</div>
+  <div id="nkb2" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">3</div>
+  <div class="kbB" id="nkbS1">&nbsp;</div>
+  <div id="nkb10" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">0</div>
+  <div id="nkb9" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">.</div>
+  <div id="nkb11" class="nkbB" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);">-</div>
+  <div id="nkbReturn" class="kbBalt" onmousedown="kbLite(this);" onmouseup="kbDark(this);" onclick="kbPress(this);"><span class="kbText">Enter</span></div>
+</div>
+<div id="dtpDiv"></div>

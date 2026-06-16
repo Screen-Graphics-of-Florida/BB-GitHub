@@ -1,0 +1,411 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Item Stock Location Maintenance                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "ItemStockLocMaintain.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Item Stock Location Maintenance"
+  d2wName                 = "ItemStockLocMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;fromStockLocId=@dtw_rurlescseq(fromStockLocId)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;stockLocId=@dtw_rurlescseq(stockLocId)&amp;maintenanceCode=D"
+  programName             = "HHDSRL"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+              function confirmDelete() {return confirm("$(delRecordConf)")}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ITEMSTOCKLOCMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(stmtSQL, "")
+                      %if (maintenanceCode == "A")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, " Select ISSTKR,ISAILE,ISSLOC,Max(ISRATE) as ISRATE, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Max(ISSGRP) as ISSGRP, Max(ISECQT) as ISECQT, Max(ISMXOH) as ISMXOH, Max(ISRPQT) as ISRPQT", stmtSQL)
+                          @dtw_concat(stmtSQL, " From HDITSL  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where (ISSID#,ISITEM,ISWHS) = ($(fromStockLocId),'$(itemNumber)',$(warehouseNumber)) ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Group By ISSTKR,ISAILE,ISSLOC ", stmtSQL)
+                      %endif
+                      @dtw_concat(stmtSQL, " Fetch First 1 Rows Only @@endsql", stmtSQL)
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=429")
+      %endif
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      <table $(contentTable)>
+          @Format_Header("Item", $(itemDescription), $(itemNumber))
+          @Format_Header("Warehouse", $(warehouseName), "$(warehouseNumber)")
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;stockLocId=@dtw_rurlescseq(stockLocId)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  @dtw_assign(V_ISSTKR, stockRoom)
+                  @dtw_assign(V_ISAILE, aisle)
+                  @dtw_assign(V_ISSLOC, location)
+
+                  @dtw_assign(focusField, "priority")
+
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                      %else
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @dtw_assign(focusField, "")
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@stid", "stockLocId")   @dtw_assign(Err_ISSTID,  fieldValue)
+                          @DecatErr_Field("@@rate", "priority")   @dtw_assign(Err_ISRATE,  fieldValue)
+                      %endif
+
+                      @Decat_Field("@@rate")   @dtw_assign(V_ISRATE,  fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @RtvFldDesc("SLSTID=$(stockLocId) and SLWHS=$(warehouseNumber)", "HDSTLC", "Digits(SLRATE)", V_ISRATE)
+                      %endif
+
+                      @dtw_assign(errFound, "")
+                  %endif
+
+                  @SetTextOvr(Err_ISSTID)
+                  <tr><td class="dsphdr">Stock Location</td>
+                      <td class="inputalph"><input name="stockRoom" type="hidden" value="$(V_ISSTKR)" size="3" maxlength="3">$(V_ISSTKR) -
+                                                  <input name="aisle" type="hidden" value="$(V_ISAILE)" size="4" maxlength="4">$(V_ISAILE) -
+                                                  <input name="location" type="hidden" value="$(V_ISSLOC)" size="8" maxlength="8">$(V_ISSLOC)</td>
+                  </tr>
+                  @DspErrMsg(Err_ISSTID)
+
+                  <tr><td class="dsphdr">Stocking U/M</td>
+                      <td class="inputalph">$(uomDescription)</td>
+                  </tr>
+
+                  @SetTextOvr(Err_ISRATE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Priority Rating</span></td>
+                      @dtw_tb_rows(priorityTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(priorityTable, x, "1") != V_ISRATE) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(priorityTable, "priority", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_ISRATE)
+
+                  @SetTextOvr(Err_ISSGRP)
+                  <tr><td class="dsphdr"><span $(textOvr)>Suggested Replenishment Point</span></td>
+                      <td class="inputnmbr"><input type="text" name="sugReplPoint" value="$(V_ISSGRP)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_ISSGRP)
+
+                  @SetTextOvr(Err_ISECQT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Critical Replenishment Point</span></td>
+                      <td class="inputnmbr"><input type="text" name="critReplPoint" value="$(V_ISECQT)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_ISECQT)
+
+                  @SetTextOvr(Err_ISMXOH)
+                  <tr><td class="dsphdr"><span $(textOvr)>Maximum On Hand Quantity</span></td>
+                      <td class="inputnmbr"><input type="text" name="maxOnHand" value="$(V_ISMXOH)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_ISMXOH)
+
+                  @SetTextOvr(Err_ISRPQT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Replenishment Quantity</span></td>
+                      <td class="inputnmbr"><input type="text" name="replQty" value="$(V_ISRPQT)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_ISRPQT)
+              %}	
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HHDSRL_W.PGM %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_StockLocation(INOUT CHAR(64)    profileHandle,
+                                                 INOUT CHAR(2)     dataBaseID,
+                                                 INOUT CHAR(1)     maintCode,
+                                                 INOUT CHAR(1)     errFound,
+                                                 INOUT CHAR(32000) edtVar,                             	
+                                                 INOUT CHAR(32000) errVar)
+{%EXEC {HHDSRL_W1.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMUOMS", stockUOM)
+      @RtvFldDesc("WHWHS=$(warehouseNumber)", "HDWHSM", "WHWHNM", warehouseName)
+      @RtvFldDesc("SLSTID=$(stockLocId)", "HDSTLC", "SLSTKR", stockRoom)
+      @RtvFldDesc("SLSTID=$(stockLocId)", "HDSTLC", "SLAILE", aisle)
+      @RtvFldDesc("SLSTID=$(stockLocId)", "HDSTLC", "SLSLOC", location)
+      @RtvFldDesc("UMUOM='$(stockUOM)'", "HDUOM", "UMUMLD", uomDescription)
+
+      @Priority_Rating_Query(profileHandle, dataBaseID, "PRIORITY  ", priorityTable)
+
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(ADD) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+      @RtvFldDesc("WHWHS=$(warehouseNumber)", "HDWHSM", "WHWHNM", warehouseName)
+
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NoFormValidate.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "ITEMSTOCKLOCMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          <table $(contentTable)>
+                              <colgroup>
+                                  <col width="80%">
+                                  <col width="15%">
+                              <tr><td align="justify"><h1>Add Item Stock Location</h1></td>
+                                  <td class="toolbar">
+                                      %INCLUDE "MaintainTopNoTable.icl"
+                                  </td>
+                              </tr>
+                          </table>
+
+                          <table $(contentTable)>
+                              @Format_Header("Item", $(itemDescription), $(itemNumber))
+                              @Format_Header("Warehouse", $(warehouseName), "$(warehouseNumber)")
+                          </table>
+
+                          $(hrTagAttr)
+                          %INCLUDE "RequiredField.icl"
+                          %INCLUDE "ErrorDisplay.icl"
+
+                          <form class="formClass" name=Chg METHOD=POST ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_StockLocation$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+                              <table $(contentTable)>
+                                  @dtw_assign(focusField, "stockLocId")
+                                  %if (errFound != "" || maintenanceCode == "A")
+                                      %if (errFound == "" && maintenanceCode == "A")
+                                          @dtw_assign(edtVar, "")
+                                      %else
+                                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                                          @dtw_assign(focusField, "")
+                                          @ErrVarErr(profileHandle, typeError, errVar)
+                                          @DecatErr_Field("@@stid", "stockLocId")   @dtw_assign(Err_SLSTID,  fieldValue)
+                                      %endif
+
+                                      @Decat_Field("@@stid")   @dtw_assign(V_SLSTID,  fieldValue)
+                                      @Decat_Field("@@stkr")   @dtw_assign(V_SLSTKR,  fieldValue)
+                                      @Decat_Field("@@aile")   @dtw_assign(V_SLAILE,  fieldValue)
+                                      @Decat_Field("@@sloc")   @dtw_assign(V_SLSLOC,  fieldValue)
+                                      %if (V_SLSTID == "")
+                                          @dtw_assign(V_SLSTID, "0")
+                                      %endif
+
+                                      @dtw_assign(errFound, "")
+
+                                  %elif (maintenanceCode == "Z")
+                                      @dtw_assign(V_SLSTID, "0")
+                                  %endif
+
+                                  @SetTextOvr(Err_SLSTID)
+                                  <tr><td class="dsphdr"><span $(textOvr)>Stock Location</span></td>
+                                      <td class="inputalph"><input name="stockRoom" type="text" value="$(V_SLSTKR)" size="5" maxlength="3"><input name="aisle" type="text" value="$(V_SLAILE)" size="6" maxlength="4"><input name="location" type="text" value="$(V_SLSLOC)" size="10" maxlength="8"><input name="stockLocId" type="hidden" size="9" maxlength="9"><a href="$(homeURL)$(phpPath)StockLocSearch.php$(altVarBase)&amp;docName=Chg&amp;forWhs=@dtw_rurlescseq(warehouseNumber)&amp;fldStkr=stockRoom&amp;fldAisle=aisle&amp;fldLoc=location&amp;fldStkID=stockLocId" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a></td>
+                                      @DspErrMsg(Err_SLSTID)
+                                  </tr>
+                              </table>
+
+                              <script TYPE="text/javascript">
+                                  document.Chg.stockRoom.focus();
+                              </script>
+
+                          </form>
+                          %INCLUDE "MaintainBottom.icl"
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%HTML(Edit_StockLocation) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(stockRoom)
+  @dtw_mUPPERCASE(aisle)
+  @dtw_mUPPERCASE(location)
+  @dtw_mUPPERCASE(itemNumber)
+  %if (stockLocID == "")
+      @RtvFldDesc("SLSTKR='$(stockRoom)' and SLAILE='$(aisle)' and SLSLOC='$(location)'", "HDSTLC", "SLSTID", stockLocId)
+  %else
+      @RtvFldDesc("SLSTID=$(stockLocId)", "HDSTLC", "SLSTKR", stockRoom)
+      @RtvFldDesc("SLSTID=$(stockLocId)", "HDSTLC", "SLAILE", aisle)
+      @RtvFldDesc("SLSTID=$(stockLocId)", "HDSTLC", "SLSLOC", location)
+  %endif
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintCode, "A")
+  %else
+      @dtw_assign(maintCode, maintenanceCode)
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@whs@", warehouseNumber)
+  @Concat_Field("@@item", itemNumber)
+  @Concat_Field("@@stkr", stockRoom)
+  @Concat_Field("@@aile", aisle)
+  @Concat_Field("@@sloc", location)
+  @Concat_Field("@@stid", stockLocId)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Validate_StockLocation(profileHandle, dataBaseID, maintCode, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;stockLocId=@dtw_rurlescseq(stockLocId)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/ADD$(d2wVarBase)&amp;stockLocId=@dtw_rurlescseq(stockLocId)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  %if (maintenanceCode == "D")
+      @RtvFldDesc("SLSTID=$(stockLocId)", "HDSTLC", "SLSTKR", stockRoom)
+      @RtvFldDesc("SLSTID=$(stockLocId)", "HDSTLC", "SLAILE", aisle)
+      @RtvFldDesc("SLSTID=$(stockLocId)", "HDSTLC", "SLSLOC", location)
+  %endif
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@whs@", warehouseNumber)
+  @Concat_Field("@@item", itemNumber)
+  @Concat_Field("@@stkr", stockRoom)
+  @Concat_Field("@@aile", aisle)
+  @Concat_Field("@@sloc", location)
+  @Concat_Field("@@rate", priority)
+  @Concat_Field("@@sgrp", sugReplPoint)
+  @Concat_Field("@@ecqt", critReplPoint)
+  @Concat_Field("@@mxoh", maxOnHand)
+  @Concat_Field("@@rpqt", replQty)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "" || maintenanceCode == "D")
+      @RtvFldDesc("WHWHS=$(warehouseNumber)", "HDWHSM", "WHWHNM", warehouseName)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+      %if (errFound == "")
+          @Format_ConfMsg_Desc(maintenanceCode, "$(stockRoom)-$(aisle)-$(location)", "", " in $(warehouseName)", "$(warehouseNumber)", "for $(itemDescription)", "$(itemNumber)", confMessage)
+      %else
+          @DecatErr_Field("@@stid", "stockLocId")
+          @Format_ConfMsg_Desc("", "$(stockRoom)-$(aisle)-$(location)", "", "in $(warehouseName)", "$(warehouseNumber)", "for $(itemNumber)", "<br>$(fieldValue)", confMessage)
+      %endif
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=429&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;stockLocId=@dtw_rurlescseq(stockLocId)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

@@ -1,0 +1,388 @@
+%{
+*********************************************************************
+* Copr 1979 2002 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job:  Company Codes Display                                      *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "storedProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title 	        = "Human Resources Codes"
+  d2wName              = "HRCompCode.d2w"
+  d2wVarBase           =  "$(genericVarBase)&amp;hrCompany=@dtw_rurlescseq(hrCompany)&amp;backHome=@dtw_rurlescseq(backHome)"
+  nextPrevVar          = "$(d2wVarBase)"
+  wildDftVar           = "REPORT$(d2wVarBase)"
+  programName          = "HPEPCU"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  facilityZero         = "0000"
+  lastType             = ""
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext		= "1"
+  totalPages		= "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@orderBy", "@dtw_rurlescseq(orderBy)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@wildCardSearch", "@dtw_rurlescseq(wildCardSearch)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@hrCompany", "@dtw_rurlescseq(hrCompany)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "HRCOMPCODE")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_HRCompanyName, "ODCOMP")
+	               %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, "SELECT ODCOMP, ODTYPE, ODCODE, ODDESC, CDTYDS, ODPGRD, ODLOWR, ODMIDR, ODHIGR, ODJEEO, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " upper(ODDESC) as ODDESCU,", stmtSQL)
+                      @dtw_concat(stmtSQL, " upper(CDTYDS) as CDTYDSU", stmtSQL)
+
+                      @dtw_concat(fileSQL, " PECODE inner join HRCDTY on ODTYPE=CDTYPE ", fileSQL)
+                      @dtw_concat(selectSQL, "ODCOMP = $(hrCompany)", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @CompCode_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) CompCode_Query (IN  CHAR(64)    profileHandle,
+				        CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count != "1")
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="80%">
+                  <col width="15%">
+              <tr><td><h1> $(page_title) </h1></td>
+                  %if (formatToPrint != "Y")
+                      <td class="toolbar">
+                          %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                              <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                          %endif
+                          %INCLUDE "XMLFormat.icl"
+                          %INCLUDE "FormatToPrint.icl"
+                          %INCLUDE "HelpPage.icl"
+                      </td>
+                  %endif
+              </tr>
+              @RetHrCompNam(profileHandle, dataBaseID, hrCompany, facilityZero, coFacName)
+              <tr><td><H2> $(coFacName)</H2></td></tr>
+          </table>
+          %INCLUDE "ConfMessageDisplay.icl"
+          $(hrTagAttr)
+
+          %if (formatToPrint != "Y")
+              <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+                  <table $(quickSearchTable)>
+	               <tr><th class="colhdr">Code Description</th></tr>
+                      <tr><td class="inputalph"><input type="text" name="srchDesc" size="26" maxlength="26">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                          </td>
+                          <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                      </tr>
+	           </table>
+                  <script TYPE="text/javascript">
+                      document.Search.srchDesc.focus();
+                  </script>
+              </form>
+
+              %INCLUDE "WildCardPage.icl"
+          %endif
+
+          <table $(contentTable)>
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("ODTYPE", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Type" title="Sequence By Code Type, Code"> Code Type</a></th>
+                  @OrderBy_Sort("CDTYDSU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TypeDesc" title="Sequence By Type Description, Code Description"> Type<br>Description</a></th>
+                  @OrderBy_Sort("ODCODE", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Code" title="Sequence By Code, Type Description"> Code</a></th>
+                  @OrderBy_Sort("ODDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Desc" title="Sequence By Code Description, Type Description">Code<br>Description</a></th>
+                  </tr>
+          %INCLUDE "NoRecordsFound.icl"
+      %endif
+	   %ROW{
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;hrCodeType=@dtw_rurlescseq(V_ODTYPE)&amp;hrCode=@dtw_rurlescseq(V_ODCODE)")
+              %if (sql_Record_Count == "1")
+                  @Save_WebReg(webRegCurFile, profileHandle, d2wName, "", orderBy, orderByDisplay, "")
+                  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)hrcodeselect.d2w/report$(maintainVar)">
+              %else
+
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      %if (lastType != $(V_ODTYPE))
+                          <td class="colcode">$(V_ODTYPE)</td>
+                          <td class="colalph">$(V_CDTYDS)</td>
+                          @DTW_ASSIGN(lastType, $(V_ODTYPE))
+                      %else
+                          <td class="colcode"> </td>
+                          <td class="colalph"> </td>
+                      %endif
+                      <td class="colalph">$(V_ODCODE)</td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)hrcodeselect.d2w/report$(maintainVar)" title="View Human Resources Code">$(V_ODDESC)</a></td>
+                  </tr>
+              %endif
+	   %}
+	   </table>
+      %if (sql_Record_Count != "1")
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+          $(hrTagAttr)
+          %INCLUDE "Copyright.icl"
+      %endif
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  @dtw_assign(uv_HRCompanyName, "ODCOMP")
+  %INCLUDE "userview.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, "SELECT ODCOMP, ODTYPE, ODCODE, ODDESC, CDTYDS, ODPGRD, ODLOWR, ODMIDR, ODHIGR, ODJEEO, ", stmtSQL)
+  @dtw_concat(stmtSQL, " upper(ODDESC) as ODDESCU,", stmtSQL)
+  @dtw_concat(stmtSQL, " upper(CDTYDS) as CDTYDSU", stmtSQL)
+
+  @dtw_concat(fileSQL, " PECODE inner join HRCDTY on ODTYPE=CDTYPE ", fileSQL)
+  @dtw_concat(selectSQL, "ODCOMP = $(hrCompany)", selectSQL)
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @CompCode_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) CompCode_XMLQuery (IN  CHAR(64) profileHandle,
+				        CHAR(2)   dataBaseID,
+                                       CHAR(32000) stmtSQL)
+  {CALL $(pgmLibrary)HSYSQL_W
+
+    %REPORT{
+        @XMLBeginTag("HrCodeList")
+            %ROW{
+
+                    @XMLIDTag(@DTW_rCONCAT(V_ODCOMP, @DTW_rCONCAT("/", @DTW_rCONCAT(V_ODTYPE, @DTW_rCONCAT("/", V_ODCODE)))), "HrCode ID")
+                       @XMLTag(V_ODCOMP, "HrCompany")
+                       @XMLTag(V_ODTYPE, "HrCodeType")
+                       @XMLTag(V_CDTYDS, "HrCodeTypeDescription")
+                       @XMLTag(V_ODCODE, "HrCode")
+                       @XMLTag(V_ODDESC, "HrCodeDescription")
+                       @XMLTag(V_ODJEEO, "JobEeoCategory")
+                       @XMLTag(V_ODPGRD, "PayGrade")
+                       @XMLTag(V_ODLOWR, "LowSalary")
+                       @XMLTag(V_ODMIDR, "MidSalary")
+                       @XMLTag(V_ODHIGR, "HighSalary")
+               @XMLEndTag("HrCode")
+            %}
+        @XMLEndTag("HrCodeList")
+    %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if (sec_05 == "N")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)progOptSecError.d2w/DISPLAY$(genericVarBase)&amp;page_title=@dtw_rurlescseq(page_title)">
+  %else
+      %INCLUDE "WebReg.icl"
+      %if (formatToPrint != "")
+          @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+      %else
+          %if (orderBy == "")
+              @DTW_ASSIGN(orderBy, "ODTYPE,ODCODE")
+              @DTW_ASSIGN(orderByDisplay, "Code Type, Code")
+              @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+          %endif
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %endif
+      %INCLUDE "SearchReturn.icl"
+  %endif
+%}
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit ()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Type")
+      %if (orderBy == "ODTYPE,ODCODE")
+          @DTW_ASSIGN(orderBy, "ODTYPE DESC,ODCODE")
+          @DTW_ASSIGN(orderByDisplay, "Code Type (descending), Code")
+      %else
+          @DTW_ASSIGN(orderBy, "ODTYPE,ODCODE")
+          @DTW_ASSIGN(orderByDisplay, "Code Type, Code")
+      %endif
+  %elseif (sequence == "TypeDesc")
+      %if (orderBy == "CDTYDSU,ODDESCU")
+          @DTW_ASSIGN(orderBy, "CDTYDSU DESC,ODDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Type Description (descending), Code Description")
+      %else
+          @DTW_ASSIGN(orderBy, "CDTYDSU,ODDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Type Description, Code Description")
+      %endif
+  %elseif (sequence == "Code")
+      %if (orderBy == "ODCODE,CDTYDSU")
+          @DTW_ASSIGN(orderBy, "ODCODE DESC,CDTYDSU")
+          @DTW_ASSIGN(orderByDisplay, "Code (descending), Type Description")
+      %else
+          @DTW_ASSIGN(orderBy, "ODCODE,CDTYDSU")
+          @DTW_ASSIGN(orderByDisplay, "Code, Type Description")
+      %endif
+  %elseif (sequence == "Desc")
+      %if (orderBy == "ODDESCU,CDTYDSU")
+          @DTW_ASSIGN(orderBy, "ODDESCU DESC,CDTYDSU")
+          @DTW_ASSIGN(orderByDisplay, "Code Description (descending), Type Description")
+      %else
+          @DTW_ASSIGN(orderBy, "ODDESCU,CDTYDSU")
+          @DTW_ASSIGN(orderByDisplay, "Code Description, Type Description")
+      %endif
+  %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "HRCODESEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      @RetHrCompNam(profileHandle, dataBaseID, hrCompany, facilityZero, coFacName)
+                      <H2> $(coFacName)</H2>
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Code Type</td>
+                              @dtw_assign(operNbr, "operType")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchType" type="text" size="1" maxlength="1"><a href="$(homeURL)$(cGIPath)HRCodeTypeSearch.d2w/ENTRY$(d2wVarBase)&amp;docName=Search&amp;fldName=srchType&amp;fldDesc=typeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="typeDesc" value="$(fldDesc)"  type="text" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Code</td>
+                              @dtw_assign(operNbr, "operCode")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCode" size="4 maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Code Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="20" maxlength="20"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchType.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD)  {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("ODTYPE", "Code Type", $(srchType), "U", operType, "A")
+  @Build_WildCard ("ODCODE", "Code", $(srchCode), "U", operCode, "A")
+  @Build_WildCard ("upper(ODDESC)", "Code Description", $(srchDesc), "U", operDesc, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+  %}

@@ -1,0 +1,301 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Basic Customer Maintenance                                  *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Customer Maintenance"
+  d2wName                 = "CustomerMaintainBasic.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromSel=@dtw_rurlescseq(fromSel)"
+  programName             = "HHDCUP"
+  sec_01                  = "N"
+  sec_02                  = "Y"
+  sec_03                  = "N"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %if (maintenanceCode == "A")
+      @dtw_assign(userPass, "Y")
+  %else
+      @CustomerUserView(profileHandle, dataBaseID, userPass, customerNumber, "Y")
+  %endif
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(chgForm) {
+                      if (document.Chg.customerNumber.value =="" ||
+                          document.Chg.customerName.value =="" ||
+                          document.Chg.addressLineOne.value =="" ||
+                          document.Chg.city.value ==""
+                          %if (V_HDFORN == "N")
+                              || document.Chg.state.value ==""
+                              || document.Chg.zip.value ==""
+                          %endif
+                          )
+                         {alert("$(reqFieldError)"); return false;}
+                      if (editNum(document.Chg.phoneNumber, 11, 0) &&
+                          editNum(document.Chg.faxNumber, 11, 0))
+                          return true;
+                  }
+	           %INCLUDE "numedit.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- Start Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                       @dtw_assign(pageID, "CUSTOMERMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          @dtw_concat(stmtSQL, "Select * From HDCUST Where CMCUST = $(customerNumber)", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+  %}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (fromSel == "Y")
+          @dtw_assign(backURL, "$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(d2wVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)")
+      %else
+          @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+          %if (backURL == "")
+              @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=2")
+          %endif
+      %endif
+      %INCLUDE "MaintainTop.icl"
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "customerName")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@cust", "customerNumber")          @dtw_assign(Err_CMCUST, fieldValue)
+                          @DecatErr_Field("@@cna1", "customerName")            @dtw_assign(Err_CMCNA1, fieldValue)
+                          @DecatErr_Field("@@cna2", "addressLineOne")          @dtw_assign(Err_CMCNA2, fieldValue)
+                          @DecatErr_Field("@@cna3", "addressLineTwo")          @dtw_assign(Err_CMCNA3, fieldValue)
+                          @DecatErr_Field("@@cna4", "addressLineThree")        @dtw_assign(Err_CMCNA4, fieldValue)
+                          @DecatErr_Field("@@ccty", "city")                    @dtw_assign(Err_CMCCTY, fieldValue)
+                          @DecatErr_Field("@@st@@", "state")                   @dtw_assign(Err_CMST,   fieldValue)
+                          @DecatErr_Field("@@zip@", "zip")                     @dtw_assign(Err_CMZIP,  fieldValue)
+                          @DecatErr_Field("@@ctry", "country")                 @dtw_assign(Err_CMCTRY, fieldValue)
+                          @DecatErr_Field("@@phon", "phoneNumber")             @dtw_assign(Err_CMPHON, fieldValue)
+                          @DecatErr_Field("@@fax@", "faxNumber")               @dtw_assign(Err_CMFAX,  fieldValue)
+                      %endif
+
+                      @Decat_Field("@@cna1")   @dtw_assign(V_CMCNA1, fieldValue)
+                      @Decat_Field("@@cna2")   @dtw_assign(V_CMCNA2, fieldValue)
+                      @Decat_Field("@@cna3")   @dtw_assign(V_CMCNA3, fieldValue)
+                      @Decat_Field("@@cna4")   @dtw_assign(V_CMCNA4, fieldValue)
+                      @Decat_Field("@@ccty")   @dtw_assign(V_CMCCTY, fieldValue)
+                      @Decat_Field("@@st@@")   @dtw_assign(V_CMST,   fieldValue)
+                      @Decat_Field("@@zip@")   @dtw_assign(V_CMZIP,  fieldValue)
+                      @Decat_Field("@@ctry")   @dtw_assign(V_CMCTRY, fieldValue)
+                      @Decat_Field("@@phon")   @dtw_assign(V_CMPHON, fieldValue)
+                      @Decat_Field("@@fax@")   @dtw_assign(V_CMFAX,  fieldValue)
+                      @dtw_assign(errFound, "")
+                  %else
+                      @dtw_assign(focusField, "customerName")
+                  %endif
+
+                  @SetTextOvr(Err_CMCUST)
+                  <tr><td class="dsphdr">Customer Number</td>
+                      <td class="inputnmbr"><input name="customerNumber" type="hidden" value="$(V_CMCUST)" size="7" maxlength="7">$(V_CMCUST)</td>
+                  </tr>
+                  @DspErrMsg(Err_CMCUST)
+
+                  @SetTextOvr(Err_CMCNA1)
+                  <tr><td class="dsphdr"><span $(textOvr)>Customer Name</span></td>
+                      <td class="inputalph"><input name="customerName" type="text" value="$(V_CMCNA1)" size="26" maxlength="26"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_CMCNA1)
+
+                  @SetTextOvr(Err_CMCNA2)
+                  <tr><td class="dsphdr"><span $(textOvr)>Address Line One</span></td>
+                      <td class="inputalph"><input name="addressLineOne" type="text" value="$(V_CMCNA2)" size="26" maxlength="26"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_CMCNA2)
+
+                  @SetTextOvr(Err_CMCNA3)
+                  <tr><td class="dsphdr"><span $(textOvr)>Address Line Two</span></td>
+                      <td class="inputalph"><input type="text" name="addressLineTwo" value="$(V_CMCNA3)" size="26" maxlength="26"></td>
+                  </tr>
+                  @DspErrMsg(Err_CMCNA3)
+	   			
+                  @SetTextOvr(Err_CMCNA4)
+                  <tr><td class="dsphdr"><span $(textOvr)>Address Line Three</span></td>
+                      <td class="inputalph"><input type="text" name="addressLineThree" value="$(V_CMCNA4)" size="19" maxlength="19"></td>
+                  </tr>
+                  @DspErrMsg(Err_CMCNA4)
+
+                  @SetTextOvr(Err_CMCCTY)
+                  <tr><td class="dsphdr"><span $(textOvr)>City</span></td>
+                      <td class="inputalph"><input type="text" name="city" value="$(V_CMCCTY)" size="26" maxlength="26"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_CMCCTY)
+
+                  %if (V_HDFORN == "N")
+                      @dtw_assign(stateZipReq,  "$(reqFieldChar)")
+                  %else
+                      @dtw_assign(stateZipReq,  "")
+                  %endif
+                  @RtvFldDesc("STID='$(V_CMST)'", "HDSTID", "STDESC", fieldDesc)
+                  @SetTextOvr(Err_CMST)
+                  <tr><td class="dsphdr"><span $(textOvr)>State</span></td>
+                      <td class="inputalph"><input name="state" type="text" value="$(V_CMST)" size="3" maxlength="2"><a href="$(homeURL)$(phpPath)StateSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=state&amp;fldDesc=stateDesc" onclick="$(searchWinVar)"> $(stateZipReq) $(searchImage) </a><input name="stateDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_CMST)
+
+                  @SetTextOvr(Err_CMZIP)
+                  <tr><td class="dsphdr"><span $(textOvr)>Zip</span></td>
+                      <td class="inputalph"><input type="text" name="zip" value="$(V_CMZIP)" size="13" maxlength="13"> $(stateZipReq)</td>
+                  </tr>
+                  @DspErrMsg(Err_CMZIP)
+
+                  @RtvFldDesc("CNCTCD='$(V_CMCTRY)'", "HDCTRY", "CNCDES", fieldDesc)
+                  @SetTextOvr(Err_CMCTRY)
+                  <tr><td class="dsphdr"><span $(textOvr)>Country</span></td>
+                      <td class="inputalph"><input name="country" type="text" value="$(V_CMCTRY)" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)CountrySearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=country&amp;fldDesc=countryDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="countryDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_CMCTRY)
+
+                  @SetTextOvr(Err_CMPHON)
+                  <tr><td class="dsphdr"><span $(textOvr)>Phone Number</span></td>
+                      <td class="inputnmbr"><input type="text" name="phoneNumber" value="$(V_CMPHON)" size="11" maxlength="11"></td>
+                  </tr>
+                  @DspErrMsg(Err_CMPHON)
+
+                  @SetTextOvr(Err_CMFAX)
+                  <tr><td class="dsphdr"><span $(textOvr)>Fax Number</span></td>
+                      <td class="inputnmbr"><input type="text" name="faxNumber" value="$(V_CMFAX)" size="11" maxlength="11"></td> 		
+                  </tr>
+                  @DspErrMsg(Err_CMFAX)
+              %}
+          </table>
+	
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar,
+                                        INOUT CHAR(32000) wrnVar)
+{%EXEC {HHDCUP_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, pos_01, pos_02, pos_03, pos_04, pos_05, pos_06, pos_07, pos_08, pos_09, pos_10, pos_11, pos_12, pos_13, pos_14, pos_15)
+  %if (pos_05 == "N")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(state)
+  @dtw_mUPPERCASE(zip)
+  @dtw_mUPPERCASE(country)
+  @dtw_assign(phoneNumber,@dtw_rstrip(phoneNumber))
+  @dtw_assign(faxNumber,@dtw_rstrip(faxNumber))
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@cust", customerNumber)
+  @Concat_Field("@@cna1", customerName)
+  @Concat_Field("@@cna2", addressLineOne)
+  @Concat_Field("@@cna3", addressLineTwo)
+  @Concat_Field("@@cna4", addressLineThree)
+  @Concat_Field("@@ccty", city)
+  @Concat_Field("@@st@@", state)
+  @Concat_Field("@@zip@", zip)
+  @Concat_Field("@@ctry", country)
+  @Concat_Field("@@phon", phoneNumber)
+  @Concat_Field("@@fax@", faxNumber)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar, wrnVar)
+
+  %if (errFound == "")
+      @Format_ConfMsg_Desc(maintenanceCode, $(customerName), $(customerNumber), "", "", "", "", confMessage)
+      %if (fromSel == "Y")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(d2wVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+          %if (backURL == "")
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=2&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %endif
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

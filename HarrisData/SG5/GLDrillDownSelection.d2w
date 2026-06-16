@@ -1,0 +1,274 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: G/L Drill Down Selection                                    *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+
+%Define {
+  page_title              = "G/L Drill Down Selection"
+  d2wName                 = "GLDrillDownSelection.d2w"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  DTW_PAD_PGM_PARMS       = "YES"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  DDGRPS                  = ""
+  DDCOFC                  = ""
+  DDFCFF                  = ""
+  DDMBDG                  = ""
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "headcmt.icl"
+      </head>
+
+      <body $(bodyTagAttr) onLoad="window.focus()" onBlur="window.close()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(inquiryBanner)"
+          <!-- End Of Banner Code -->
+
+          <table $(contentTable)>
+              <tr>
+                  <td>
+                      @dtw_assign(SAVE_ROW_NUM, START_ROW_NUM)
+                      @dtw_assign(SAVE_MAX_ROWS, RPT_MAX_ROWS)
+                      @dtw_assign(START_ROW_NUM, "1")
+                      @dtw_assign(RPT_MAX_ROWS, "9999")
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, "SELECT *  ", stmtSQL)
+                      @dtw_concat(fileSQL, " GLDDRP ", fileSQL)
+                      @dtw_concat(selectSQL, " DDGRSN='$(ddReport)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " order by DDGRSN ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @dtw_concat(ddReport, "               ", drillDownReport)
+                      @Selection_Query(profileHandle, dataBaseID, stmtSQL)
+                      @dtw_assign(START_ROW_NUM, SAVE_ROW_NUM)
+                      @dtw_assign(RPT_MAX_ROWS, SAVE_MAX_ROWS)
+                  </td>
+
+                  %if (DDGRPS != "0" && DDCOFC == "0" && DDFCFF == "0")
+                      <td valign="top">
+                          @dtw_assign(SAVE_ROW_NUM, START_ROW_NUM)
+                          @dtw_assign(SAVE_MAX_ROWS, RPT_MAX_ROWS)
+                          @dtw_assign(START_ROW_NUM, "1")
+                          @dtw_assign(RPT_MAX_ROWS, "9999")
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                          @dtw_concat(fileSQL, " GLDDSC ", fileSQL)
+                          @dtw_concat(selectSQL, " DIGRSN='$(ddReport)' ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " order by DIGRSN,DICO,DIFAC  ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @CoFac_Query(profileHandle, dataBaseID, stmtSQL)
+                          @dtw_assign(START_ROW_NUM, SAVE_ROW_NUM)
+                          @dtw_assign(RPT_MAX_ROWS, SAVE_MAX_ROWS)
+                      </td>
+                  %endif
+
+                  %if (DDMBDG == "Y")
+                      <td valign="top">
+                          @dtw_assign(SAVE_ROW_NUM, START_ROW_NUM)
+                          @dtw_assign(SAVE_MAX_ROWS, RPT_MAX_ROWS)
+                          @dtw_assign(START_ROW_NUM, "1")
+                          @dtw_assign(RPT_MAX_ROWS, "9999")
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                          @dtw_concat(fileSQL, " GLDDBD ", fileSQL)
+                          @dtw_concat(selectSQL, " DBGRSN='$(ddReport)' ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " order by DBGRSN,DBGRC# ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @Budget_Query(profileHandle, dataBaseID, stmtSQL)
+                          @dtw_assign(START_ROW_NUM, SAVE_ROW_NUM)
+                          @dtw_assign(RPT_MAX_ROWS, SAVE_MAX_ROWS)
+                      </td>
+                  %endif
+              </tr>
+          </table>
+
+          $(inquiryhrTagAttr)
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(inquiryTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Selection_Query (IN  CHAR(64) profileHandle,
+                                        CHAR(2)   dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count == "0")
+          @DTW_EXIT()
+      %endif
+
+      <h2>Selection:</h2>
+      %INCLUDE "CloseWindow.icl"
+
+      <table $(contentTable)>
+          %ROW{
+              @dtw_assign(DDGRPS, V_DDGRPS)
+              @dtw_assign(DDCOFC, V_DDCOFC)
+              @dtw_assign(DDFCFF, V_DDFCFF)
+              @dtw_assign(DDMBDG, V_DDMBDG)
+              @PeriodFromCYP(V_DDPERD)
+              @Format_Date(V_DDCNSD, "H", F_DDCNSD)
+              @RtvFldDesc("FLTYPE='RWOUTPUT' and FLVALU='$(V_DDOOPT)'", "SYFLAG", "FLDESC", optDesc)
+              @Format_Code(V_DDOOPT, F_DDOOPT)
+
+              <tr><td class="dsphdr">Selection Name</td>
+                  <td class="dspalph">$(V_DDGRSN)</td></tr>
+              <tr><td class="dsphdr">Description</td>
+                  <td class="dspalph">$(V_DDGRSD)</td></tr>
+              <tr><td class="dsphdr">Report</td>
+                  <td class="dspalph">$(V_DDGRRN)</td></tr>
+              <tr><td class="dsphdr">Co/Fac Report Selection</td>
+                  <td class="dspalph">$(V_DDGRPS)</td></tr>
+              <tr><td class="dsphdr">Co/Fac Consolidation</td>
+                  <td class="dspalph">$(V_DDCFCN)</td></tr>
+              <tr><td class="dsphdr">Account Consolidation</td>
+                  <td class="dspalph">$(V_DDACCN)</td></tr>
+              <tr><td class="dsphdr">Consolidation Date</td>
+                  <td class="dspdate">$(F_DDCNSD)</td></tr>
+              <tr><td class="dsphdr">Include Unposted Journals</td>
+                  <td class="dspalph">$(V_DDUNPS)</td></tr>
+              <tr><td class="dsphdr">Include EOY Adjustments</td>
+                  <td class="dspalph">$(V_DDEOYA)</td></tr>
+              <tr><td class="dsphdr">Specific Period</td>
+                  <td class="dspalph">$(V_DDPERD)</td></tr>
+              <tr><td class="dsphdr">Round To</td>
+                  <td class="dspalph">$(V_DDTHOU)</td></tr>
+              <tr><td class="dsphdr">Normal Account Balances</td>
+                  <td class="dspalph">$(V_DDNAB)</td></tr>
+              <tr><td class="dsphdr">Print Row With No Value</td>
+                  <td class="dspalph">$(V_DDPNOV)</td></tr>
+              <tr><td class="dsphdr">Override Budget Plans</td>
+                  <td class="dspalph">$(V_DDMBDG)</td></tr>
+              <tr><td class="dsphdr">Output Option</td>
+                  <td class="dspalph">$(optDesc) $(F_DDOOPT)</td></tr>
+              <tr><td class="dsphdr">Selection Category</td>
+                  <td class="dspalph">$(V_DDGHCT)</td></tr>
+              <tr><td class="dsphdr">User ID</td>
+                  <td class="dspalph">$(V_DDGHUS)</td></tr>
+              %if (V_DDCOFC != "0" || V_DDCOTC != "0")
+                  <tr><td class="dsphdr">Company Range</td>
+                      <td class="dspalph">$(V_DDCOFC) to $(V_DDCOTC)</td></tr>
+              %endif
+              %if (V_DDFCFF != "0" || V_DDFCTF != "0")
+                  <tr><td class="dsphdr">Facility Range</td>
+                      <td class="dspalph">$(V_DDFCFF) to $(V_DDFCTF)</td></tr>
+              %endif
+          %}
+      </table>
+  %}
+%}
+
+%FUNCTION(dtw_sql) CoFac_Query (IN  CHAR(64) profileHandle,
+                                    CHAR(2)   dataBaseID,
+                                    CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count == "0")
+          @DTW_EXIT()
+      %endif
+
+      %if (DDGRPS == "1")
+          <h2>Companies Selected:</h2>
+      %elif (DDGRPS == "2")
+          <h2>Facilities Selected:</h2>
+      %elif (DDGRPS == "3")
+          <h2>Company/Facilities Selected:</h2>
+      %endif
+
+      <table $(contentTable)>
+          %if (DDGRPS == "1")
+              <tr><th class="colhdr">Company</th>
+                  <th class="colhdr">Name</th>
+              </tr>
+          %elif (DDGRPS == "2")
+              <tr><th class="colhdr">Facility</th>
+              </tr>
+          %elif (DDGRPS == "3")
+              <tr><th class="colhdr">Co/Fac</th>
+                  <th class="colhdr">Name</th>
+              </tr>
+          %endif
+
+          %ROW{
+              %if (DDGRPS == "1")
+                  @dtw_assign(coName, "")
+                  @RtvFldDesc("COCO=$(V_DICO)", "HDCOMP", "CONAME", coName)
+                  <tr><td class="colnmbr">$(V_DICO) </td>
+                      <td class="colalph">$(coName)</td>
+                  </tr>
+              %elif (DDGRPS == "2")
+                  <tr><td class="colnmbr">$(V_DIFAC)</td>
+                  </tr>
+              %elif (DDGRPS == "3")
+                  @dtw_assign(V_CFCFNM, "")
+                  @RtvFldDesc("CFCO#=$(V_DICO) and CFFAC#=$(V_DIFAC)", "HDCFAC", "CFCFNM", V_CFCFNM)
+                  @Format_CoFac("$(V_DICO)", "$(V_DIFAC)", "", F_CoFac)
+                  <tr><td class="colnmbr">$(F_CoFac)</td>
+                      <td class="colalph">$(V_CFCFNM)</td>
+                  </tr>
+              %endif
+          %}
+      </table>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Budget_Query (IN  CHAR(64) profileHandle,
+                                     CHAR(2)   dataBaseID,
+                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count == "0")
+          @DTW_EXIT()
+      %endif
+
+      <h2>Budgets Selected:</h2>
+
+      <table $(contentTable)>
+          <tr><th class="colhdr">Column</th>
+              <th class="colhdr">Budget<br>Plan</th>
+              <th class="colhdr">Description</th>
+          </tr>
+
+          %ROW{
+              @dtw_assign(planDescr, "")
+              %if (V_DBNMBR != "0")
+                  @RtvFldDesc("BGNMBR=$(V_DBNMBR)", "GLBGHD", "BGDESC", planDescr)
+              %endif
+              <tr><td class="colnmbr">$(V_DBGRC#) </td>
+                  <td class="colnmbr">$(V_DBNMBR)</td>
+                  <td class="colalph">$(planDescr)</td>
+              </tr>
+          %}
+      </table>
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}

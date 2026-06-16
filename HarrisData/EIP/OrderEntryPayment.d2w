@@ -1,0 +1,462 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Order Entry Payment                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OEControl$(dataBaseID).icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Payment"
+  d2wName                 = "OrderEntryPayment.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)"
+  nextPrevVar             = "$(d2wVarBase)"
+  ccVar                   = "$(homeURL)$(cGIPath)$(d2wName)/PAY&amp;baseVar=@dtw_rurlescseq(baseVar)&amp;portal=@dtw_rurlescseq(portal)&amp;eID=@dtw_rurlescseq(eID)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;check=@dtw_rurlescseq(check)&amp;memo=@dtw_rurlescseq(memo)"
+  c3Var                   = "&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;check=@dtw_rurlescseq(check)&amp;memo=@dtw_rurlescseq(memo)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "99999"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "10"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  tabID                   = "PAYMENT"
+  paySelect               = ""
+  dspCC                   = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          @RtvFldDesc("", "OEPYMT", "char(count(*))", sql_Record_Count)
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "OrderEntryProgOpt.icl"
+              %INCLUDE "OrderEntryConfirm.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              function confirmVariance(text)    {return confirm("Confirm Apply Variance Amount To:" + "\n" + "\n" + text);}
+              function validate(chgForm) {
+                  if (chgForm.payType.options[chgForm.payType.selectedIndex].value == " ")
+                     {alert("Payment Type must be selected"); return false;}
+                  if (editZero(document.Chg.amount, 9, 2)
+                     )
+                     return true;
+              }
+              %INCLUDE "NumZero.icl"
+
+              function CheckCC(object) {
+              var chr = object.payType.options[object.payType.selectedIndex].value.substring(0,4);
+              if (chr == "HTTP") {
+                window.location.href = object.payType.options[object.payType.selectedIndex].value;
+              }
+            }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ORDERENTRYPAYMENT")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(dspCC, "")
+                      %if (creditCardAllowed == "Y" && (V_CECCP == "D" || V_CECCP == "Y"))
+                          @dtw_assign(dspCC, "Y")
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Update OEPAYW Set WPDESC=coalesce((Select OECCDS From OECCTM Where OECCTP=WPCCTP),' ') ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where WPOCTL=$(orderControlNumber) and WPCCID<>' '  @@endsql", stmtSQL)
+                          @SQL_Update(stmtSQL, status)
+                      %endif
+
+      			 @dtw_assign(paySelect, "<select name=""payType"" onChange=""CheckCC(document.Chg);"">")
+      			 @dtw_concat(paySelect, "<option value="" "">", paySelect)
+				 
+				 @dtw_assign(ccOnly, "")
+				 %if (dspCC == "Y")
+                     @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "H1BLTO", billTo)
+                     %while(@dtw_rlength(billTo) != "7") {@dtw_insert("0", billTo, billTo)%}
+                     %INCLUDE "stmtSQLClear.icl"
+                     @dtw_concat(stmtSQL, " Select 'MFUKEY'||MFUKEY as OMPC,OECCDS||' ('||right(trim(MFCARD),4)||')' as OMPD ", stmtSQL)
+                     %if (V_HDCCRL == "00030")
+	                     @dtw_concat(fileSQL, " C3/C3FP0050 inner join C3/C3FP9020 on CCXAMF=MFUKEY and CCXCID='$(dataBaseID)$(billTo)' inner join OECCTM on OECCTP=MFRVNA ", fileSQL)
+                     %else
+	                     @dtw_concat(fileSQL, " CCFP0050 inner join CCFP9020 on CCXAMF=MFUKEY and CCXCID='$(billTo)' inner join OECCTM on OECCTP=MFRVNA ", fileSQL)
+                     %endif
+			         %INCLUDE "stmtSQLSelect.icl"
+                     @dtw_concat(stmtSQL, " Order By OMPD", stmtSQL)
+                     %INCLUDE "stmtSQLEnd.icl"
+                     @Build_Payment_Select(profileHandle, dataBaseID, stmtSQL)
+                     @dtw_concat(paySelect, "<option value=""CC"">Credit Card", paySelect)
+					 @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "H1CTRM", termsCode)
+					 %if (termsCode == creditCardTerms)
+						@dtw_assign(ccOnly, "Y")
+					 %endif
+				 %endif
+				 
+				 %if (ccOnly != "Y")
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select OMPC,OMPD ", stmtSQL)
+                      @dtw_concat(fileSQL, " OEPYMT ", fileSQL)
+                      @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "H1ORTY", orderType)
+                      %if (orderType != "I" && orderType != "C")
+                          @dtw_concat(selectSQL, "OMPC='1' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By OMPD", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Build_Payment_Select(profileHandle, dataBaseID, stmtSQL)
+      			 @dtw_concat(paySelect, "</select>", paySelect)
+			      %endif
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " OEPAYW", fileSQL)
+                      @dtw_concat(selectSQL, "WPOCTL=$(orderControlNumber)", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By WPPSEQ ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Order_Entry_Payment(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Order_Entry_Payment (IN CHAR(64)    profileHandle,
+				            CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{ 
+  		  %INCLUDE "OrderEntryTabs.icl"
+
+      @RtvFldDesc("WPOCTL=$(orderControlNumber)", "OEPAYW", "char(sum(WPPAYA))", paymentTotal)
+      %if (paymentTotal == "")
+          @dtw_assign(paymentTotal, "0")
+      %endif
+      @dtw_subtract(orderTotal, paymentTotal, variance)
+      %if (dspCC == "Y")
+          @RtvFldDesc("XPEXPT='OE.CC.REQSET'", "SYUXPM", "XPUXPG", ccExitPgm)
+          @dtw_assign(passOrder, "")
+          %if (ccExitPgm == "")
+              @dtw_assign(passOrder, "&amp;mfordr=$(H1ORD#)")
+          %endif
+      %endif
+
+      <table $(contentTable)>
+	     <colgroup>
+	         <col width="15%">
+	         <col width="15%">
+	         <col width="65%">
+          <tr><td class="dsphdr">Order Total</td>
+   	       <td class="colnmbr">$(orderTotal)</td>
+   	       <td class="colnmbr">&nbsp;</td>
+          </tr>
+          <tr><td class="dsphdr">Payment Total</td>
+   	       <td class="colnmbr">$(paymentTotal)</td>
+   	       <td class="colnmbr">&nbsp;</td>
+          </tr>
+          <tr><td class="dsphdr">Variance</td>
+   	       <td class="coltotal">$(variance)</td>
+   	       <td class="colnmbr">&nbsp;</td>
+          </tr>
+          %if (errFound=="Y")
+              <tr>
+                  @ErrVarErr(profileHandle, typeError, errVar)
+                  @DecatErr_Field("@@otot", "orderTotal")
+                  <td class="error" colspan="4">$(fieldValue)</td>
+              </tr>
+          %endif
+      </table>
+
+      %if (approvalText != "")
+          @dtw_assign(errDesc, "")
+          %if (MFRTXT != "")
+              @dtw_assign(errDesc, "Response Code is '$(MFRTXT)'")
+          %endif
+
+          %if (MFRTXT == "H" || MFRTXT == "X")
+              @dtw_concat(errDesc, " - Invalid Card Number", errDesc)
+          %elif (MFRTXT == "I")
+              @dtw_concat(errDesc, " - Invalid Security Code", errDesc)
+          %elif (MFRTXT == "J")
+              @dtw_concat(errDesc, " - Invalid Expiration Date", errDesc)
+          %endif
+
+          %if (rmvArchive == "Y")
+              @dtw_concat(errDesc, " <br> Archived card has been deleted and must be re-added.", errDesc)
+          %endif
+
+          %if (approvalText == "APPROVED")
+              <div class="error">*** Credit Card Approved</div>
+          %elif (approvalText == "DECLINED")
+              <div class="error">*** Credit Card Declined.  $(errDesc)</div>
+          %elif (approvalText == "ERROR" && (MFRTXT == "CCENDED" || MFRTXT == "9"))
+              <div class="error">*** Credit Card Software is not started</div>
+          %elif (approvalText == "ERROR")
+              <div class="error">*** Error processing credit card. $(errDesc)'.</div>
+          %endif
+      %elif (creditCardReq == "Y")
+          @RtvFldDesc("WPOCTL=$(orderControlNumber)", "OEPAYW", "char(count(WPCCID))", ccCnt)
+          %if (ccCnt == "0")
+              <div class="error">*** Credit Card payment required to complete the order</div>
+          %endif
+      %endif
+
+      <form class="formClass" METHOD=POST name="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;order=$(H1ORD#)&amp;cust=$(H1BLTO)$(passOrder)&amp;mfrefr=$(refNumber)&amp;creditCardReq=$(creditCardReq)">
+          <table $(contentTable)>
+              <tr><th class="colhdr">$(optionHeading)</th>
+                  <th class="colhdr">Payment Type</th>
+                  <th class="colhdr">Amount</th>
+                  <th class="colhdr">Document</th>
+                  <th class="colhdr">Memo</th>
+              </tr>
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colicon">Add:</td>
+                  <td class="inputalph">$(paySelect)</td>		
+                  <td class="inputnmbr"><input type="text" name="amount" value="$(variance)" size="10" maxlength="15"></td>		
+                  <td class="inputalph"><input type="text" name="check" size="15" maxlength="15"></td>		
+                  <td class="inputalph"><input type="text" name="memo" size="15" maxlength="15"></td>		
+                  <td><a href="javascript:check(document.Chg)">&nbsp;$(acceptImageLrg)</a></td>		
+              </tr>
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Confirm_Desc("Payment Type", $(V_WPDESC), "Amount", $(V_WPPAYA), "", "", confirmDesc)
+              <tr class="$(rowClass)">
+                  <td class="opticon">
+                      <a href="$(homeURL)$(cGIPath)OrderEntryPaymentMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;paySeq=@dtw_rurlescseq(V_WPPSEQ)&amp;payDesc=@dtw_rurlescseq(V_WPDESC)&amp;ccType=@dtw_rurlescseq(V_WPCCTP)&amp;fpayType=@dtw_rurlescseq(V_WPPAYT)&amp;fAmount=@dtw_rurlescseq(V_WPPAYA)&amp;fCheck=@dtw_rurlescseq(V_WPCHK)&amp;fMemo=@dtw_rurlescseq(V_WPMEMO)" onclick="$(smallPromptWinVar)">$(changeImageSml)</a>
+                      %if (V_WPCCTP != "")
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;paySeq=@dtw_rurlescseq(V_WPPSEQ)&amp;maintenanceCode=D&amp;rmcc=Y">$(deleteImageSml)</a>
+                      %else
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;paySeq=@dtw_rurlescseq(V_WPPSEQ)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                      %endif
+                      %if (variance != "0")
+                         @Format_Confirm_Desc("Payment Type", $(V_WPDESC), "Amount", $(V_WPPAYA), "", "", varDesc)
+                         <a onClick="return confirmVariance('$(varDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/APPLYVAR$(d2wVarBase)&amp;paySeq=@dtw_rurlescseq(V_WPPSEQ)&amp;variance=@dtw_rurlescseq(variance)">$(applyVarianceImage)</a>
+                      %endif
+
+                  </td>
+		          %if (V_WPDESC == "" && V_WPCCID != "")
+                      <td class="error">Credit Card Type ($(V_WPCCTP)) <br>must be established to accept the order</td>
+                  %else
+                      <td class="colalph">$(V_WPDESC)</td>	
+                  %endif
+                  <td class="colnmbr">$(V_WPPAYA)</td>		
+                  <td class="colalph">$(V_WPCHK)</td>		
+                  <td class="colalph">$(V_WPMEMO)</td>		
+                  <td class="colicon"><input type="hidden" name="payCode$(ROW_NUM)" value="$(V_WPPAYT)"></td>
+              </tr>
+          %}
+      </table>
+      </form>
+      %INCLUDE "EndTabs.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_sql) Build_Payment_Select (IN CHAR(64)    profileHandle,
+				             CHAR(2)     dataBaseID,
+                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %ROW {
+          @dtw_concat(paySelect, "<option value=""$(V_OMPC)"">$(V_OMPD)", paySelect)
+      %}
+  %}
+%}
+
+%FUNCTION(DTW_directcall) Update_Payment (IN CHAR(32000) edtVar)
+
+{%EXEC {HOEUCC_W.PGM %}
+%}
+
+%FUNCTION(DTW_directcall) Update_Payment_C3 (IN CHAR(32000) edtVar)
+
+{%EXEC {HOEUC3_W.PGM %}
+%}
+
+%FUNCTION(DTW_directcall) Get_Merchant_Code (INOUT DEC(8,0) orderControlNumber,
+                                             INOUT CHAR(5)  merchantCode)
+
+{%EXEC {HOEGMC_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(updateTotal, "T")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_substr(payType,"1","6",MFUKEY)
+  %if (payType == "CC")
+      %if (order > "0")
+          @Get_Merchant_Code(orderControlNumber, merchantCode)
+          @dtw_assign(mftype, "")
+          %if (amount < "0")
+              @dtw_multiply(amount, "-1", amount)
+              @dtw_assign(mftype, "&amp;mftype=RC&amp;mftyp2=PA") 
+          %endif
+		  %if (V_HDCCRL == "00030")
+              <meta http-equiv="refresh" content="0; URL=$(homeURL)$(phpPath)C3Payment.php$(altVarBase)&amp;MFAMT1=$(amount)$(mftype)&amp;MFMRCH=$(merchantCode)&amp;MPCUST=$(dataBaseID)$(cust)&amp;MFORDR=$(mfordr)&amp;MFREFR=$(mfrefr)$(c3Var)&amp;mode=redirect">
+          %else
+              <meta http-equiv="refresh" content="0; URL=$(creditcardURL)/curbstone/vt/vtrelay.php?amount=$(amount)$(mftype)&amp;mfmrch=$(merchantCode)&amp;cust=$(cust)&amp;mfordr=$(mfordr)&amp;mfrefr=$(mfrefr)&amp;target=$(ccVar)">
+          %endif
+      %else
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/ASSIGNORDER$(d2wVarBase)&amp;amount=$(amount)&amp;check=@dtw_rurlescseq(check)&amp;memo=@dtw_rurlescseq(memo)&amp;cust=$(cust)&amp;mfordr=$(mfordr)&amp;mfrefr=$(mfrefr)&amp;creditCardReq=$(creditCardReq)">
+      %endif
+  %elseif (MFUKEY== "MFUKEY")
+      %if (order<= "0")
+          @DTW_ASSIGN(updateTotal, "C")
+          @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+          @Assign_OrderNumber(orderControlNumber, order)
+      %endif
+	  @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "H1BLTO", billTo)
+      %while(@dtw_rlength(billTo) != "7") {@dtw_insert("0", billTo, billTo)%}
+
+      @dtw_substr(payType,"7",MFUKEY)
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@rmcc", "R")
+      @Concat_Field("@@octl", orderControlNumber)
+      @Concat_Field("@@mkey", MFUKEY)
+      @Concat_Field("@@dbid", dataBaseID)
+      @Concat_Field("@@cust", billTo)
+      @Concat_Field("@@user", userProfile)
+      @Concat_Field("@@amnt", amount)
+      @Concat_Field("@@ord#", order)
+      @Concat_Field("@@chck", check)
+      @Concat_Field("@@memo", memo)
+      @dtw_concat(edtVar, "}{", edtVar)
+      %if (V_HDCCRL == "00030")
+	      @Update_Credit_Card_C3(edtVar)
+      %else
+	      @Update_Credit_Card(edtVar)
+      %endif
+      @Decat_Field("@@appr") @dtw_assign(approvalText, fieldValue)
+      @Decat_Field("@@rtxt") @dtw_assign(MFRTXT, fieldValue)
+      @Decat_Field("@@rmva") @dtw_assign(rmvArchive, fieldValue)
+  	  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;approvalText=@dtw_rurlescseq(approvalText)&amp;rmvArchive=@dtw_rurlescseq(rmvArchive)&amp;MFRTXT=@dtw_rurlescseq(MFRTXT)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %else
+      %if (maintenanceCode == "D" && rmcc == "Y")
+          @dtw_assign(edtVar, "")
+          @Concat_Field("@@octl", orderControlNumber)
+          @Concat_Field("@@pseq", paySeq)
+          @Concat_Field("@@rmcc", rmcc)
+          @dtw_concat(edtVar, "}{", edtVar)
+	      %if (V_HDCCRL == "00030")
+		    @Update_Credit_Card_C3(edtVar)
+	      %else
+		    @Update_Credit_Card(edtVar)
+	      %endif
+      %endif
+
+      %INCLUDE "stmtSQLClear.icl"
+      %if (maintenanceCode == "D" || maintenanceCode == "C")
+          @dtw_concat(stmtSQL, "Delete From OEPAYW Where WPOCTL=$(orderControlNumber) and WPPSEQ=$(paySeq)  @@endsql", stmtSQL)
+      %else
+          @RtvFldDesc("OMPC='$(payType)'", "OEPYMT", "OMPD", payDesc)
+          @dtw_concat(stmtSQL, " Insert Into OEPAYW (WPOCTL,WPPSEQ,WPPAYT,WPDESC,WPPAYA,WPCHK,WPMEMO,WPCCTP,WPCCID) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Values ($(orderControlNumber),(Select ifnull(max(WPPSEQ),0)+1 From OEPAYW Where WPOCTL=$(orderControlNumber)), '$(payType)','$(payDesc)',$(amount),upper('$(check)'),upper('$(memo)'),' ',' ') @@endsql", stmtSQL)
+      %endif
+      @SQL_Update(stmtSQL, status)
+
+      %if (errFound == "")
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+      %else
+          @EdtVarErr(profileHandle, typeValue, edtVar)
+          @ErrVarErr(profileHandle, typeError, errVar)
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+      %endif
+  %endif
+%}
+
+%HTML(ASSIGNORDER) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(updateTotal, "C")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  @Assign_OrderNumber(orderControlNumber, newOrder)
+  @Get_Merchant_Code(orderControlNumber, merchantCode) 
+
+  @RtvFldDesc("XPEXPT='OE.CC.REQSET'", "SYUXPM", "XPUXPG", ccExitPgm)
+  @dtw_assign(passOrder, "")
+  %if (ccExitPgm == "")
+      @dtw_assign(passOrder, "&amp;MFORDR=$(newOrder)")
+  %endif
+
+  @dtw_assign(mftype, "")
+  %if (amount < "0")
+      @dtw_multiply(amount, "-1", amount)
+      @dtw_assign(mftype, "&amp;mftype=RC&amp;mftyp2=PA") 
+  %endif
+  %if (V_HDCCRL == "00030")
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)/C3Payment.php$(altVarBase)&amp;MFAMT1=$(amount)$(mftype)$(passOrder)&amp;MFMRCH=$(merchantCode)&amp;MPCUST=$(dataBaseID)$(cust)&amp;MFREFR=$(mfrefr)$(c3Var)&amp;mode=redirect">
+  %else
+      <meta http-equiv="refresh" content="1; URL=$(creditcardURL)/curbstone/vt/vtrelay.php?amount=$(amount)$(mftype)&amp;mfmrch=$(merchantCode)&amp;cust=$(cust)$(passOrder)&amp;mfrefr=$(mfrefr)&amp;target=$(ccVar)">
+  %endif
+%}
+
+%HTML(PAY) {
+  %INCLUDE "setLibraryList.icl"
+  @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "H1BLTO", billTo)
+  %while(@dtw_rlength(billTo) != "7") {@dtw_insert("0", billTo, billTo)%}
+  %if (MFRTRN == "UN" || MFRTRN == "UL")
+  	  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;approvalText=ERROR&amp;MFATAL=@dtw_rurlescseq(MFATAL)&amp;MFRTXT=@dtw_rurlescseq(MFRTXT)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %else
+	  @dtw_assign(edtVar, "")
+	  @Concat_Field("@@octl", orderControlNumber)
+	  @Concat_Field("@@mkey", MFUKEY)
+      @Concat_Field("@@dbid", dataBaseID)
+	  @Concat_Field("@@cust", billTo)
+	  @Concat_Field("@@user", userProfile)
+	  @Concat_Field("@@chck", check)
+	  @Concat_Field("@@memo", memo)
+	  @dtw_concat(edtVar, "}{", edtVar)
+	  %if (V_HDCCRL == "00030")
+		  @Update_Payment_C3(edtVar)
+	  %else
+		  @Update_Payment(edtVar)
+	  %endif
+	  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;MFUKEY=@dtw_rurlescseq(MFUKEY)&amp;approvalText=APPROVED&amp;MFRTXT=@dtw_rurlescseq(MFRTXT)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+
+%HTML(APPLYVAR) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_concat(stmtSQL, " Update OEPAYW Set WPPAYA=WPPAYA+$(variance) Where WPOCTL=$(orderControlNumber) and WPPSEQ=$(paySeq)   @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;approvalText=@dtw_rurlescseq(approvalText)&amp;MFRTXT=@dtw_rurlescseq(MFRTXT)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+%}

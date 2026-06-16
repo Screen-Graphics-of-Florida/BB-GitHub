@@ -1,0 +1,508 @@
+%{
+*********************************************************************
+* Copr 1979 2002 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job:  Employees On Leave                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {	
+  page_title 	        = "Employees On Leave"
+  d2wName              = "EmployeesOnLeave.d2w"
+  d2wVarBase           = "$(genericVarBase)&amp;inclActive=@dtw_rurlescseq(inclActive)&amp;inclTerminated=@dtw_rurlescseq(inclTerminated)&amp;backHome=@dtw_rurlescseq(backHome)"
+  nextPrevVar          = "$(d2wVarBase)"
+  wildDftVar           = "REPORT$(d2wVarBase)"
+  programName          = "HPEEOL"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  facilityZero         = "0000"
+  inclActive           = ""
+  inclTerminated       = ""
+  rowIndexNext		= "1"
+  totalPages		= "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              function validate(searchForm) {
+                  if (editdate(document.Search.srchLeaveDate))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                       @dtw_assign(pageID, "EMPLONLEAVE")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "UserViewEmpl.icl"
+                      %INCLUDE "UserView.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select EMCOMP, EMFACL, EMEMPL, EMPECP, EMPEMP, EMLNAM, EMLNAMU, EMMIDI, EMFNAM, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " EMFNAMU, EMRNAM, EMTRCD, EMDEPT, EMLOC, EMJOB, EMTYPE, EPLVRE, EPLVDT, EPLVRT", stmtSQL)
+                      @dtw_concat(fileSQL, " PEEMPL inner join HREMPL on EPCOMP=EMPECP and EPEMPL=EMPEMP ", fileSQL)
+                      @dtw_concat(selectSQL, " EPLVDT>0 ", selectSQL)
+                      %INCLUDE "activeTerminatedEmplSQL.icl"
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @EmplLeave_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) EmplLeave_Query (IN CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      %if ((backHome != "$(d2wName)/report") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+	       <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Last Name</th>
+                      <th class="colhdr">Leave Date</th>
+                  </tr>
+                  <tr><td class="inputalph"><input type="text" name="srchLast" size="18" maxlength="18">
+                          <input type="hidden" name="operLast" value="LIKE">
+                      </td>
+                          <td class="inputalph"><input type="text" name="srchLeaveDate" size="6" maxlength="6">
+                              <input type="hidden" name="operLeaveDate" value="=">
+                          </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchLast.focus();
+              </script>
+          </form>
+
+          %INCLUDE "ActiveTerminatedChecked.icl"
+          @dtw_assign(viewCheckBox, "HR")
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("EMLNAMU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=LastName" title="Sequence By Employee Last Name, Employee First Name">Name</a></th>
+              @OrderBy_Sort("EPLVDT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=LeaveDate" title="Sequence By Leave Date, Last Name, First Name">Leave Date</a></th>
+              @OrderBy_Sort("EPLVRE", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=LeaveReason" title="Sequence By Leave Reason, Last Name, First Name">Leave Reason</a></th>
+              @OrderBy_Sort("EPLVRT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=LeaveReturn" title="Sequence By Return Date, Last Name, First Name">Return Date</a></th>
+              @OrderBy_Sort("EMLOC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Location" title="Sequence By Location, Department, Last Name, First Name">Location Name</a></th>
+              @OrderBy_Sort("EMDEPT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Department" title="Sequence By Department, Last Name, First Name">Department Name</a></th>
+              @OrderBy_Sort("EMCOMP", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CoFac" title="Sequence By Company/Facility, Last Name, First Name">Co/Fac</a></th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+	       %ROW{
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;prCompany=@dtw_rurlescseq(V_EMCOMP)&amp;prFacility=@dtw_rurlescseq(V_EMFACL)&amp;prEmployee=@dtw_rurlescseq(V_EMEMPL)&amp;hrEmployee=@dtw_rurlescseq(V_EMPEMP)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+                  @Format_HRCoFac(V_EMCOMP, V_EMFACL, "N", F_CoFac)
+                  @Format_Date(V_EPLVDT, "D", F_EPLVDT)
+                  @Format_Date(V_EPLVRT, "D", F_EPLVRT)
+                  @Format_EmplName(V_EMFNAM, V_EMLNAM, V_EMMIDI, V_EMRNAM, V_EMTRCD, "D", F_EmpName)
+                  @Format_Confirm_Desc($(F_EmpName), $(V_EPLVDT), "", "", "", "", confirmDesc)
+                  @RtvFldDesc("ODCOMP=$(V_EMPECP) and ODTYPE='R' and ODCODE='$(V_EPLVRE)' ", "PECODE", "ODDESC", leaveReason)
+                  @RtvFldDesc("ODCOMP=$(V_EMPECP) and ODTYPE='O' and ODCODE='$(V_EMLOC)' ", "PECODE", "ODDESC", locName)
+                  @RtvFldDesc("EADEPT='$(V_EMDEPT)' ", "PREXAC", "EANAME", deptName)
+
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colalph">$(F_EmpName)</td>
+                      <td class="coldate">$(F_EPLVDT)</td>
+                      <td class="colalph">$(leaveReason)</td>
+                      <td class="coldate">$(F_EPLVRT)</td>
+                      <td class="colalph">$(locName)</td>
+                      <td class="colalph">$(deptName)</td>
+                      <td class="colnmbr">$(F_CoFac)</td>
+                  </tr>
+	       %}
+	   </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "UserViewEmpl.icl"
+  %INCLUDE "UserView.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select EMCOMP, EMFACL, EMEMPL, EMPECP, EMPEMP, EMLNAM, EMLNAMU, EMMIDI, EMFNAM, ", stmtSQL)
+  @dtw_concat(stmtSQL, " EMFNAMU, EMRNAM, EMTRCD, EMDEPT, EMLOC, EMJOB, EMTYPE, EPLVRE, EPLVDT, EPLVRT", stmtSQL)
+  @dtw_concat(fileSQL, " PEEMPL inner join HREMPL on EPCOMP=EMPECP and EPEMPL=EMPEMP ", fileSQL)
+  @dtw_concat(selectSQL, " EPLVDT>0 ", selectSQL)
+  %INCLUDE "activeTerminatedEmplSQL.icl"
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @EmplLeave_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) EmplLeave_XMLQuery (IN CHAR(64)    profileHandle,
+			                  CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @XMLBeginTag("EmployeeLeaveList")
+          %ROW{
+               @Format_Date(V_EPLVDT, "D", F_EPLVDT)
+               @Format_Date(V_EPLVRT, "D", F_EPLVRT)
+               @RtvFldDesc("ODCOMP=$(V_EMPECP) and ODTYPE='R' and ODCODE='$(V_EPLVRE)' ", "PECODE", "ODDESC", HrCodeDesc)
+
+	       @XMLIDTag(V_EMRNAM, "Employee ID")
+                   @XMLBeginTag("PersonName")
+                       @XMLTag(V_EMRNAM, "FormattedName")
+                       @XMLTag(V_EMFNAM, "GivenName")
+                       @XMLTag(V_EMMIDI, "MiddleName")
+                       @XMLTag(V_EMLNAM, "FamilyName")
+                   @XMLEndTag("PersonName")
+                   @XMLTag(F_EPLVDT, "LeaveDate")
+                   @XMLTag(HrCodeDesc, "LeaveReason")
+                   @XMLTag(F_EPLVRT, "LeaveReturn")
+                   @XMLTag(V_EMLOC, "Location")
+                   @XMLTag(V_EMDEPT, "Department")
+               @XMLEndTag("Employee")
+          %}
+      @XMLEndTag("EmployeeLeaveList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      %INCLUDE "WebReg.icl"
+      %if (formatToPrint != "")
+          @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+      %else
+          %if (orderBy == "")
+              @DTW_ASSIGN(orderBy, "EPLVDT,EMLNAMU,EMFNAMU")
+              @DTW_ASSIGN(orderByDisplay, "Leave Date, Employee Last Name, Employee First Name")
+              @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+          %elif (chgActive == "Y" && inclActive == "Y")
+              @dtw_assign(inclActive, "")
+          %elif (chgActive == "Y")
+              @dtw_assign(inclActive, "Y")
+          %elif (chgTerminated == "Y" && inclTerminated == "Y")
+              @dtw_assign(inclTerminated, "")
+          %elif (chgTerminated == "Y")
+              @dtw_assign(inclTerminated, "Y")
+          %endif
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %endif
+      %if (inclActive == "" && inclTerminated == "" && chgActive != "Y" && chgTerminated != "Y")
+          @dtw_assign(inclActive, activeEmpl)
+          @dtw_assign(inclTerminated, terminatedEmpl)
+      %endif
+      %INCLUDE "SearchReturn.icl"
+  %endif
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "LastName")
+      %if (orderBy == "EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderBy, "EMLNAMU DESC,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Employee Last Name (descending), Employee First Name")
+      %else
+          @DTW_ASSIGN(orderBy, "EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Employee Last Name, Employee First Name")
+      %endif
+  %elif (sequence == "LeaveDate")
+      %if (orderBy == "EPLVDT,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderBy, "EPLVDT DESC,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Leave Date (descending), Last Name, First Name")
+      %else
+          @DTW_ASSIGN(orderBy, "EPLVDT,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Leave Date, Last Name, First Name")
+      %endif
+  %elif (sequence == "LeaveReason")
+      %if (orderBy == "EPLVRE,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderBy, "EPLVRE DESC,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Leave Reason (descending), Last Name, First Name")
+      %else
+          @DTW_ASSIGN(orderBy, "EPLVRE,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Leave Reason, Last Name, First Name")
+      %endif
+  %elif (sequence == "LeaveReturn")
+      %if (orderBy == "EPLVRT,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderBy, "EPLVRT DESC,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Return Date (descending), Last Name, First Name")
+      %else
+          @DTW_ASSIGN(orderBy, "EPLVRT,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Return Date, Last Name, First Name")
+      %endif
+  %elif (sequence == "CoFac")
+      %if (orderBy == "EMCOMP,EMFACL,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderBy, "EMCOMP DESC,EMFACL DESC,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility (descending), Last Name, First Name")
+      %else
+          @DTW_ASSIGN(orderBy, "EMCOMP,EMFACL,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility, Last Name, First Name")
+      %endif
+  %elif (sequence == "Location")
+      %if (orderBy == "EMLOC,EMDEPT,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderBy, "EMLOC DESC,EMDEPT,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Location (descending), Department, Last Name, First Name")
+      %else
+          @DTW_ASSIGN(orderBy, "EMLOC,EMDEPT,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Location, Department, Last Name, First Name")
+      %endif
+  %elif (sequence == "Department")
+      %if (orderBy == "EMDEPT,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderBy, "EMDEPT DESC,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Department (descending), Last Name, First Name")
+      %else
+          @DTW_ASSIGN(orderBy, "EMDEPT,EMLNAMU,EMFNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Department, Last Name, First Name")
+      %endif
+  %endif
+	
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchCompany, 2, 0) &&
+                      editNum(document.Search.srchFacility, 4, 0) &&
+                      editNum(document.Search.srchEmployee, 5, 0) &&
+                      editdate(document.Search.srchLeaveDate) &&
+                      editdate(document.Search.srchLeaveReturn))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "LEAVESEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Leave Date</td>
+                              @dtw_assign(operNbr, "operLeaveDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchLeaveDate" size="6" maxlength="6">
+                                  <a href="javascript:calWindow('srchLeaveDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Leave Reason</td>
+                              @dtw_assign(operNbr, "operReason")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchReason" type="text" size="4" maxlength="4"> <a href="$(homeURL)$(phpPath)HRCodesSearch.php$(altVarBase)&amp;docName=Search&amp;fldType=R&amp;fldName=srchReason&amp;fldDesc=ReasonDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="ReasonDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Return Date</td>
+                              @dtw_assign(operNbr, "operLeaveReturn")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchLeaveReturn" size="6" maxlength="6">
+                                  <a href="javascript:calWindow('srchLeaveReturn');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Company Number</td>
+                              @dtw_assign(operNbr, "operCompany")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchCompany" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Facility Number</td>
+                              @dtw_assign(operNbr, "operFacility")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchFacility" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Employee Number</td>
+                              @dtw_assign(operNbr, "operEmployee")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchEmployee" size="9" maxlength="9"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">First Name</td>
+                              @dtw_assign(operNbr, "operFirst")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchFirst" size="18" maxlength="18"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Last Name</td>
+                              @dtw_assign(operNbr, "operLast")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchLast" size="18" maxlength="18"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Location</td>
+                              @dtw_assign(operNbr, "operLoc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchLoc" type="text" size="5" maxlength="4"> <a href="$(homeURL)$(phpPath)HRCodesSearch.php$(altVarBase)&amp;docName=Search&amp;fldType=O&amp;fldName=srchLoc&amp;fldDesc=locCodeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="locCodeDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Department</td>
+                              @dtw_assign(operNbr, "operDept")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchDept" type="text" size="5" maxlength="5"> <a href="$(homeURL)$(phpPath)DepartmentSearch.php$(altVarBase)&amp;docName=Search&amp;fldName=srchDept&amp;fldDesc=deptDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="deptDesc" value="$(deptDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Job Code</td>
+                              @dtw_assign(operNbr, "operJob")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchJob" type="text" size="5" maxlength="4"> <a href="$(homeURL)$(phpPath)HRCodesSearch.php$(altVarBase)&amp;docName=Search&amp;fldType=J&amp;fldName=srchJob&amp;fldDesc=jobCodeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="jobCodeDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchLeaveDate.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("EPLVDT", "Leave Date", $(srchLeaveDate), "", operLeaveDate, "D")
+  @Build_WildCard ("EPLVRE", "Leave Reason", $(srchReason), "U", operReason, "A")
+  @Build_WildCard ("EPLVRT", "Leave Date", $(srchLeaveReturn), "", operLeaveReturn, "D")
+  @Build_WildCard ("EMCOMP", "Company", $(srchCompany), "", operCompany, "N")
+  @Build_WildCard ("EMFACL", "Facility", $(srchFacility), "", operFacility, "N")
+  @Build_WildCard ("EMPEMP", "Employee Number", $(srchEmployee), "", operEmployee, "N")
+  @Build_WildCard ("EMFNAMU", "First Name", $(srchFirst), "U", operFirst, "A")
+  @Build_WildCard ("EMLNAMU", "Last Name", $(srchLast), "U", operLast, "A")
+  @Build_WildCard ("EMLOC", "Location", $(srchLoc), "U", operLoc, "A")
+  @Build_WildCard ("EMDEPT", "Department", $(srchDept), "U", operDept, "A")
+  @Build_WildCard ("EMJOB", "Job Code", $(srchJob), "U", operJob, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

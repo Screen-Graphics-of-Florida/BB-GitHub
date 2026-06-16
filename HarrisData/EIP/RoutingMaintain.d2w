@@ -1,0 +1,662 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Routing Maintenance                                         *
+*********************************************************************
+%}
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "Routing Maintenance"
+  d2wName                 = "RoutingMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;sequenceNumber=@dtw_rurlescseq(sequenceNumber)&amp;maintenanceCode=D"
+  programName             = "HPD020"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  W_MHRC                  = ""
+  W_MHRS                  = "0"
+  W_PPHRS                 = "0"
+  plant                   = "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@plantNumber", "@dtw_rurlescseq(plantNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@itemNumber", "@dtw_rurlescseq(itemNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@sequenceNumber", "@dtw_rurlescseq(sequenceNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @ItemUserView(profileHandle, dataBaseID, userPass, itemNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(chgForm) {
+                      if (document.Chg.sequenceNumber.value =="" ||
+                          document.Chg.department.value =="" ||
+                          document.Chg.workcenter.value =="")
+                             {alert("$(reqFieldError)");
+                              return false;}
+                      if (editNum(document.Chg.sequenceNumber, 3, 0) &&
+                          editNum(document.Chg.piecesperhour, 8, 5) &&
+                          editNum(document.Chg.measuredhours, 3, 4) &&
+                          editNum(document.Chg.crewsize, 3, 2) &&
+                          editNum(document.Chg.setuphours, 3, 2) &&
+                          editNum(document.Chg.perunitrate, 8, 5) &&
+                          editNum(document.Chg.transitdays, 3, 1))
+                          return true;
+                  }
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+	           %INCLUDE "numedit.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "ROUTINGMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, "SELECT * FROM HDMRTM WHERE RTPLT=$(plantNumber) and RTPN='$(itemNumber)' and RTSEQN=$(sequenceNumber)", stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+      %INCLUDE "MaintainTop.icl"
+
+      <table $(contentTable)>
+          @Format_Header("Plant", $(plantName), $(plantNumber))
+          @Format_Header("Item", $(itemDescription), $(itemNumber))
+      </table>
+
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "sequenceNumber")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@plt@", "plantNumber")        @dtw_assign(Err_RTPLT, fieldValue)
+                          @DecatErr_Field("@@pn@@", "itemNumber")         @dtw_assign(Err_RTPN, fieldValue)
+                          @DecatErr_Field("@@seqn", "sequenceNumber")     @dtw_assign(Err_RTSEQN, fieldValue)
+                          @DecatErr_Field("@@dept", "department")         @dtw_assign(Err_RTDEPT,   fieldValue)
+                          @DecatErr_Field("@@wc@@", "workcenter")         @dtw_assign(Err_RTWC, fieldValue)
+                          @DecatErr_Field("@@son@", "operationNumber")    @dtw_assign(Err_RTSON,  fieldValue)
+                          @DecatErr_Field("@@rtyp", "routingtype")        @dtw_assign(Err_RTRTYP, fieldValue)
+                          @DecatErr_Field("@@altc", "alternateoperation") @dtw_assign(Err_RTALTC, fieldValue)
+                          @DecatErr_Field("@@pphr", "piecesperhour")      @dtw_assign(Err_PPHR, fieldValue)
+                          @DecatErr_Field("@@mhrs", "measuredhours")      @dtw_assign(Err_RTMHRS, fieldValue)
+                          @DecatErr_Field("@@mhrc", "measuredhoursref")   @dtw_assign(Err_RTMHRC, fieldValue)
+                          @DecatErr_Field("@@mpon", "crewsize")           @dtw_assign(Err_RTMPON, fieldValue)
+                          @DecatErr_Field("@@suhr", "setuphours")         @dtw_assign(Err_RTSUHR, fieldValue)
+                          @DecatErr_Field("@@surc", "setuphoursref")      @dtw_assign(Err_RTSURC, fieldValue)
+                          @DecatErr_Field("@@psuc", "perunitrate")        @dtw_assign(Err_RTPSUC, fieldValue)
+                          @DecatErr_Field("@@mtd@", "transitdays")        @dtw_assign(Err_RTMTD, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@plt@")   @dtw_assign(V_RTPLT, fieldValue)
+                      @Decat_Field("@@pn@@")   @dtw_assign(V_RTPN, fieldValue)
+                      @Decat_Field("@@seqn")   @dtw_assign(V_RTSEQN, fieldValue)
+                      @Decat_Field("@@dept")   @dtw_assign(V_RTDEPT, fieldValue)
+                      @Decat_Field("@@wc@@")   @dtw_assign(V_RTWC,  fieldValue)
+                      @Decat_Field("@@son@")   @dtw_assign(V_RTSON, fieldValue)
+                      @Decat_Field("@@rtyp")   @dtw_assign(V_RTRTYP,  fieldValue)
+                      @Decat_Field("@@altc")   @dtw_assign(V_RTALTC, fieldValue)
+                      @Decat_Field("@@mhrs")   @dtw_assign(V_RTMHRS, fieldValue)
+                      @Decat_Field("@@mhrc")   @dtw_assign(V_RTMHRC, fieldValue)
+                      @Decat_Field("@@mpon")   @dtw_assign(V_RTMPON, fieldValue)
+                      @Decat_Field("@@suhr")   @dtw_assign(V_RTSUHR, fieldValue)
+                      @Decat_Field("@@surc")   @dtw_assign(V_RTSURC, fieldValue)
+                      @Decat_Field("@@psuc")   @dtw_assign(V_RTPSUC, fieldValue)
+                      @Decat_Field("@@lgrd")   @dtw_assign(V_RTLGRD, fieldValue)
+                      @Decat_Field("@@mach")   @dtw_assign(V_RTMACH, fieldValue)
+                      @Decat_Field("@@mtd@")   @dtw_assign(V_RTMTD, fieldValue)
+                      @Decat_Field("@@maho")   @dtw_assign(V_RTMAHO, fieldValue)
+                      @Decat_Field("@@ntcd")   @dtw_assign(V_RTNTCD, fieldValue)
+                      @Decat_Field("@@cccd")   @dtw_assign(V_RTCCCD, fieldValue)
+                      @Decat_Field("@@fseq")   @dtw_assign(frmseq, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(V_RTSEQN, "")
+                          @dtw_assign(V_RTRTYP, "D")
+                          @dtw_assign(V_RTALTC, "P")
+                          @dtw_assign(focusField, "sequenceNumber")
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elif (maintenanceCode == "Z")
+                      @dtw_assign(frmseq, $(sequenceNumber))
+                      @dtw_assign(V_RTSEQN, "")
+                      @dtw_assign(focusField, "sequenceNumber")
+                  %else
+                      @dtw_assign(focusField, "department")
+                      %if (V_RTMHRS != "0")
+                          %if (V_RTMHRC== "P")
+                              @DTW_DIVIDE("1", V_RTMHRS, W_PPHRS)
+                          %endif
+                          %if (V_RTMHRC== "H")
+                              @DTW_DIVIDE("100", V_RTMHRS, W_PPHRS)
+                          %endif
+                          %if (V_RTMHRC== "M")
+                              @DTW_DIVIDE("1000", V_RTMHRS, W_PPHRS)
+                          %endif
+
+                      %endif
+                  %endif
+
+                  @SetTextOvr(Err_RTSEQN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Routing Sequence</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr"><input name="sequenceNumber" type="text" value="$(V_RTSEQN)" size="3" maxlength="3"> $(reqFieldChar) </td>
+                      %else
+                          <td class="inputnmbr"><input name="sequenceNumber" type="hidden" value="$(V_RTSEQN)" size="3" maxlength="3">$(V_RTSEQN)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_RTSEQN)
+
+                  <tr><td><input type="hidden" name="frmseq" value="$(frmseq)" </td></tr>
+                  @Default_Zero(V_RTPLT)
+                  @dtw_assign(deptwcDesc, "")
+                  @RtvFldDesc("WCPLT=$(V_RTPLT) and WCDEPT='$(V_RTDEPT)' and WCWC='$(V_RTWC)'", "HDMWCM", "WCDESC", deptwcDesc)
+                  @SetTextOvr(Err_RTDEPT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Department / Work Center</span></td>
+                      <td class="inputalph"><input name="department" value="$(V_RTDEPT)" type="text" size="5" maxlength="5"> / <input name="workcenter" value="$(V_RTWC)" type="text" size="5" maxlength="5"> $(reqFieldChar) <a href="$(homeURL)$(phpPath)DeptWCSearch.php$(altVarBase)&amp;forPlant=@dtw_rurlescseq(plantNumber)&amp;docName=Chg&amp;flddept=department&amp;fldWC=workcenter&amp;fldDesc=WCDesc" onclick="$(searchWinVar)">  $(searchImage) </a> <input disabled name="WCDesc" value="$(deptwcDesc)"  type="text" size="30" maxlength="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_RTDEPT)
+
+                  @RtvFldDesc("SDSON='$(V_RTSON)'", "HDMSDM", "SDDESC", sddesc)
+                  @SetTextOvr(Err_RTSON)
+                  <tr><td class="dsphdr"><span $(textOvr)>Operation Number</span></td>
+                      <td class="inputalph"><input name="operationNumber" value="$(V_RTSON)" type="text" size="5" maxlength="5"> <a href="$(homeURL)$(cGIPath)OperationSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldoper=operationNumber&amp;fldDesc=sddesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="sddesc" value="$(sddesc)"  type="text" size="30" maxlength="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_RTSON)
+    	      		
+                  @RtvFldDesc("FLTYPE='RTGTYPE' and FLVALU='$(V_RTRTYP)'", "SYFLAG", "FLDESC", rtypDesc)
+                  @SetTextOvr(Err_RTRTYP)
+                  <tr><td class="dsphdr"><span $(textOvr)>Routing Type</span></td>
+                      <td class="inputalph"><input name="routingtype" type="text" value="$(V_RTRTYP)" size="1" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=RTGTYPE&amp;flagSrchHdr=@dtw_rurlescseq("Routing Type")&amp;docName=Chg&amp;fldName=routingtype&amp;fldDesc=routingtypeDesc" onclick="$(searchWinVar)"> $(searchImage) </a>
+                      <input name="routingtypeDesc" value="$(rtypDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_RTRTYP)
+
+                  @RtvFldDesc("FLTYPE='ALTOPER' and FLVALU='$(V_RTALTC)'", "SYFLAG", "FLDESC", altcDesc)
+                  @SetTextOvr(Err_RTALTC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Alternate Operation</span></td>
+                      <td class="inputalph"><input type="text" name="alternateoperation" value="$(V_RTALTC)" size="1" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=ALTOPER&amp;flagSrchHdr=@dtw_rurlescseq("Alternate Operation")&amp;docName=Chg&amp;fldName=alternateoperation&amp;fldDesc=alternateoperationDesc" onclick="$(searchWinVar)"> $(searchImage) </a>
+                      <input name="alternateoperationDesc" value="$(altcDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_RTALTC)
+
+                  @DTW_FORMAT(W_PPHRS,"","4",PHR)
+                  @SetTextOvr(Err_PPHR)
+                  <tr><td class="dsphdr"><span $(textOvr)>Pieces Per Hour</span></td>
+                      <td class="inputnmbr"><input type="text" name="piecesperhour"   value="$(PHR)" size="14" maxlength="14"></td>
+                  </tr>
+                  @DspErrMsg(Err_PPHR)
+    	   		
+                  %if ((W_MHRS != ".0000") && (W_MHRS != "0"))
+                      @dtw_assign(V_RTMHRS, W_MHRS)
+                  %Endif
+                  @SetTextOvr(Err_RTMHRS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Measured Hours</span></td>
+                      <td class="inputnmbr"><input type="text" name="measuredhours" value="$(V_RTMHRS)" size="8" maxlength="8"></td>
+                  </tr>
+                  @DspErrMsg(Err_RTMHRS)
+    	   		
+                  %If (W_MHRC != "")
+                      @dtw_assign(V_RTMHRC, W_MHRC)
+                  %Endif
+                  @RtvFldDesc("FLTYPE='RTMHRC' and FLVALU='$(V_RTMHRC)'", "SYFLAG", "FLDESC", mhrcDesc)
+                  @SetTextOvr(Err_RTMHRC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Measured Hours Ref Code</span></td>
+                      <td class="inputalph"><input type="text" name="measuredhoursref" value="$(V_RTMHRC)" size="1" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=RTMHRC&amp;flagSrchHdr=@dtw_rurlescseq("Measured Hours Reference Code")&amp;docName=Chg&amp;fldName=measuredhoursref&amp;fldDesc=measuredhoursrefDesc" onclick="$(searchWinVar)"> $(searchImage) </a>
+                      <input name="measuredhoursrefDesc" value="$(mhrcDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_RTMHRC)
+    	   		
+                  @SetTextOvr(Err_RTSUHR)
+                  <tr><td class="dsphdr"><span $(textOvr)>Standard Setup Hours</span></td>
+                      <td class="inputnmbr"><input type="text" name="setuphours" value="$(V_RTSUHR)" size="6" maxlength="6"></td>
+                  </tr>
+                  @DspErrMsg(Err_RTSUHR)
+    	   		
+                  @RtvFldDesc("FLTYPE='RTSURC' and FLVALU='$(V_RTSURC)'", "SYFLAG", "FLDESC", surcDesc)
+                  @SetTextOvr(Err_RTSURC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Setup Hours Reference Code</span></td>
+                      <td class="inputalph"><input type="text" name="setuphoursref" value="$(V_RTSURC)" size="1" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=RTSURC&amp;flagSrchHdr=@dtw_rurlescseq("Setup Hours Reference Code")&amp;docName=Chg&amp;fldName=setuphoursref&amp;fldDesc=setuphoursrefDesc" onclick="$(searchWinVar)">  $(searchImage) </a>
+                      <input name="setuphoursrefDesc" value="$(surcDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_RTSURC)
+    	   		
+                  @SetTextOvr(Err_RTMPON)
+                  <tr><td class="dsphdr "><span $(textOvr)>Crew Size</span></td>
+                      <td class="inputnmbr"><input type="text" name="crewsize" value="$(V_RTMPON)" size="6" maxlength="6"></td>
+                  </tr>
+                  @DspErrMsg(Err_RTMPON)
+    	   		
+                  @SetTextOvr(Err_RTPSUC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Per Unit Rate</span></td>
+                      <td class="inputnmbr"><input type="text" name="perunitrate" value="$(V_RTPSUC)" size="14" maxlength="14"></td>
+                  </tr>
+                  @DspErrMsg(Err_RTPSUC)
+    	   		
+                  @SetTextOvr(Err_RTLGRD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Labor Grade</span></td>
+                      <td class="inputalph"><input type="text" name="laborgrade" value="$(V_RTLGRD)" size="2" maxlength="2"></td>
+                  </tr>
+                  @DspErrMsg(Err_RTLGRD)
+    	   		
+                  @SetTextOvr(Err_RTMACH)
+                  <tr><td class="dsphdr"><span $(textOvr)>Machine Number</span></td>
+                      <td class="inputalph"><input type="text" name="machinenumber" value="$(V_RTMACH)" size="5" maxlength="5"></td>
+                  </tr>
+                  @DspErrMsg(Err_RTMACH)
+    	   		
+                  @SetTextOvr(Err_RTMTD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Transit Days</span></td>
+                      <td class="inputalph"><input type="text" name="transitdays" value="$(V_RTMTD)" size="5" maxlength="5"></td>
+                  </tr>
+                  @DspErrMsg(Err_RTMTD)
+    	   		
+                  @SetTextOvr(Err_RTMAHO)
+                  <tr><td class="dsphdr"><span $(textOvr)>Machine Hours Only</span></td>
+                      @dtw_tb_rows(yn01Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_RTMAHO) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn01Table, "machhoursonly", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_RTMAHO)
+    	   		
+                  @SetTextOvr(Err_RTNTCD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Routing Notes</span></td>
+                      <td class="inputalph"><input type="hidden" name="routingnotes" value="$(V_RTNTCD)" size="1" maxlength="1">$(V_RTNTCD)</td>
+                  </tr>
+                  @DspErrMsg(Err_RTNTCD)
+    	   		
+                  @SetTextOvr(Err_RTCCCD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Cost Categories</span></td>
+                      <td class="inputalph"><input type="hidden" name="costcategories" value="$(V_RTCCCD)" size="1" maxlength="1">$(V_RTCCCD)</td>
+                  </tr>
+                  @DspErrMsg(Err_RTCCCD)
+
+              %}	
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar,
+                                        INOUT CHAR(1)     W_MHRC,
+                                        INOUT DEC(7, 4)   W_MHRS,
+                                        INOUT DEC(13, 5)  W_PPHRS,
+                                        INOUT CHAR(10)    SUBR)
+{%EXEC {HPD020_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @yn01_Table_Query(profileHandle, dataBaseID, "BY        ", yn01Table)
+
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%FUNCTION(dtw_directcall) Validate_COPYALL(INOUT CHAR(64)    profileHandle,
+                                           INOUT CHAR(2)     dataBaseID,
+                                           INOUT CHAR(1)     maintenanceCode,
+                                           INOUT CHAR(1)     errFound,
+                                           INOUT CHAR(32000) edtVar,                             	
+                                           INOUT CHAR(32000) errVar,
+                                           INOUT CHAR(1)     W_MHRC,
+                                           INOUT DEC(7, 4)   W_MHRS,
+                                           INOUT DEC(13, 5)  W_PPHRS,
+                                           INOUT CHAR(10)    SUBR)
+{%EXEC {HPD020_W.PGM %}
+%}
+
+%HTML(COPYALL) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  @yn01_Table_Query(profileHandle, dataBaseID, "YORN      ", yn01Table)
+  @yn02_Table_Query(profileHandle, dataBaseID, "YORN      ", yn02Table)
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+	          %INCLUDE "numedit.icl"
+              %INCLUDE "NewWindowOpen.icl"
+              function validate(chgForm) {
+                 if (document.Chg.toplantNumber.value =="" ||
+                     document.Chg.toitemNumber.value =="")
+                       {alert("$(reqFieldError)");
+                           return false;}
+                 if (editNum(document.Chg.toplantNumber, 3, 0))
+                          return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ROUTINGMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      <table $(baseTable)>
+                          <colgroup>
+                              <col width="80%">
+                              <col width="15%">
+                          <tr><td><h1>Copy Routings</h1></td>
+                              <td class="toolbar">
+                                  %INCLUDE "MaintainTopNoTable.icl"
+                              </td>
+                          </tr>
+                      </table>
+                      <table $(contentTable)>
+                          @Format_Header("Plant", $(plantName), $(plantNumber))
+                          @Format_Header("Item", $(itemDescription), $(itemNumber))
+                      </table>
+
+                      $(hrTagAttr)
+                      %INCLUDE "RequiredField.icl"
+                      %INCLUDE "ErrorDisplay.icl"
+
+                      <form class="formClass" METHOD=POST name="Chg" onSubmit="return validate(document.Chg)"
+                          ACTION="$(homeURL)$(cGIPath)$(d2wName)/EDIT_COPYALL$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;plantName=@dtw_rurlescseq(plantName)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+                          <table $(contentTable)>
+                              @dtw_assign(focusField, "toplantNumber")
+                              %if (errFound != "" || maintenanceCode == "A")
+                                  %if (errFound == "" && maintenanceCode == "A")
+                                      @dtw_assign(edtVar, "")
+                                  %else
+                                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                                      @ErrVarErr(profileHandle, typeError, errVar)
+                                      @DecatErr_Field("@@tplt", "toplantNumber")   @dtw_assign(Err_TOPLT,  fieldValue)
+                                      @DecatErr_Field("@@titm", "toitemNumber")   @dtw_assign(Err_TOPN,  fieldValue)
+                                      @DecatErr_Field("@@rrtg", "resourceRtg")   @dtw_assign(Err_RRTG,  fieldValue)
+                                      @DecatErr_Field("@@klwc", "keyLoadWC")   @dtw_assign(Err_KLWC,  fieldValue)
+                                  %endif
+
+                                  @Decat_Field("@@tplt")   @dtw_assign(V_RTPLT,  fieldValue)
+                                  @Decat_Field("@@titm")   @dtw_assign(V_RTPN,  fieldValue)
+                                  @Decat_Field("@@rrtg")   @dtw_assign(V_RRTG,  fieldValue)
+                                  @Decat_Field("@@klwc")   @dtw_assign(V_KLWC,  fieldValue)
+                                  %if (V_RTPLT == "")
+                                      @dtw_assign(V_RTPLT, "0")
+                                  %endif
+
+                                  @dtw_assign(errFound, "")
+
+                              %elif (maintenanceCode == "Z")
+                                  @dtw_assign(V_RTPN, "")
+                                  @dtw_assign(V_RTPLT, "")
+                                  @dtw_assign(V_RRTG, "N")
+                                  @dtw_assign(V_KLWC, "Y")
+                              %endif
+
+                              %if (V_RTPLT != "")
+                                  @RtvFldDesc("PLPLNT=$(V_RTPLT)", "HDPLNT", "PLNAME", toplantName)
+                              %endif
+
+                              @SetTextOvr(Err_TOPLT)
+                              <tr><td class="dsphdr"><span $(textOvr)>To Plant Number</span></td>
+                                  <td class="inputnmbr"><input name="toplantNumber" value="$(V_RTPLT)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)PlantSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=toplantNumber&amp;fldDesc=toplantName" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="toplantName" value="$(toplantName)" type="text" size="30" maxlength="30"></td>
+                              </tr>
+                              @DspErrMsg(Err_TOPLT)
+
+                              @RtvFldDesc("IMITEM='$(V_RTPN)'", "HDIMST", "IMIMDS", toitemdescription)
+                              @SetTextOvr(Err_TOPN)
+	                           <tr><td class="dsphdr"><span $(textOvr)>To Item Number</span></td>
+                                  <td class="inputalph"><input name="toitemNumber" value="$(V_RTPN)" type="text" size="15" maxlength="15"><a href="$(homeURL)$(phpPath)ItemSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=toitemNumber&amp;fldDesc=toitemDescription" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="toitemDescription" value="$(toitemdescription)" type="text" size="30" maxlength="30"></td>
+                                  @DspErrMsg(Err_TOPN)
+                              </tr>
+
+                              %if (V_HDMPRL > "0")
+                                  @SetTextOvr(Err_RRTG)
+                                  <tr><td class="dsphdr"><span $(textOvr)>Copy To Resource Routing</span></td>
+                                      @dtw_tb_rows(yn01Table, maxRows)
+                                      @dtw_assign(x, "1")
+                                      %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_RRTG) && (x < maxRows))
+                                          {@dtw_add(x, "1", x)%}
+                                      <td>@dtw_tb_select(yn01Table, "resourceRtg", "2", "1", "N", "", x, "1")</td>
+                                  </tr>
+                                  @DspErrMsg(Err_RRTG)
+
+                                  @SetTextOvr(Err_KLWC)
+                                  <tr><td class="dsphdr"><span $(textOvr)>Copy Key Load Work Centers Only</span></td>
+                                      @dtw_tb_rows(yn02Table, maxRows)
+                                      @dtw_assign(x, "1")
+                                      %while((@dtw_tb_rgetv(yn02Table, x, "1") != V_KLWC) && (x < maxRows))
+                                          {@dtw_add(x, "1", x)%}
+                                      <td>@dtw_tb_select(yn02Table, "keyLoadWC", "2", "1", "N", "", x, "1")</td>
+                                  </tr>
+                                  @DspErrMsg(Err_KLWC)
+                              %endif
+                          </table>
+                          %INCLUDE "MaintainBottom.icl"
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                      </form>
+                  </td>
+              </tr>
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(EDIT_COPYALL) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(toitemNumber)
+  @dtw_mUPPERCASE(resourceRtg)
+  @dtw_mUPPERCASE(keyLoadWC)
+  @dtw_assign(toplantNumber,@dtw_rstrip(toplantNumber))
+  @dtw_assign(SUBR, "SRCpyAll")
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@fplt", plantNumber)
+  @Concat_Field("@@fitm", itemNumber)
+  @Concat_Field("@@tplt", toplantNumber)
+  @Concat_Field("@@titm", toitemNumber)
+  @Concat_Field("@@rrtg", resourceRtg)
+  @Concat_Field("@@klwc", keyLoadWC)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Validate_COPYALL(profileHandle, dataBaseID, maintCode, errFound, edtVar, errVar, W_MHRC, W_MHRS, W_PPHRS, SUBR)
+
+  %if (errFound == "")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)routings.d2w/REPORT$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(toitemNumber)&amp;plantNumber=@dtw_rurlescseq(toplantNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/COPYALL$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;plantName=@dtw_rurlescseq(plantName)&amp;toitemNumber=@dtw_rurlescseq(toitemNumber)&amp;toplantNumber=@dtw_rurlescseq(toplantNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+%FUNCTION(dtw_directcall) Validate_DELETEALL(INOUT CHAR(64)    profileHandle,
+                                             INOUT CHAR(2)     dataBaseID,
+                                             INOUT CHAR(1)     maintenanceCode,
+                                             INOUT CHAR(1)     errFound,
+                                             INOUT CHAR(32000) edtVar,                             	
+                                             INOUT CHAR(32000) errVar,
+                                             INOUT CHAR(1)     W_MHRC,
+                                             INOUT DEC(7, 4)   W_MHRS,
+                                             INOUT DEC(13, 5)  W_PPHRS,
+                                             INOUT CHAR(10)    SUBR)
+{%EXEC {HPD020_W.PGM %}
+%}
+
+%HTML(DELETEALL) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(SUBR, "SRDelAll")
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@fplt", plantNumber)
+  @Concat_Field("@@fitm", itemNumber)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Validate_DELETEALL(profileHandle, dataBaseID, maintCode, errFound, edtVar, errVar, W_MHRC, W_MHRS, W_PPHRS, SUBR)
+
+  %if (errFound == "")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)routings.d2w/REPORT$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+  %else
+      @DecatErr_Field("@@plt@", "sequenceNumber")  @dtw_assign(confMessage, "$(fieldValue)")
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)Routings.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;sequenceNumber=@dtw_rurlescseq(sequenceNumber)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(department)
+  @dtw_mUPPERCASE(workcenter)
+  @dtw_mUPPERCASE(operationNumber)
+  @dtw_mUPPERCASE(routingtype)
+  @dtw_mUPPERCASE(alternateoperation)
+  @dtw_mUPPERCASE(measuredhoursref)
+  @dtw_mUPPERCASE(setuphoursref)
+  @dtw_mUPPERCASE(laborgrade)
+  @dtw_mUPPERCASE(machinenumber)
+  @dtw_mUPPERCASE(machhoursonly)
+
+  @dtw_assign(plantNumber,@dtw_rstrip(plantNumber))
+  @dtw_assign(sequenceNumber,@dtw_rstrip(sequenceNumber))
+  @dtw_assign(piecesperhour,@dtw_rstrip(piecesperhour))
+  @dtw_assign(measuredhours,@dtw_rstrip(measuredhours))
+  @dtw_assign(crewsize,@dtw_rstrip(crewsize))
+  @dtw_assign(setuphours,@dtw_rstrip(setuphours))
+  @dtw_assign(perunitrate,@dtw_rstrip(perunitrate))
+  @dtw_assign(transitdays,@dtw_rstrip(transitdays))
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@plt@", plantNumber)
+  @Concat_Field("@@pn@@", itemNumber)
+  @Concat_Field("@@seqn", sequenceNumber)
+  @Concat_Field("@@dept", department)
+  @Concat_Field("@@wc@@", workcenter)
+  @Concat_Field("@@son@", operationNumber)
+  @Concat_Field("@@rtyp", routingtype)
+  @Concat_Field("@@altc", alternateoperation)
+  @Concat_Field("@@mhrs", measuredhours)
+  @Concat_Field("@@mhrc", measuredhoursref)
+  @Concat_Field("@@mpon", crewsize)
+  @Concat_Field("@@suhr", setuphours)
+  @Concat_Field("@@surc", setuphoursref)
+  @Concat_Field("@@psuc", perunitrate)
+  @Concat_Field("@@mtd@", transitdays)
+  @Concat_Field("@@lgrd", laborgrade)
+  @Concat_Field("@@mach", machinenumber)
+  @Concat_Field("@@maho", machhoursonly)
+  @Concat_Field("@@ntcd", routingnotes)
+  @Concat_Field("@@cccd", costcategories)
+  @Concat_Field("@@pphr", piecesperhour)
+  @Concat_Field("@@fseq", frmseq)
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @dtw_assign(W_MHRC, "")
+  @dtw_assign(W_MHRS, "0")
+  @dtw_assign(W_PPHRS, piecesperhour)
+  @dtw_assign(SUBR, "SRC2E")
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar, W_MHRC, W_MHRS, W_PPHRS, SUBR)
+
+  %if (errFound == "")
+      @Format_ConfMsg_Desc(maintenanceCode, "Routing Sequence", $(sequenceNumber), "", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)Routings.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;sequenceNumber=@dtw_rurlescseq(sequenceNumber)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %elif (maintenanceCode == "D")
+      @DecatErr_Field("@@seqn", "sequenceNumber")
+      @Format_ConfMsg_Desc("", "Routing Sequence", $(sequenceNumber), "<br>$(fieldValue)", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)Routings.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;sequenceNumber=@dtw_rurlescseq(sequenceNumber)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;sequenceNumber=@dtw_rurlescseq(sequenceNumber)&amp;W_MHRC=@dtw_rurlescseq(W_MHRC)&amp;W_MHRS=@dtw_rurlescseq(W_MHRS)&amp;W_PPHRS=@dtw_rurlescseq(W_PPHRS)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

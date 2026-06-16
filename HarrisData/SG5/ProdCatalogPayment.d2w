@@ -1,0 +1,1181 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Product Catalog Payment Information                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "$(catalogVarName)"
+%INCLUDE "BrowserType.icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "OEControl$(dataBaseID).icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Payment Information"
+  d2wName                 = "ProdCatalogPayment.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;catalogVarName=@dtw_rurlescseq(catalogVarName)&amp;catalog=@dtw_rurlescseq(catalog)&amp;catalogDesc=@dtw_rurlescseq(catalogDesc)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)"
+  ccVar                   = "$(homeURL)$(cGIPath)$(d2wName)/PAY&amp;baseVar=@dtw_rurlescseq(baseVar)&amp;portal=@dtw_rurlescseq(portal)&amp;eID=@dtw_rurlescseq(eID)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;catalogVarName=@dtw_rurlescseq(catalogVarName)&amp;catalog=@dtw_rurlescseq(catalog)&amp;catalogDesc=@dtw_rurlescseq(catalogDesc)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  headerTable             = %table
+  detailTable             = %table
+  catalogTable            = %table
+  orderInfoTable          = %table
+  vendCustFlag            = "C"
+  retrieveCode            = "R"
+  error                   = ""
+  ccReq                   = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "H1CTRM", H1CTRM)
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              function validate(chgForm) {
+                  if (document.Chg.orderTotal.value != Math.round(100*(parseFloat(document.Chg.creditCardAmount.value) + parseFloat(document.Chg.chargeOnAccount.value)))/100) {
+                      alert("Charge On Account + Credit Card Amount must equal the Order Total");
+                      return false;}
+                      return confirmAccept();
+              }
+              function calcChg(form) {
+                  if (form.creditCardAmount.value < ".00") {
+                      form.chargeOnAccount.value = form.orderTotal.value;
+                  }
+                  else if (parseFloat(form.creditCardAmount.value) > parseFloat(form.orderTotal.value)) {
+                      form.chargeOnAccount.value = 0;
+                      form.creditCardAmount.value = form.orderTotal.value;
+                  } else {form.chargeOnAccount.value = Math.round(100*(parseFloat(form.orderTotal.value) - parseFloat(form.creditCardAmount.value)))/100;}
+              }
+              function calcCC(form) {
+                  if (form.chargeOnAccount.value < ".00") {
+                      form.creditCardAmount.value = form.orderTotal.value;
+                  }
+                  else if (parseFloat(form.chargeOnAccount.value) > parseFloat(form.orderTotal.value)) {
+                      form.creditCardAmount.value = 0;
+                      form.chargeOnAccount.value = form.orderTotal.value;
+                  } else {form.creditCardAmount.value = Math.round(100*(parseFloat(form.orderTotal.value) - parseFloat(form.chargeOnAccount.value)))/100;}
+              }
+              function confirmDelete() {return confirm("Confirm Removal Of Item")}
+              function confirmAccept() {return confirm("$(acceptOrderMsg)")}
+              function confirmCancel() {return confirm("Confirm Cancel Of Order")}
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(catBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(ccReq, creditCardReq)
+                  @Order_Control(profileHandle, dataBaseID, orderControlNumber, retrieveCode, dropShip, edtVar)
+                  <td>@Order_Query(profileHandle, dataBaseID, orderControlNumber, headerTable, detailTable)</td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(catTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(DTW_SQL) Detail_Query(INOUT CHAR(64)     profileHandle,
+				       CHAR(2)      dataBaseID,
+				       DECIMAL(8,0) orderControlNumber,	
+				OUT    headerTable,
+				       detailTable)
+
+{call $(pgmLibrary)HOEOWS_W
+%}
+
+%FUNCTION(DTW_SQL) Retrieve_Order_Info (IN CHAR(64) profileHandle,
+			                    char(2)  dataBaseID,
+				        OUT orderInfoTable)
+{call $(pgmLibrary)HOECTO_P
+%}
+
+%FUNCTION(dtw_directcall) Validate_DropShip (INOUT CHAR(64)     profileHandle,
+                                             INOUT CHAR(2)      dataBaseID,
+                                             INOUT CHAR(1)      maintenanceCode,
+                                             INOUT CHAR(1)      errFound,
+                                             INOUT CHAR(32000)  edtVar,                             	
+                                             INOUT CHAR(32000)  errVar,
+                                             INOUT DECIMAL(7,0) dropShipAdd)
+{%EXEC {HHDDSM_W.PGM %}
+%}
+
+%FUNCTION(DTW_directcall) Update_Drop_Ship (INOUT CHAR(64)     profileHandle,
+				      	           CHAR(2)      dataBaseID,
+				      		   DECIMAL(8,0) orderControlNumber,
+				      		   DECIMAL(7,0) dropShipAdd)
+
+{%EXEC {HOEUDS_W.PGM %}
+%}
+
+%FUNCTION(DTW_SQL) Order_Query(INOUT CHAR(64)     profileHandle,
+				      CHAR(2)      dataBaseID,
+				      DECIMAL(8,0) orderControlNumber,	
+				OUT   headerTable,
+				      detailTable)
+
+{call $(pgmLibrary)HOEOWS_W
+
+  %REPORT{
+      %INCLUDE "OrderEntryRetInfo.icl"
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              <td class="toolbar">
+                  <a href="$(homeURL)$(cGIPath)ProdCatalogShipTo.d2w/ENTRY$(d2wVarBase)">$(selectBackImage)</a>
+                  <a onClick="javascript:check(document.Chg);">$(placeOrderImage)</a>
+                  %INCLUDE "CloseWindow.icl"
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+                  <a onClick="return confirmCancel()" href="$(homeURL)$(cGIPath)$(d2wName)/CANCEL$(d2wVarBase)">$(orderCancelImage)</a>
+                  &nbsp;
+              </td>
+          </tr>
+      </table>
+  %}
+
+  %REPORT(headerTable){
+      @Retrieve_Order_Info(profileHandle, dataBaseID, orderInfoTable)
+
+      %ROW {
+          $(cathrTagAttr)
+
+          @dtw_assign(shipToName, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OONAME"))")
+          @dtw_assign(shipToAdrOne, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOADR1"))")
+          @dtw_assign(shipToAdrTwo, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOADR2"))")
+          @dtw_assign(shipToAdrThree, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOADR3"))")
+          @dtw_assign(shipToCity, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOCITY"))")
+          @dtw_assign(shipToState, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOST"))")
+          @dtw_assign(shipToZip, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOZIP"))")
+          @dtw_assign(phone, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOPHON"))")
+          @dtw_assign(refNbr, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOORRF"))")
+          @dtw_assign(email, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOEMAL"))")
+          @EditPhoneNumber(phone)
+
+          <table $(contentTable)>
+              %if (userProfile != AnonymousUser)
+    	           <colgroup>
+    	               <col width="30%">
+    	               <col width="10%">
+    	               <col width="30%">
+    	               <col width="10%">
+              %endif
+			
+              <tr>
+                  <td class="colhdr">Ship-To</td><td>&nbsp;</td>
+                  %if (userProfile != AnonymousUser)
+                      <td class="colhdr">Bill-To</td>
+                  %endif
+              </tr>
+
+              <tr valign=top>
+                  <td rowspan="5" class="dspalph"> $(shipToName) <br>
+                      %if (shipToAdrOne != "")
+                          $(shipToAdrOne) <br>
+                      %endif
+                      %if (shipToAdrTwo != "")
+                          $(shipToAdrTwo) <br>
+                      %endif
+                      %if (shipToAdrThree != "")
+                          $(shipToAdrThree) <br>
+                      %endif
+
+                      $(shipToCity), $(shipToState) $(shipToZip)
+                  </td>
+
+                  %if (userProfile != AnonymousUser)
+                      <td>&nbsp;</td>
+
+                      <td rowspan="5" class="dspalph"> $(billToName) <br>
+                          %if (billToAdrOne != "")
+                              $(billToAdrOne) <br>
+                          %endif
+                          %if (billToAdrTwo != "")
+                              $(billToAdrTwo) <br>
+                          %endif
+                          %if (billToAdrThree != "")
+                              $(billToAdrThree) <br>
+                          %endif
+
+                          $(billToCity), $(billToState) $(billToZip)
+                      </td>
+                      <td>&nbsp;</td>
+                  %endif
+              </tr>
+          </table>
+          $(cathrTagAttr)
+          <table $(contentTable)>
+              <tr>
+                  <td class="dsphdr">Phone Number:</td>
+                  <td class="dspalph">$(phone)</td>
+              </tr>
+
+              %if (refNbrDesc != "" && refNbr != "")
+                  <tr>
+                      <td class="dsphdr">$(refNbrDesc):</td>
+                      <td class="dspalph">$(refNbr)</td>
+                  </tr>
+              %endif
+
+              %if (email != "")
+                  <tr>
+                      <td class="dsphdr">E-mail Address:</td>
+                      <td class="dspalph">$(email)</td>
+                  </tr>
+              %endif
+          </table>
+			
+          <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/ACCEPT$(d2wVarBase)">
+              <table $(contentTable)>
+                  <tr>
+                      <td><input type="hidden" name="dropShipName" value="$(shipToName)">
+                          <input type="hidden" name="addressLineOne" value="$(shipToAdrOne)">
+                          <input type="hidden" name="addressLineTwo" value="$(shipToAdrTwo)">
+                          <input type="hidden" name="addressLineThree" value="$(shipToAdrThree)">
+                          <input type="hidden" name="city" value="$(shipToCity)">
+                          <input type="hidden" name="state" value="$(shipToState)">
+                          <input type="hidden" name="zip" value="$(shipToZip)">
+                          <input type="hidden" name="country" value="@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOCTRY"))">
+                          <input type="hidden" name="phoneNumber" value="@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOPHON"))">
+                          <input type="hidden" name="referenceNumber" value="$(refNbr)">
+                          <input type="hidden" name="emailAddress" value="$(email)">
+                          <input type="hidden" name="taxCode" value="$(V_H1CTXC)">
+                          <input type="hidden" name="countyTaxCode" value="$(V_H1CNTX)">
+                          <input type="hidden" name="cityTaxCode" value="$(V_H1CTTX)">
+                          <input type="hidden" name="localTaxCodeOne" value="$(V_H1LOC1)">
+                          <input type="hidden" name="localTaxCodeTwo" value="$(V_H1LOC2)">
+                          <input type="hidden" name="localTaxCodeThree" value="$(V_H1LOC3)">
+                          <input type="hidden" name="orderTotal" value="$(V_H1OTOT)">
+                      </td>
+                  </tr>
+              </table>
+	    		
+              %if (approvalText != "")
+                  @dtw_assign(focusField, "")
+                  @EdtVarErr(profileHandle, typeValue, edtVar)
+                  @ErrVarErr(profileHandle, typeError, errVar)
+                  @DecatErr_Field("@@ccam", "creditCardAmount")   @dtw_assign(Err_H1CCAM, fieldValue)
+                  @DecatErr_Field("@@chga", "chargeOnAccount")    @dtw_assign(Err_H1CHGA, fieldValue)
+                  @DecatErr_Field("@@otot", "orderTotal")         @dtw_assign(Err_H1OTOT, fieldValue)
+
+                  @Decat_Field("@@ccam")   @dtw_assign(V_H1CCAM, fieldValue)
+                  @Decat_Field("@@chga")   @dtw_assign(V_H1CHGA, fieldValue)
+              %else
+                  @dtw_assign(focusField, "creditCardAmount")
+                  @dtw_assign(V_H1CHGA, V_H1OTOT)
+                  @dtw_assign(V_H1CCAM, "0")
+              %endif
+
+              %if (approvalText == "DECLINED")
+                  <div class="error">*** Credit Card Declined</div>
+              %elif (approvalText == "ERROR" && MFRTXT == "CCENDED")
+                  <div class="error">*** Credit Card Software is not started</div>
+              %elif (approvalText == "ERROR")
+                  <div class="error">*** Error processing credit card. Response Code is '$(MFRTXT)'.</div>
+              %endif
+
+              %if (creditCardAllowed == "Y" && (V_CECCP == "D" || V_CECCP == "Y"))
+                  %if (creditCardTerms == V_H1CTRM  || ccReq == "Y")
+                      <div><input name="creditCardAmount" type="hidden" value="$(V_H1OTOT)">
+                           <input name="chargeOnAccount"  type="hidden" value="0"></div>
+                  %else
+                      <fieldset class="legendBody">
+                          <legend class="legendTitle">Charge Order To</legend>
+                          <table $(contentTable)>
+                              @Format_Nbr(V_H1OTOT, F_H1OTOT, "2", $(amtEditCode), "Y", "", "")
+                              @SetTextOvr(Err_H1OTOT)
+                              <tr><td class="dsphdr"><span $(textOvr)>Order Total</span></td>
+                                  <td class="inputnmbr">$(F_H1OTOT)</td>
+                              </tr>
+                              @DspErrMsg(Err_H1OTOT)
+            	      		
+                              <tr><td class="dsphdr"><span $(textOvr)>Credit Card Amount</span></td>
+                                  <td class="inputnmbr"><input name="creditCardAmount" type="text" value="$(V_H1CCAM)" size="13" maxlength="13" onKeyUp="calcChg(this.form)"></td>
+                              </tr>
+            	      		
+                              <tr><td class="dsphdr"><span $(textOvr)>Charge On Account</span></td>
+                                  <td class="inputnmbr"><input name="chargeOnAccount" type="text" value="$(V_H1CHGA)" size="13" maxlength="13" onKeyUp="calcCC(this.form)"></td>
+                              </tr>
+
+                          </table>
+                      </fieldset>
+                  %endif
+              %else
+                  <div><input name="chargeOnAccount"  type="hidden" value="$(V_H1OTOT)">
+                       <input name="creditCardAmount" type="hidden" value="0"></div>
+              %endif
+          </form>
+
+          @DTW_ASSIGN(maintCode, $(V_H1MNCD))
+          @DTW_ASSIGN(orderType, $(V_H1ORTY))
+          @DTW_ASSIGN(subTotal, "0")
+          @DTW_ASSIGN(frtAmt, $(V_H1FRT))
+          @DTW_ASSIGN(spcChg, $(V_H1CHRG))
+          @DTW_ASSIGN(totalTax, $(V_H1STTA))
+          @DTW_ADD(totalTax, $(V_H1CNTA), totalTax)
+          @DTW_ADD(totalTax, $(V_H1CTTA), totalTax)
+          @DTW_ADD(totalTax, $(V_H1LC1A), totalTax)
+          @DTW_ADD(totalTax, $(V_H1LC2A), totalTax)
+          @DTW_ADD(totalTax, $(V_H1LC3A), totalTax)
+          @Format_Nbr(totalTax, F_totalTax, "2", $(amtEditCode), "Y", "", "")
+          @Format_Nbr(V_H1FRT, F_H1FRT, "2", $(amtEditCode), "", "", "")
+          @Format_Nbr(V_H1CHRG, F_H1CHRG, "2", $(amtEditCode), "", "", "")
+          @Format_Nbr(V_H1OTOT, F_H1OTOT, "2", $(amtEditCode), "", "", "")
+          @DTW_ASSIGN(creditType, $(V_H1CCTP))
+          @Format_Nbr(V_H1CCAM, F_H1CCAM, "2", $(amtEditCode), "", "", "")
+          @Format_Nbr(V_H1CHGA, F_H1CHGA, "2", $(amtEditCode), "", "", "")
+      %}
+  %}
+
+  %REPORT(detailTable){
+
+      @dtw_assign(firstItem, "Y")
+
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Order Summary</legend>
+          <table $(contentTable)>
+
+              %ROW {
+                  %if (firstItem=="Y")
+                      @dtw_assign(firstItem, "")
+                      <tr>
+                          @dtw_assign(indent, "0")
+                          @dtw_assign(x, "01")
+                          %while(x <= "30"){
+                              %if (catSeqItemImage==$(x))
+                                  <td>&nbsp;</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqItemNbr==$(x))
+                                  <td class="colhdr">Item Number</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqItemDesc==$(x))
+                                  <td class="colhdr">Description</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqPrice==$(x))
+                                  <td class="colhdr">Price</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqOrderQty==$(x))
+                                  <td class="colhdr">Order Qty</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXA1==$(x))
+                                  <td class="colhdr">$(itemExtAlph1)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXA2==$(x))
+                                  <td class="colhdr">$(itemExtAlph2)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXA3==$(x))
+                                  <td class="colhdr">$(itemExtAlph3)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXA4==$(x))
+                                  <td class="colhdr">$(itemExtAlph4)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXA5==$(x))
+                                  <td class="colhdr">$(itemExtAlph5)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXN1==$(x))
+                                  <td class="colhdr">$(itemExtNum1)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXN2==$(x))
+                                  <td class="colhdr">$(itemExtNum2)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXN3==$(x))
+                                  <td class="colhdr">$(itemExtNum3)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXN4==$(x))
+                                  <td class="colhdr">$(itemExtNum4)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXN5==$(x))
+                                  <td class="colhdr">$(itemExtNum5)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXD1==$(x))
+                                  <td class="colhdr">$(itemExtDate1)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXD2==$(x))
+                                  <td class="colhdr">$(itemExtDate2)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXD3==$(x))
+                                  <td class="colhdr">$(itemExtDate3)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXD4==$(x))
+                                  <td class="colhdr">$(itemExtDate4)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUXD5==$(x))
+                                  <td class="colhdr">$(itemExtDate5)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUDA1==$(x))
+                                  <td class="colhdr">$(V_CIIAS1)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUDA2==$(x))
+                                  <td class="colhdr">$(V_CIIAS2)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUDA3==$(x))
+                                  <td class="colhdr">$(V_CIIAS3)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUDA4==$(x))
+                                  <td class="colhdr">$(V_CIIAS4)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUDA5==$(x))
+                                  <td class="colhdr">$(V_CIIAS5)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUDN1==$(x))
+                                  <td class="colhdr">$(V_CIINS1)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUDN2==$(x))
+                                  <td class="colhdr">$(V_CIINS2)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUDN3==$(x))
+                                  <td class="colhdr">$(V_CIINS3)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUDN4==$(x))
+                                  <td class="colhdr">$(V_CIINS4)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %elif (catSeqUDN5==$(x))
+                                  <td class="colhdr">$(V_CIINS5)</td>
+                                  @dtw_add(indent, "1", indent)
+                              %endif
+                              @dtw_add(x, "1", x)
+                          %}
+                          <td class="colhdr">Extended<br>Price</td>
+                      </tr>
+                  %endif
+    			
+                  %INCLUDE "SetRowClass.icl"
+                  @Catalog_Item_Query(profileHandle, dataBaseID, "$(catalog)", "$(V_O1ITEM)", "$(V_O1WH)", catalogTable)
+                  @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(@dtw_rsubtract(V_O1QORD, V_O1QSTD), V_O1SLPR), V_O1ORUF)", ExtendedPrice, "2", $(amtEditCode), "Y", "", "")
+                  @dtw_assign(workPrice, @dtw_rformat(@dtw_rdivide(@dtw_rmultiply(@dtw_rsubtract(V_O1QORD, V_O1QSTD), V_O1SLPR), V_O1ORUF), "21", "2", "0", "", "23"))
+                  @DTW_ADD(subTotal, workPrice, "15", subTotal)
+
+                  <tr class="$(rowClass)" valign="top">
+                      @dtw_assign(itemImage, "$(V_O1ITEM)$(itemImageExt)")
+                      @dtwf_exists(itemImage, imageExists)
+                      @dtw_assign(x, "01")
+                      %while(x <= "30"){
+                          %if (catSeqItemImage==$(x))
+                              %if (imageExists == "Y")
+                                  <td class="colicon"><a href="$(homeURL)$(cGIPath)ImageDisplay.d2w/DISPLAY$(genericVarBase)&amp;imageDisplayPath=$(homeURL)$(itemImage)&amp;imageDesc=@dtw_rurlescseq(desc)" onclick="$(itemImageWinVar)"><img src="$(homeURL)$(itemImage)" alt="" $(catItemImgSmall) $(catImgBorder) title="Click here to view larger image"></a></td>
+                              %else
+                                  <td class="colicon">&nbsp;</td>
+                              %endif
+
+                          %elif (catSeqItemNbr==$(x))
+                              <td class="colalph">$(V_O1ITEM)</td>
+
+                          %elif (catSeqItemDesc==$(x))
+                              %if (V_CXUHTM!="")
+                                  <td  class="colalph"><a href="$(V_CXUHTM)" onclick="$(catUserHTMLWinVar)" title="View Details">$(V_O1IMDS)</a></td>
+                              %else
+                                  <td class="colalph">$(V_O1IMDS)</td>
+                              %endif
+
+                          %elif (catSeqPrice==$(x))
+                              @Format_Nbr(V_O1SLPR, F_O1SLPR, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_O1SLPR)</td>
+
+                          %elif (catSeqOrderQty==$(x))
+                              @Format_Nbr(V_O1QORD, F_O1QORD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_O1QORD)</td>
+
+                          %elif (catSeqUXA1==$(x))
+                              <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA1"))</td>
+                          %elif (catSeqUXA2==$(x))
+                              <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA2"))</td>
+                          %elif (catSeqUXA3==$(x))
+                              <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA3"))</td>
+                          %elif (catSeqUXA4==$(x))
+                              <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA4"))</td>
+                          %elif (catSeqUXA5==$(x))
+                              <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA5"))</td>
+
+                          %elif (catSeqUXN1==$(x))
+                              <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN1"))</td>
+                          %elif (catSeqUXN2==$(x))
+                              <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN2"))</td>
+                          %elif (catSeqUXN3==$(x))
+                              <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN3"))</td>
+                          %elif (catSeqUXN4==$(x))
+                              <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN4"))</td>
+                          %elif (catSeqUXN5==$(x))
+                              <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN5"))</td>
+
+                          %elif (catSeqUXD1==$(x))
+                              @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD1"))", V_CXUXD1)
+                              <td class="coldate">$(V_CXUXD1)</td>
+                          %elif (catSeqUXD2==$(x))
+                              @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD2"))", V_CXUXD2)
+                              <td class="coldate">$(V_CXUXD2)</td>
+                          %elif (catSeqUXD3==$(x))
+                              @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD3"))", V_CXUXD3)
+                              <td class="coldate">$(V_CXUXD3)</td>
+                          %elif (catSeqUXD4==$(x))
+                              @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD4"))", V_CXUXD4)
+                              <td class="coldate">$(V_CXUXD4)</td>
+                          %elif (catSeqUXD5==$(x))
+                              @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD5"))", V_CXUXD5)
+                              <td class="coldate">$(V_CXUXD5)</td>
+
+                          %elif (catSeqUDA1==$(x))
+                              <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA1"))</td>
+                          %elif (catSeqUDA2==$(x))
+                              <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA2"))</td>
+                          %elif (catSeqUDA3==$(x))
+                              <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA3"))</td>
+                          %elif (catSeqUDA4==$(x))
+                              <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA4"))</td>
+                          %elif (catSeqUDA5==$(x))
+                              <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA5"))</td>
+
+                          %elif (catSeqUDN1==$(x))
+                              <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN1"))</td>
+                          %elif (catSeqUDN2==$(x))
+                              <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN2"))</td>
+                          %elif (catSeqUDN3==$(x))
+                              <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN3"))</td>
+                          %elif (catSeqUDN4==$(x))
+                              <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN4"))</td>
+                          %elif (catSeqUDN5==$(x))
+                              <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN5"))</td>
+
+                          %endif
+                          @dtw_add(x, "1", x)
+                      %}
+                      <td class="colnmbr">$(ExtendedPrice)</td>
+                  </tr>
+              %}
+
+              %INCLUDE "SetRowClass.icl"
+
+              @Format_Nbr(subTotal, F_subTotal, "2", $(amtEditCode), "Y", "", "")
+              %if (subTotal != "0" && F_subTotal != F_H1OTOT)
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">Subtotal</td>
+                      <td class="colnmbr">$(F_subTotal)</td>
+       	   </tr>
+    	       %endif
+
+              %if (frtAmt != ".00")
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">Freight Charge</td>
+                      <td class="colnmbr">$(F_H1FRT)</td>
+                  </tr>
+              %endif
+
+              %if (totalTax != "0")
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">Sales Tax</td>
+                      <td class="colnmbr">$(F_totalTax)</td>
+                  </tr>
+              %endif
+
+              %if (spcChg != ".00")
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">Special Charge</td>
+                      <td class="colnmbr">$(F_H1CHRG)</td>
+                  </tr>
+              %endif
+              %if ((subTotal != "0" && F_subTotal != F_H1OTOT) || (frtAmt != ".00") || (totalTax != "0") || (spcChg != ".00"))
+                  %INCLUDE "SetRowClass.icl"
+              %endif
+
+              <tr>
+                  <td class="colnmbr" colspan="$(indent)">Order Total</td>
+                  <td class="coltotal">$(F_H1OTOT)</td>
+              </tr>
+          </table>
+      </fieldset>
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(DTW_SQL) Catalog_Item_Query (IN  CHAR(64) profileHandle,
+			                    char(2)  dataBaseID,
+			                    char(15) catalog,
+			                    char(15) itemNumber,
+			                    dec(3,0) warehouse,
+				        OUT catalogTable)
+{call $(pgmLibrary)HOECTX_P
+%}
+
+%FUNCTION(DTW_directcall) Update_Payment (IN CHAR(32000) edtVar)
+
+{%EXEC {HOEUCC_W.PGM %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  @Calc_Cost_Price(profileHandle, dataBaseID, orderControlNumber, lineNumber, costPrice)
+  @DTW_ASSIGN(updateTotal, "Y")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(DISPLAY) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ACCEPT) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_mUPPERCASE(zip)
+  @dtw_assign(purgeHistory, "Y")
+  @dtw_assign(maintenanceCode, "A")
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@ccam", creditCardAmount)
+  @Concat_Field("@@chga", chargeOnAccount)
+  @Concat_Field("@@vcf@", vendCustFlag)
+  @Concat_Field("@@vncs", customerNumber)
+  @Concat_Field("@@nmbr", dropShipNumber)
+  @Concat_Field("@@name", dropShipName)
+  @Concat_Field("@@alph", alphaSequence)
+  @Concat_Field("@@adr1", addressLineOne)
+  @Concat_Field("@@adr2", addressLineTwo)
+  @Concat_Field("@@adr3", addressLineThree)
+  @Concat_Field("@@city", city)
+  @Concat_Field("@@st@@", state)
+  @Concat_Field("@@zip@", zip)
+  @Concat_Field("@@ctry", country)
+  @Concat_Field("@@ctxc", taxCode)
+  @Concat_Field("@@cntc", countyTaxCode)
+  @Concat_Field("@@cttc", cityTaxCode)
+  @Concat_Field("@@loc1", localTaxCodeOne)
+  @Concat_Field("@@loc2", localTaxCodeTwo)
+  @Concat_Field("@@loc3", localTaxCodeThree)
+  @Concat_Field("@@phon", phoneNumber)
+  @Concat_Field("@@purg", purgeHistory)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @EdtVarErr(profileHandle, typeValue, edtVar)
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From OEPAYW Where WPOCTL='$(orderControlNumber)' @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  %if (chargeOnAccount > "0")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Insert Into OEPAYW (WPOCTL,WPPSEQ,WPPAYT,WPDESC,WPPAYA) ", stmtSQL)
+      @dtw_concat(stmtSQL, " Values ($(orderControlNumber),1,'1','Charge On Account',$(chargeOnAccount)) @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %endif
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From OETXWK Where TWOCTL='$(orderControlNumber)' @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  @Assign_OrderNumber(orderControlNumber, newOrder)
+  %if (creditCardAmount > "0")
+      @DTW_ASSIGN(updateTotal, "C")
+      @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+      @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "H1OTOT", orderTotal)
+      @dtw_subtract(orderTotal, chargeOnAccount, creditCardAmount)
+      @RtvFldDesc("XPEXPT='OE.CC.REQSET'", "SYUXPM", "XPUXPG", ccExitPgm)
+      @dtw_assign(passOrder, "")
+      %if (ccExitPgm == "")
+          @dtw_assign(passOrder, "&amp;mfordr=$(newOrder)")
+      %endif
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)/curbstone/vt/vtrelay.php?amount=$(creditCardAmount)&amp;cust=$(customerNumber)$(passOrder)&amp;target=$(ccVar)">
+  %else
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/CONFIRM$(d2wVarBase)">
+  %endif
+%}
+
+%HTML(PAY) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@mkey", MFUKEY)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Update_Payment(edtVar)
+  %if (approvalText == "APPROVED")
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/CONFIRM$(d2wVarBase)">
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(CONFIRM) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@anon", "$(AnonymousUser)")
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @DTW_ASSIGN(maintenanceCode, "P")
+  @Order_Control(profileHandle, dataBaseID, orderControlNumber, maintenanceCode, dropShip, edtVar)
+
+  %if (dropShip == "Y")
+      @dtw_assign(edtVar, "")
+      @DTW_ASSIGN(maintenanceCode, "A")
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @Validate_DropShip(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar, dropShipAdd)
+      @Update_Drop_Ship (profileHandle, dataBaseID, orderControlNumber, dropShipAdd)
+  %endif
+
+  %INCLUDE "OrderEntryRetInfo.icl"
+  @Detail_Query(profileHandle, dataBaseID, orderControlNumber, headerTable, detailTable)
+  @DTW_ASSIGN(subTotal, "0")
+  @DTW_ASSIGN(totalTax, @dtw_tb_rgetv(headerTable, "1", @dtw_tb_rQuerycolnonj(headerTable, "H1STTA")))
+  @DTW_ADD(totalTax, @dtw_tb_rgetv(headerTable, "1", @dtw_tb_rQuerycolnonj(headerTable, "H1CNTA")), totalTax)
+  @DTW_ADD(totalTax, @dtw_tb_rgetv(headerTable, "1", @dtw_tb_rQuerycolnonj(headerTable, "H1CTTA")), totalTax)
+  @DTW_ADD(totalTax, @dtw_tb_rgetv(headerTable, "1", @dtw_tb_rQuerycolnonj(headerTable, "H1LC1A")), totalTax)
+  @DTW_ADD(totalTax, @dtw_tb_rgetv(headerTable, "1", @dtw_tb_rQuerycolnonj(headerTable, "H1LC2A")), totalTax)
+  @DTW_ADD(totalTax, @dtw_tb_rgetv(headerTable, "1", @dtw_tb_rQuerycolnonj(headerTable, "H1LC3A")), totalTax)
+  @DTW_ASSIGN(freightChg, @dtw_tb_rgetv(headerTable, "1", @dtw_tb_rQuerycolnonj(headerTable, "H1FRT")))
+  @DTW_ASSIGN(specialChg, @dtw_tb_rgetv(headerTable, "1", @dtw_tb_rQuerycolnonj(headerTable, "H1CHRG")))
+  @DTW_ASSIGN(orderTotal, @dtw_tb_rgetv(headerTable, "1", @dtw_tb_rQuerycolnonj(headerTable, "H1OTOT")))
+
+  @DTW_ASSIGN(maintenanceCode, "")
+  @Process_Order(profileHandle, dataBaseID, orderControlNumber, orderNumber, maintenanceCode)
+  @Retrieve_Order_Info(profileHandle, dataBaseID, orderInfoTable)
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(catBanner)"
+          <!-- End Of Banner Code -->
+
+          @dtw_assign(shipToName, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OONAME"))")
+          @dtw_assign(shipToAdrOne, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOADR1"))")
+          @dtw_assign(shipToAdrTwo, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOADR2"))")
+          @dtw_assign(shipToAdrThree, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOADR3"))")
+          @dtw_assign(shipToCity, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOCITY"))")
+          @dtw_assign(shipToState, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOST"))")
+          @dtw_assign(shipToZip, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOZIP"))")
+          @dtw_assign(phone, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOPHON"))")
+          @dtw_assign(refNbr, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOORRF"))")
+          @dtw_assign(email, "@dtw_tb_rgetv(orderInfoTable, "1", @dtw_tb_rQuerycolnonj(orderInfoTable, "OOEMAL"))")
+          @EditPhoneNumber(phone)
+
+          <table $(contentTable)>
+              <tr><td><h2>$(orderConfMsg) &nbsp; <a href="$(homeURL)$(cGIPath)$(d2wName)/CLOSE$(d2wVarBase)">$(closeImageMed)</a></h2></td></tr>
+          </table>
+
+          <table $(contentTable)>
+              %if (userProfile != AnonymousUser)
+    	       <colgroup>
+    	           <col width="30%">
+    	           <col width="10%">
+    	           <col width="30%">
+    	           <col width="10%">
+              %endif
+	   		
+              <tr>
+                  <td class="colhdr">Ship-To</td><td>&nbsp;</td>
+                  %if (userProfile != AnonymousUser)
+                      <td class="colhdr">Bill-To</td>
+                  %endif
+              </tr>
+
+              <tr valign=top>
+                  <td rowspan="5" class="dspalph"> $(shipToName) <br>
+                      %if (shipToAdrOne != "")
+                          $(shipToAdrOne) <br>
+                      %endif
+                      %if (shipToAdrTwo != "")
+                          $(shipToAdrTwo) <br>
+                      %endif
+                      %if (shipToAdrThree != "")
+                          $(shipToAdrThree) <br>
+                      %endif
+
+                      $(shipToCity), $(shipToState) $(shipToZip)
+                  </td>
+
+                  %if (userProfile != AnonymousUser)
+                      <td>&nbsp;</td>
+
+                      <td rowspan="5" class="dspalph"> $(billToName) <br>
+                          %if (billToAdrOne != "")
+                              $(billToAdrOne) <br>
+                          %endif
+                          %if (billToAdrTwo != "")
+                              $(billToAdrTwo) <br>
+                          %endif
+                          %if (billToAdrThree != "")
+                              $(billToAdrThree) <br>
+                          %endif
+
+                          $(billToCity), $(billToState) $(billToZip)
+                      </td>
+                      <td>&nbsp;</td>
+                  %endif
+              </tr>
+          </table>
+
+          $(cathrTagAttr)
+
+          <table $(contentTable)>
+              <tr>
+                  <td class="dsphdr">Phone Number:</td>
+                  <td class="dspalph">$(phone)</td>
+              </tr>
+
+              %if (refNbrDesc != "" && refNbr != "")
+                  <tr>
+                      <td class="dsphdr">$(refNbrDesc):</td>
+                      <td class="dspalph">$(refNbr)</td>
+                  </tr>
+              %endif
+
+              %if (email != "")
+                  <tr>
+                      <td class="dsphdr">E-mail Address:</td>
+                      <td class="dspalph">$(email)</td>
+                  </tr>
+              %endif
+          </table>
+
+          @DTW_ASSIGN(maintenanceCode, "D")
+          @Order_Control(profileHandle, dataBaseID, orderControlNumber, maintenanceCode, dropShip, edtVar)
+
+          @dtw_assign(firstItem, "Y")
+
+          <fieldset class="legendBody">
+              <legend class="legendTitle">Order Summary</legend>
+              <table $(contentTable)>
+                  @dtw_assign(rowNbr, "1")
+                  @dtw_tb_rows(detailTable, detailRows)
+                  %while(rowNbr <= detailRows){
+                      %if (firstItem=="Y")
+                          @dtw_assign(firstItem, "")
+                          <tr>
+                              @dtw_assign(indent, "0")
+                              @dtw_assign(x, "01")
+                              %while(x <= "30"){
+                                  %if (catSeqItemImage==$(x))
+                                      <td>&nbsp;</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqItemNbr==$(x))
+                                      <td class="colhdr">Item Number &nbsp; </td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqItemDesc==$(x))
+                                      <td class="colhdr">Description &nbsp; </td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqPrice==$(x))
+                                      <td class="colhdr">Price</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqOrderQty==$(x))
+                                      <td class="colhdr">Order Qty</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXA1==$(x))
+                                      <td class="colhdr">$(itemExtAlph1)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXA2==$(x))
+                                      <td class="colhdr">$(itemExtAlph2)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXA3==$(x))
+                                      <td class="colhdr">$(itemExtAlph3)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXA4==$(x))
+                                      <td class="colhdr">$(itemExtAlph4)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXA5==$(x))
+                                      <td class="colhdr">$(itemExtAlph5)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXN1==$(x))
+                                      <td class="colhdr">$(itemExtNum1)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXN2==$(x))
+                                      <td class="colhdr">$(itemExtNum2)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXN3==$(x))
+                                      <td class="colhdr">$(itemExtNum3)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXN4==$(x))
+                                      <td class="colhdr">$(itemExtNum4)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXN5==$(x))
+                                      <td class="colhdr">$(itemExtNum5)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXD1==$(x))
+                                      <td class="colhdr">$(itemExtDate1)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXD2==$(x))
+                                      <td class="colhdr">$(itemExtDate2)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXD3==$(x))
+                                      <td class="colhdr">$(itemExtDate3)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXD4==$(x))
+                                      <td class="colhdr">$(itemExtDate4)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUXD5==$(x))
+                                      <td class="colhdr">$(itemExtDate5)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUDA1==$(x))
+                                      <td class="colhdr">$(V_CIIAS1)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUDA2==$(x))
+                                      <td class="colhdr">$(V_CIIAS2)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUDA3==$(x))
+                                      <td class="colhdr">$(V_CIIAS3)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUDA4==$(x))
+                                      <td class="colhdr">$(V_CIIAS4)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUDA5==$(x))
+                                      <td class="colhdr">$(V_CIIAS5)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUDN1==$(x))
+                                      <td class="colhdr">$(V_CIINS1)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUDN2==$(x))
+                                      <td class="colhdr">$(V_CIINS2)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUDN3==$(x))
+                                      <td class="colhdr">$(V_CIINS3)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUDN4==$(x))
+                                      <td class="colhdr">$(V_CIINS4)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %elif (catSeqUDN5==$(x))
+                                      <td class="colhdr">$(V_CIINS5)</td>
+                                      @dtw_add(indent, "1", indent)
+                                  %endif
+                                  @dtw_add(x, "1", x)
+                               %}
+                               <td class="colhdr">Extended<br>Price</td>
+                           </tr>
+                      %endif
+
+   		       %INCLUDE "SetRowClass.icl"
+                      @Catalog_Item_Query(profileHandle, dataBaseID, "$(catalog)", "@dtw_tb_rgetv(detailTable, rowNbr, @dtw_tb_rQuerycolnonj(detailTable, "O1ITEM"))", "@dtw_tb_rgetv(detailTable, rowNbr, @dtw_tb_rQuerycolnonj(detailTable, "O1WH"))", catalogTable)
+                      @dtw_format(@dtw_rdivide(@dtw_rmultiply(@dtw_rsubtract(@dtw_tb_rgetv(detailTable, rowNbr, @dtw_tb_rQuerycolnonj(detailTable, "O1QORD")), @dtw_tb_rgetv(detailTable, rowNbr, @dtw_tb_rQuerycolnonj(detailTable, "O1QSTD"))), @dtw_tb_rgetv(detailTable, rowNbr, @dtw_tb_rQuerycolnonj(detailTable, "O1SLPR"))), @dtw_tb_rgetv(detailTable, rowNbr, @dtw_tb_rQuerycolnonj(detailTable, "O1ORUF"))), "", "2", ExtendedPrice)
+                      @DTW_ASSIGN(subTotal, @dtw_radd(subTotal, ExtendedPrice))
+                      @Format_Nbr(ExtendedPrice, F_ExtendedPrice, "2", $(amtEditCode), "Y", "", "")
+
+                      <tr class="$(rowClass)" valign="top">
+                          @dtw_assign(itemImage, "@dtw_tb_rgetv(detailTable, rowNbr, @dtw_tb_rQuerycolnonj(detailTable, "O1ITEM"))$(itemImageExt)")
+                          @dtwf_exists(itemImage, imageExists)
+                          @dtw_assign(x, "01")
+                          %while(x <= "30"){
+                              %if (catSeqItemImage==$(x))
+                                  %if (imageExists == "Y")
+                                      <td><img src="$(homeURL)$(itemImage)" alt="" $(catItemImgSmall) $(catImgBorder)></td>
+                                  %else
+                                      <td>&nbsp;</td>
+                                  %endif
+
+                              %elif (catSeqItemNbr==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(detailTable, rowNbr, @dtw_tb_rQuerycolnonj(detailTable, "O1ITEM"))</td>
+
+                              %elif (catSeqItemDesc==$(x))
+                                  %if (V_CXUHTM!="")
+                                      <td  class="colalph"><a href="$(V_CXUHTM)" onclick="$(catUserHTMLWinVar)" title="View Details">$(V_CXDESC)</a></td>
+                                  %else
+                                      <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXDESC"))</td>
+                                  %endif
+
+                              %elif (catSeqPrice==$(x))
+                                  @Format_Nbr("@dtw_tb_rgetv(detailTable, rowNbr, @dtw_tb_rQuerycolnonj(detailTable, "O1SLPR"))", F_O1SLPR, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                  <td class="colnmbr">$(F_O1SLPR)</td>
+
+                              %elif (catSeqOrderQty==$(x))
+                                  @Format_Nbr("@dtw_tb_rgetv(detailTable, rowNbr, @dtw_tb_rQuerycolnonj(detailTable, "O1QORD"))", F_O1QORD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                                  <td class="colnmbr">$(F_O1QORD)</td>
+
+                              %elif (catSeqUXA1==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA1"))</td>
+                              %elif (catSeqUXA2==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA2"))</td>
+                              %elif (catSeqUXA3==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA3"))</td>
+                              %elif (catSeqUXA4==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA4"))</td>
+                              %elif (catSeqUXA5==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA5"))</td>
+
+                              %elif (catSeqUXN1==$(x))
+                                  <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN1"))</td>
+                              %elif (catSeqUXN2==$(x))
+                                  <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN2"))</td>
+                              %elif (catSeqUXN3==$(x))
+                                  <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN3"))</td>
+                              %elif (catSeqUXN4==$(x))
+                                  <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN4"))</td>
+                              %elif (catSeqUXN5==$(x))
+                                  <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN5"))</td>
+
+                              %elif (catSeqUXD1==$(x))
+                                  @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD1"))", V_CXUXD1)
+                                  <td class="coldate">$(V_CXUXD1)</td>
+                              %elif (catSeqUXD2==$(x))
+                                  @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD2"))", V_CXUXD2)
+                                  <td class="coldate">$(V_CXUXD2)</td>
+                              %elif (catSeqUXD3==$(x))
+                                  @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD3"))", V_CXUXD3)
+                                  <td class="coldate">$(V_CXUXD3)</td>
+                              %elif (catSeqUXD4==$(x))
+                                  @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD4"))", V_CXUXD4)
+                                  <td class="coldate">$(V_CXUXD4)</td>
+                              %elif (catSeqUXD5==$(x))
+                                  @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD5"))", V_CXUXD5)
+                                  <td class="coldate">$(V_CXUXD5)</td>
+
+                              %elif (catSeqUDA1==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA1"))</td>
+                              %elif (catSeqUDA2==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA2"))</td>
+                              %elif (catSeqUDA3==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA3"))</td>
+                              %elif (catSeqUDA4==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA4"))</td>
+                              %elif (catSeqUDA5==$(x))
+                                  <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA5"))</td>
+
+                              %elif (catSeqUDN1==$(x))
+                                  <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN1"))</td>
+                              %elif (catSeqUDN2==$(x))
+                                  <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN2"))</td>
+                              %elif (catSeqUDN3==$(x))
+                                  <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN3"))</td>
+                              %elif (catSeqUDN4==$(x))
+                                  <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN4"))</td>
+                              %elif (catSeqUDN5==$(x))
+                                  <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN5"))</td>
+
+                              %endif
+                              @dtw_add(x, "1", x)
+                          %}
+                          <td class="colnmbr">$(F_ExtendedPrice)</td>
+	      	       </tr>
+                  @dtw_add(rowNbr, "1", rowNbr)
+                  %}
+
+	       %INCLUDE "SetRowClass.icl"
+
+              %if (subTotal != "0" && subTotal != orderTotal)
+                  @Format_Nbr(subTotal, F_subTotal, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">Subtotal</td>
+                      <td class="colnmbr">$(F_subTotal)</td>
+                  </tr>
+    	       %endif
+
+              %if (freightChg != ".00")
+                  @Format_Nbr(freightChg, F_freightChg, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">Freight Charge</td>
+                      <td class="colnmbr">$(F_freightChg)</td>
+                  </tr>
+   	       %endif
+
+              %if (totalTax != ".00" && totalTax != "0")
+                  @Format_Nbr(totalTax, F_totalTax, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">Sales Tax</td>
+                      <td class="colnmbr">$(F_totalTax)</td>
+    	           </tr>
+              %endif
+
+              %if (specialChg != ".00")
+                  @Format_Nbr(specialChg, F_specialChg, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">Special Charge</td>
+                      <td class="colnmbr">$(F_specialChg)</td>
+                  </tr>
+	       %endif
+
+              %if ((subTotal != "0" && F_subTotal != F_orderTotal) || (freightChg != ".00") || (totalTax != "0") || (specialChg != ".00"))
+                  %INCLUDE "SetRowClass.icl"
+              %endif
+
+              @Format_Nbr(orderTotal, F_orderTotal, "2", $(amtEditCode), "Y", "", "")
+    	       <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">Order Total</td>
+                      <td class="coltotal">$(F_orderTotal)</td>
+    	       </tr>
+
+              @RtvFldDesc("WPOCTL=$(orderControlNumber) and WPPAYT='1'", "OEPAYW", "WPPAYA", chargeOnAccount)
+              %if (chargeOnAccount != "")
+                  @Format_Nbr(chargeOnAccount, F_chargeOnAccount, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">Charge On Account</td>
+                      <td class="colnmbr">$(F_chargeOnAccount)</td>
+                  </tr>
+	       %endif
+
+              @RtvFldDesc("WPOCTL=$(orderControlNumber) and WPCCID>' '", "OEPAYW", "WPPAYA", creditCardAmount)
+              %if (creditCardAmount != "")
+                  @Format_Nbr(creditCardAmount, F_creditCardAmount, "2", $(amtEditCode), "Y", "", "")
+                  @RtvFldDesc("WPOCTL=$(orderControlNumber) and WPCCID>' '", "OEPAYW", "WPDESC", ccDesc)
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr" colspan="$(indent)">$(ccDesc)</td>
+                      <td class="colnmbr">$(F_creditCardAmount)</td>
+                  </tr>
+	       %endif
+              </table>
+          </fieldset>
+          @dtw_assign(formatToPrint, "Y")
+          %INCLUDE "Copyright.icl"
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(catTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(CANCEL) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(maintenanceCode, "D")
+  @Order_Control(profileHandle, dataBaseID, orderControlNumber, maintenanceCode, dropShip, edtVar)
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@rmcc", "Y")
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Update_Credit_Card(edtVar)
+  @DTW_ASSIGN(confMessage, "Confirm Cancel Of Order")
+  @Process_Order (profileHandle, dataBaseID, orderControlNumber, orderNumber, maintenanceCode)
+
+  @BrowserType(browserCode)
+  %if (browserCode == "IE")
+      <script TYPE="text/javascript">
+          opener.location.href='$(homeURL)$(cGIPath)ProdCatalog.d2w/REPORT$(d2wVarBase)';
+          window.close();
+      </script>
+  %else
+      <meta http-equiv="refresh" content="0; URL=javascript:opener.document.location='$(homeURL)$(cGIPath)ProdCatalog.d2w/REPORT$(d2wVarBase)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';self.close();">
+  %endif
+%}
+
+%HTML(CLOSE) {
+  <script TYPE="text/javascript">
+      opener.location.href=opener.location.href;
+      window.close();
+  </script>
+%}

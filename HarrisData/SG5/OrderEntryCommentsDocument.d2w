@@ -1,0 +1,536 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Order Entry Comments Document                               *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "$(docDescription) Comment Maintenance"
+  d2wName                 = "OrderEntryCommentsDocument.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;documentType=@dtw_rurlescseq(documentType)&amp;docDescription=@dtw_rurlescseq(docDescription)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  headerTable             = %table
+  detailTable             = %table
+  optionTable             = %table
+  rows        	           = ""
+  popUpWin                = "Y"
+  header                  = "H"
+  trailer                 = "T"
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "OrderEntryConfirm.icl"
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onLoad="window.focus()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(inquiryBanner)"
+          <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      <td>
+                          @Comment_Document_Query(profileHandle, dataBaseID, orderControlNumber, headerTable, detailTable)
+                      </td>
+                  </tr>
+              </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(inquiryTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(DTW_SQL) Comment_Document_Query(INOUT CHAR(64)     profileHandle,
+				                 CHAR(2)      dataBaseID,
+				                 DECIMAL(8,0) orderControlNumber,	
+			 	           OUT   headerTable,
+				                 detailTable)
+
+{call $(pgmLibrary)HOEOWS_W
+
+  %REPORT(headerTable){
+      <table $(contentTable)>
+  	       <colgroup>
+  	           <col width="80%">
+  	           <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              <td class="toolbar">
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/CLOSE$(d2wVarBase)">$(closeImageMed)</a>
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+      %INCLUDE "OrderEntryRetInfo.icl"
+      $(hrTagAttr)
+  %}
+
+  %REPORT(detailTable){
+      <table $(contentTable)>
+          <tr>	
+              <th class="colhdr">$(optionHeading)</th>
+              <th class="colhdr">Ln</th>
+              <th class="colhdr">Item <br> Number</th>
+              <th class="colhdr">Description</th>
+              <th class="colhdr">Required<br>Date</th>
+              %if (maintCode == "A")
+                  <th class="colhdr">Quantity<br>Ordered</th>
+              %elif (maintCode == "S")
+                  <th class="colhdr">Quantity<br>Shipped</th>
+              %else
+                  <th class="colhdr">Quantity<br>Open</th>
+              %endif
+              <th class="colhdr">Price</th>
+              <th class="colhdr">Extended<br>Price</th>
+          </tr>
+
+          @dtw_assign(lineNumber, "000")
+          @RtvFldDesc("DODOCT='$(documentType)' and DOAPID='OE'", "HDDOCT", "DOAPHC", prtHdrCmt)
+          %if (prtHdrCmt == "Y")
+              @dtw_assign(dspCmt, "")
+              @dtw_assign(type, "D")
+              @Get_Default_Comments(V_O1ITEM, H1SHTO, documentType, header, type, commentTable)
+              @dtw_tb_rows(commentTable, rows)
+              %if (rows > "0")
+                  @dtw_assign(begEndDesc, "Document Type Header")
+                  @dtw_assign(x, "1")
+                  %while(x <= rows){@dtw_tb_getv(commentTable, x, "1", cmt)
+                      %if (cmt == "")
+                          @dtw_assign(cmt, "&nbsp;")
+                      %endif
+                      @dtw_concat(dspCmt, "$(cmt)<br>", dspCmt)
+                      @dtw_add(x, "1", x)
+                  %}
+                  %if (dspCmt != "")
+                      <tr>
+                          <td>&nbsp;</td>
+                          <td class="cmthdr" colspan="2">$(begEndDesc):</td>
+                          <td class="cmtdsp" colspan="5"><a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=000&amp;cmtSelection=D&amp;clearOnClose=Y" title="Copy $(begEndDesc) to Order Header Comments" onclick="$(commentWinVar)">$(dspCmt)</a>  </td>
+                      </tr>
+                  %endif
+              %endif
+              @dtw_assign(rows, "0")
+              @dtw_assign(begEndDesc, "")
+          %endif
+          @dtw_assign(type, "O")
+          @Order_Comments_Query(documentType, orderControlNumber, lineNumber, commentTable)
+          @dtw_tb_rows(commentTable, rows)
+
+          %if (rows == "0")
+              @dtw_assign(type, "C")
+              @Get_Default_Comments(V_O1ITEM, H1SHTO, documentType, header, type, commentTable)
+              @dtw_tb_rows(commentTable, rows)
+              %if (rows == "0" && prtHdrCmt != "Y")
+                  @dtw_assign(type, "D")
+                  @Get_Default_Comments(V_O1ITEM, H1SHTO, documentType, header, type, commentTable)
+                  @dtw_tb_rows(commentTable, rows)
+              %endif
+          %endif
+          %if (rows > "0")
+              %if (type == "O")
+                  @dtw_assign(begEndDesc, "Order Header")
+              %elif (type == "C")
+                  @dtw_assign(begEndDesc, "Customer Header")
+              %else
+                  @dtw_assign(begEndDesc, "Document Type Header")
+              %endif
+              @dtw_assign(dspCmt, "")
+              @dtw_assign(x, "1")
+              %while(x <= rows){@dtw_tb_getv(commentTable, x, "1", cmt)
+                  %if (cmt == "")
+                      @dtw_assign(cmt, "&nbsp;")
+                  %endif
+                  @dtw_concat(dspCmt, "$(cmt)<br>", dspCmt)
+                  @dtw_add(x, "1", x)
+              %}
+              <tr>
+                  <td class="colicon">
+                      %if (type == "O")
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=000" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                          @Format_Confirm_Desc("Order Header Comments", "", "", "", "", "", confirmDesc)
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/DELETE$(d2wVarBase)&amp;detailLine=000">$(deleteImageSml)</a>
+                      %elif (type == "C")
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=000&amp;cmtSelection=Y&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                      %else
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=000&amp;cmtSelection=D&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                      %endif
+                  </td>
+                  <td class="cmthdr" colspan="2">$(begEndDesc):</td>
+                  <td class="cmtdsp" colspan="5">
+                      %if (type == "O")
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=000" title="Maintain Order Header Comments" onclick="$(commentWinVar)">$(dspCmt)</a>
+                      %elif (type == "C")
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=000&amp;cmtSelection=Y&amp;clearOnClose=Y" title="Copy $(begEndDesc) to Order Header Comments" onclick="$(commentWinVar)">$(dspCmt)</a>
+                      %else
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=000&amp;cmtSelection=D&amp;clearOnClose=Y" title="Copy $(begEndDesc) to Order Header Comments" onclick="$(commentWinVar)">$(dspCmt)</a>
+                      %endif
+                  </td>
+              </tr>
+          %else
+              <tr>
+                  <td class="colicon"><a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=000" title="Maintain Order Header Comments" onclick="$(commentWinVar)">$(commentImage)</a></td>
+                  <td>&nbsp;</td>
+                  <td class="cmthdr">Order Header:</td>
+                  <td class="cmtnone" colspan="5"><a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=000" title="Maintain Order Header Comments" onclick="$(commentWinVar)">No Order Header Comments</a></td>
+              </tr>
+          %endif
+
+          %ROW {
+              @DTW_ASSIGN(itemDesc, V_O1IMDS)
+              @dtw_urlescseq(itemDesc, itemDesc)
+              %if (maintCode == "S")
+                  @dtw_assign(workPrice, @dtw_rformat(@dtw_rdivide(@dtw_rmultiply(V_O1QSTC, V_O1SLPR), V_O1ORUF), "21", "2", "0", "", "23"))
+                  @Format_Nbr(V_O1QSTC, qtyOpen, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %else
+                  @dtw_assign(workPrice, @dtw_rformat(@dtw_rdivide(@dtw_rmultiply(@dtw_rsubtract(V_O1QORD, V_O1QSTD), V_O1SLPR), V_O1ORUF), "21", "2", "0", "", "23"))
+                  @Format_Nbr("@dtw_rsubtract(V_O1QORD, V_O1QSTD)", qtyOpen, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %endif
+              @Format_Nbr(workPrice, ExtendedPrice, "2", $(amtEditCode), "Y", "", "")
+              @DTW_ADD(subTotal, workPrice, "15", subTotal)
+              @Format_Nbr(V_O1SLPR, F_O1SLPR, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Date(V_O1RQDT, "D", F_O1RQDT)
+
+              @dtw_assign(lineNumber, "$(V_O1ORL#)")
+              @Order_Comments_Query(documentType, orderControlNumber, lineNumber, commentTable)
+              @dtw_tb_rows(commentTable, cmtRows)
+              @dtw_assign(type, "O")
+              %if (cmtRows == "0")
+                  @dtw_assign(type, "I")
+                  @Get_Default_Comments(V_O1ITEM, H1SHTO, documentType, header, type, commentTable)
+                  @dtw_tb_rows(commentTable, cmtRows)
+              %endif
+              %if (cmtRows == "0")
+                  @dtw_assign(type, "X")
+                  @Get_Default_Comments(V_O1ITEM, H1SHTO, documentType, header, type, commentTable)
+                  @dtw_tb_rows(commentTable, cmtRows)
+              %endif
+
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colicon">
+                      %if (cmtRows == "0")
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=@dtw_rurlescseq(lineNumber)" onclick="$(commentWinVar)">$(commentImage)</a>
+                      %else
+                          &nbsp;
+                      %endif
+                  </td>
+                  <td class="colnmbr">$(V_O1ORL#)</td>
+                  <td class="colalph">$(V_O1ITEM)</td>
+                  <td class="colalph">$(V_O1IMDS)</td>
+                  <td class="coldate">$(F_O1RQDT)</td>
+                  <td class="colnmbr">$(qtyOpen)</td>
+                  <td class="colnmbr">$(F_O1SLPR)</td>
+                  <td class="colnmbr">$(ExtendedPrice)</td>
+	       </tr>
+
+                  %if (V_O1BLKT == "Y")
+                      @Blanket_Line_Query(profileHandle, dataBaseID, orderControlNumber, orderNumber, V_O1ORL#, blanketLineTable)
+                      @dtw_tb_rows(blanketLineTable, rows)
+                      %if (rows > "0")
+                          @dtw_assign(x, "1")
+                          %while(x <= rows){
+                              @DTW_ASSIGN(V_O1RQDT, @dtw_tb_rgetv(blanketLineTable, x, @dtw_tb_rQuerycolnonj(blanketLineTable, "BWRQDT")))
+                              @DTW_ASSIGN(V_O1SHTO, @dtw_tb_rgetv(blanketLineTable, x, @dtw_tb_rQuerycolnonj(blanketLineTable, "BWSHTO")))
+                              @DTW_ASSIGN(V_O1SVSV, @dtw_tb_rgetv(blanketLineTable, x, @dtw_tb_rQuerycolnonj(blanketLineTable, "BWSVSV")))
+                              @DTW_ASSIGN(V_O1BQTY, @dtw_rsubtract(@dtw_tb_rgetv(blanketLineTable, x, @dtw_tb_rQuerycolnonj(blanketLineTable, "BWQORD")), @dtw_tb_rgetv(blanketLineTable, x, @dtw_tb_rQuerycolnonj(blanketLineTable, "BWQSTD"))))
+                              @Format_Nbr(V_O1BQTY, F_O1BQTY, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+
+                              @Format_Date(V_O1RQDT, "D", F_O1RQDT)
+                              %if (@dtw_tb_rgetv(blanketLineTable, x, @dtw_tb_rQuerycolnonj(blanketLineTable, "BWORST")) == "O")
+                                  %INCLUDE "SetRowClass.icl"
+                                  <tr class="$(rowClass)">
+                                      <td class="colicon">&nbsp;</td>
+                                      <td colspan="3">&nbsp;</td>
+                                      <td class="coldate">$(F_O1RQDT)</td>
+                                      <td class="colnmbr">$(F_O1BQTY)</td>
+                                      <td colspan="2">&nbsp;</td>
+                                  </tr>
+                                  %if (multShipTo == "Y")
+                                      %if (hdrShipTo != V_O1SHTO && V_O1SHTO != "0")
+                                          @RtvFldDesc("CMCUST=$(V_O1SHTO)", "HDCUST", "CMCNA1", fieldDesc)
+                                          %INCLUDE "SetRowClass.icl"
+                                          <tr class="$(rowClass)">
+                                              <td class="colicon">&nbsp;</td>
+                                              <td colspan="2">&nbsp;</td>
+                                              <td class="colalph">&nbsp; &nbsp; Ship-To: $(fieldDesc)</td>
+                                              <td colspan="7">&nbsp;</td>
+                                          </tr>
+                                      %endif
+               		       %endif
+                                  %if (multShipVia == "Y")
+                                      %if (hdrShipVia != V_O1SVSV && V_O1SVSV != "")
+                                          @RtvFldDesc("SVSVSV='$(V_O1SVSV)'", "HDSHPV", "SVSVDS", fieldDesc)
+                                          %INCLUDE "SetRowClass.icl"
+                                          <tr class="$(rowClass)">
+                                              <td class="colicon">&nbsp;</td>
+                                              <td colspan="2">&nbsp;</td>
+                                              <td class="colalph">&nbsp; &nbsp; Ship Via: $(fieldDesc)</td>
+                                              <td colspan="7">&nbsp;</td>
+                                          </tr>
+                                      %endif
+               		   %endif
+                              %endif
+                              @dtw_add(x, "1", x)
+                          %}
+                      %endif
+                  %endif
+                  %if (V_O1BLKT != "Y")
+                      %if (multShipTo == "Y")
+                          %if (hdrShipTo != V_O1SHTO && V_O1SHTO != "0")
+                              @RtvFldDesc("CMCUST=$(V_O1SHTO)", "HDCUST", "CMCNA1", fieldDesc)
+                              %INCLUDE "SetRowClass.icl"
+                              <tr class="$(rowClass)">
+                                  <td class="colicon">&nbsp;</td>
+                                  <td colspan="2">&nbsp;</td>
+                                  <td class="colalph">&nbsp; &nbsp; Ship-To: $(fieldDesc)</td>
+                                  <td colspan="7">&nbsp;</td>
+                              </tr>
+                          %endif
+   		       %endif
+                      %if (multShipVia == "Y")
+                          %if (hdrShipVia != V_O1SVSV && V_O1SVSV != "")
+                              @RtvFldDesc("SVSVSV='$(V_O1SVSV)'", "HDSHPV", "SVSVDS", fieldDesc)
+                              %INCLUDE "SetRowClass.icl"
+                              <tr class="$(rowClass)">
+                                  <td class="colicon">&nbsp;</td>
+                                  <td colspan="2">&nbsp;</td>
+                                  <td class="colalph">&nbsp; &nbsp; Ship Via: $(fieldDesc)</td>
+                                  <td colspan="7">&nbsp;</td>
+                              </tr>
+                          %endif
+   		       %endif
+                  %endif
+
+                  @dtw_assign(docPrintCode, "D")
+                  %if (V_O1KTRL == "O" || V_O1KIT == "F")
+                      %if (V_O1KIT == "F")
+                          @Feat_Option_Query(orderControlNumber, orderNumber, lineNumber, optionTable)
+                      %else
+                          @RtvFldDesc("KTKTIT='$(V_O1ITEM)'", "HDKIT", "KTINVC", docPrintCode)
+                          @Kit_Options_Query(profileHandle, dataBaseID, orderControlNumber, orderNumber, lineNumber, optionTable)
+                      %endif
+                      @dtw_tb_rows(optionTable, rows)
+                      %if (rows > "0" && docPrintCode == "D")
+                          @dtw_assign(x, "1")
+                          @dtw_assign(saveFeat, "")
+                          %while(x <= rows){
+                              %if (V_O1KIT == "F")
+           		            @dtw_assign(FEAT, @dtw_tb_rgetv(optionTable, x, @dtw_tb_rQuerycolnonj(optionTable, "OPFEAT")))
+           		            @dtw_assign(OITM, @dtw_tb_rgetv(optionTable, x, @dtw_tb_rQuerycolnonj(optionTable, "OPOPTN")))
+           		            @dtw_assign(QORD, @dtw_tb_rgetv(optionTable, x, @dtw_tb_rQuerycolnonj(optionTable, "OPQORD")))
+                              %else
+           		            @dtw_assign(CITM, @dtw_tb_rgetv(optionTable, x, @dtw_tb_rQuerycolnonj(optionTable, "O2CITM")))
+           		            @dtw_assign(OITM, @dtw_tb_rgetv(optionTable, x, @dtw_tb_rQuerycolnonj(optionTable, "O2OITM")))
+           		            @dtw_assign(QORD, @dtw_tb_rgetv(optionTable, x, @dtw_tb_rQuerycolnonj(optionTable, "O2QORD")))
+                                   @dtw_assign(FEAT, CITM)
+                              %endif
+
+                              %if (saveFeat != FEAT)
+                                  @dtw_assign(saveFeat, FEAT)
+                                  %INCLUDE "SetRowClass.icl"
+                                  <tr class="$(rowClass)">
+                                      <td class="colicon">&nbsp;</td>
+                                      <td colspan="2">&nbsp;</td>
+                                      <td class="colalph">$(saveFeat)</td>
+                                      <td colspan="4">&nbsp;</td>
+                                  </tr>
+                              %endif
+
+                              %if (OITM != "")
+	      	                    @dtw_assign(itemNumber, "$(OITM)")
+                              %else
+	      	                    @dtw_assign(itemNumber, "$(CITM)")
+                              %endif
+                              @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+                              @Format_Nbr(QORD, F_QORD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+
+                              %INCLUDE "SetRowClass.icl"
+                              <tr class="$(rowClass)"
+>                                 <td class="colicon">&nbsp;</td>
+                                  <td colspan="2">&nbsp;</td>
+                                  <td class="colalph">&nbsp; &nbsp; &nbsp; $(itemDescription)</td>
+                                  <td class="colalph">&nbsp;</td>
+                                  <td class="colnmbr">$(F_QORD)</td>
+                                  <td colspan="2">&nbsp;</td>
+                              </tr>
+                              @dtw_add(x, "1", x)
+                          %}
+                      %endif
+                  %endif
+
+                  %if (cmtRows > "0")
+                      %if (type == "O")
+                          @dtw_assign(begEndDesc, "Item Order")
+                      %elif (type == "I")
+                          @dtw_assign(begEndDesc, "Customer/Item")
+                      %elif (type == "X")
+                          @dtw_assign(begEndDesc, "Item Extended Description")
+                      %endif
+                      @dtw_assign(dspCmt, "")
+                      @dtw_assign(x, "1")
+                      %while(x <= cmtRows){@dtw_tb_getv(commentTable, x, "1", cmt)
+                          %if (cmt == "")
+                              @dtw_assign(cmt, "&nbsp;")
+                          %endif
+                          @dtw_concat(dspCmt, "$(cmt)<br>", dspCmt)
+                          @dtw_add(x, "1", x)
+                      %}
+                      <tr>
+                          <td class="colicon">
+                              %if (type == "O")
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(V_O1ITEM)&amp;itemDescription=@dtw_rurlescseq(V_O1IMDS)&amp;detailLine=@dtw_rurlescseq(V_O1ORL#)" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                                  @Format_Confirm_Desc("Order Comments for Item", "", "$(V_O1IMDS)", "$(V_O1ITEM)", "", "", confirmDesc)
+                                  <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/DELETE$(d2wVarBase)&amp;detailLine=@dtw_rurlescseq(V_O1ORL#)">$(deleteImageSml)</a>
+                              %else
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(V_O1ITEM)&amp;itemDescription=@dtw_rurlescseq(V_O1IMDS)&amp;detailLine=@dtw_rurlescseq(V_O1ORL#)&amp;cmtSelection=Y&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                              %endif
+                          </td>
+                          <td class="cmthdr" colspan="2">$(begEndDesc):</td>
+                          <td class="cmtdsp" colspan="5">
+                              %if (type == "O")
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(V_O1ITEM)&amp;itemDescription=@dtw_rurlescseq(V_O1IMDS)&amp;detailLine=@dtw_rurlescseq(V_O1ORL#)" title="Maintain Order Comments for Item $(V_O1ITEM)" onclick="$(commentWinVar)">$(dspCmt)</a>
+                              %else
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(V_O1ITEM)&amp;itemDescription=@dtw_rurlescseq(V_O1IMDS)&amp;detailLine=@dtw_rurlescseq(V_O1ORL#)&amp;cmtSelection=Y&amp;clearOnClose=Y" title="Copy $(begEndDesc) to Order Comments for Item $(V_O1ITEM)" onclick="$(commentWinVar)">$(dspCmt)</a>
+                              %endif
+                          </td>
+                      </tr>
+                  %endif
+          %}
+          @dtw_assign(lineNumber, "999")
+          @RtvFldDesc("DODOCT='$(documentType)' and DOAPID='OE'", "HDDOCT", "DOAPTC", prtTrlCmt)
+          @dtw_assign(type, "O")
+          @Order_Comments_Query(documentType, orderControlNumber, lineNumber, commentTable)
+          @dtw_tb_rows(commentTable, trailerRows)
+          %if (trailerRows == "0")
+              @dtw_assign(type, "C")
+              @Get_Default_Comments(V_O1ITEM, H1SHTO, documentType, trailer, type, commentTable)
+              @dtw_tb_rows(commentTable, trailerRows)
+              %if (trailerRows == "0" && prtTrlCmt != "Y")
+                  @dtw_assign(type, "D")
+                  @Get_Default_Comments(V_O1ITEM, H1SHTO, documentType, trailer, type, commentTable)
+                  @dtw_tb_rows(commentTable, trailerRows)
+              %endif
+          %endif
+          %if (trailerRows > "0")
+              %if (type == "O")
+                  @dtw_assign(begEndDesc, "Order Trailer")
+              %elif (type == "C")
+                  @dtw_assign(begEndDesc, "Customer Trailer")
+              %else
+                  @dtw_assign(begEndDesc, "Document Type Trailer")
+              %endif
+              @dtw_assign(dspCmt, "")
+              @dtw_assign(x, "1")
+              %while(x <= trailerRows){@dtw_tb_getv(commentTable, x, "1", cmt)
+                  %if (cmt == "")
+                      @dtw_assign(cmt, "&nbsp;")
+                  %endif
+                  @dtw_concat(dspCmt, "$(cmt)<br>", dspCmt)
+                  @dtw_add(x, "1", x)
+              %}
+              <tr>
+                  <td class="colicon">
+                      %if (type == "O")
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=999" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                          @Format_Confirm_Desc("Order Trailer Comments", "", "", "", "", "", confirmDesc)
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/DELETE$(d2wVarBase)&amp;detailLine=999">$(deleteImageSml)</a>
+                      %elif (type == "C")
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=999&amp;cmtSelection=Y&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                      %else
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=999&amp;cmtSelection=D&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                      %endif
+                  </td>
+                  <td class="cmthdr" colspan="2">$(begEndDesc):</td>
+                  <td class="cmtdsp" colspan="5">
+                      %if (type == "O")
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=999" title="Maintain Order Trailer Comments" onclick="$(commentWinVar)">$(dspCmt)</a>
+                      %elif (type == "C")
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=999&amp;cmtSelection=Y&amp;clearOnClose=Y" title="Copy $(begEndDesc) to Order Trailer Comments" onclick="$(commentWinVar)">$(dspCmt)</a>
+                      %else
+                          <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=999&amp;cmtSelection=D&amp;clearOnClose=Y" title="Copy $(begEndDesc) to Order Trailer Comments" onclick="$(commentWinVar)">$(dspCmt)</a>
+                      %endif
+                  </td>
+              </tr>
+          %else
+
+              <tr>
+                  <td class="colicon"><a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=999" title="Maintain Order Trailer Comments" onclick="$(commentWinVar)">$(commentImage)</a></td>
+                  <td>&nbsp;</td>
+                  <td class="cmthdr">Order Trailer:</td>
+                  <td class="cmtnone" colspan="5"><a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=999" title="Maintain Order Trailer Comments" onclick="$(commentWinVar)">No Order Trailer Comments</a></td>
+              </tr>
+          %endif
+          %if (prtTrlCmt == "Y")
+              @dtw_assign(dspCmt, "")
+              @dtw_assign(type, "D")
+              @Get_Default_Comments(V_O1ITEM, H1SHTO, documentType, trailer, type, commentTable)
+              @dtw_tb_rows(commentTable, trailerRows)
+              %if (rows > "0")
+                  @dtw_assign(begEndDesc, "Document Type Trailer")
+                  @dtw_assign(x, "1")
+                  %while(x <= trailerRows){@dtw_tb_getv(commentTable, x, "1", cmt)
+                      %if (cmt == "")
+                          @dtw_assign(cmt, "&nbsp;")
+                      %endif
+                      @dtw_concat(dspCmt, "$(cmt)<br>", dspCmt)
+                      @dtw_add(x, "1", x)
+                  %}
+                  %if (dspCmt != "")
+                      <tr>
+                          <td>&nbsp;</td>
+                          <td class="cmthdr" colspan="2">$(begEndDesc):</td>
+                          <td class="cmtdsp" colspan="5"><a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=000&amp;cmtSelection=D&amp;clearOnClose=Y" title="Copy $(begEndDesc) to Order Header Comments" onclick="$(commentWinVar)">$(dspCmt)</a>  </td>
+                      </tr>
+                  %endif
+              %endif
+          %endif
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(CLOSE) {
+  <script TYPE="text/javascript">
+      opener.location.href=opener.location.href;
+      window.close();
+  </script>
+%}
+
+%HTML(DELETE) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From OECMWK Where O4OCTL=$(orderControlNumber) and O4ORL#=$(detailLine) ", stmtSQL)
+  @dtw_concat(stmtSQL, "  and O4DOCT='$(documentType)' @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+%}

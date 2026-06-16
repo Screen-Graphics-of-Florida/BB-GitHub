@@ -1,0 +1,284 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					                                *
+*  Job: Manufacturing Review Order Entry                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "BrowserType.icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Order Entry - Mfg Review"
+  d2wName                 = "OrderEntryMfgReview.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;inclChanged=@dtw_rurlescseq(inclChanged)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "ALL"
+  dspMaxRows              = "ALL"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  tabID                   = "MFGREVIEW"
+  appendWildCard          = "N"
+  appendUserView          = "N"
+  inclChanged             = "Y"
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@orderControlNumber", "@dtw_rurlescseq(orderControlNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          %INCLUDE "OrderEntryProgOpt.icl"
+          <script TYPE="text/javascript">
+              %INCLUDE "NewWindowOpen.icl"
+              %INCLUDE "AJAXRequestFunction.icl"
+
+              function selReprint(octl,ord,orl,bln,mord,row) {
+                 var selFld="selRec"+row;
+                 var url = "$(homeURL)$(cGIPath)OrderEntryMfgReviewSelReprint.d2w/UPDATE?baseVar=@dtw_rurlescseq(baseVar)";
+                     url += "&orderControlNumber=" + escape(octl);
+                     url += "&orderNumber=" + escape(ord);
+                     url += "&lineNumber=" + escape(orl);
+                     url += "&releaseNumber=" + escape(bln);
+                     url += "&mfgOrder=" + escape(mord);
+                 var sel='';
+                     if (document.getElementById(selFld).checked) {sel='R';}
+                     url += "&selFlag=" + escape(sel);
+	          var ajaxRequest = new ajaxObject(url,selReprintResponse);
+	              ajaxRequest.update();
+              }
+
+              function selReprintResponse(responseText, responseStatus) {
+                 if (responseStatus==200) {
+                 } else  { alert(responseStatus + " -- Error Processing Request");}
+              }
+                            
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ORDERENTRYMFGREVIEW")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "H1ORD#", thisOrder)
+
+                      @dtw_assign(START_ROW_NUM, "1")
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_assign(withSQL, " With PO_HDORCH as (Select OCPO#,OCPOL#,OCPORL,OCORL#,OCBLN# from HDORCH Where OCORD#=$(thisOrder) and OCTYPE='P' ")
+                      %if (inclChanged == "Y")
+                          @dtw_concat(withSQL, " and Exists (Select MOOCTL from WKVMOC Where MOOCTL=$(orderControlNumber) and MOORD#=$(thisOrder) and MOORL#=OCORL# and MOBLN#=OCBLN# and MOUPDAT<>' ') ", withSQL)
+                      %endif
+                      @dtw_concat(withSQL, " ) ", withSQL)
+                      @dtw_concat(stmtSQL, withSQL, stmtSQL)
+                      @dtw_concat(stmtSQL, " Select ' ' as MOREPRT,char(PDPO) as MOMORD,PDITEM as MOITEM,PDIMDS as IMDESC, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " PDQTOR as MOOLDQ,PDRQDT as MOOLDDT,' ' as MOCMP,' ' as MOLBR, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " Case When (PDQRST+PDQRRT+PDQRFT-PDQRVT)<>0 Then 'Y' Else ' ' End as MORCT, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " Case When PDPRPO='2' Then 'Y' Else ' ' End as MOPRT, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " PDSTAT as MOST,'P' as TYPE, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " OCORL# as MOORL#,OCBLN# as MOBLN#, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " OEDTWK.*, coalesce(SPPART,O1IMDS) as SPPART ", stmtSQL)
+                      @dtw_concat(fileSQL, " PO_HDORCH inner join POPOMD On OCPO#=PDPO and OCPOL#=PDPOL# and OCPORL=PDPORL ", fileSQL)
+                      @dtw_concat(fileSQL, " inner join (OEDTWK left join OESPWK on O1OCTL=SPOCTL and O1ORL#=SPORL#) on O1OCTL=$(orderControlNumber) and O1ORL#=OCORL# and O1BLN#=OCBLN# ", fileSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_assign(stmtSQL_sv, stmtSQL)
+                       
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select MOREPRT as MOREPRT,MOMORD as MOMORD,MOITEM as MOITEM,a.IMIMDS as IMDESC, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " MOOLDQ as MOOLDQ,MOOLDDT as MOOLDDT,MOCMP as MOCMP,MOLBR as MOLBR, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " MORCT as MORCT,MOPRT as MOPRT,MOST as MOST,'M' as TYPE, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " MOORL# as MOORL#,MOBLN# as MOBLN#, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " OEDTWK.*, coalesce(SPPART,O1IMDS) as SPPART ", stmtSQL)
+                      @dtw_concat(fileSQL, " WKVMOC left join HDIMST a on a.IMITEM=MOITEM ", fileSQL)
+                      @dtw_concat(fileSQL, " inner join (OEDTWK left join OESPWK on O1OCTL=SPOCTL and O1ORL#=SPORL#) on O1OCTL=MOOCTL and O1ORL#=MOORL# and O1BLN#=MOBLN# ", fileSQL)
+                      @dtw_concat(selectSQL, " MOOCTL=$(orderControlNumber) and MOORD#=$(thisOrder)", selectSQL)
+                      %if (inclChanged == "Y")
+                          @dtw_concat(selectSQL, " and MOUPDAT<>' ' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      
+                      @dtw_assign(stmtSQL, "$(stmtSQL_sv) UNION $(stmtSQL)")
+                      @dtw_concat(stmtSQL, " Order By MOORL#,MOBLN#,MOOLDDT,MOMORD ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @OrderEntry_MfgReview_Query(profileHandle, dataBaseID, stmtSQL)                      
+                  </td>
+              </tr>
+          </table>
+          <!-- End Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- Start Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) OrderEntry_MfgReview_Query (IN CHAR(64)    profileHandle,
+				                                  CHAR(2)     dataBaseID,
+                                                  CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{ 
+      %INCLUDE "OrderEntryTabs.icl"
+   
+      %if (inclChanged == "Y")
+          @dtw_assign(viewChanged, "CHECKED")
+      %else
+          @dtw_assign(viewChanged, "")
+      %endif
+      <div class="page">
+          &nbsp;
+          View:
+          <input type="checkbox" name="inclChanged" $(viewChanged) onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)&amp;chgChanged=Y'">Changed Lines Only           
+      </div>
+                
+      <form class="formClass" method=post name="Reprint" action="">
+
+      @dtw_assign(saveLineNumber, "")
+      @dtw_assign(saveReleaseNumber, "")
+
+      %ROW {
+      
+          %if (saveLineNumber != V_MOORL# || saveReleaseNumber != V_MOBLN#)
+              %if (saveLineNumber != "")
+                 </table>           
+              %endif
+          
+              @dtw_assign(saveLineNumber, V_MOORL#)
+              @dtw_assign(saveReleaseNumber, V_MOBLN#)
+              <table $(contentTable)>
+                  <tr>
+                      <th class="colhdr">Ln</th>
+                      <th class="colhdr">Item<br>Number</th>
+                      %if (oe_sec_10 == "Y")
+                          <th class="colhdr">Whs</th>
+                      %endif
+                      <th class="colhdr">Description</th>
+                      <th class="colhdr">Required<br>Date</th>
+                      <th class="colhdr">Quantity<br>Ordered</th>
+                  </tr>
+   	              %INCLUDE "SetRowClass.icl"
+                  @Format_Date(V_O1RQDT, "D", F_O1RQDT)
+                  @Format_Nbr(V_O1QORD, F_O1QORD, "4", $(qtyEditCode), "Y", "", "")
+
+                  @dtw_assign(qtyClass, "colnmbr")
+                  %if (V_O1KIT == "" && V_O1OREC != "N" && V_O1QORD > ".0000" && V_O1MNCD != "X")
+                      @dtw_assign(qtyAvailable, "0")
+                      @Get_Qty_Avail(profileHandle, dataBaseID, V_O1ITEM, V_O1WH, qtyAvailable)
+                      @dtw_assign(W_O1QORD, V_O1QORD)
+                      %while(@dtw_rlength(W_O1QORD) != "16") {@dtw_insert("0", W_O1QORD, W_O1QORD)%}
+                      %while(@dtw_rlength(qtyAvailable) != "16") {@dtw_insert("0", qtyAvailable, qtyAvailable)%}
+                      %if (W_O1QORD > qtyAvailable)
+                          @dtw_assign(qtyClass, "oepriceover")
+                      %endif
+                  %endif
+
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr">$(V_O1ORL#)</td>
+                      <td class="colalph">$(V_O1ITEM)</td>
+                      %if (oe_sec_10 == "Y")
+                          @RtvFldDesc("WHWHS=$(V_O1WH)", "HDWHSM", "WHWHNM", whsName)
+                          <td class="colnmbr" $(helpCursor)><span title="$(whsName)">$(V_O1WH)</span></td>
+                      %endif
+                      <td class="colalph">
+                          %INCLUDE "SmartPartDisplay.icl"
+                      </td>
+                      <td class="coldate">$(F_O1RQDT)</td>
+                      <td class="$(qtyClass)">$(F_O1QORD)</td>   
+                  </tr>
+   		      </table>
+          
+              <table $(contentTable)>
+                  <tr>
+                      <th class="colhdr">Reprint</th>
+                      <th class="colhdr">Order<br>Number</th>
+                      <th class="colhdr">Item<br>Number</th>
+                      <th class="colhdr">Item Description</th>
+                      <th class="colhdr">Order<br>Quantity</th>
+                      <th class="colhdr">Due Date</th>
+                      <th class="colhdr">Comp</th>
+	                  <th class="colhdr">Lbr</th>
+                      <th class="colhdr">Rct</th>
+	                  <th class="colhdr">Prt</th>
+	                  <th class="colhdr">St</th>
+    	          </tr>    	      
+    	      
+          %endif
+    	      
+   	      %INCLUDE "SetRowClass.icl"
+	      @Format_Date(V_MOOLDDT, "D", F_MOOLDDT)
+          @Format_Nbr(V_MOOLDQ, F_MOOLDQ, "4", $(qtyEditCode), "Y", "", "")
+
+          <tr class="$(rowClass)">
+              <td class="colcode">
+                  %if (V_O1MNCD != "X" && V_O1MNCD != "D" && V_TYPE == "M")
+                      %if (V_MOREPRT == "R")
+                          @dtw_assign(orderChecked, "CHECKED")
+                      %else
+                          @dtw_assign(orderChecked, "")
+                      %endif
+                      <input id="selRec$(ROW_NUM)" name="selRec$(ROW_NUM)" type="checkbox" $(orderChecked) onClick="selReprint('$(orderControlNumber)','$(dspOrderNumber)','$(V_MOORL#)','$(V_MOBLN#)','$(V_MOMORD)',$(ROW_NUM));"/>
+                  %else
+                      &nbsp;
+                  %endif
+              </td>
+              <td class="colalph">
+                  %if (V_TYPE == "M")
+                      @dtw_assign(selectVar, "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(V_O1PLT)&amp;mfgOrder=@dtw_rurlescseq(V_MOMORD)")
+                      <a href="$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(selectVar)" onclick="$(inquiryWinVar)" title="View Mfg Order">$(V_MOMORD)</a>
+                  %else
+                      $(V_MOMORD)
+                  %endif
+              </td>
+              <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_MOITEM))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_MOITEM)</a></td>
+              <td class="colalph">$(V_IMDESC)</td>
+              <td class="colnmbr">$(F_MOOLDQ)</td>
+              <td class="coldate">$(F_MOOLDDT)</td>
+              <td class="colalph">$(V_MOCMP)</td>
+              <td class="colalph">$(V_MOLBR)</td>
+              <td class="colalph">$(V_MORCT)</td>
+              <td class="colalph">$(V_MOPRT)</td>
+              <td class="colalph">$(V_MOST)</td>
+  	      </tr>
+      %}
+      %if (saveLineNumber != "")
+         </table>           
+      %endif                 
+      </form>
+      %INCLUDE "EndTabs.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(DISPLAY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (chgChanged == "Y" && inclChanged == "Y")
+      @dtw_assign(inclChanged, "")
+  %elseif (chgChanged == "Y")
+      @dtw_assign(inclChanged, "Y")
+  %endif
+  @Set_SQL(stmtSQL)
+%}

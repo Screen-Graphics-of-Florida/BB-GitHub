@@ -1,0 +1,378 @@
+%{
+*********************************************************************
+* Copr 1979 2004 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Employee Pay Information Maintenance                        *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "Employee.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "Employee Pay Information Maintenance"
+  d2wName                 = "EmplMaintainPay.d2w"
+  d2wVarBase              = "$(genericVarBase)$(employeeVarBase)&amp;backHome=@dtw_rurlescseq(backHome)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  programName             = "HHREMU"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  PAYTYPECODE             = ""
+  SCRS                    = ""
+  DLIN                    = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+  @dtw_replace(workURL, "@@fromD2w", "@dtw_rurlescseq(fromD2w)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "EmplUV.icl"
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(chgForm) {
+                      %if (prEmployee != "99999")
+                          if (document.Chg.payType.value =="" ||
+                              document.Chg.payFrequency.value =="" ||
+                              document.Chg.overtimeMethod.value =="" ||
+                              document.Chg.officer.value =="" ||
+                              document.Chg.keyEmployee.value =="")
+                              {alert("$(reqFieldError)"); return false;}
+                      %endif
+                      if (editNum(document.Chg.payFrequency, 1, 0) &&
+                          editNum(document.Chg.payRate, 6, 5) &&
+                          editNum(document.Chg.amountCode, 1, 0) &&
+                          editdate(document.Chg.salChangeDate))
+                      return true;
+                  }
+	           %INCLUDE "numedit.icl"
+                  %INCLUDE "dateedit.icl"
+                  %INCLUDE "calendar.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "EMPLMAINTAINPAY")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          @dtw_concat(stmtSQL, "SELECT EMCOMP, EMFACL, EMEMPL, EMPECP, EMPEMP, EMTYPE, EMEXMT, EMOVTM, EMFREQ, EMAMT, EMSRCD, EMHCE, EMOFCR, EMKEYE, EMBGRP, EMTSTP ", stmtSQL)
+                          @dtw_concat(stmtSQL, " FROM HREMPL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " WHERE EMCOMP=$(prCompany) and EMFACL=$(prFacility) and EMPECP=$(hrCompany) and EMEMPL=$(prEmployee) and EMPEMP=$(hrEmployee)", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      @dtw_assign(sec_03, "N")
+      %INCLUDE "MaintainTop.icl"
+      <table $(contentTable)>
+	   <colgroup>
+	       <col width="80%">
+	       <col width="15%">
+          @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+          <tr><td><h2>$(F_EmpName)</h2></td></tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"		
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (prEmployee == "99999")
+                      @dtw_assign(reqFieldChar, "")
+                  %endif
+                  %if (errFound != "")
+                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                      @ErrVarErr(profileHandle, typeError, errVar)
+                      @DecatErr_Field("@@type", "payType")          @dtw_assign(Err_EMTYPE, fieldValue)
+                      @DecatErr_Field("@@exmt", "exempt")           @dtw_assign(Err_EMEXMT, fieldValue)
+                      @DecatErr_Field("@@freq", "payFrequency")     @dtw_assign(Err_EMFREQ, fieldValue)
+                      @DecatErr_Field("@@amt@", "payRate")          @dtw_assign(Err_EMAMT, fieldValue)
+                      @DecatErr_Field("@@srcd", "amountCode")       @dtw_assign(Err_EMSRCD, fieldValue)
+                      @DecatErr_Field("@@ovtm", "overtimeMethod")   @dtw_assign(Err_EMOVTM, fieldValue)
+                      @DecatErr_Field("@@hce@", "highCompEmpl")     @dtw_assign(Err_EMHCE, fieldValue)
+                      @DecatErr_Field("@@ofcr", "officer")          @dtw_assign(Err_EMOFCR, fieldValue)
+                      @DecatErr_Field("@@keye", "keyEmployee")      @dtw_assign(Err_EMKEYE, fieldValue)
+                      @DecatErr_Field("@@bgrp", "benefitGroup")     @dtw_assign(Err_EMBGRP, fieldValue)
+                      @DecatErr_Field("@@scrs", "salChangeReason")  @dtw_assign(Err_SCRS, fieldValue)
+                      @DecatErr_Field("@@dlin", "salChangeDate")    @dtw_assign(Err_DLIN, fieldValue)
+                      @DecatErr_Field("@@tstp", "timeStamp")        @dtw_assign(Err_TSTP, fieldValue)
+
+                      @Decat_Field("@@type")    @dtw_assign(V_EMTYPE, fieldValue)
+                      @Decat_Field("@@exmt")    @dtw_assign(V_EMEXMT, fieldValue)
+                      @Decat_Field("@@freq")    @dtw_assign(V_EMFREQ, fieldValue)
+                      @Decat_Field("@@amt@")    @dtw_assign(V_EMAMT, fieldValue)
+                      @Decat_Field("@@srcd")    @dtw_assign(V_EMSRCD, fieldValue)
+                      @Decat_Field("@@ovtm")    @dtw_assign(V_EMOVTM, fieldValue)
+                      @Decat_Field("@@hce@")    @dtw_assign(V_EMHCE, fieldValue)
+                      @Decat_Field("@@ofcr")    @dtw_assign(V_EMOFCR, fieldValue)
+                      @Decat_Field("@@keye")    @dtw_assign(V_EMKEYE, fieldValue)
+                      @Decat_Field("@@bgrp")    @dtw_assign(V_EMBGRP, fieldValue)
+                      @Decat_Field("@@scrs")    @dtw_assign(SCRS, fieldValue)
+                      @Decat_Field("@@dlin")    @dtw_assign(DLIN, fieldValue)
+                      @Decat_Field("@@tstp")    @dtw_assign(V_EMTSTP, fieldValue)
+
+                      @dtw_assign(errFound, "")
+
+                  %endif
+                  
+                  
+                  @SetTextOvr(Err_TSTP)
+                  <tr><td class="dsphdr"><span $(textOvr)>.</span></td>
+                      <td><input name="timeStamp" type="hidden" value="$(V_EMTSTP)"></td>
+                  </tr>
+                  @DspErrMsg(Err_TSTP)
+
+                  @SetTextOvr(Err_EMTYPE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Pay Type</span></td>
+                      @dtw_tb_rows(payTypeTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(payTypeTable, x, "1") != V_EMTYPE) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(payTypeTable, "payType", "2", "1", "N", "", x, "1")  $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_EMTYPE)
+
+                  @SetTextOvr(Err_EMEXMT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Exempt/Nonexempt</span></td>
+                      @dtw_tb_rows(exemptTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(exemptTable, x, "1") != V_EMEXMT) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(exemptTable, "exempt", "2", "1", "N", "", x, "1") </td>
+                  </tr>
+                  @DspErrMsg(Err_EMEXMT)
+                  	
+                  @SetTextOvr(Err_EMFREQ)
+                  <tr><td class="dsphdr"><span $(textOvr)>Payroll Frequency</span></td>
+                      @dtw_tb_rows(payFreqTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(payFreqTable, x, "1") != V_EMFREQ) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(payFreqTable, "payFrequency", "2", "1", "N", "", x, "1") $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_EMFREQ)
+
+                  @SetTextOvr(Err_EMAMT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Pay Rate/Salary Amount</span></td>
+                      <td class="inputnmbr"><input name="payRate" type="text" value="$(V_EMAMT)" size="13" maxlength="13"> </td>
+                  </tr>
+                  @DspErrMsg(Err_EMAMT)
+
+                  @SetTextOvr(Err_EMSRCD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Salary Amount Code</span></td>
+                      @dtw_tb_rows(salaryCodeTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(salaryCodeTable, x, "1") != V_EMSRCD) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(salaryCodeTable, "amountCode", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_EMSRCD)
+
+                  @SetTextOvr(Err_EMOVTM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Overtime Calculation Method</span></td>
+                      @dtw_tb_rows(overtimeMethodTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(overtimeMethodTable, x, "1") != V_EMOVTM) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(overtimeMethodTable, "overtimeMethod", "2", "1", "N", "", x, "1") $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_EMOVTM)
+
+                  @SetTextOvr(Err_EMHCE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Highly Compensated Employee</span></td>
+                      @dtw_tb_rows(yn01Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_EMHCE) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn01Table, "highCompEmpl", "2", "1", "N", "", x, "1") </td>
+                  </tr>
+                  @DspErrMsg(Err_EMHCE)
+
+                  @SetTextOvr(Err_EMOFCR)
+                  <tr><td class="dsphdr"><span $(textOvr)>Corporate Officer</span></td>
+                      @dtw_tb_rows(yn02Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn02Table, x, "1") != V_EMOFCR) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn02Table, "officer", "2", "1", "N", "", x, "1") $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_EMOFCR)
+
+                  @SetTextOvr(Err_EMKEYE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Key Employee</span></td>
+                      @dtw_tb_rows(yn03Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn03Table, x, "1") != V_EMKEYE) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn03Table, "keyEmployee", "2", "1", "N", "", x, "1") $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_EMKEYE)
+
+                  @SetTextOvr(Err_EMBGRP)
+                  @RtvFldDesc("BHCOMP=$(V_EMCOMP) and BHFACL=$(V_EMFACL) and BHBGRP='$(V_EMBGRP)' ", "HRBGRH", "CHAR(BHNAME)", groupDesc)
+                  <tr><td class="dsphdr"><span $(textOvr)>Benefit Group</span></td>
+                      <td class="inputalph"><input name="benefitGroup" type="text" value="$(V_EMBGRP)" size="4" maxlength="4"> <a href="$(homeURL)$(cGIPath)BenefitGroupSearch.d2w/ENTRY$(d2wVarBase)&amp;docName=Chg&amp;fldName=benefitGroup&amp;fldDesc=groupDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="groupDesc" value="$(groupDesc)"  type="text" size="20" maxlength="20"></td>
+                  </tr>
+                  @DspErrMsg(Err_EMBGRP)
+
+                  @SetTextOvr(Err_SCRS)
+                  %if(SCRS != "")
+                      @RtvFldDesc("ODCOMP=$(V_EMPECP) and ODTYPE='I' and ODCODE='$(SCRS)' ", "PECODE", "CHAR(ODDESC)", codeDesc)
+                  %endif
+                  <tr><td class="dsphdr"><span $(textOvr)>Salary Change Reason</span></td>
+                      <td class="inputalph"><input name="salChangeReason" type="text" value="$(SCRS)" size="4" maxlength="4"> <a href="$(homeURL)$(phpPath)HRCodesSearch.php$(altVarBase)&amp;docName=Chg&amp;fldComp=@dtw_rurlescseq(hrCompany)&amp;fldType=I&amp;fldName=salChangeReason&amp;fldDesc=reasonDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="reasonDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                  </tr>
+                  @DspErrMsg(Err_SCRS)
+
+                  @SetTextOvr(Err_DLIN)
+	           <tr><td class="dsphdr"><span $(textOvr)>Salary Change Date</span></td>
+                      <td class="inputnmbr"><input type="text" name="salChangeDate" value="$(DLIN)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('salChangeDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_DLIN)
+				
+              %}
+          </table>
+
+      </form>
+
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HHREMY_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @RtvFldDesc("EMCOMP=$(prCompany) and EMFACL=$(prFacility) and EMEMPL=$(prEmployee)", "HREMPL", "EMTYPE", PAYTYPECODE)
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if ((sec_02 == "N") || (sec_06 == "N" && PAYTYPECODE == "H") || (sec_07 == "N" && PAYTYPECODE != "H"))
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @dtw_assign(sec_03, "")
+      @exempt_Query(profileHandle, dataBaseID, "EXEMPT    ", exemptTable)
+          @dtw_tb_insertrow(exemptTable, "0", "1")
+	   @dtw_tb_setv(exemptTable, "", "1", "2")
+      @overtime_Query(profileHandle, dataBaseID, "OVERTIME", overtimeMethodTable)
+          @dtw_tb_insertrow(overtimeMethodTable, "0", "1")
+	   @dtw_tb_setv(overtimeMethodTable, "", "1", "2")
+      @payType_Query(profileHandle, dataBaseID, "PAYTYPE", payTypeTable)
+          @dtw_tb_insertrow(payTypeTable, "0", "1")
+	   @dtw_tb_setv(payTypeTable, "", "1", "2")
+      @payroll_Freq_Query(profileHandle, dataBaseID, "EMPLFREQ", payFreqTable)
+          @dtw_tb_insertrow(payFreqTable, "0", "1")
+	   @dtw_tb_setv(payFreqTable, "", "1", "2")
+      @salaryCode_Query(profileHandle, dataBaseID, "PAYROLLFRQ", salaryCodeTable)
+          @dtw_tb_insertrow(salaryCodeTable, "0", "1")
+	   @dtw_tb_setv(salaryCodeTable, "", "1", "2")
+      @yn01_Table_Query(profileHandle, dataBaseID, "YORN      ", yn01Table)
+          @dtw_tb_insertrow(yn01Table, "0", "1")
+	   @dtw_tb_setv(yn01Table, "", "1", "2")
+      @yn02_Table_Query(profileHandle, dataBaseID, "YORN      ", yn02Table)
+          @dtw_tb_insertrow(yn02Table, "0", "1")
+	   @dtw_tb_setv(yn02Table, "", "1", "2")
+      @yn03_Table_Query(profileHandle, dataBaseID, "YORN      ", yn03Table)
+          @dtw_tb_insertrow(yn03Table, "0", "1")
+	   @dtw_tb_setv(yn03Table, "", "1", "2")
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(salChangeReason)
+  @dtw_mUPPERCASE(benefitGroup)
+
+
+  @dtw_assign(payRate,@dtw_rstrip(payRate))
+  @dtw_assign(salChangeDate,@dtw_rstrip(salChangeDate))
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@comp", prCompany)
+  @Concat_Field("@@facl", prFacility)
+  @Concat_Field("@@empl", prEmployee)
+  @Concat_Field("@@pecp", hrCompany)
+  @Concat_Field("@@pemp", hrEmployee)
+  @Concat_Field("@@type", payType)
+  @Concat_Field("@@exmt", exempt)
+  @Concat_Field("@@freq", payFrequency)
+  @Concat_Field("@@amt@", payRate)
+  @Concat_Field("@@srcd", amountCode)
+  @Concat_Field("@@ovtm", overtimeMethod)
+  @Concat_Field("@@hce@", highCompEmpl)
+  @Concat_Field("@@ofcr", officer)
+  @Concat_Field("@@keye", keyEmployee)
+  @Concat_Field("@@bgrp", benefitGroup)
+  @Concat_Field("@@scrs", salChangeReason)
+  @Concat_Field("@@dlin", salChangeDate)
+  @Concat_Field("@@tstp", timeStamp)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+      @Format_ConfMsg_Desc(maintenanceCode, $(F_EmpName), $(prEmployee), "Pay Information", "", "", "", confMessage)
+      %if (fromD2w != "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)EmployeeMaintainSelect.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

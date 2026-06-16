@@ -1,0 +1,350 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Hold Code Search                                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Hold Code Search"
+  d2wName                 = "HoldCodeSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;type=@dtw_rurlescseq(type)&amp;docName=@dtw_rurlescseq(docName)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldName                 = ""
+  fldDesc                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectHoldCode(holdCode, desc){
+                  window.opener.document.$(docName).$(fldName).value = holdCode;
+                  window.opener.document.$(docName).$(fldDesc).value = desc;
+                  window.opener.document.$(docName).$(fldName).focus();
+                  window.close();
+              }
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDHLCD ", fileSQL)
+                      @dtw_concat(selectSQL, " HCTYPE='$(type)' ", selectSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, " and HCHLCD='$(holdCode)'", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @HoldCode_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+%FUNCTION(dtw_sql) HoldCode_Search (IN CHAR(64)    profileHandle,
+		                        CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST name="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Description</th>
+                      <th class="colhdr">Hold<br>Code</th>
+                  </tr>
+                  <tr><td class="inputalph">
+                          <input type="text" name="srchDesc" size="15" maxlength="30">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchCode" size="4" maxlength="4">
+                          <input type="hidden" name="operCode" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>
+    	
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              <tr>	
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("HCDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=description" title="Sequence By Description, Hold Code">Description</a></th>
+                  @OrderBy_Sort("HCHLCD", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=holdCode" title="Sequence By Hold Code">Hold<br>Code</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif		
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Quote(V_HCHLCD, F_HCHLCD)
+              @Format_Quote(V_HCDESC, F_HCDESC)
+
+              %if (moreInfo != "Y")	
+                  <tr class="$(rowClass)">
+                      <td class="colalph"><a href="javascript:selectHoldCode('$(F_HCHLCD)','$(F_HCDESC)')" title="Select Hold Code">$(V_HCDESC)</a></td>
+                      <td class="colalph">$(V_HCHLCD)</td>
+                      <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;holdCode=@dtw_rurlescseq(V_HCHLCD)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                  </tr>
+
+              %else
+
+                  <tr><td><a href="javascript:selectHoldCode('$(F_HCHLCD)','$(F_HCDESC)')" title="Select Hold Code">$(selectImageLrg)</a></td></tr>
+
+	           <tr><td class="dsphdr">Hold Code</td>
+                      <td class="dspalph">$(V_HCHLCD)</td>
+                  </tr>
+
+	   	   <tr><td class="dsphdr">Description</td>
+                      <td class="dspalph">$(V_HCDESC)</td>
+                  </tr>
+
+	   	   <tr><td class="dsphdr">Icon Name</td>
+                      <td class="dspalph">$(V_HCICON)</td>
+                  </tr>
+
+                  %if (V_HDPDRL>"0" && type=="O")
+                      @RtvFldDesc("HCTYPE='M' and HCHLCD='$(V_HCMHLD)'", "HDHLCD", "HCDESC", fieldDesc)
+                      @Format_Code(V_HCMHLD, F_HCMHLD)
+                      <tr><td class="dsphdr">Mfg Hold Code</td>
+                          <td class="dspalph">$(fieldDesc)</td>
+                          <td class="dspalph">$(F_HCMHLD)</td>
+                      </tr>
+                  %endif
+
+                  %if (type=="M")
+                      @RtvYNDesc($(V_HCPRTO), fieldDesc)
+                      <tr><td class="dsphdr">Print Order</td>
+                          <td class="dspalph">$(fieldDesc)</td>
+                      </tr>
+
+                      @RtvYNDesc($(V_HCISSC), fieldDesc)
+                      <tr><td class="dsphdr">Issue Components</td>
+                          <td class="dspalph">$(fieldDesc)</td>
+                      </tr>
+
+                      @RtvYNDesc($(V_HCRPTL), fieldDesc)
+                      <tr><td class="dsphdr">Report Labor</td>
+                          <td class="dspalph">$(fieldDesc)</td>
+                      </tr>
+
+                      @RtvYNDesc($(V_HCORDR), fieldDesc)
+                      <tr><td class="dsphdr">Order Receipt</td>
+                          <td class="dspalph">$(fieldDesc)</td>
+                      </tr>
+
+                      @RtvYNDesc($(V_HCORDC), fieldDesc)
+                      <tr><td class="dsphdr">Order Close</td>
+                          <td class="dspalph">$(fieldDesc)</td>
+                      </tr>
+
+                      @RtvYNDesc($(V_HCPMAT), fieldDesc)
+                      <tr><td class="dsphdr">Plan Material</td>
+                          <td class="dspalph">$(fieldDesc)</td>
+                      </tr>
+
+                      @RtvYNDesc($(V_HCPCAP), fieldDesc)
+                      <tr><td class="dsphdr">Plan Capacity</td>
+                          <td class="dspalph">$(fieldDesc)</td>
+                      </tr>
+
+                      @RtvYNDesc($(V_HCSCHL), fieldDesc)
+                      <tr><td class="dsphdr">Schedule Labor</td>
+                          <td class="dspalph">$(fieldDesc)</td>
+                      </tr>
+
+                      @RtvYNDesc($(V_HCHAEO), fieldDesc)
+                      <tr><td class="dsphdr">Hold Auto-Explode Orders</td>
+                          <td class="dspalph">$(fieldDesc)</td>
+                      </tr>
+                  %endif
+              </table>
+              %endif
+          %}
+      </table>
+      %if (moreInfo != "Y")	
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+      %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "HCDESCU,HCHLCD")
+      @DTW_ASSIGN(orderByDisplay, "Description, Hold Code")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "description")
+      %if (orderBy == "HCDESCU,HCHLCD")
+          @DTW_ASSIGN(orderBy, "HCDESCU DESC,HCHLCD")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Hold Code")
+      %else
+          @DTW_ASSIGN(orderBy, "HCDESCU,HCHLCD")
+          @DTW_ASSIGN(orderByDisplay, "Description, Hold Code")
+      %endif
+  %elseif (sequence == "holdCode")
+      %if (orderBy == "HCHLCD")
+          @DTW_ASSIGN(orderBy, "HCHLCD DESC")
+          @DTW_ASSIGN(orderByDisplay, "Hold Code (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "HCHLCD")
+          @DTW_ASSIGN(orderByDisplay, "Hold Code")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Hold Code</td>
+                              @dtw_assign(operNbr, "operCode")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCode" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="30" maxlength="30"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchCode.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+		
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("HCDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("HCHLCD", "Hold Code", $(srchCode), "U", operCode, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

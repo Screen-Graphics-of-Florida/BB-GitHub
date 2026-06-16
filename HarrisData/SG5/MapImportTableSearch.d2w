@@ -1,0 +1,747 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Map Import Table Search                                     *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "QuickLink.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Import Table Search"
+  d2wName                 = "MapImportTableSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;specificImportKey=@dtw_rurlescseq(specificImportKey)&amp;docName=@dtw_rurlescseq(docName)&amp;fldImportKey=@dtw_rurlescseq(fldImportKey)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  importKey               = ""
+  docName                 = ""
+  fldName                 = ""
+  fldDesc                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL)  {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %if (specificImportKey == "")
+                  function selectMapImportTable(importKey,importTable, importTableDescription){
+                      window.opener.document.$(docName).$(fldImportKey).value = importKey;
+                      window.opener.document.$(docName).$(fldName).value = importTable;
+                      window.opener.document.$(docName).$(fldDesc).value = importTableDescription;
+                      window.opener.document.$(docName).$(fldName).focus();
+                      window.close();
+                  }
+              %else
+                  function selectMapImportTable(importTable, importTableDescription){
+                      window.opener.document.$(docName).$(fldName).value = importTable;
+                      window.opener.document.$(docName).$(fldDesc).value = importTableDescription;
+                      window.opener.document.$(docName).$(fldName).focus();
+                      window.close();
+                  }
+              %endif
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      %if (specificImportKey != "")
+          @dtw_assign(importKey, specificImportKey)
+      %endif
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select SYMITB.*,  ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(b.FLDESC,' ') as FixedFLDESC, upper(coalesce(b.FLDESC,' ')) as FixedFLDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(c.FLDESC,' ') as DateFLDESC, upper(coalesce(c.FLDESC,' ')) as DateFLDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(d.FLDESC,' ') as PeriodFLDESC, upper(coalesce(d.FLDESC,' ')) as PeriodFLDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(e.FLDESC,' ') as TimeFLDESC, upper(coalesce(e.FLDESC,' ')) as TimeFLDESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYMITB ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYFLAG b on b.FLTYPE='BY'      and b.FLVALU=FFFIXF ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYFLAG c on c.FLTYPE='DATEFMT' and c.FLVALU=FFDTFM ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYFLAG d on d.FLTYPE='PDFMT'   and d.FLVALU=FFPDFM ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYFLAG e on e.FLTYPE='TIMEFMT' and e.FLVALU=FFTMFM ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_assign(START_ROW_NUM, "1")
+                          @dtw_assign(RPT_MAX_ROWS, "9999")
+                          @dtw_concat(selectSQL, " FFIMKY=$(importKey) and FFIFIL='$(importTable)' ", selectSQL)
+                      %elif (specificImportKey != "")
+                          @dtw_concat(selectSQL, " FFIMKY=$(specificImportKey) ", selectSQL)
+                      %elif (wildCardSearch!="")
+                          @dtw_concat(selectSQL, " FFIMKY>0 ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+
+                      %if (moreInfo == "Y")
+                          @dtw_assign(SAVE_ROW_NUM, START_ROW_NUM)
+                          @dtw_assign(SAVE_MAX_ROWS, RPT_MAX_ROWS)
+                          @dtw_assign(START_ROW_NUM, "1")
+                          @dtw_assign(RPT_MAX_ROWS, "9999")
+
+                          %{Row Type %}
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select SYMIRT.*,  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(MFDESC,' ') as MFDESC, coalesce(MFDESCU,' ') as MFDESCU, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(FFDESC,' ') as FFDESC, coalesce(FFDESCU,' ') as FFDESCU ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From SYMIRT ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMIHD on FHIMKY=FRIMKY ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMMTB on MFMPKY=FHMPKY and MFMFIL=FRMFIL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMITB on FFIMKY=FRIMKY and FFIFIL=FRIFIL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where FRIMKY=$(importKey) and FRIFIL='$(importTable)' ", stmtSQL)
+                          @dtw_concat(stmtSQL, " ORDER BY FRDESCU, FRRTYP ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Process_Select_Record_Type(profileHandle, dataBaseID, stmtSQL)
+
+                          %{Template %}
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select SYMITP.*,  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(MFDESC,' ') as MFDESC, coalesce(MFDESCU,' ') as MFDESCU, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(MDDPOS,0) as MDDPOS, coalesce(MDDESC,' ') as MDDESC, coalesce(MDDLGC,' ') as MDDLGC, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(MDNOTE,' ') as MDNOTE, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(FFDESC,' ') as FFDESC, coalesce(FFDESCU,' ') as FFDESCU, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(FRDESC,' ') as FRDESC, coalesce(FRDESCU,' ') as FRDESCU ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From SYMITP ", stmtSQL)
+                          @dtw_concat(stmtSQL, " inner join SYMIHD on FHIMKY=FDIMKY ", stmtSQL)
+                          @dtw_concat(stmtSQL, " inner join SYMMTB on MFMPKY=FHMPKY and MFMFIL=FDMFIL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " inner join SYMMCL on MDMPKY=FHMPKY and MDMFIL=FDMFIL and MDMFLD=FDMFLD ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left  join SYMITB on FFIMKY=FDIMKY and FFIFIL=FDIFIL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left  join SYMIRT on FRIMKY=FDIMKY and FRIFIL=FDIFIL and FRRTYP=FDRTYP ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where FDIMKY=$(importKey) and FDIFIL='$(importTable)'", stmtSQL)
+                          @dtw_concat(stmtSQL, " Order By FDMFIL,MDDPOS,FDMFLD ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Process_Select_Template(profileHandle, dataBaseID, stmtSQL)
+
+                          %{Key %}
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select SYMIKY.*,  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(FFDESC,' ') as FFDESC, coalesce(FFDESCU,' ') as FFDESCU, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(FRDESC,' ') as FRDESC, coalesce(FRDESCU,' ') as FRDESCU, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(a.MFDESC,' ') as MFDESC, coalesce(a.MFDESCU,' ') as MFDESCU, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(b.MFDESC,' ') as parentMFDESC, coalesce(b.MFDESCU,' ') as parentMFDESCU ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From SYMIKY ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMIHD on FHIMKY=FKIMKY ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMITB on FFIMKY=FKIMKY and FFIFIL=FKIFIL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMIRT on FRIMKY=FKIMKY and FRIFIL=FKIFIL and FRRTYP=FKRTYP ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMMTB a on a.MFMPKY=FHMPKY and a.MFMFIL=FKMFIL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMMTB b on b.MFMPKY=FHMPKY and b.MFMFIL=FKPFIL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where FKIMKY=$(importKey) and FKIFIL='$(importTable)'", stmtSQL)
+                          @dtw_concat(stmtSQL, " Order By FFDESCU,FRDESCU,FFDESCU ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Process_Select_Key(profileHandle, dataBaseID, stmtSQL)
+
+                          @dtw_assign(START_ROW_NUM, SAVE_ROW_NUM)
+                          @dtw_assign(RPT_MAX_ROWS, SAVE_MAX_ROWS)
+                      %endif
+
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      %if (specificImportKey != "")
+          <table $(contentTable)>
+              @RtvFldDesc("FHIMKY=$(importKey)", "SYMIHD", "FHDESC", V_FHDESC)
+              @RtvFldDesc("FHIMKY=$(importKey)", "SYMIHD", "CHAR(FHMPKY)", V_FHMPKY)
+              @Format_Header("Import Definition", $(V_FHDESC), $(importKey))
+
+              @RtvFldDesc("MHMPKY=$(V_FHMPKY)", "SYMMHD", "MHDESC", V_MHDESC)
+              @RtvFldDesc("MHMPKY=$(V_FHMPKY)", "SYMMHD", "MHWPGM", V_MHWPGM)
+              @Format_Header("Map Definition", $(V_MHDESC), $(V_MHWPGM))
+          </table>
+      %endif
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr>
+                      <th class="colhdr">Description</th>
+                      <th class="colhdr">Import Table</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchDesc" size="15" maxlength="50">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchTable" size="10" maxlength="10">
+                          <input type="hidden" name="operTable" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>	
+
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  %if (specificImportKey == "")
+                      @OrderBy_Sort("FHDESCU", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ImportKey"  title="Sequence By Import Definition, Import Table">Import Definition</a></th>
+                  %endif
+                  @OrderBy_Sort("FFDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description"  title="Sequence By Description, Import Table">Description</a></th>
+                  @OrderBy_Sort("FFIFIL", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Table"        title="Sequence By Import Table">Import Table</a></th>
+                  @OrderBy_Sort("FixedFLDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=FixedFormat"  title="Sequence By Fixed Format, Import Table">Fixed Format</a></th>
+                  @OrderBy_Sort("FFFDLM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Delimiter"    title="Sequence By Column Delimiter, Import Table">Column Delimiter</a></th>
+                  @OrderBy_Sort("FFRTPS", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=RecTypPos"    title="Sequence By Row Type Position/Placement, Import Table">Row Type Position/ Placement</a></th>
+                  @OrderBy_Sort("FFRTLN", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=RecTypLen"    title="Sequence By Row Type Length, Import Table">Row Type Length</a></th>
+                  @OrderBy_Sort("DateFLDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DateFormat"   title="Sequence By Date Format, Import Table">Date Format</a></th>
+                  @OrderBy_Sort("PeriodFLDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PeriodFormat" title="Sequence By Period Format, Import Table">Period Format</a></th>
+                  @OrderBy_Sort("TimeFLDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TimeFormat"   title="Sequence By Time Format, Import Table">Time Format</a></th>
+              </tr>
+
+              %INCLUDE "NoRecordsFound.icl"
+      %endif		
+              %ROW{
+                  @Format_Quote(V_FFIFIL, F_FFIFIL)
+                  @Format_Quote(V_FFDESC, F_FFDESC)
+
+                  %if (moreInfo != "Y")	
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          %if (specificImportKey == "")
+                              <td class="colalph"><a href="javascript:selectMapImportTable($(V_FFIMKY),'$(F_FFIFIL)','$(F_FFDESC)')" title="Select Import Table">$(V_FFDESC)</a></td>
+                              <td class="colalph" $(helpCursor)><span title="$(V_FFIMKY)">$(V_MHDESC)</span></td>
+                          %else
+                              <td class="colalph"><a href="javascript:selectMapImportTable('$(F_FFIFIL)','$(F_FFDESC)')" title="Select Import Table">$(V_FFDESC)</a></td>
+                          %endif
+                          <td class="colalph">$(V_FFIFIL)</td>
+                          <td class="colcode" $(helpCursor)><span title="$(V_FFFIXF)">$(V_FixedFLDESC)</span></td>
+                          <td class="colcode">$(V_FFFDLM)</td>
+                          <td class="colnmbr">$(V_FFRTPS)</td>
+                          <td class="colnmbr">$(V_FFRTLN)</td>
+                          <td class="colalph" $(helpCursor)><span title="$(V_FFDTFM)">$(V_DateFLDESC)</span></td>
+                          <td class="colalph" $(helpCursor)><span title="$(V_FFPDFM)">$(V_PeriodFLDESC)</span></td>
+                          <td class="colalph" $(helpCursor)><span title="$(V_FFTMFM)">$(V_TimeFLDESC)</span></td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)$(orderByVarBase)&amp;importKey=@dtw_rurlescseq(V_FFIMKY)&amp;importTable=@dtw_rurlescseq(V_FFIFIL)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      <table $(contentTable)>
+                          <tr><td>
+                              %if (specificImportKey == "")
+                                  <a href="javascript:selectMapImportTable($(V_FFIMKY),'$(F_FFIFIL)','$(F_FFDESC)')" title="Select Import Table">$(selectImageLrg)</a>
+                              %else
+                                  <a href="javascript:selectMapImportTable('$(F_FFIFIL)','$(F_FFDESC)')" title="Select Import Table">$(selectImageLrg)</a>
+                              %endif
+                          </td></tr>
+                      </table>
+
+                      <table $(contentTable)>
+                          %if (specificImportKey == "")
+                              <tr><td class="dsphdr">Map Definition</td>
+                                  @Format_Code(V_FFIMKY, F_FFIMKY)
+                                  <td class="dspalph">$(V_MHDESC) $(F_FFIMKY)</td></tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Import Table</td>
+                              <td class="dspalph">$(V_FFIFIL)</td></tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              <td class="dspalph">$(V_FFDESC)</td></tr>
+
+                          <tr><td class="dsphdr">Fixed Format</td>
+                              @Format_Code(V_FFFIXF, F_FFFIXF)
+                              <td class="dspalph">$(V_FixedFLDESC) $(F_FFFIXF)</td></tr>
+
+                          <tr><td class="dsphdr">Column Delimiter</td>
+                              <td class="dspalph">$(V_FFFDLM)</td></tr>
+
+                          <tr><td class="dsphdr">Row Type Position/Placement</td>
+                              <td class="dspnmbr">$(V_FFRTPS)</td></tr>
+
+                          <tr><td class="dsphdr">Row Type Length</td>
+                              <td class="dspnmbr">$(V_FFRTLN)</td></tr>
+
+                          @RtvFldDesc("FLTYPE='DATEFMT' and FLVALU='$(V_FFDTFM)'", "SYFLAG", "FLDESC", fieldDesc)
+                          <tr><td class="dsphdr">Date Format</td>
+                              @Format_Code(V_FFDTFM, F_FFDTFM)
+                              <td class="dspalph">$(fieldDesc) $(F_FFDTFM)</td>
+
+                          @RtvFldDesc("FLTYPE='PDFMT' and FLVALU='$(V_FFPDFM)'", "SYFLAG", "FLDESC", fieldDesc)
+                          <tr><td class="dsphdr">Period Format</td>
+                              @Format_Code(V_FFPDFM, F_FFPDFM)
+                              <td class="dspalph">$(fieldDesc) $(F_FFPDFM)</td>
+
+                          @RtvFldDesc("FLTYPE='TIMEFMT' and FLVALU='$(V_FFTMFM)'", "SYFLAG", "FLDESC", fieldDesc)
+                          <tr><td class="dsphdr">Time Format</td>
+                              @Format_Code(V_FFTMFM, F_FFTMFM)
+                              <td class="dspalph">$(fieldDesc) $(F_FFTMFM)</td>
+                      </table>
+                  %endif
+              %}
+          </table>
+      %if (moreInfo != "Y")	
+          </table>
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+      %endif	   	
+  %}
+%}
+
+%FUNCTION(dtw_sql) Process_Select_Record_Type (IN  CHAR(64)    profileHandle,
+                                                   CHAR(2)     dataBaseID,
+                                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Row Type</legend>
+          <table $(contentTable)>
+              <tr>
+                  @Format_Column_Header("FRDESCU", "Description")
+                  @Format_Column_Header("FRRTYP",  "Row Type")
+                  @Format_Column_Header("MFDESCU", "Primary Interface Table")
+              </tr>
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colalph">$(V_FRDESC)</td>
+                      <td class="colalph">$(V_FRRTYP)</td>
+                      <td class="colalph" $(helpCursor)><span title="$(V_FRMFIL)">$(V_MFDESC)</span></td>
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Process_Select_Key (IN  CHAR(64)    profileHandle,
+                                           CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("FRIMKY=$(importKey) and FRIFIL='$(passedImportTable)'", "SYMIRT", "CHAR(COUNT(*))", recordTypeCount)
+
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Key</legend>
+          <table $(contentTable)>
+              <tr>
+                  %if (recordTypeCount > "1")
+                      @Format_Column_Header("FRDESCU",  "Row Type")
+                  %endif
+                  @Format_Column_Header("MFDESCU", "Interface Table")
+                  @Format_Column_Header("parentMFDESCU", "Parent Interface Table")
+                  @Format_Column_Header("", "Key Position/<br>Placement")
+                  @Format_Column_Header("", "Key Length")
+              </tr>
+
+              @dtw_assign(test_FKIFIL, "")
+              @dtw_assign(test_FKRTYP, "")
+              @dtw_assign(test_FKMFIL, "")
+              @dtw_assign(test_FKPFIL, "")
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      %if (test_FKIFIL!=V_FKIFIL || test_FKRTYP!=V_FKRTYP || test_FRDESC!=V_FRDESC || test_FKMFIL!=V_FKMFIL || test_FKPFIL!=V_FKPFIL)
+                          @dtw_assign(test_FKIFIL, V_FKIFIL)
+                          @dtw_assign(test_FKRTYP, V_FKRTYP)
+                          @dtw_assign(test_FKMFIL, V_FKMFIL)
+                          @dtw_assign(test_FKPFIL, V_FKPFIL)
+                          %if (recordTypeCount > "1")
+                              <td class="colalph" $(helpCursor)><span title="$(V_FKRTYP)">$(V_FRDESC)</span></td>
+                          %endif
+                          <td class="colalph" $(helpCursor)><span title="$(V_FKMFIL)">$(V_MFDESC)</span></td>
+                          <td class="colalph" $(helpCursor)><span title="$(V_FKPFIL)">$(V_parentMFDESC)</span></td>
+                      %else
+                          %if (recordTypeCount > "1")
+                              <td class="colnmbr">&nbsp;</td>                                      	
+                          %endif
+                          <td class="colnmbr">&nbsp;</td>                                      	
+                          <td class="colalph">&nbsp;</td>
+                      %endif
+                      <td class="colnmbr">$(V_FKKYPS)</td>                                      	
+                      <td class="colnmbr">$(V_FKKYLN)</td>                                      	
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Process_Select_Template (IN CHAR(64)    profileHandle,
+                                          CHAR(2)     dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("FHIMKY=$(importKey)", "SYMIHD", "CHAR(FHMPKY)", V_FHMPKY)
+      @RtvFldDesc("FFIMKY=$(importKey) and FFIFIL='$(passedImportTable)'", "SYMITB", "char(Count(distinct FFFIXF))", placementCount)
+      @RtvFldDesc("FRIMKY=$(importKey) and FRIFIL='$(passedImportTable)'", "SYMIRT", "CHAR(COUNT(*))", recordTypeCount)
+      @RtvFldDesc("FDIMKY=$(importKey) and FDIFIL='$(passedImportTable)' and (FDXIFL<>' ' or FDXREF<>' ') ", "SYMITP", "CHAR(COUNT(*))", xrefCount)
+      %if (placementCount > "1")
+          @dtw_assign(fixedFormat, "Y")
+      %elif (placementCount == "1")
+          @RtvFldDesc("FFIMKY=$(importKey) and FFIFIL='$(passedImportTable)'", "SYMITB", "distinct FFFIXF", fixedFormat)
+      %else
+          @dtw_assign(fixedFormat, "")
+      %endif
+
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Template</legend>
+          <table $(contentTable)>
+
+              @dtw_assign(interfaceTable, "")
+
+              <tr>
+                  @Format_Column_Header("", "Interface Table")
+                  @Format_Column_Header("", "Column")
+                  @Format_Column_Header("", "Description")
+                  @Format_Column_Header("", "Note")
+                  %if (recordTypeCount > "1")
+                      @Format_Column_Header("", "Row Type")
+                  %endif
+                  @Format_Column_Header("", "Column Type")
+                  %if (placementCount > "1")
+                      @Format_Column_Header("", "Position/<br>Placement")
+                  %elif (fixedFormat == "Y")
+                      @Format_Column_Header("", "Position")
+                  %else
+                      @Format_Column_Header("", "Placement")
+                  %endif
+                  %if (fixedFormat == "Y")
+                      @Format_Column_Header("", "Column Length")
+                  %endif
+                  @Format_Column_Header("", "Implied Decimal Point")
+                  @Format_Column_Header("", "Decimal Precision")
+                  %if (xrefCount > "0")
+                      @Format_Column_Header("", "Cross Reference")
+                  %endif
+                  @Format_Column_Header("", "Map Function")
+                  @Format_Column_Header("", "Default Logic For Mapped")
+                  @Format_Column_Header("", "Value")
+                  @Format_Column_Header("", "Reverse Sign")
+                  @Format_Column_Header("", "Date Format")
+                  @Format_Column_Header("", "Period Format")
+                  @Format_Column_Header("", "Time Format")
+              </tr>
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colalph" $(helpCursor)><span title="$(V_FDMFIL)">$(V_MFDESC)</span></td>
+                      <td class="colalph">$(V_FDMFLD)</td>
+                      <td class="colalph">$(V_MDDESC)</td>
+                      %if (V_MDNOTE != "")
+                          <td class="colcode" $(helpCursor)><span title="$(V_MDNOTE)">Y</span></td>                                      	
+                      %else
+                          <td class="colalph">&nbsp;</td>                                      	
+                      %endif
+                      %if (recordTypeCount > "1")
+                          <td class="colalph" $(helpCursor)><span title="$(V_FDRTYP)">$(V_FRDESC)</span></td>
+                      %endif
+                      <td class="colalph">$(V_FDFLDT)</td>
+                      <td class="colnmbr">$(V_FDFLPL)</td>
+                      %if (fixedFormat == "Y")
+                          <td class="colnmbr">$(V_FDLNGT)</td>
+                      %endif
+                      <td class="colcode">$(V_FDIDEC)</td>
+                      <td class="colnmbr">$(V_FDDECM)</td>
+                      %if (xrefCount > "0")
+                          <td class="colalph">$(V_FDXREF) $(V_FDXIFL)</td>
+                      %endif
+                      <td class="colalph">$(V_FDMFNC)</td>
+                      <td class="colalph">$(V_FDDFMP)</td>
+                      <td class="colalph">$(V_FDVALU)</td>
+                      <td class="colalph">$(V_FDANAB)</td>
+                      <td class="colalph">$(V_FDDTFM)</td>
+                      <td class="colalph">$(V_FDPDFM)</td>
+                      <td class="colalph">$(V_FDTMFM)</td>
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "FFDESCU,FFIFIL")
+      @DTW_ASSIGN(orderByDisplay, "Description, Import Table")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Description")
+      %if (orderBy == "FFDESCU,FFIFIL")
+          @DTW_ASSIGN(orderBy, "FFDESCU DESC,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "FFDESCU,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Description, Import Table")
+      %endif
+  %elif (sequence == "Table")
+      %if (orderBy == "FFIFIL")
+          @DTW_ASSIGN(orderBy, "FFIFIL DESC")
+          @DTW_ASSIGN(orderByDisplay, "Import Table (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Import Table")
+      %endif
+  %elif (sequence == "FixedFormat")
+      %if (orderBy == "FixedFLDESCU,FFIFIL")
+          @DTW_ASSIGN(orderBy, "FixedFLDESCU DESC,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Fixed Format (descending), Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "FixedFLDESCU,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Fixed Format, Import Table")
+      %endif
+  %elif (sequence == "Delimiter")
+      %if (orderBy == "FFFDLM,FFIFIL")
+          @DTW_ASSIGN(orderBy, "FFFDLM DESC,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Column Delimiter (descending), Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "FFFDLM,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Column Delimiter, Import Table")
+      %endif
+  %elif (sequence == "RecTypPos")
+      %if (orderBy == "FFRTPS,FFIFIL")
+          @DTW_ASSIGN(orderBy, "FFRTPS DESC,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Row Type Position/Placement (descending), Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "FFRTPS,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Row Type Position/Placement, Import Table")
+      %endif
+  %elif (sequence == "RecTypLen")
+      %if (orderBy == "FFRTLN,FFIFIL")
+          @DTW_ASSIGN(orderBy, "FFRTLN DESC,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Row Type Length (descending), Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "FFRTLN,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Row Type Length, Import Table")
+      %endif
+  %elif (sequence == "DateFormat")
+      %if (orderBy == "DateFLDESCU,FFIFIL")
+          @DTW_ASSIGN(orderBy, "DateFLDESCU DESC,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Date Format (descending), Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "DateFLDESCU,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Date Format, Import Table")
+      %endif
+  %elif (sequence == "PeriodFormat")
+      %if (orderBy == "PeriodFLDESCU,FFIFIL")
+          @DTW_ASSIGN(orderBy, "PeriodFLDESCU DESC,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Period Format (descending), Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "PeriodFLDESCU,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Period Format, Import Table")
+      %endif
+  %elif (sequence == "TimeFormat")
+      %if (orderBy == "TimeFLDESCU,FFIFIL")
+          @DTW_ASSIGN(orderBy, "TimeFLDESCU DESC,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Time Format (descending), Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "TimeFLDESCU,FFIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Time Format, Import Table")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchPlacement, 5, 0) &&
+                      editNum(document.Search.srchRecTypeLength, 1, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "MAPIMPORTTABLESEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="15" maxlength="50"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Import Table</td>
+                              @dtw_assign(operNbr, "operTable")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchTable" size="10" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Fixed Format</td>
+                              @dtw_assign(operNbr, "operFixedFormat")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchFixedFormat" size="10" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Column Delimiter</td>
+                              @dtw_assign(operNbr, "operDelimiter")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDelimiter" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Date Format</td>
+                              @dtw_assign(operNbr, "operDateFormat")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDateFormat" size="10" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Period Format</td>
+                              @dtw_assign(operNbr, "operPeriodFormat")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchPeriodFormat" size="10" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Time Format</td>
+                              @dtw_assign(operNbr, "operTimeFormat")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchTimeFormat" size="10" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Row Type Position/Placement</td>
+                              @dtw_assign(operNbr, "operPlacement")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchPlacement" size="5" maxlength="5"></td>
+                          </tr>	
+
+                          <tr><td class="dsphdr">Row Type Length</td>
+                              @dtw_assign(operNbr, "operRecTypeLength")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchRecTypeLength" size="1" maxlength="1"></td>
+                          </tr>	
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchDesc.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("FFDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("FFIFIL", "Import Table", $(srchTable), "U", operTable, "A")
+  @Build_WildCard ("Upper(coalesce(b.FLDESC,' '))", "Fixed Format", $(srchFixedFormat), "U", operFixedFormat, "A")
+  @Build_WildCard ("Upper(FFFDLM)", "Column Delimiter", $(srchDelimiter), "U", operDelimiter, "A")
+  @Build_WildCard ("Upper(coalesce(c.FLDESC,' '))", "Date Format", $(srchDateFormat), "U", operDateFormat, "A")
+  @Build_WildCard ("Upper(coalesce(d.FLDESC,' '))", "Period Format", $(srchPeriodFormat), "U", operPeriodFormat, "A")
+  @Build_WildCard ("Upper(coalesce(e.FLDESC,' '))", "Time Format", $(srchTimeFormat), "U", operTimeFormat, "A")
+  @Build_WildCard ("FFRTPS",  "Row Type Position/Placement", $(srchPlacement), "", operPlacement, "N")
+  @Build_WildCard ("FFRTLN",  "Row Type Length", $(srchRecTypeLength), "", operRecTypeLength, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

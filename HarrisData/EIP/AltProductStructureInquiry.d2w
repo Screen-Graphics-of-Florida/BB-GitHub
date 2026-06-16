@@ -1,0 +1,148 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Alternate Product Structure Inquiry                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Alternate Single Level Explosion"
+  d2wName                 = "AltProductStructureInquiry.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;configurationType=@dtw_rurlescseq(configurationType)&amp;configurationID=@dtw_rurlescseq(configurationID)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  quantityRequired        = ""
+%}
+	
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script type="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.quantityRequired, 11, 0))
+                      return true;
+              }
+           </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onLoad="window.focus()" onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(inquiryBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td>
+                      @DateTodayCYMD(todayCYMD)
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select PAPPLT, PAPPN, PACFGT, PACFGI, PASEQN, PACPN, IMIMDS, IMUOMS, IPPTYP, PAFSTK, PAQPER, PAQPER * $(quantityRequired) as extQuantity ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDMAPS Inner Join (HDIPLT Join HDIMST On IPITEM=IMITEM) On PAPPLT=IPPLT and PACPN=IPITEM", fileSQL)
+                      @dtw_concat(selectSQL, " PAPPLT=$(plantNumber) and PAPPN='$(itemNumber)' and PACFGT='$(configurationType)' and PACFGI='$(configurationID)' ", selectSQL)
+                      @dtw_concat(selectSQL, " and PASTDT<=$(todayCYMD) and PADSDT>=$(todayCYMD) ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By PAPPLT, PAPPN, PACFGT, PACFGI, PASEQN, PACPN, PAREFN ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @AltProdStr_Inquiry(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(inquiryTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) AltProdStr_Inquiry (IN CHAR(64)    profileHandle,
+      				           CHAR(2)     dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+      @RtvFldDesc("CHPLT=$(plantNumber) and CHITEM='$(itemNumber)' and CHCFGT='$(configurationType)' and CHCFGI='$(configurationID)' ", "HDCFGH", "CHCDSC", ConfigTypeDescription)
+      <table $(contentTable)>
+          @Format_Header("Plant", $(plantName), $(plantNumber))
+          @Format_Header("Item", $(itemDescription), $(itemNumber))
+          @Format_Header("Type/ID", $(ConfigTypeDescription), "$(configurationType)/$(configurationID)")
+      </table>
+
+      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)">
+          <table $(contentTable)>
+              <tr><td class="dsphdr">Quantity Required</td>
+                  <td class="inputnmbr"><input type="text" name="quantityRequired" value="$(quantityRequired)" size="11" maxlength="11"></td>
+                  <td><a href="javascript:check(document.Search)">$(signOnImage)</a></td>
+              </tr>
+          </table>
+      </form>
+
+      $(inquiryhrTagAttr)
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLRSF", plrsf)
+      <table $(contentTable)>
+         <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              %if (plrsf == "Y")
+                  <th class="colhdr">Rtg<br>Seq</th>
+              %endif
+              <th class="colhdr">Component Item</th>
+              <th class="colhdr">Description</th>
+              <th class="colhdr">Stock<br>UM</th>
+              <th class="colhdr">Part<br>Type</th>
+              <th class="colhdr">B<br>C</th>
+              <th class="colhdr">Qty Per</th>
+              <th class="colhdr">Extended<br>Quantity</th>
+          </tr>
+
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                 %if (plrsf == "Y")
+                     <td class="colnmbr">$(V_PASEQN)</td>
+                 %endif
+                 <td class="colalph">$(V_PACPN)</td>
+                 <td class="colalph">$(V_IMIMDS)</td>
+                 <td class="colalph">$(V_IMUOMS)</td>
+                 <td class="colcode">$(V_IPPTYP)</td>
+                 <td class="colalph">$(V_PAFSTK)</td>
+                 <td class="colnmbr">$(V_PAQPER)</td>
+                 <td class="colnmbr">$(V_extQuantity)</td>
+              </tr>
+
+          %}
+      </table>
+      $(inquiryhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(DISPLAY) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  %if (quantityRequired == "")
+      @DTW_ASSIGN(quantityRequired, "1")
+  %endif
+  @Set_SQL(stmtSQL)
+%}

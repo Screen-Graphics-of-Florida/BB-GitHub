@@ -1,0 +1,394 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: User Maintenance                                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "User Maintenance"
+  d2wName                 = "UserMasterMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;backHome=@dtw_rurlescseq(backHome)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;user=@dtw_rurlescseq(user)&amp;userDesc=@dtw_rurlescseq(userDesc)&amp;maintenanceCode=D"
+  programName             = "HSYUSM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  retrieveCode            = "R"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              function validate(chgForm) {
+                  if (document.Chg.user.value =="" ||
+                      document.Chg.userDesc.value =="" ||
+                      document.Chg.role.value =="")
+                         {alert("$(reqFieldError)"); return false;}
+
+                   if (document.Chg.deptNumber.value != "" && document.Chg.plantNumber.value == "" || document.Chg.workcenterNumber.value != "" && document.Chg.plantNumber.value == "")
+                         {alert("Plant is required when Department or Work Center exist.");
+                              return false;}
+
+                  if (editNum(document.Chg.customerNumber, 7, 0) &&
+                      editNum(document.Chg.vendorNumber, 7, 0) &&
+                      editNum(document.Chg.salesmanNumber, 3, 0) &&
+                      editNum(document.Chg.plantNumber, 3, 0))
+                      return true;
+              }
+              function confirmDelete() {return confirm("$(delRecordConf)")}
+              %INCLUDE "numedit.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "USERMASTERMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      %if (maintenanceCode == "A")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, "SELECT SYUSER.*, coalesce(UXORTY,' ') as UXORTY ", stmtSQL)
+                          @dtw_concat(fileSQL, " SYUSER left join SYUSRX on USUSER=UXUSER", fileSQL)
+                          @dtw_concat(selectSQL, " USUSER='$(user)' ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN  CHAR(64) profileHandle,
+                                       CHAR(2)   dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=142")
+      %endif
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          %ROW {
+              %if (errFound != "" || maintenanceCode == "A")
+                  %if (errFound == "" && maintenanceCode == "A")
+                      @dtw_assign(edtVar, "")
+                      @dtw_assign(focusField, "user")
+                  %else
+                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                      @dtw_assign(focusField, "")
+                      @ErrVarErr(profileHandle, typeError, errVar)
+                      @DecatErr_Field("@@user", "user")                  @dtw_assign(Err_USUSER, fieldValue)
+                      @DecatErr_Field("@@desc", "userDesc")              @dtw_assign(Err_USDESC, fieldValue)
+                      @DecatErr_Field("@@role", "role")                  @dtw_assign(Err_USROLE, fieldValue)
+                      @DecatErr_Field("@@cust", "customerNumber")        @dtw_assign(Err_USCUST, fieldValue)
+                      @DecatErr_Field("@@vend", "vendorNumber")          @dtw_assign(Err_USVEND, fieldValue)
+                      @DecatErr_Field("@@slsm", "salesmanNumber")        @dtw_assign(Err_USSLSM, fieldValue)
+                      @DecatErr_Field("@@clck", "badgeNumber")           @dtw_assign(Err_USCLCK, fieldValue)
+                      @DecatErr_Field("@@admn", "admin")                 @dtw_assign(Err_USADMN, fieldValue)
+                      @DecatErr_Field("@@aasi", "allowSecInq")           @dtw_assign(Err_USAASI, fieldValue)
+                      @DecatErr_Field("@@adoc", "accessDoc")             @dtw_assign(Err_USADOC, fieldValue)
+                      @DecatErr_Field("@@catn", "catalog")               @dtw_assign(Err_USCATN, fieldValue)
+                      @DecatErr_Field("@@dplt", "plantNumber")           @dtw_assign(Err_USDPLT, fieldValue)
+                      @DecatErr_Field("@@dept", "deptNumber")            @dtw_assign(Err_USDEPT, fieldValue)
+                      @DecatErr_Field("@@wc@@", "workcenterNumber")      @dtw_assign(Err_USWC, fieldValue)
+                      @DecatErr_Field("@@fax@", "fax")                   @dtw_assign(Err_USFAX, fieldValue)
+                      @DecatErr_Field("@@emal", "email")                 @dtw_assign(Err_USEMAL, fieldValue)
+                      @DecatErr_Field("@@news", "news")                  @dtw_assign(Err_USNEWS, fieldValue)
+                      @DecatErr_Field("@@medm", "medium")                @dtw_assign(Err_USMEDM, fieldValue)
+                      @DecatErr_Field("@@orty", "dftOrderType")          @dtw_assign(Err_UXORTY, fieldValue)
+                  %endif
+
+                  @Decat_Field("@@user")   @dtw_assign(V_USUSER, fieldValue)
+                  @Decat_Field("@@desc")   @dtw_assign(V_USDESC, fieldValue)
+                  @Decat_Field("@@role")   @dtw_assign(V_USROLE, fieldValue)
+                  @Decat_Field("@@cust")   @dtw_assign(V_USCUST, fieldValue)
+                  @Decat_Field("@@vend")   @dtw_assign(V_USVEND, fieldValue)
+                  @Decat_Field("@@slsm")   @dtw_assign(V_USSLSM, fieldValue)
+                  @Decat_Field("@@clck")   @dtw_assign(V_USCLCK, fieldValue)
+                  @Decat_Field("@@admn")   @dtw_assign(V_USADMN, fieldValue)
+                  @Decat_Field("@@aasi")   @dtw_assign(V_USAASI, fieldValue)
+                  @Decat_Field("@@adoc")   @dtw_assign(V_USADOC, fieldValue)
+                  @Decat_Field("@@catn")   @dtw_assign(V_USCATN, fieldValue)
+                  @Decat_Field("@@dplt")   @dtw_assign(V_USDPLT, fieldValue)
+                  @Decat_Field("@@dept")   @dtw_assign(V_USDEPT, fieldValue)
+                  @Decat_Field("@@wc@@")   @dtw_assign(V_USWC, fieldValue)
+                  @Decat_Field("@@fax@")   @dtw_assign(V_USFAX, fieldValue)
+                  @Decat_Field("@@emal")   @dtw_assign(V_USEMAL, fieldValue)
+                  @Decat_Field("@@news")   @dtw_assign(V_USNEWS, fieldValue)
+                  @Decat_Field("@@medm")   @dtw_assign(V_USMEDM, fieldValue)
+                  @Decat_Field("@@orty")   @dtw_assign(V_UXORTY, fieldValue)
+                  @dtw_assign(errFound, "")
+
+              %elif (maintenanceCode == "Z")
+                  @dtw_assign(focusField, "user")
+                  @dtw_assign(V_USUSER,  "")
+              %else
+                  @dtw_assign(focusField, "role")
+              %endif
+
+              <table $(contentTable)>
+                  @SetTextOvr(Err_USUSER)
+                  <tr><td class="dsphdr"><span $(textOvr)>User Profile</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input name="user" type="text" value="$(V_USUSER)" size="10" maxlength="10"> $(reqFieldChar) </td>
+                      %else
+                          <td class="inputalph"><input name="user" type="hidden" value="$(V_USUSER)" size="10" maxlength="10">$(V_USUSER)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_USUSER)
+               			
+                  @SetTextOvr(Err_USDESC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Description</span></td>
+                      <td class="inputalph"><input name="userDesc" type="text" value="$(V_USDESC)" size="30" maxlength="30"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_USDESC)
+
+                  @RtvFldDesc("RMROLE='$(V_USROLE)'", "SYROLM", "RMDESC", fieldDesc)
+                  @SetTextOvr(Err_USROLE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Role</span></td>
+                      <td class="inputnmbr"><input name="role" type="text" value="$(V_USROLE)" size="10" maxlength="10"><a href="$(homeURL)$(phpPath)RoleSearch.php$(altVarBase)&amp;docName=Chg&amp;roleFld=role&amp;descFld=roleDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="roleDesc" value="$(fieldDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_USROLE)
+               			
+                  @Default_Zero(V_USCUST)
+                  @RtvFldDesc("CMCUST=$(V_USCUST)", "HDCUST", "CMCNA1", fieldDesc)
+                  @SetTextOvr(Err_USCUST)
+                  <tr><td class="dsphdr"><span $(textOvr)>Customer Number</span></td>
+                      <td class="inputnmbr"><input name="customerNumber" type="text" value="$(V_USCUST)" size="10" maxlength="7"><a href="$(homeURL)$(phpPath)CustomerSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=customerNumber&amp;fldDesc=customerName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="customerName" value="$(fieldDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_USCUST)
+               			
+                  @Default_Zero(V_USVEND)
+                  @RtvFldDesc("VMVEND=$(V_USVEND)", "HDVEND", "VMVNA1", fieldDesc)
+                  @SetTextOvr(Err_USVEND)
+                  <tr><td class="dsphdr"><span $(textOvr)>Vendor Number</span></td>
+                      <td class="inputnmbr"><input name="vendorNumber" type="text" value="$(V_USVEND)" size="10" maxlength="7"><a href="$(homeURL)$(phpPath)VendorSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=vendorNumber&amp;fldDesc=vendorName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="vendorName" value="$(fieldDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_USVEND)
+               			
+                  @Default_Zero(V_USSLSM)
+                  @RtvFldDesc("SMSLSM=$(V_USSLSM)", "HDSLSM", "SMSNA1", fieldDesc)
+                  @SetTextOvr(Err_USSLSM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Salesman Number</span></td>
+                      <td class="inputnmbr"><input name="salesmanNumber" type="text" value="$(V_USSLSM)" size="10" maxlength="3"><a href="$(homeURL)$(phpPath)SalesmanSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=salesmanNumber&amp;fldDesc=salesmanName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="salesmanName" value="$(fieldDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_USSLSM)
+               			
+                  @SetTextOvr(Err_USCLCK)
+                  <tr><td class="dsphdr"><span $(textOvr)>Badge Number</span></td>
+                      <td class="inputalph"><input name="badgeNumber" type="text" value="$(V_USCLCK)" size="30" maxlength="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_USCLCK)
+	   		
+                  @SetTextOvr(Err_USADMN)
+                  @Field_Checked(V_USADMN, "Y", adminChecked)
+                  <tr><td class="dsphdr"><span $(textOvr)>Administrator</span></td>
+                      <td class="inputalph"><input type="checkbox" name="admin" value='Y' $(adminChecked)></td>
+                  </tr>
+                  @DspErrMsg(Err_USADMN)
+	   		
+                  @SetTextOvr(Err_USAASI)
+                  @Field_Checked(V_USAASI, "Y", allowSecChecked)
+                  <tr><td class="dsphdr"><span $(textOvr)>Allow Access To Security Inquiry</span></td>
+                      <td class="inputalph"><input type="checkbox" name="allowSecInq" value='Y' $(allowSecChecked)></td>
+                  </tr>
+                  @DspErrMsg(Err_USAASI)
+    	   		
+                  @SetTextOvr(Err_USADOC)
+                  @Field_Checked(V_USADOC, "Y", accessDocChecked)
+                  <tr><td class="dsphdr"><span $(textOvr)>Allow Access To Documentation</span></td>
+                      <td class="inputalph"><input type="checkbox" name="accessDoc" value='Y' $(accessDocChecked)></td>
+                  </tr>
+                  @DspErrMsg(Err_USADOC)
+               			
+                  @RtvFldDesc("CNCATN='$(V_USCATN)'", "OECATN", "CNDESC", fieldDesc)
+                  @SetTextOvr(Err_USCATN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Catalog</span></td>
+                      <td class="inputalph"><input name="catalog" type="text" value="$(V_USCATN)" size="10" maxlength="15"><a href="$(homeURL)$(cGIPath)catalogsearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=catalog&amp;fldDesc=catalogDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="catalogDesc" value="$(fieldDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_USCATN)
+               			
+                  @Default_Zero(V_USDPLT)
+                  @RtvFldDesc("PLPLNT=$(V_USDPLT)", "HDPLNT", "PLNAME", fieldDesc)
+                  @SetTextOvr(Err_USDPLT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Default Plant Number</span></td>
+                      <td class="inputnmbr"><input name="plantNumber" type="text" value="$(V_USDPLT)" size="10" maxlength="3"><a href="$(homeURL)$(phpPath)PlantSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=plantNumber&amp;fldDesc=plantName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="plantName" value="$(fieldDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_USDPLT)
+
+                  @dtw_assign(deptwcDesc, "")
+                  @RtvFldDesc("WCPLT=$(V_USDPLT) and WCDEPT='$(V_USDEPT)' and WCWC='$(V_USWC)'", "HDMWCM", "WCDESC", deptwcDesc)
+                  @SetTextOvr(Err_USDEPT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Department / Work Center</span></td>
+                      <td class="inputalph"><input name="deptNumber" type="text" value="$(V_USDEPT)" size="5" maxlength="5"> / <input name="workcenterNumber" type="text" value="$(V_USWC)" size="5" maxlength="5"> <input name="plantNumberHidden" value="$(V_USDPLT)" type="hidden"> $(reqFieldChar) <a href="$(homeURL)$(phpPath)DeptWCSearch.php$(altVarBase)&amp;docName=Chg&amp;fldPlant=plantNumberHidden&amp;fldPltName=plantName&amp;flddept=deptNumber&amp;fldWC=workcenterNumber&amp;fldDesc=WCDesc" onclick="$(searchWinVar)">  $(searchImage) </a> <input disabled name="WCDesc" value="$(deptwcDesc)"  type="text" size="30" maxlength="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_USDEPT)
+
+
+    	   		
+                  @SetTextOvr(Err_USFAX)
+                  <tr><td class="dsphdr"><span $(textOvr)>Fax Number</span></td>
+                      <td class="inputalph"><input type="text" name="fax" value="$(V_USFAX)" size="32" maxlength="32"></td>
+                  </tr>
+                  @DspErrMsg(Err_USFAX)
+               			
+                  @SetTextOvr(Err_USEMAL)
+                  <tr><td class="dsphdr"><span $(textOvr)>E-Mail Address</span></td>
+                      <td class="inputalph"><input type="text" name="email" value="$(V_USEMAL)" size="65" maxlength="256"></td>
+                  </tr>
+                  @DspErrMsg(Err_USEMAL)
+               			
+                  @SetTextOvr(Err_USNEWS)
+                  <tr><td class="dsphdr"><span $(textOvr)>News Category URL</span></td>
+                      <td class="inputalph"><input type="text" name="news" value="$(V_USNEWS)" size="65" maxlength="256"></td>
+                  </tr>
+                  @DspErrMsg(Err_USNEWS)
+
+                  @RtvFldDesc("MDMEDM='$(V_USMEDM)'", "WFMEDM", "MDDESC", fieldDesc)
+                  @SetTextOvr(Err_USMEDM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Medium</span></td>
+                      <td class="inputalph"><input name="medium" type="text" value="$(V_USMEDM)" size="10" maxlength="10"><a href="$(homeURL)$(cGIPath)WFMediumSearch.d2w/REPORT$(genericVarBase)&amp;docName=Chg&amp;fldName=medium&amp;fldDesc=mediumDesc" onclick="$(searchWinVar)"> $(searchImage) </a>
+                                                  <input name="mediumDesc" value="$(fieldDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_USMEDM)
+
+                  %if (V_HDOERL > "0")
+                      @RtvFldDesc("OTAPID='OE' and OTOTCD='$(V_UXORTY)'", "HDOTYP", "OTDESC", fieldDesc)
+                      @SetTextOvr(Err_UXORTY)
+            	       <tr><td class="dsphdr"><span $(textOvr)>Default Order Type</span></td>
+                          <td class="inputalph"><input name="dftOrderType" type="text" value="$(V_UXORTY)" size="10" maxlength="1"><a href="$(homeURL)$(cGIPath)OrderTypeSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=dftOrderType&amp;fldDesc=dftOrderTypeDesc&amp;appID=OE" onclick="$(searchWinVar)"> $(searchImage) </a><input name="dftOrderTypeDesc" type="text" value="$(fieldDesc)" size="30" disabled></td>
+                      </tr>
+                      @DspErrMsg(Err_UXORTY)
+                  %endif
+              </table>
+          %}	
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HSYUSM_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(user)
+  @dtw_mUPPERCASE(role)
+  @dtw_mUPPERCASE(medium)
+  @dtw_mUPPERCASE(deptNumber)
+  @dtw_mUPPERCASE(workcenterNumber)
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@user", user)
+  @Concat_Field("@@desc", userDesc)
+  @Concat_Field("@@role", role)
+  @Concat_Field("@@cust", customerNumber)
+  @Concat_Field("@@vend", vendorNumber)
+  @Concat_Field("@@slsm", salesmanNumber)
+  @Concat_Field("@@clck", badgeNumber)
+  @Concat_Field("@@admn", admin)
+  @Concat_Field("@@aasi", allowSecInq)
+  @Concat_Field("@@adoc", accessDoc)
+  @Concat_Field("@@catn", catalog)
+  @Concat_Field("@@dplt", plantNumber)
+  @Concat_Field("@@dept", deptNumber)
+  @Concat_Field("@@wc@@", workcenterNumber)
+  @Concat_Field("@@fax@", fax)
+  @Concat_Field("@@emal", email)
+  @Concat_Field("@@news", news)
+  @Concat_Field("@@medm", medium)
+  %if (V_HDOERL > "0")
+      @dtw_mUPPERCASE(dftOrderType)
+      @Concat_Field("@@orty", dftOrderType) 
+  %endif
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "" || maintenanceCode == "D")
+      %if (errFound == "")
+          @Format_ConfMsg_Desc(maintenanceCode, $(userDesc), $(user), "", "", "", "", confMessage)
+      %else
+          @DecatErr_Field("@@user", "user")
+          @Format_ConfMsg_Desc("", $(userDesc), $(user), "<br>$(fieldValue)", "", "", "", confMessage)
+      %endif
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=142&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;user=@dtw_rurlescseq(user)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

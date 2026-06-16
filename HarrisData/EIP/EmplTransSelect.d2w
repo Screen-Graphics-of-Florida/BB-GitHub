@@ -1,0 +1,701 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Employee H/R Transaction Select                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "HRCodeStoredProcedures.icl"
+%INCLUDE "HRTransaction.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "QuickLink.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title 	        = "Employee Transaction"
+  d2wName              = "EmplTransSelect.d2w"
+  attachFolder         = "EmployeeTransaction"
+  d2wVarBase           = "$(genericVarBase)$(employeeVarBase)&amp;sequenceNbr=@dtw_rurlescseq(sequenceNbr)&amp;backHome=@dtw_rurlescseq(backHome)"
+  programName          = "HPEPTE"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  RPT_MAX_ROWS         = "99"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext	        = "1"
+  showError            = "Y"
+  totalPages	        = "0"	
+  attachVarKey         = ""
+  attachForDesc        = ""
+  quickLinksInUse      = "N"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+  @dtw_replace(workURL, "@@sequenceNbr", "@dtw_rurlescseq(sequenceNbr)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "EmplUV.icl"
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          @dtw_assign(pageID, "EMPLTRANSSELECT")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          @dtw_concat(stmtSQL, "SELECT *", stmtSQL)
+                          @dtw_concat(stmtSQL, " FROM PEHIST ", stmtSQL)
+                          @dtw_concat(stmtSQL, " WHERE HICOMP=$(hrCompany) and HIEMPL=$(hrEmployee) and HISEQ=$(sequenceNbr)", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @EmplTrans_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) EmplTrans_Query (IN CHAR(64) profileHandle,
+				        CHAR(2)   dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      @Ret_Format_EmplName(UVComp, UVFac, UVPREmpl, hrCompany, hrEmployee, "H", F_EmpName)
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              @dtw_assign(seqNbrFilled, "$(sequenceNbr)")
+              %while(@dtw_rlength(seqNbrFilled) != "4") {@dtw_insert("0", seqNbrFilled, seqNbrFilled)%}
+              @dtw_assign(attVar, "Transaction_$(seqNbrFilled)")
+              %INCLUDE "emplAttachment.icl"
+              @dtw_assign(attachForDesc, "$(F_EmpName) Transaction Seq $(sequenceNbr)")
+              @dtw_assign(attachPrg1, "HREMPL inner join PEHIST on EMCOMP=HICOMP and EMFACL=HIFACL and EMEMPL=HIEMPL Where EMEMID=$(employeeID) and HISEQ=$(sequenceNbr)")
+
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "Attachment.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+          <tr><td><H2>$(F_EmpName)</H2></td></tr>
+
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+      %ROW {
+          @dtw_assign(passed, "Y")
+          %if (V_HITRCD == "AC" && sec_06 == "N")
+              @dtw_assign(passed, "N")
+          %elif (V_HITRCD == "BD" && sec_07 == "N")
+              @dtw_assign(passed, "N")
+          %elif (V_HITRCD == "HI" && sec_08 == "N")
+              @dtw_assign(passed, "N")
+          %elif (V_HITRCD == "PR" && sec_09 == "N")
+              @dtw_assign(passed, "N")
+          %elif (V_HITRCD == "RE" && sec_10 == "N")
+              @dtw_assign(passed, "N")
+          %elif (V_HITRCD == "RH" && sec_11 == "N")
+              @dtw_assign(passed, "N")
+          %elif (V_HITRCD == "SC" && sec_12 == "N")
+              @dtw_assign(passed, "N")
+          %elif (V_HITRCD == "ST" && sec_13 == "N")
+              @dtw_assign(passed, "N")
+          %elif (V_HITRCD == "TE" && sec_14 == "N")
+              @dtw_assign(passed, "N")
+          %elif (V_HITRCD == "TR" && sec_15 == "N")
+              @dtw_assign(passed, "N")
+          %endif
+
+          %if (passed == "N")
+              <table $(contentTable)>
+                  <tr><td><h1> Not Available </h1></td></tr>
+              </table>
+          %else
+              <table $(contentTable)>
+                 <tr><td class="dsphdr">Transaction</td>
+                     @RtvFldDesc("TCTRCD='$(V_HITRCD)'", "PETRCD", "TCTRDS", transactionDesc)
+                     @Format_Code(V_HITRCD, F_HITRCD)
+                     <td class="dspalph">$(transactionDesc)</td>
+                     <td class="dspalph">$(F_HITRCD)</td>
+                 </tr>
+                 <tr><td class="dsphdr">Sequence Number</td>
+                     <td class="dspalph">$(V_HISEQ)</td></tr>
+
+
+                 %if (V_HITRCD != "PR" && V_HITRCD != "TR" && V_HITRCD != "RH")
+                     %if (V_HIORGL != "" || V_HIORGS != "")
+                         <tr><td class="dsphdr">Organization Level / Sequence</td>
+                             <td class="dspalph">$(V_HIORGL) / $(V_HIORGS)</td></tr>
+                     %endif
+                     %if (V_HITITL != "")
+                         <tr><td class="dsphdr"><span $(textOvr)>Title</span></td>
+                             <td class="dspalph">$(V_HITITL)</td></tr>
+                     %endif
+                     %if (V_HILOC != "")
+                         <tr><td class="dsphdr">Location</td>
+                             @RtvFldDesc("ODCOMP=$(hrCompany) and ODTYPE='O' and ODCODE='$(V_HILOC)' ", "PECODE", "ODDESC", HrCodeDesc)
+                             @Format_Code(V_HILOC, F_HILOC)
+                             <td class="dspalph">$(HrCodeDesc)</td>
+                             <td class="dspalph">$(F_HILOC)</td>
+                         </tr>
+                     %endif
+                     %if (V_HIDEPT != "")
+                         <tr><td class="dsphdr">Department</td>
+                             @RtvFldDesc("EADEPT='$(V_HIDEPT)' ", "PREXAC", "EANAME", deptName)
+                             @Format_Code(V_HIDEPT, F_HIDEPT)
+                             <td class="dspalph">$(deptName)</td>
+                             <td class="dspalph">$(F_HIDEPT)</td>
+                         </tr>
+                     %endif
+                     %if (V_HISDEP != "")
+                         <tr><td class="dsphdr"><span $(textOvr)>Sub Department</span></td>
+                             @RtvFldDesc("ODCOMP=$(hrCompany) and ODTYPE='Q' and ODCODE='$(V_HISDEP)' ", "PECODE", "ODDESC", HrCodeDesc)
+                             @Format_Code(V_HISDEP, F_HISDEP)
+                             <td class="dspalph">$(HrCodeDesc)</td>
+                             <td class="dspalph">$(F_HISDEP)</td>
+                         </tr>
+                     %endif
+                     %if (V_HIJOB != "")
+                         <tr><td class="dsphdr">Job Code</td>
+                             @RtvFldDesc("ODCOMP=$(hrCompany) and ODTYPE='J' and ODCODE='$(V_HIJOB)' ", "PECODE", "ODDESC", HrCodeDesc)
+                             @Format_Code(V_HIJOB, F_HIJOB)
+                             <td class="dspalph">$(HrCodeDesc)</td>
+                             <td class="dspalph">$(F_HIJOB)</td>
+                         </tr>
+                     %endif
+                     %if (V_HILABC != "")
+                         <tr><td class="dsphdr">Labor Category</td>
+                             @RtvFldDesc("ODCOMP=$(hrCompany) and ODTYPE='M' and ODCODE='$(V_HILABC)' ", "PECODE", "ODDESC", HrCodeDesc)
+                             @Format_Code(V_HILABC, F_HILABC)
+                             <td class="dspalph">$(HrCodeDesc)</td>
+                             <td class="dspalph">$(F_HILABC)</td>
+                         </tr>
+                     %endif
+                     %if (V_HIEEO != "")
+                         <tr><td class="dsphdr">EEO-1 Job Category</td>
+                             @dtw_assign(T_EEO, "")
+                             @CvtEEO(V_HIEEO, T_EEO)
+                             @RtvFldDesc("ODCOMP=$(hrCompany) and ODTYPE='Y' and ODCODE='$(T_EEO)' ", "PECODE", "ODDESC", HrCodeDesc)
+                             @Format_Code(V_HIEEO, F_HIEEO)
+                             <td class="dspalph">$(HrCodeDesc)</td>
+                             <td class="dspalph">$(F_HIEEO)</td>
+                         </tr>
+                     %endif
+                     %if (V_HISTAT != "")
+                         <tr><td class="dsphdr">Status</td>
+                             @RtvFldDesc("ODCOMP=$(hrCompany) and ODTYPE='S' and ODCODE='$(V_HISTAT)' ", "PECODE", "ODDESC", HrCodeDesc)
+                             @Format_Code(V_HISTAT, F_HISTAT)
+                             <td class="dspalph">$(HrCodeDesc)</td>
+                             <td class="dspalph">$(F_HISTAT)</td>
+                         </tr>
+                     %endif
+                 %endif
+
+                 @Format_Date(V_HITRDT, "H", F_HITRDT)
+                 %if (V_HITRCD == "AC")
+                     <tr><td class="dsphdr">Compensation Date</td>
+                         <td class="dspdate">$(F_HITRDT)</td></tr>
+                     <tr><td class="dsphdr">Compensation Amount</td>
+                         <td class="dspalph">$(V_HISLRY)</td></tr>
+                     <tr><td class="dsphdr">Compensation Reason</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='B' and ODCODE='$(V_HIRSCD)' ", "PECODE", "ODDESC", reasonDesc)
+                         @Format_Code(V_HIRSCD, F_HIRSCD)
+                         <td class="dspalph">$(reasonDesc)</td>
+                         <td class="dspalph">$(F_HIRSCD)</td>
+                     </tr>
+                 %endif
+
+                 %if (V_HITRCD == "BD")
+                     <tr><td class="dsphdr">Donation Date</td>
+                         <td class="dspdate">$(F_HITRDT)</td></tr>
+                 %endif
+
+                 %if (V_HITRCD == "HI")
+                     <tr><td class="dsphdr">Hire Date</td>
+                         <td class="dspdate">$(F_HITRDT)</td></tr>
+                     <tr><td class="dsphdr">Pay Type</td>
+                         @RtvFldDesc("FLTYPE='PAYTYPE' and FLVALU='$(V_HIPAYT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                         @Format_Code(V_HIPAYT, F_HIPAYT)
+                         <td class="dspalph">$(syFlagDesc)</td>
+                         <td class="dspalph">$(F_HIPAYT)</td>
+                     </tr>
+                     <tr><td class="dsphdr">Payroll Frequency</td>
+                         @RtvFldDesc("FLTYPE='PAYROLLFRQ' and FLVALU='$(V_HIFREQ)'", "SYFLAG", "FLDESC", syFlagDesc)
+                         @Format_Code(V_HIFREQ, F_HIFREQ)
+                         <td class="dspalph">$(syFlagDesc)</td>
+                         <td class="dspalph">$(F_HIFREQ)</td>
+                     </tr>
+                     <tr><td class="dsphdr">Pay Rate/Salary Amount</td>
+                        <td class="dspalph">$(V_HIPAYR)</td></tr>
+                     %if (V_HIPAYT == "S")
+                        <tr><td class="dsphdr">Salary Amount Code</td>
+                            @RtvFldDesc("FLTYPE='PAYROLLFRQ' and FLVALU='$(V_HIRTCD)'", "SYFLAG", "FLDESC", syFlagDesc)
+                            @Format_Code(V_HIRTCD, F_HIRTCD)
+                            <td class="dspalph">$(syFlagDesc)</td>
+                            <td class="dspalph">$(F_HIRTCD)</td>
+                        </tr>
+                     %endif
+                 %endif
+
+                 %if (V_HITRCD == "PR")
+                     <tr><td class="dsphdr">Promotion Date</td>
+                         <td class="dspdate">$(F_HITRDT)</td></tr>
+                     <tr><td class="dsphdr">Title</td>
+                         <td class="dspalph">$(V_HITITL)</td></tr>
+
+                     <tr><td class="colhdr">Description</td>
+                         <td class="colhdr">Promotion From</td>
+                         <td class="colhdr">Promotion To</td></tr>
+                     <tr><td class="dsphdr">Location</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='O' and ODCODE='$(V_HIPLOC)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">
+                         %if (V_HIPLOC != "")
+                         	$(codeDesc)
+                         %else
+                            No Change
+                         %endif
+                         </td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='O' and ODCODE='$(V_HILOC)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">
+                         	$(codeDesc)
+                         </td>
+                     </tr>
+
+                     <tr><td class="dsphdr">Department</td>
+                         @RtvFldDesc("EADEPT='$(V_HIPDPT)' ", "PREXAC", "EANAME", prevDeptName)
+                         <td class="dspalph">
+                         %if (V_HIPDPT != "")
+                         	$(prevDeptName)
+                         %else
+                            No Change                         	
+                         %endif
+                         </td>
+                         @RtvFldDesc("EADEPT='$(V_HIDEPT)' ", "PREXAC", "EANAME", deptName)
+                         <td class="dspalph">
+                         	$(deptName)
+                         </td></tr>
+
+                     <tr><td class="dsphdr">Job Code</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='J' and ODCODE='$(V_HIPJOB)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">
+                         %if (V_HIPJOB != "")
+                         	$(codeDesc)
+                         %else
+                            No Change                         	
+                         %endif
+                         </td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='J' and ODCODE='$(V_HIJOB)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">
+                         	$(codeDesc)
+                         </td></tr>
+
+                     <tr><td class="dsphdr">Sub-Department</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Q' and ODCODE='$(V_HIPSDP)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">
+                         %if (V_HIPSDP != "")
+                         	$(codeDesc)
+                         %else
+                            No Change                         	
+                         %endif
+                         </td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Q' and ODCODE='$(V_HISDEP)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">
+                         	$(codeDesc)
+                         </td></tr>
+
+                     <tr><td class="dsphdr">Labor Category</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='M' and ODCODE='$(V_HIPLBC)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">
+                         %if (V_HIPLBC != "")
+                         	$(codeDesc)
+                         %else
+                            No Change                         	
+                         %endif
+                         </td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='M' and ODCODE='$(V_HILABC)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">
+                         	$(codeDesc)
+                         </td></tr>
+
+                     <tr><td class="dsphdr">EEO-1 Job Category</td>
+                         @dtw_assign(TP_EEO, "")
+                         @CvtEEO(V_HIPEEO, TP_EEO)
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Y' and ODCODE='$(TP_EEO)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">
+                         %if (TP_EEO != ".")
+                         	$(codeDesc) 
+                         %else
+                            No Change                         	
+                         %endif
+                         </td>
+                         @dtw_assign(T_EEO, "")
+                         @CvtEEO(V_HIEEO, T_EEO)
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Y' and ODCODE='$(T_EEO)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">
+                         	$(codeDesc) 
+                         </td></tr>
+
+                     <tr><td class="dsphdr">Organization Level / Sequence</td>
+                         <td class="dspalph">$(V_HIPORL) / $(V_HIPORS)</td>
+                         <td class="dspalph">$(V_HIORGL) / $(V_HIORGS)</td></tr>
+                 %endif
+
+                 %if (V_HITRCD == "RE")
+                     @Format_Date(V_HINRDT, "H", F_HINRDT)
+                     <tr><td class="dsphdr">Scheduled Review Date</td>
+                         <td class="dspdate">$(F_HINRDT)</td></tr>
+                     <tr><td class="dsphdr">Review Type</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='3' and ODCODE='$(V_HINRTP)' ", "PECODE", "ODDESC", codeDesc)
+                         @Format_Code(V_HINRTP, F_HINRTP)
+                         <td class="dspalph">$(codeDesc)</td>
+                         <td class="dspalph">$(F_HINRTP)</td>
+                     </tr>
+                     %if (V_HIRVEM != "0")
+                         <tr><td class="dsphdr">Reviewer Employee</td>
+                             @Ret_Format_EmplName(UVComp, UVFac, UVPREmpl, hrCompany, V_HIRVEM, "H", F_EmpName)
+                             <td class="dspalph">$(F_EmpName)</td></tr>
+                     %endif
+                     <tr><td class="dsphdr">Actual Review Date</td>
+                         <td class="dspdate">$(F_HITRDT)</td></tr>
+                     @Format_Date(V_HIRVED, "H", F_HIRVED)
+                     <tr><td class="dsphdr">Effective Review Date</td>
+                         <td class="dspdate">$(F_HIRVED)</td></tr>
+                     <tr><td class="dsphdr">Rating</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='P' and ODCODE='$(V_HIPRAT)' ", "PECODE", "ODDESC", codeDesc)
+                         @Format_Code(V_HIPRAT, F_HIPRAT)
+                         <td class="dspalph">$(codeDesc)</td>
+                         <td class="dspalph">$(F_HIPRAT)</td>
+                     </tr>
+
+                 %endif
+
+                 %if (V_HITRCD == "RH")
+                     <tr><td class="dsphdr">Rehire Date</td>
+                         <td class="dspdate">$(F_HITRDT)</td></tr>
+                     <tr><td class="dsphdr">Rehire Reason</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='E' and ODCODE='$(V_HIRSCD)' ", "PECODE", "ODDESC", codeDesc)
+                         @Format_Code(V_HIRSCD, F_HIRSCD)
+                         <td class="dspalph">$(codeDesc)</td>
+                         <td class="dspalph">$(F_HIRSCD)</td>
+                     </tr>
+                     <tr><td class="dsphdr">Title</td>
+                         <td class="dspalph">$(V_HITITL)</td></tr>
+                     <tr><td class="colhdr">Description</td>
+                         <td class="colhdr">Previous</td>
+                         <td class="colhdr">Rehired To</td></tr>
+                     <tr><td class="dsphdr">Location</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='O' and ODCODE='$(V_HIPLOC)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">$(codeDesc)</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='O' and ODCODE='$(V_HILOC)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">$(codeDesc)</td></tr>
+
+                     <tr><td class="dsphdr">Department</td>
+                         @RtvFldDesc("EADEPT='$(V_HIPDPT)' ", "PREXAC", "EANAME", prevDeptName)
+                         <td class="dspalph">$(prevDeptName)</td>
+                         @RtvFldDesc("EADEPT='$(V_HIDEPT)' ", "PREXAC", "EANAME", deptName)
+                         <td class="dspalph">$(deptName)</td></tr>
+
+                     <tr><td class="dsphdr">Job Code</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='J' and ODCODE='$(V_HIPJOB)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">$(codeDesc)</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='J' and ODCODE='$(V_HIJOB)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">$(codeDesc)</td></tr>
+
+                     <tr><td class="dsphdr">Sub-Department</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Q' and ODCODE='$(V_HIPSDP)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">$(codeDesc)</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Q' and ODCODE='$(V_HISDEP)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">$(codeDesc)</td></tr>
+
+                     <tr><td class="dsphdr">Labor Category</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='M' and ODCODE='$(V_HIPLBC)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">$(codeDesc)</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='M' and ODCODE='$(V_HILABC)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">$(codeDesc)</td></tr>
+
+                     <tr><td class="dsphdr">EEO-1 Job Category</td>
+                         @dtw_assign(TP_EEO, "")
+                         @CvtEEO(V_HIPEEO, TP_EEO)
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Y' and ODCODE='$(TP_EEO)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">$(codeDesc)</td>
+                         @dtw_assign(T_EEO, "")
+                         @CvtEEO(V_HIEEO, T_EEO)
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Y' and ODCODE='$(T_EEO)' ", "PECODE", "ODDESC", codeDesc)
+                         <td class="dspalph">$(codeDesc)</td></tr>
+
+                     <tr><td class="dsphdr">Organization Level / Sequence</td>
+                         <td class="dspalph">$(V_HIPORL) / $(V_HIPORS)</td>
+                         <td class="dspalph">$(V_HIORGL) / $(V_HIORGS)</td></tr>
+                 %endif
+
+                 %if (V_HITRCD == "SC")
+                     <tr><td class="dsphdr">Salary Change Date</td>
+                         <td class="dspdate">$(F_HITRDT)</td></tr>
+                     <tr><td class="dsphdr">Salary Change Reason</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='I' and ODCODE='$(V_HIRSCD)' ", "PECODE", "ODDESC", codeDesc)
+                         @Format_Code(V_HIRSCD, F_HIRSCD)
+                         <td class="dspalph">$(codeDesc)</td>
+                         <td class="dspalph">$(F_HIRSCD)</td>
+                     </tr>
+                     <tr><td class="colhdr">Description</td>
+                         <td class="colhdr">Change From</td>
+                         <td class="colhdr">Change To</td></tr>
+                     <tr><td class="dsphdr">Pay Type</td>
+                         @RtvFldDesc("FLTYPE='PAYTYPE' and FLVALU='$(V_HIPPYT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                         <td class="dspalph">
+                         %if (V_HIPPYT != "")                         
+                             $(syFlagDesc)
+                         %else
+                            No Change
+                         %endif
+                         </td>
+                         @RtvFldDesc("FLTYPE='PAYTYPE' and FLVALU='$(V_HIPAYT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                         <td class="dspalph">$(syFlagDesc)</td></tr>
+                     <tr><td class="dsphdr">Payroll Frequency</td>
+                         @RtvFldDesc("FLTYPE='PAYROLLFRQ' and FLVALU='$(V_HIPFRQ)'", "SYFLAG", "FLDESC", syFlagDesc)
+                         <td class="dspalph">
+                         %if (V_HIPFRQ != "")
+                             $(syFlagDesc)
+                         %else
+                             No Change
+                         %endif
+                         </td>
+                         @RtvFldDesc("FLTYPE='PAYROLLFRQ' and FLVALU='$(V_HIFREQ)'", "SYFLAG", "FLDESC", syFlagDesc)
+                         <td class="dspalph">$(syFlagDesc)</td></tr>
+                     <tr><td class="dsphdr">Pay Rate/Salary Amount</td>
+                         <td class="dspalph">$(V_HIPPYR)</td>
+                         <td class="dspalph">$(V_HIPAYR)</td></tr>
+                     %if (V_HIPPYT == "S" || V_HIPAYT == "S")
+                         <tr><td class="dsphdr">Salary Amount Code</td>
+                             @RtvFldDesc("FLTYPE='PAYROLLFRQ' and FLVALU='$(V_HIPRCD)'", "SYFLAG", "FLDESC", syFlagDesc)
+                             <td class="dspalph">
+                             %if (V_HIPRCD != "")                             
+                                 $(syFlagDesc)
+                             %else
+                                 No Change
+                             %endif                             
+                             </td>
+                             @RtvFldDesc("FLTYPE='PAYROLLFRQ' and FLVALU='$(V_HIRTCD)'", "SYFLAG", "FLDESC", syFlagDesc)
+                             <td class="dspalph">$(syFlagDesc)</td></tr>
+                     %endif
+                 %endif
+
+                 %if (V_HITRCD == "ST")
+                     <tr><td class="dsphdr">Status Change Date</td>
+                         <td class="dspdate">$(F_HITRDT)</td></tr>
+                     <tr><td class="dsphdr">New Status</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='S' and ODCODE='$(V_HISTAT)' ", "PECODE", "ODDESC", codeDesc)
+                         @Format_Code(V_HISTAT, F_HISTAT)
+                         <td class="dspalph">$(codeDesc)</td>
+                         <td class="dspalph">$(F_HISTAT)</td>
+                     </tr>
+                     <tr><td class="dsphdr">Previous Status</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='S' and ODCODE='$(V_HIPSTA)' ", "PECODE", "ODDESC", codeDesc)
+                         @Format_Code(V_HIPSTA, F_HIPSTA)
+                         <td class="dspalph">$(codeDesc)</td>
+                         <td class="dspalph">$(F_HIPSTA)</td>
+                     </tr>
+                 %endif
+
+                 %if (V_HITRCD == "TE")
+                     <tr><td class="dsphdr">Termination Date</td>
+                         <td class="dspdate">$(F_HITRDT)</td></tr>
+                     <tr><td class="dsphdr">Termination Reason</td>
+                     @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='T' and ODCODE='$(V_HIRSCD)' ", "PECODE", "ODDESC", codeDesc)
+                         @Format_Code(V_HIRSCD, F_HIRSCD)
+                         <td class="dspalph">$(codeDesc)</td>
+                         <td class="dspalph">$(F_HIRSCD)</td>
+                     </tr>
+                     <tr><td class="dsphdr">Eligible For Rehire</td>
+                         @RtvYNDesc($(V_HIEFRH), syFlagDesc)
+                         <td class="dspalph">$(syFlagDesc)</td></tr>
+                     <tr><td class="dsphdr">Remove From Org Structure</td>
+                         @RtvYNDesc($(V_HIRFOS), syFlagDesc)
+                         <td class="dspalph">$(syFlagDesc)</td></tr>
+
+                     @RtvFldDesc("ERCOMP=$(prCompany) and ERFACL=$(prFacility) and EREMPL=$(prEmployee)", "PREMPL", "ERACTV", PayrollActive)
+                     <tr><td class="dsphdr">Will Employee Get Another Pay Check</td>
+                         %if(PayrollActive == "1")
+                             @dtw_assign(prActive, "Y")
+                         %else
+                             @dtw_assign(prActive, "N")
+                         %endif
+                         @RtvYNDesc($(prActive), syFlagDesc)
+                         <td class="dspalph">$(syFlagDesc)</td></tr>
+
+                 %endif
+
+                 %if (V_HITRCD == "TR")
+                     <tr><td class="dsphdr">Transfer Date</td>
+                         <td class="dspdate">$(F_HITRDT)</td></tr>
+                     <tr><td class="dsphdr">Transfer Reason</td>
+                         @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='L' and ODCODE='$(V_HIRSCD)' ", "PECODE", "ODDESC", codeDesc)
+                         @Format_Code(V_HIRSCD, F_HIRSCD)
+                         <td class="dspalph">$(codeDesc)</td>
+                         <td class="dspalph">$(F_HIRSCD)</td>
+                     </tr>
+                     <tr><td class="dsphdr">Title</td>
+                         <td class="dspalph">$(V_HITITL)</td></tr>
+
+                     <tr><td class="colhdr">Description</td>
+                         <td class="colhdr">Transfer From</td>
+                         <td class="colhdr">Transfer To</td></tr>
+                     %if (V_HILOC != HIPLOC)
+                         <tr><td class="dsphdr">Location</td>
+                             @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='O' and ODCODE='$(V_HIPLOC)' ", "PECODE", "ODDESC", codeDesc)
+                             <td class="dspalph">
+                             %if (V_HIPLOC != "")                               
+                             $(codeDesc)
+                             %else
+                                 No Change
+                             %endif                              
+                             </td>
+                             @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='O' and ODCODE='$(V_HILOC)' ", "PECODE", "ODDESC", codeDesc)
+                             <td class="dspalph">$(codeDesc)</td></tr>
+                     %endif
+                     %if (V_HIDEPT != HIPDPT)
+                         <tr><td class="dsphdr">Department</td>
+                             @RtvFldDesc("EADEPT='$(V_HIPDPT)' ", "PREXAC", "EANAME", prevDeptName)
+                             <td class="dspalph">
+                             %if (V_HIPDPT != "")                               
+                             $(prevDeptName)
+                             %else
+                                 No Change
+                             %endif                              
+                             </td>
+                             @RtvFldDesc("EADEPT='$(V_HIDEPT)' ", "PREXAC", "EANAME", deptName)
+                             <td class="dspalph">$(deptName)</td></tr>
+                     %endif
+                     %if (V_HIJOB != HIPJOB)
+                         <tr><td class="dsphdr">Job Code</td>
+                             @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='J' and ODCODE='$(V_HIPJOB)' ", "PECODE", "ODDESC", codeDesc)
+                             <td class="dspalph">
+                             %if (V_HIPJOB != "")                               
+                             $(codeDesc)
+                             %else
+                                 No Change
+                             %endif                              
+                             </td>
+                             @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='J' and ODCODE='$(V_HIJOB)' ", "PECODE", "ODDESC", codeDesc)
+                             <td class="dspalph">$(codeDesc)</td></tr>
+                     %endif
+                     %if (V_HISDEP != HIPSDP)
+                         <tr><td class="dsphdr">Sub-Dapartment</td>
+                             @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Q' and ODCODE='$(V_HIPSDP)' ", "PECODE", "ODDESC", codeDesc)
+                             <td class="dspalph">
+                             %if (V_HIPSDP != "")                               
+                             $(codeDesc)
+                             %else
+                                 No Change
+                             %endif                              
+                             </td>
+                             @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Q' and ODCODE='$(V_HISDEP)' ", "PECODE", "ODDESC", codeDesc)
+                             <td class="dspalph">$(codeDesc)</td></tr>
+                     %endif
+                     %if (V_HILABC != HIPLBC)
+                         <tr><td class="dsphdr">Labor Category</td>
+                             @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='M' and ODCODE='$(V_HIPLBC)' ", "PECODE", "ODDESC", codeDesc)
+                             <td class="dspalph">
+                             %if (V_HIPLBC != "")                               
+                             $(codeDesc)
+                             %else
+                                 No Change
+                             %endif                              
+                             </td>
+                             @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='M' and ODCODE='$(V_HILABC)' ", "PECODE", "ODDESC", codeDesc)
+                             <td class="dspalph">$(codeDesc)</td></tr>
+                     %endif
+                     %if (V_HIEEO != HIPEEO)
+                         <tr><td class="dsphdr">EEO-1 Job Category</td>
+                             @dtw_assign(TP_EEO, "")
+                             @CvtEEO(V_HIPEEO, TP_EEO)
+                             @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Y' and ODCODE='$(TP_EEO)' ", "PECODE", "ODDESC", codeDesc)
+                             <td class="dspalph">
+                             %if (TP_EEO != ".")                               
+                             $(codeDesc)
+                             %else
+                                 No Change
+                             %endif                              
+                             </td>
+                             @dtw_assign(T_EEO, "")
+                             @CvtEEO(V_HIEEO, T_EEO)
+                             @RtvFldDesc("ODCOMP=$(V_HICOMP) and ODTYPE='Y' and ODCODE='$(T_EEO)' ", "PECODE", "ODDESC", codeDesc)
+                             <td class="dspalph">$(codeDesc)</td></tr>
+                     %endif
+                     <tr><td class="dsphdr">Organization Level / Sequence</td>
+                         <td class="dspalph">$(V_HIPORL) / $(V_HIPORS)</td>
+                         <td class="dspalph">$(V_HIORGL) / $(V_HIORGS)</td></tr>
+                 %endif
+              @dtw_assign(confMessage, "")
+              </table>
+
+          %if (V_HICMNT != "")
+              $(hrTagAttr)
+              <table $(contentTable)>
+                     <tr><td class="dsphdr">Comment</td>
+                         <td class="dspalph">$(V_HICMNT)</td></tr>
+              </table>
+          %endif
+      %INCLUDE "AttachmentSQL.icl"
+      %endif
+      %}	
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%INCLUDE "AttachmentSelect.icl"
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}

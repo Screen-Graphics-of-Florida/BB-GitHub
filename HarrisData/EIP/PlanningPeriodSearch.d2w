@@ -1,0 +1,264 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Planning Period Begin and End dates Search                  *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+
+%Define {	
+  page_title              = "Planning Period Search"
+  page_subtitle           = "Period Format:"
+  d2wName                 = "PlanningPeriodSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plant=@dtw_rurlescseq(plant)&amp;format=@dtw_rurlescseq(format)&amp;docName=@dtw_rurlescseq(docName)&amp;fldEndDate=@dtw_rurlescseq(fldEndDate)&amp;fldmsg=@dtw_rurlescseq(fldmsg)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldPlant                = ""
+  fldPeriod               = ""
+  fldBeginDate            = ""
+  fldEndDate              = ""
+  advanceSearch           = "N"
+  BDAT                    = ""
+  EDAT                    = ""
+  fmt                     = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectEndDate(endDate){
+                  window.opener.document.$(docName).$(fldEndDate).value = endDate;
+                  window.close();
+              }
+
+	             %INCLUDE "numedit.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchPeriod, 4, 0) &&
+                      editdate(document.Search.srchBeginDate) &&
+                      editdate(document.Search.srchEndDate))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          %if (format == "W")
+              @dtw_assign(fmt, "Weekly")
+          %elif (format == "M")
+              @dtw_assign(fmt, "Monthly")
+          %elif (format == "Q")
+              @dtw_assign(fmt, "Quarterly")
+          %endif
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " WKMPPS ", fileSQL)
+                      @dtw_concat(selectSQL, " WKXHND='$(profileHandle)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Period_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+%FUNCTION(dtw_sql) Period_Search (IN  CHAR(64) profileHandle,
+				                   CHAR(2)   dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      %INCLUDE "PageTitle.icl"
+      <tr><td><h3>Period Format: $(fmt)</h3></td>
+      $(searchhrTagAttr)
+      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+          <table $(quickSearchTable)>
+              <tr><th class="colhdr">Period</th>
+                  <th class="colhdr">Begin Date</th>
+                  <th class="colhdr">End Date</th>
+              </tr>
+              <tr>
+                  <td class="inputnmbr">
+                      <input type="text" name="srchPeriod" size="4" maxlength="4">
+                      <input type="hidden" name="operPeriod" value="=">
+                  </td>
+                  <td class="inputnmbr">
+                      <input type="text" name="srchBeginDate" size="6" maxlength="6">
+                      <input type="hidden" name="operBeginDate" value=">=">
+                  </td>
+                  <td class="inputnmbr">
+                      <input type="text" name="srchEndDate" size="6" maxlength="6">
+                      <input type="hidden" name="operEndDate" value=">=">
+                  </td>
+                  <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+              </tr>
+          </table>
+          <script TYPE="text/javascript">
+              document.Search.srchPeriod.focus();
+          </script>
+      </form>
+	
+      %INCLUDE "WildCardPage.icl"
+      %if (fldmsg != "")
+          <tr>
+              <td class="confMsg" colspan="10">$(fldmsg)</td>
+          </tr>                	
+      %endif
+      <table $(contentTable)>
+          <tr>	
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("WKPER#", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=periodseq" title="Sequence By Period"> Period</a></th>
+              @OrderBy_Sort("WKBDAT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=beginDateseq" title="Sequence By Begin Date"> Begin <br> Date</a></th>
+              @OrderBy_Sort("WKEDAT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=endDateseq" title="Sequence By End Date"> End <br> Date</a></th>
+              <th class="colhdr">Working<br>Days</th>
+          </tr>
+
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(F_WKPER#, V_WKPER#)
+              @PeriodInputFromCYP(V_WKPER#)
+              @PeriodFromCYP(F_WKPER#)
+              @Format_Date(V_WKBDAT, "D", F_WKBDAT)
+              @Format_Date(V_WKEDAT, "D", F_WKEDAT)
+              %while(@dtw_rlength(V_WKRDAT) != "6") {@dtw_insert("0", V_WKRDAT, V_WKRDAT)%}
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a href="javascript:selectEndDate('$(V_WKRDAT)')" title="Select Period">$(F_WKPER#)</a></td>
+
+                  <td class="colnmbr">$(F_WKBDAT)</td>
+                  <td class="colnmbr">$(F_WKEDAT)</td>
+                  <td class="colnmbr">$(V_WKWKDY)</td>
+              </tr>
+
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Planning_Periods (IN CHAR(64) profileHandle,
+			                            IN CHAR(2)  dataBaseID,
+                                            IN DEC(3, 0) plant,
+                                            IN CHAR(1) format,
+                                            INOUT CHAR(50) fldmsg)
+
+  {%EXEC {HMSPPS_A.PGM %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "WKPER#")
+      @DTW_ASSIGN(orderByDisplay, "Period")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(LOAD)  {
+  %INCLUDE "setLibraryList.icl"
+  @Planning_Periods(profileHandle, dataBaseID, plant, format, fldmsg)
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/ENTRY$(d2wVarBase)">
+%}
+
+%HTML(ORDERBY)  {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "periodseq")
+      %if (orderBy == "WKPER#")
+          @DTW_ASSIGN(orderBy, "WKPER# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Period (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "WKPER#")
+          @DTW_ASSIGN(orderByDisplay, "Period")
+      %endif
+  %elif (sequence == "beginDateseq")
+      %if (orderBy == "WKBDAT")
+          @DTW_ASSIGN(orderBy, "WKBDAT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Begin Date (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "WKBDAT")
+          @DTW_ASSIGN(orderByDisplay, "Begin Date")
+      %endif
+  %elif (sequence == "endDateseq")
+      %if (orderBy == "WKEDAT")
+          @DTW_ASSIGN(orderBy, "WKEDAT DESC")
+          @DTW_ASSIGN(orderByDisplay, "End Date (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "WKEDAT")
+          @DTW_ASSIGN(orderByDisplay, "End Date")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("WKPER#", "Period", $(srchPeriod), "", operPeriod, "DP")
+  @Build_WildCard ("WKBDAT", "Begin Date", $(srchBeginDate), "", operBeginDate, "D")
+  @Build_WildCard ("WKEDAT", "End Date", $(srchEndDate), "", operEndDate, "D")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

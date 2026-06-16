@@ -1,0 +1,317 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Kanban Card Maintenance                                     *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Kanban Card Maintenance"
+  d2wName                 = "KanbanCardMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(fromPlant)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;turnaroundNumber=@dtw_rurlescseq(turnaroundNumber)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=D"
+  programName             = "HSIKBM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @KanbanUserView(profileHandle, dataBaseID, userPass, plantNumber, itemNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NumEdit.icl"
+                  %INCLUDE "CheckEnterChg.icl"
+                  function validate(chgForm) {
+                      if (
+                      %if (partType == "P")
+                          editNum(document.Chg.orderNumber, 8, 0) &&
+                          editNum(document.Chg.lineNumber, 3, 0) &&
+                          editNum(document.Chg.releaseNumber, 3, 0) &&
+                      %endif
+                          editNum(document.Chg.warehouseNumber, 3, 0))
+                          return true;
+                  }
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "KANBANCARDMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, "Select * from HDKBMS ", stmtSQL)
+                              @dtw_concat(stmtSQL, "Where KBTURN = $(turnaroundNumber) " , stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+      @RtvFldDesc("KBTURN=$(turnaroundNumber)", "HDKBMS", "KBSTAT", kanbanStatus)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPPTYP", partType)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPKBPC", policyCode)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPCQTY)", numberContainer)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPCTID", containerID)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPCADJ)", containerAdjustment)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPCQTS)", containerInUse)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPFOQ)", orderQuantity)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPODPT)", orderPoint)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPVEND)", vendorNumber)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPBAC)", analystNumber)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPKBDD", documentDefinition)
+      %if (documentDefinition == "")
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLKBDD", documentDefinition)
+      %endif
+      @RtvFldDesc("FLTYPE='PARTTYPE' AND FLVALU='$(partType)'", "SYFLAG", "FLDESC", partTypeDesc)
+      @RtvFldDesc("FLTYPE='KANBANPLCY' AND FLVALU='$(policyCode)'", "SYFLAG", "FLDESC", policyDesc)
+      @RtvFldDesc("CTCTID='$(containerID)'", "HDCNTM", "CTDESC", containerDesc)
+      @RtvFldDesc("VMVEND=$(vendorNumber)", "HDVEND", "VMVNA1", vendorName)
+      @RtvFldDesc("BMBUYR=$(analystNumber)", "HDBUYR", "BMBNA1", analystName)
+      @RtvFldDesc("FLTYPE='KANBANDOC' AND FLVALU='$(documentDefinition)'", "SYFLAG", "FLDESC", documentDesc)
+      <table $(contentTable)>
+    	       <colgroup>
+    	           <col width="80%">
+    	           <col width="15%">
+            <tr><td><h1>$(page_title)</h1></td>
+                <td class="toolbar">
+                    <a href="javascript:check(document.Chg)">$(acceptImageMed)</a>
+                    <a href="javascript:history.back()">$(cancelImageMed)</a>
+                    %if (kanbanStatus != "I" && kanbanStatus != "V")
+                        <a onClick="return confirmDelete()" href="$(deleteURL)">$(deleteImageMed)</a>
+                    %endif
+                    %INCLUDE "HelpPage.icl"
+                </td>
+            </tr>
+      </table>
+
+      <table $(contentTable)>
+          @Format_Header("Plant", $(plantName), $(plantNumber))
+          @Format_Header("Item", $(itemDescription), $(itemNumber))
+      </table>
+
+      $(hrTagAttr)
+
+      %INCLUDE "KanbanMaintain.icl"
+
+      %INCLUDE "ErrorDisplay.icl"
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          %if (partType == "P")
+                              @dtw_assign(focusField, "orderNumber")
+                          %else
+                              @dtw_assign(focusField, "Department")
+                          %endif
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@ord#", "orderNumber")      @dtw_assign(Err_orderNumber, fieldValue)
+                          @DecatErr_Field("@@orl#", "lineNumber")       @dtw_assign(Err_lineNumber, fieldValue)
+                          @DecatErr_Field("@@bln#", "releaseNumber")    @dtw_assign(Err_releaseNumber, fieldValue)
+                          @DecatErr_Field("@@dept", "Department")       @dtw_assign(Err_KBDEPT,   fieldValue)
+                          @DecatErr_Field("@@fwhs", "warehouseNumber")  @dtw_assign(Err_KBFWHS, fieldValue)
+                          @DecatErr_Field("@@fstk", "stockRoom")        @dtw_assign(Err_KBFSTK,  fieldValue)
+                          @DecatErr_Field("@@fail", "Aisle")            @dtw_assign(Err_KBFAIL, fieldValue)
+                          @DecatErr_Field("@@fslc", "stockLocation")    @dtw_assign(Err_KBFSLC, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@ord#")   @dtw_assign(orderNumber, fieldValue)
+                      @Decat_Field("@@orl#")   @dtw_assign(lineNumber, fieldValue)
+                      @Decat_Field("@@bln#")   @dtw_assign(releaseNumber, fieldValue)
+                      @Decat_Field("@@dept")   @dtw_assign(V_KBDEPT,   fieldValue)
+                      @Decat_Field("@@fwhs")   @dtw_assign(V_KBFWHS, fieldValue)
+                      @Decat_Field("@@fstk")   @dtw_assign(V_KBFSTK,  fieldValue)
+                      @Decat_Field("@@fail")   @dtw_assign(V_KBFAIL, fieldValue)
+                      @Decat_Field("@@fslc")   @dtw_assign(V_KBFSLC, fieldValue)
+
+                      @dtw_assign(errFound, "")
+                  %else
+                      %if (partType == "P")
+                          @dtw_assign(focusField, "orderNumber")
+                          @RtvFldDesc("DCTURN=$(turnaroundNumber)", "HDTRNM", "CHAR(DCORD#)", orderNumber)
+                          @RtvFldDesc("DCTURN=$(turnaroundNumber)", "HDTRNM", "CHAR(DCORL#)", lineNumber)
+                          @RtvFldDesc("DCTURN=$(turnaroundNumber)", "HDTRNM", "CHAR(DCBLN#)", releaseNumber)
+                      %else
+                          @dtw_assign(focusField, "Department")
+                      %endif
+                  %endif
+
+                  %if (partType == "P")
+                      @SetTextOvr(Err_orderNumber)
+                      <tr><td class="dsphdr"><span $(textOvr)>Purchase Order Number</span></td>
+                          <td class="inputnmbr"><input name="orderNumber" type="text" value="$(orderNumber)" size="8" maxlength="8"></td>
+                      </tr>
+                      @DspErrMsg(Err_orderNumber)
+        	
+                      @SetTextOvr(Err_lineNumber)
+                      <tr><td class="dsphdr"><span $(textOvr)>Line Number</span></td>
+                          <td class="inputnmbr"><input name="lineNumber" type="text" value="$(lineNumber)" size="3" maxlength="3"></td>
+                      </tr>
+                      @DspErrMsg(Err_lineNumber)
+        	   		
+                      @SetTextOvr(Err_releaseNumber)
+                      <tr><td class="dsphdr"><span $(textOvr)>Release Number</span></td>
+                          <td class="inputnmbr"><input name="releaseNumber" type="text" value="$(releaseNumber)" size="3" maxlength="3"></td>
+                      </tr>
+                      @DspErrMsg(Err_releaseNumber)
+                  %endif
+    	
+                  @SetTextOvr(Err_KBDEPT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Department</span></td>
+                      <td class="inputalph"><input name="Department" type="text" value="$(V_KBDEPT)" size="5" maxlength="5"></td>
+                  </tr>
+                  @DspErrMsg(Err_KBDEPT)
+
+                  @RtvFldDesc("WHWHS=$(V_KBFWHS)", "HDWHSM", "WHWHNM", fieldDesc)
+                  @SetTextOvr(Err_KBFWHS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Warehouse Number</span></td>
+                      <td class="inputnmbr"><input name="warehouseNumber" type="text" value="$(V_KBFWHS)" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)WarehouseSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=warehouseNumber&amp;fldDesc=warehouseName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="warehouseName" type="text" value="$(fieldDesc)" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_KBFWHS)
+    	   		
+                  @SetTextOvr(Err_KBFSTK)
+                  <tr><td class="dsphdr"><span $(textOvr)>Stock Location</span></td>
+                      <td class="inputalph">
+                          <input name="stockRoom" type="text" value="$(V_KBFSTK)" size="3" maxlength="3">
+                          <input name="Aisle" type="text" value="$(V_KBFAIL)" size="4" maxlength="4">
+                          <input name="stockLocation" type="text" value="$(V_KBFSLC)" size="8" maxlength="8">
+                          <input name="stockLocId" type="hidden" size="9" maxlength="9">
+                          <a href="$(homeURL)$(phpPath)StockLocSearch.php$(altVarBase)&amp;docName=Chg&amp;forWhs=@dtw_rurlescseq(warehouseNumber)&amp;fldStkr=stockRoom&amp;fldAisle=Aisle&amp;fldLoc=stockLocation&amp;fldStkID=stockLocId" onclick="$(searchWinVar)"> $(searchImage) </a>
+                      </td>
+                  </tr>
+                  @DspErrMsg(Err_KBFSTK)
+    	
+              %}	
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+      </form>
+
+      <table $(contentTable)>
+            <tr>
+                <td>
+                    <a href="javascript:check(document.Chg)">$(acceptImageMed)</a>
+                    <a href="javascript:history.back()">$(cancelImageMed)</a>
+                    %if (kanbanStatus != "I" && kanbanStatus != "V")
+                        <a onClick="return confirmDelete()" href="$(deleteURL)">$(deleteImageMed)</a>
+                    %endif
+                </td>
+            </tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(10)    progCall,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HSIKBM_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(orderNumber,@dtw_rstrip(orderNumber))
+  @dtw_assign(lineNumber,@dtw_rstrip(lineNumber))
+  @dtw_assign(releaseNumber,@dtw_rstrip(releaseNumber))
+  @dtw_assign(warehouseNumber,@dtw_rstrip(warehouseNumber))
+
+  @dtw_assign(progCall, "Kanban")
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@plt@", plantNumber)
+  @Concat_Field("@@item", itemNumber)
+  @Concat_Field("@@turn", turnaroundNumber)
+  @Concat_Field("@@ord#", orderNumber)
+  @Concat_Field("@@orl#", lineNumber)
+  @Concat_Field("@@bln#", releaseNumber)
+  @Concat_Field("@@dept", Department)
+  @Concat_Field("@@fwhs", warehouseNumber)
+  @Concat_Field("@@fstk", stockRoom)
+  @Concat_Field("@@fail", Aisle)
+  @Concat_Field("@@fslc", stockLocation)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, progCall, edtVar, errVar)
+
+  %if (errFound == "")
+      %if (maintenanceCode == "R")
+      @Format_ConfMsg_Desc("", "Confirm Retire Of", "", "Kanban Turnaround", $(turnaroundNumber), "", "", confMessage)
+      %else
+          @Format_ConfMsg_Desc(maintenanceCode, "Kanban Turnaround", $(turnaroundNumber), "", "", "", "", confMessage)
+      %endif
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)KanbanMaintain.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %elif (maintenanceCode == "D" || maintenanceCode == "R")
+      @DecatErr_Field("@@turn", "turnaroundNumber")
+      @Format_ConfMsg_Desc("", "Kanban Turnaround", $(turnaroundNumber), "<br>$(fieldValue)", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)KanbanMaintain.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

@@ -1,0 +1,744 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Transaction History Inquiry                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Transaction History Inquiry"
+  d2wName                 = "TransactionHistoryInquiry.d2w"
+  d2wVarBase              = "$(genericVarBase)$(orderByVarBase)&amp;viewOption=@dtw_rurlescseq(viewOption)&amp;linkOrig=@dtw_rurlescseq(linkOrig)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  displayCloseIcon        = "Y"
+%}
+	
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onLoad="window.focus()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(inquiryBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td>
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDDTRN ", fileSQL)
+                      @dtw_concat(selectSQL, "DTOSEQ=$(origTransSequence) and DTDSEQ=$(transSequence) ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Trans_History_Inquiry(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(inquiryTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Trans_History_Inquiry (IN CHAR(64)    profileHandle,
+				              CHAR(2)     dataBaseID,
+                                             CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @dtw_assign(medIcon, "Y")
+      %INCLUDE "PageTitle.icl"
+
+      $(inquiryhrTagAttr)
+
+      %ROW{
+          @RtvFldDesc("TTTYPE='$(V_DTIVTT)'", "HDTTYP", "TTLOCN", affectWhsPlt)
+          <table $(contentTable)>
+              %if (V_DTIVTT == "TAX")
+                 @dtw_assign(tranTypeDesc, "Tax")
+              %elif (V_DTIVTT == "FRT")
+                 @dtw_assign(tranTypeDesc, "Freight")
+              %elif (V_DTIVTT == "SPC")
+                 @dtw_assign(tranTypeDesc, "Special Charge")
+              %else
+                  @RtvFldDesc("TTTYPE='$(V_DTIVTT)'", "HDTTYP", "TTDESC", tranTypeDesc)
+              %endif
+
+              @Format_Code(V_DTIVTT, F_DTIVTT)
+              <tr><td class="dsphdr">Transaction Type</td>
+                  <td class="dspalph">$(tranTypeDesc)</td>
+                  <td class="dspalph">$(F_DTIVTT)</td>
+              </tr>
+	      	
+	       %if (V_DTIVTT != "TAX" && V_DTIVTT != "FRT" && V_DTIVTT != "SPC")
+                  @RtvFldDesc("IMITEM='$(V_DTITEM)'", "HDIMST", "IMIMDS", itemDescription)
+                  @Format_Code(V_DTITEM, F_DTITEM)
+                  <tr><td class="dsphdr">Item Number</td>
+                      <td class="dspalph">$(itemDescription)</td>
+                      <td class="dspalph">$(F_DTITEM)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTWHS > "0" && affectWhsPlt == "W")
+                  @RtvFldDesc("WHWHS=$(V_DTWHS)", "HDWHSM", "WHWHNM", warehouseName)
+                  @Format_Code(V_DTWHS, F_DTWHS)
+                  <tr><td class="dsphdr">Warehouse Number</td>
+                      <td class="dspalph">$(warehouseName)</td>
+                      <td class="dspalph">$(F_DTWHS)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTSWHS > "0" && affectWhsPlt == "W")
+                  @RtvFldDesc("TTTYPE='$(V_DTIVTT)'", "HDTTYP", "TTWH2", secondaryWhsDesc)
+                  @RtvFldDesc("WHWHS=$(V_DTSWHS)", "HDWHSM", "WHWHNM", warehouseName)
+                  @Format_Code(V_DTSWHS, F_DTSWHS)
+                  <tr><td class="dsphdr">$(secondaryWhsDesc)</td>
+                      <td class="dspalph">$(warehouseName)</td>
+                      <td class="dspalph">$(F_DTSWHS)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (viewOption == "E" && V_DTTRFV > "0" && affectWhsPlt == "W")
+                  @Format_Nbr(V_DTTRFV, F_DTTRFV, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Transfer Cost Variance</td>
+                      <td class="dspalph">$(F_DTTRFV)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTPLT > "0" && affectWhsPlt == "P")
+                  @RtvFldDesc("PLPLNT=$(V_DTPLT)", "HDPLNT", "PLNAME", plantName)
+                  @Format_Code(V_DTPLT, F_DTPLT)
+                  <tr><td class="dsphdr">Plant Number</td>
+                      <td class="dspalph">$(plantName)</td>
+                      <td class="dspalph">$(F_DTPLT)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTDOC# > "0")
+                  <tr><td class="dsphdr">Document Number</td>
+                      <td class="dspalph">$(V_DTDOC#) / $(V_DTDCL#)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTMORD != "")
+                  <tr><td class="dsphdr">Mfg Order</td>
+                      <td class="dspalph">$(V_DTMORD)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTSEQN > "0")
+                  <tr><td class="dsphdr">Routing Sequence</td>
+                      <td class="dspalph">$(V_DTSEQN)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTTYPN != "")
+                  @RtvFldDesc("FLTYPE='PARTTYPE' and FLVALU='$(V_DTTYPN)'", "SYFLAG", "FLDESC", partTypeDesc)
+                  @Format_Code(V_DTTYPN, F_DTTYPN)
+                  <tr><td class="dsphdr">Part Type</td>
+                      <td class="dspalph">$(partTypeDesc)</td>
+                      <td class="dspalph">$(F_DTTYPN)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTPCLS != "")
+                  @RtvFldDesc("PCPCLS='$(V_DTPCLS)'", "HDPCLS", "PCPCDS", prodClassDesc)
+                  @Format_Code(V_DTPCLS, F_DTPCLS)
+                  <tr><td class="dsphdr">Product Class</td>
+                      <td class="dspalph">$(prodClassDesc)</td>
+                      <td class="dspalph">$(F_DTPCLS)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTPGRP != "")
+                  @RtvFldDesc("PGPGRP='$(V_DTPGRP)'", "HDPRGM", "PGDESC", prodGroupDesc)
+                  @Format_Code(V_DTPGRP, F_DTPGRP)
+                  <tr><td class="dsphdr">Product Group</td>
+                      <td class="dspalph">$(prodGroupDesc)</td>
+                      <td class="dspalph">$(F_DTPGRP)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTITC != "")
+                  @RtvFldDesc("ITITC='$(V_DTITC)'", "HDITYP", "ITDESC", invTypeDesc)
+                  @Format_Code(V_DTITC, F_DTITC)
+                  <tr><td class="dsphdr">Inventory Type</td>
+                      <td class="dspalph">$(invTypeDesc)</td>
+                      <td class="dspalph">$(F_DTITC)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTRSNC != "" || V_DTRSND != "")
+                  @Format_Code(V_DTRSNC, F_DTRSNC)
+                  <tr><td class="dsphdr">Reason Code</td>
+                      <td class="dspalph">$(V_DTRSND)</td>
+                      <td class="dspalph">$(F_DTRSNC)</td>
+                  </tr>
+              %endif
+
+	       %if (V_DTORDT > "0")
+                  @Format_Date(V_DTORDT, "D", F_DTORDT)
+                  <tr><td class="dsphdr">Order Date</td>
+                      <td class="dspalph">$(F_DTORDT)</td>
+                  </tr>
+              %endif
+
+              @Format_Date(V_DTTRDT, "D", F_DTTRDT)
+              <tr><td class="dsphdr">Transaction Date</td>
+                  <td class="dspalph">$(F_DTTRDT)</td>
+              </tr>
+	      	
+	       %if (V_DTDPER > "0")
+                  @PeriodFromCYP(V_DTDPER)
+                  <tr><td class="dsphdr">Distribution Period</td>
+                      <td class="dspalph">$(V_DTDPER)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTQTY != ".0000")
+                  @Format_Nbr(V_DTQTY, F_DTQTY, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Transaction Quantity</td>
+                      <td class="dspalph">$(F_DTQTY)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (viewOption == "E" && V_DTPPUM != ".00000")
+                  @Format_Nbr(V_DTPPUM, F_DTPPUM, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Price</td>
+                      <td class="dspalph">$(F_DTPPUM)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (viewOption == "E" && V_DTEXPA != ".00")
+                  @Format_Nbr(V_DTEXPA, F_DTEXPA, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Extended Price</td>
+                      <td class="dspalph">$(F_DTEXPA)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTSUOM != "")
+                  @RtvFldDesc("UMUOM='$(V_DTSUOM)'", "HDUOM", "UMUMLD", stockUOMDesc)
+                  @Format_Code(V_DTSUOM, F_DTSUOM)
+                  <tr><td class="dsphdr">Stocking U/M</td>
+                      <td class="dspalph">$(stockUOMDesc)</td>
+                      <td class="dspalph">$(F_DTSUOM)</td>
+                  </tr>
+              %endif
+	      	
+	       %if (V_DTPUOM != "")
+                  @RtvFldDesc("UMUOM='$(V_DTPUOM)'", "HDUOM", "UMUMLD", stockUOMDesc)
+                  @Format_Code(V_DTPUOM, F_DTPUOM)
+                  <tr><td class="dsphdr">Pricing U/M</td>
+                      <td class="dspalph">$(stockUOMDesc)</td>
+                      <td class="dspalph">$(F_DTPUOM)</td>
+                  </tr>
+              %endif
+	      	
+              %if (V_CILTUS == "Y")
+                  %if (V_DTLOT# != "")
+                      <tr><td class="dsphdr">Lot Number</td>
+                          <td class="dspalph">$(V_DTLOT#)</td>
+                      </tr>
+                  %endif
+
+                  %if (V_DTVLOT != "")
+                      <tr><td class="dsphdr">Vendor Lot Number</td>
+                          <td class="dspalph">$(V_DTVLOT)</td>
+                      </tr>
+                  %endif
+
+                  %if (V_DTCMNT != "")
+                      <tr><td class="dsphdr">Lot Comment</td>
+                          <td class="dspalph">$(V_DTCMNT)</td>
+                      </tr>
+                  %endif
+              %endif
+
+	       %if (V_DTSTKR != "" || V_DTAILE != "" || V_DTSLOC != "")
+                  <tr><td class="dsphdr">Stock Location</td>
+                      <td class="dspalph">$(V_DTSTKR) - $(V_DTAILE) - $(V_DTSLOC)</td>
+                  </tr>
+              %endif
+
+	       %if (viewOption == "E" && V_DTNTTA != ".00")
+                  @Format_Nbr(V_DTNTTA, F_DTNTTA, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Taxable Amount</td>
+                      <td class="dspalph">$(F_DTNTTA)</td>
+                  </tr>
+              %endif
+
+	       %if (viewOption == "E" && V_DTNIVA != ".00")
+                  @Format_Nbr(V_DTNIVA, F_DTNIVA, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Exempt Amount</td>
+                      <td class="dspalph">$(F_DTNIVA)</td>
+                  </tr>
+              %endif
+
+	       %if (viewOption == "E" && V_DTFRTA != ".00")
+                  @Format_Nbr(V_DTFRTA, F_DTFRTA, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Freight Amount</td>
+                      <td class="dspalph">$(F_DTFRTA)</td>
+                  </tr>
+              %endif
+
+	       %if (viewOption == "E" && V_DTSPCA != ".00")
+                  @Format_Nbr(V_DTSPCA, F_DTSPCA, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Special Charge Amount</td>
+                      <td class="dspalph">$(F_DTSPCA)</td>
+                  </tr>
+              %endif
+
+	       %if (viewOption == "E" && V_DTKITC != ".00000")
+                  @Format_Nbr(V_DTKITC, F_DTKITC, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Kit Additional Cost</td>
+                      <td class="dspalph">$(F_DTKITC)</td>
+                  </tr>
+              %endif
+
+	       %if (viewOption == "E" && V_DTPTY1 != "" && V_DTPTY1 != "1" && V_DTPAM1 != ".00")
+                  @RtvFldDesc("OMPC='$(V_DTPTY1)'", "OEPYMT", "OMPD", fieldDesc)
+                  @Format_Nbr(V_DTPAM1, F_DTPAM1, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTPAM1)</td>
+                  </tr>
+              %endif
+
+	       %if (viewOption == "E" && V_DTPTY2 != "" && V_DTPTY2 != "1" && V_DTPAM2 != ".00")
+                  @RtvFldDesc("OMPC='$(V_DTPTY2)'", "OEPYMT", "OMPD", fieldDesc)
+                  @Format_Nbr(V_DTPAM2, F_DTPAM2, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTPAM2)</td>
+                  </tr>
+              %endif
+
+              %if (V_DTBTCS > "0")
+                  @Format_Code(V_DTBTCS, F_DTBTCS)
+                  @RtvFldDesc("CMCUST=$(V_DTBTCS)", "HDCUST", "CMCNA1", fieldDesc)
+                  <tr><td class="dsphdr">Bill-To Number</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTBTCS)</td>
+                  </tr>
+              %endif
+
+              %if (V_DTSTCS > "0")
+                  @Format_Code(V_DTSTCS, F_DTSTCS)
+                  @RtvFldDesc("CMCUST=$(V_DTSTCS)", "HDCUST", "CMCNA1", fieldDesc)
+                  <tr><td class="dsphdr">Ship-To Number</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTSTCS)</td>
+                  </tr>
+              %endif
+
+              %if (V_DTDSHP > "0")
+                  @Format_Code(V_DTDSHP, F_DTDSHP)
+                  @RtvFldDesc("DSVCF='C' and DSVNCS=$(V_DTSTCS) and DSNMBR=$(V_DTDSHP)", "HDDSHP", "DSNAME", fieldDesc)
+                  <tr><td class="dsphdr">Drop Ship Number</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTDSHP)</td>
+                  </tr>
+              %endif
+
+              %if (V_DTVEND > "0")
+                  @Format_Code(V_DTVEND, F_DTVEND)
+                  @RtvFldDesc("VMVEND=$(V_DTVEND)", "HDVEND", "VMVNA1", fieldDesc)
+                  <tr><td class="dsphdr">Vendor Number</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTVEND)</td>
+                  </tr>
+              %endif
+
+              %if (V_DTRMVD > "0" && V_DTVEND != V_DTRMVD)
+                  @Format_Code(V_DTRMVD, F_DTRMVD)
+                  @RtvFldDesc("VMVEND=$(V_DTRMVD)", "HDVEND", "VMVNA1", fieldDesc)
+                  <tr><td class="dsphdr">Remit-To Vendor Number</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTRMVD)</td>
+                  </tr>
+              %endif
+
+              %if (V_DTRECV != "")
+                  <tr><td class="dsphdr">Receiving Ticket Number</td>
+                      <td class="dspalph">$(V_DTRECV)</td>
+                  </tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTBTLC > "0")
+                  @Format_Code(V_DTBTLC, F_DTBTLC)
+                  @RtvFldDesc("LOLOC#=$(V_DTBTLC)", "HDLCTN", "LOLNA1", fieldDesc)
+                  <tr><td class="dsphdr">Location</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTBTLC)</td>
+                  </tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTBANK > "0")
+                  @Format_Code(V_DTBANK, F_DTBANK)
+                  @RtvFldDesc("BKBANK=$(V_DTBANK)", "HDBANK", "BKBKNM", fieldDesc)
+                  <tr><td class="dsphdr">Bank</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTBANK)</td>
+                  </tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTTRMS != "")
+                  <tr>
+                      @Format_Code(V_DTTRMS, F_DTTRMS)
+                      @RtvFldDesc("TMCTRM='$(V_DTTRMS)'", "HDTRMS", "TMCTDS", fieldDesc)
+                      <td class="dsphdr">Terms Code</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspnmbr">$(F_DTTRMS)</td>
+                  </tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTCTXC != "")
+                  <tr>
+                      @Format_Code(V_DTCTXC, F_DTCTXC)
+                      @RtvFldDesc("TCCODE='$(V_DTCTXC)'", "HDTAXC", "TCDESC", fieldDesc)
+                      <td class="dsphdr">Tax Code</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTCTXC)</td>
+                  </tr>
+              %endif
+
+              %if (V_DTOTYP != "")
+                  <tr>
+                      @Format_Code(V_DTOTYP, F_DTOTYP)
+                      %if (V_DTVEND > "0")
+                          @RtvFldDesc("(OTOTCD='$(V_DTOTYP)' and OTAPID='PO')", "HDOTYP", "OTDESC", fieldDesc)
+                      %else
+                          @RtvFldDesc("(OTOTCD='$(V_DTOTYP)' and OTAPID='OE')", "HDOTYP", "OTDESC", fieldDesc)
+                      %endif
+                      <td class="dsphdr">Order Type</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTOTYP)</td>
+                  </tr>
+              %endif
+
+              %if (V_DTSVSV != "")
+                  <tr>
+                      @Format_Code(V_DTSVSV, F_DTSVSV)
+                      @RtvFldDesc("SVSVSV='$(V_DTSVSV)'", "HDSHPV", "SVSVDS", fieldDesc)
+                      <td class="dsphdr">Ship Via</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTSVSV)</td>
+                  </tr>
+              %endif
+
+              %if (V_DTSLSM > "0")
+                  <tr>
+                      @Format_Code(V_DTSLSM, F_DTSLSM)
+                      @RtvFldDesc("SMSLSM=$(V_DTSLSM)", "HDSLSM", "SMSNA1", fieldDesc)
+                      <td class="dsphdr">Salesman</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTSLSM)</td>
+                  </tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTSLSM > "0" && V_DTSMPC != ".000000")
+                  <tr>@Format_Nbr("@dtw_rMultiply(V_DTSMPC, "100")", F_DTSMPC, "2", $(pctEditCode), "Y", "", "%")
+                      <td class="dsphdr">Commission Percent</td>
+                      <td class="dspnmbr">$(F_DTSMPC)</td>
+                  </tr>
+              %endif
+
+              %if (V_DTSLS1 > "0")
+                  <tr>
+                      @Format_Code(V_DTSLS1, F_DTSLS1)
+                      @RtvFldDesc("SMSLSM=$(V_DTSLS1)", "HDSLSM", "SMSNA1", fieldDesc)
+                      <td class="dsphdr">Split Salesman</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DTSLS1)</td>
+                  </tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTSLS1 > "0" && V_DTS2PC != ".000000")
+                  <tr>@Format_Nbr("@dtw_rMultiply(V_DTS2PC, "100")", F_DTS2PC, "2", $(pctEditCode), "Y", "", "%")
+                      <td class="dsphdr">Split Commission Percent</td>
+                      <td class="dspnmbr">$(F_DTS2PC)</td>
+                  </tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTACCT != "0")
+		   @RtvFldDesc("CHACCT=$(V_DTACCT) and CHSUB=$(V_DTSUB) ", "HDCHRT", "CHCHDS", acctDesc)
+                  @Format_Acct("$(V_DTACCT)", "$(V_DTSUB)", "", F_AcctSub)
+                  <tr><td class="dsphdr">Offset Account</td>
+                      <td class="dspalph">$(acctDesc)</td>
+                      <td class="dspnmbr">$(F_AcctSub)</td></tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTIAA1 != "0")
+		   @RtvFldDesc("CHACCT=$(V_DTIAA1) and CHSUB=$(V_DTIAS1) ", "HDCHRT", "CHCHDS", acctDesc)
+                  @Format_Acct("$(V_DTIAA1)", "$(V_DTIAS1)", "", F_AcctSub)
+                  <tr><td class="dsphdr">Inventory Asset Account 1</td>
+                      <td class="dspalph">$(acctDesc)</td>
+                      <td class="dspnmbr">$(F_AcctSub)</td></tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTIAA2 != "0")
+		   @RtvFldDesc("CHACCT=$(V_DTIAA2) and CHSUB=$(V_DTIAS2) ", "HDCHRT", "CHCHDS", acctDesc)
+                  @Format_Acct("$(V_DTIAA2)", "$(V_DTIAS2)", "", F_AcctSub)
+                  <tr><td class="dsphdr">Inventory Asset Account 2</td>
+                      <td class="dspalph">$(acctDesc)</td>
+                      <td class="dspnmbr">$(F_AcctSub)</td></tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTIAA3 != "0")
+		   @RtvFldDesc("CHACCT=$(V_DTIAA3) and CHSUB=$(V_DTIAS3) ", "HDCHRT", "CHCHDS", acctDesc)
+                  @Format_Acct("$(V_DTIAA3)", "$(V_DTIAS3)", "", F_AcctSub)
+                  <tr><td class="dsphdr">Inventory Asset Account 3</td>
+                      <td class="dspalph">$(acctDesc)</td>
+                      <td class="dspnmbr">$(F_AcctSub)</td></tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTIAA4 != "0")
+		   @RtvFldDesc("CHACCT=$(V_DTIAA4) and CHSUB=$(V_DTIAS4) ", "HDCHRT", "CHCHDS", acctDesc)
+                  @Format_Acct("$(V_DTIAA4)", "$(V_DTIAS4)", "", F_AcctSub)
+                  <tr><td class="dsphdr">Inventory Asset Account 4</td>
+                      <td class="dspalph">$(acctDesc)</td>
+                      <td class="dspnmbr">$(F_AcctSub)</td></tr>
+              %endif
+
+              %if (viewOption == "E" && V_DTIAA5 != "0")
+		   @RtvFldDesc("CHACCT=$(V_DTIAA5) and CHSUB=$(V_DTIAS5) ", "HDCHRT", "CHCHDS", acctDesc)
+                  @Format_Acct("$(V_DTIAA5)", "$(V_DTIAS5)", "", F_AcctSub)
+                  <tr><td class="dsphdr">Inventory Asset Account 5</td>
+                      <td class="dspalph">$(acctDesc)</td>
+                      <td class="dspnmbr">$(F_AcctSub)</td></tr>
+              %endif
+
+	       %if (V_DTDSEQ > "0")
+                  @Format_Nbr(V_DTDSEQ, F_DTDSEQ, "0", "3", "Y", "", "")
+                  <tr><td class="dsphdr">Transaction Sequence</td>
+                      <td class="dspalph">$(F_DTDSEQ)</td>
+                  </tr>
+              %endif
+
+	       %if (V_DTOSEQ > "0")
+                  @Format_Nbr(V_DTOSEQ, F_DTOSEQ, "0", "3", "Y", "", "")
+                  <tr><td class="dsphdr">Originating Transaction Sequence</td>
+                      <td class="dspalph">
+                          %if (linkOrig =="N")
+                              $(F_DTOSEQ)
+                          %else
+                              <a href="javascript:opener.document.location='$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=180&amp;tag=QSEARCH&amp;qsName=DTOSEQ&amp;qsOper==&amp;qsValue=@dtw_rurlescseq(V_DTOSEQ)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';window.close();" title="View all transactions for Originating Sequence $(F_DTOSEQ)">$(F_DTOSEQ)</a>
+                          %endif
+                      </td>
+                  </tr>
+              %endif
+          </table>
+
+          %if (viewOption == "E" && (V_DTSCC1 != ".00000" || V_DTSCC2 != ".00000" || V_DTSCC3 != ".00000" || V_DTSCC4 != ".00000" || V_DTSCC5 != ".00000" || V_DTLCPU != ".00000"))
+              <fieldset class="legendBody">
+                  <legend class="legendTitle">Cost</legend>
+                  <table $(contentTable)>
+                      <tr><td></td>
+                          <td class="colhdr">Cost</td>
+                          <td class="colhdr">Extended Cost</td>
+                      </tr>
+                      %if (V_DTSCC1 != ".00000")
+                          <tr>
+                              %if (V_HDTCV == "A")
+                                  <td class="dsphdr">Average Cost</td>
+                              %elif (V_DTPLT > "0")
+                                  @RtvFldDesc("PLPLNT=$(V_DTPLT)", "HDPLNT", "PLCC1D", cat1Desc)
+                                  <td class="dsphdr">$(cat1Desc)</td>
+                              %else
+                                  <td class="dsphdr">Standard Cost</td>
+                              %endif
+                              @Format_Nbr(V_DTSCC1, F_DTSCC1, "5", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTSCC1)</td>
+                              @Format_Nbr(V_DTECC1, F_DTECC1, "2", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTECC1)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTSCC2 != ".00000")
+                          <tr>
+                              @RtvFldDesc("PLPLNT=$(V_DTPLT)", "HDPLNT", "PLCC2D", cat2Desc)
+                              <td class="dsphdr">$(cat2Desc)</td>
+                              @Format_Nbr(V_DTSCC2, F_DTSCC2, "5", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTSCC2)</td>
+                              @Format_Nbr(V_DTECC2, F_DTECC2, "2", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTECC2)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTSCC3 != ".00000")
+                          <tr>
+                              @RtvFldDesc("PLPLNT=$(V_DTPLT)", "HDPLNT", "PLCC3D", cat3Desc)
+                              <td class="dsphdr">$(cat3Desc)</td>
+                              @Format_Nbr(V_DTSCC3, F_DTSCC3, "5", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTSCC3)</td>
+                              @Format_Nbr(V_DTECC3, F_DTECC3, "2", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTECC3)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTSCC4 != ".00000")
+                          <tr>
+                              @RtvFldDesc("PLPLNT=$(V_DTPLT)", "HDPLNT", "PLCC4D", cat4Desc)
+                              <td class="dsphdr">$(cat4Desc)</td>
+                              @Format_Nbr(V_DTSCC4, F_DTSCC4, "5", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTSCC4)</td>
+                              @Format_Nbr(V_DTECC4, F_DTECC4, "2", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTECC4)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTSCC5 != ".00000")
+                          <tr>
+                              @RtvFldDesc("PLPLNT=$(V_DTPLT)", "HDPLNT", "PLCC5D", cat5Desc)
+                              <td class="dsphdr">$(cat5Desc)</td>
+                              @Format_Nbr(V_DTSCC5, F_DTSCC5, "5", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTSCC5)</td>
+                              @Format_Nbr(V_DTECC5, F_DTECC5, "2", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTECC5)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTSCC1 != ".00000" || V_DTSCC2 != ".00000" || V_DTSCC3 != ".00000" || V_DTSCC4 != ".00000" || V_DTSCC5 != ".00000")
+                          <tr>
+                              <td class="dsphdr">Total</td>
+                              @dtw_assign(totalCost, @dtw_radd(V_DTSCC1, @dtw_radd(V_DTSCC2, @dtw_radd(V_DTSCC3, @dtw_radd(V_DTSCC4, V_DTSCC5)))))
+                              @Format_Nbr(totalCost, F_totalCost, "5", $(amtEditCode), "Y", "", "")
+                              <td class="coltotal">$(F_totalCost)</td>
+                              @Format_Nbr(V_DTEXCA, F_DTEXCA, "2", $(amtEditCode), "Y", "", "")
+                              <td class="coltotal">$(F_DTEXCA)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTLCPU != ".00000")
+                          <tr>
+                              <td class="dsphdr">Landed Cost</td>
+                              @Format_Nbr(V_DTLCPU, F_DTLCPU, "5", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTLCPU)</td>
+                              @Format_Nbr(V_DTLCEX, F_DTLCEX, "2", $(amtEditCode), "Y", "", "")
+                              <td class="colnmbr">$(F_DTLCEX)</td>
+                          </tr>
+                      %endif
+                  </table>
+              </fieldset>
+          %endif
+
+          %if (viewOption == "E" && (V_DTSTTX != ".00" || V_DTCOTX != ".00" || V_DTCITX != ".00" || V_DTLC1X != ".00" || V_DTLC2X != ".00" || V_DTLC3X != ".00"))
+              <fieldset class="legendBody">
+                  <legend class="legendTitle">Taxes</legend>
+                  <table $(contentTable)>
+                      <tr>
+                          <td class="colhdr">Description</td>
+                          <td class="colhdr">Amount</td>
+                      </tr>
+                      %if (V_DTSTTX != ".00")
+                          <tr>
+                              @RtvFldDesc("TDSTCD='$(V_DTST)' and TDCNYC=0 and TDCTYC=0 and TDLOC1=0 and TDLOC2=0 and TDLOC3=0", "HDTAXD", "TDTDSC", taxDesc)
+                              @Format_Nbr(V_DTSTTX, F_DTSTTX, "2", $(amtEditCode), "Y", "", "")
+                              <td class="dsphdr">$(taxDesc)</td>
+                              <td class="colnmbr">$(F_DTSTTX)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTCOTX != ".00")
+                          <tr>
+                              @RtvFldDesc("TDSTCD='$(V_DTST)' and TDCNYC=$(V_DTCCNC) and TDCTYC=0 and TDLOC1=0 and TDLOC2=0 and TDLOC3=0", "HDTAXD", "TDTDSC", taxDesc)
+                              @Format_Nbr(V_DTCOTX, F_DTCOTX, "2", $(amtEditCode), "Y", "", "")
+                              <td class="dsphdr">$(taxDesc)</td>
+                              <td class="colnmbr">$(F_DTCOTX)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTCITX != ".00")
+                          <tr>
+                              @RtvFldDesc("TDSTCD='$(V_DTST)' and TDCNYC=$(V_DTCCNC) and TDCTYC=$(V_DTCCTC) and TDLOC1=0 and TDLOC2=0 and TDLOC3=0", "HDTAXD", "TDTDSC", taxDesc)
+                              @Format_Nbr(V_DTCITX, F_DTCITX, "2", $(amtEditCode), "Y", "", "")
+                              <td class="dsphdr">$(taxDesc)</td>
+                              <td class="colnmbr">$(F_DTCITX)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTLC1X != ".00")
+                          <tr>
+                              @RtvFldDesc("TDSTCD='$(V_DTST)' and TDCNYC=$(V_DTCCNC) and TDCTYC=$(V_DTCCTC) and TDLOC1=$(V_DTLOC1) and TDLOC2=0 and TDLOC3=0", "HDTAXD", "TDTDSC", taxDesc)
+                              @Format_Nbr(V_DTLC1X, F_DTLC1X, "2", $(amtEditCode), "Y", "", "")
+                              <td class="dsphdr">$(taxDesc)</td>
+                              <td class="colnmbr">$(F_DTLC1X)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTLC2X != ".00")
+                          <tr>
+                              @RtvFldDesc("TDSTCD='$(V_DTST)' and TDCNYC=$(V_DTCCNC) and TDCTYC=$(V_DTCCTC) and TDLOC1=$(V_DTLOC1) and TDLOC2=$(V_DTLOC2) and TDLOC3=0", "HDTAXD", "TDTDSC", taxDesc)
+                              @Format_Nbr(V_DTLC2X, F_DTLC2X, "2", $(amtEditCode), "Y", "", "")
+                              <td class="dsphdr">$(taxDesc)</td>
+                              <td class="colnmbr">$(F_DTLC2X)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTLC3X != ".00")
+                          <tr>
+                              @RtvFldDesc("TDSTCD='$(V_DTST)' and TDCNYC=$(V_DTCCNC) and TDCTYC=$(V_DTCCTC) and TDLOC1=$(V_DTLOC1) and TDLOC2=$(V_DTLOC2) and TDLOC3=$(V_DTLOC3)", "HDTAXD", "TDTDSC", taxDesc)
+                              @Format_Nbr(V_DTLC3X, F_DTLC3X, "2", $(amtEditCode), "Y", "", "")
+                              <td class="dsphdr">$(taxDesc)</td>
+                              <td class="colnmbr">$(F_DTLC3X)</td>
+                          </tr>
+                      %endif
+                      %if (V_DTCOTX != ".00" || V_DTCITX != ".00" || V_DTLC1X != ".00" || V_DTLC2X != ".00" || V_DTLC3X != ".00")
+                          <tr>
+                              @Format_Nbr(V_DTTLTX, F_DTTLTX, "2", $(amtEditCode), "Y", "", "")
+                              <td class="dsphdr">Total</td>
+                              <td class="coltotal">$(F_DTTLTX)</td>
+                          </tr>
+                      %endif
+                  </table>
+              </fieldset>
+          %endif
+
+          <fieldset class="legendBody">
+              <legend class="legendTitle">Created By</legend>
+              <table $(contentTable)>
+                  @RtvFldDesc("USUSER='$(V_DTUSER)' ", "SYUSER", "USDESC", userName)
+                  @Format_Code(V_DTUSER, F_DTUSER)
+                  <tr><td class="dsphdr">User</td>
+                      <td class="dspalph">$(userName)</td>
+                      <td class="dspalph">$(F_DTUSER)</td>
+                  </tr>
+                	   	
+                  <tr><td class="dsphdr">Workstation</td>
+                      <td class="dspalph">$(V_DTWSID)</td>
+                  </tr>
+
+	   	   @RtvFldDesc("PTPGID='$(V_DTPGM)'", "SYILET", "PTDESC", programDesc)
+                  @Format_Code(V_DTPGM, F_DTPGM)
+                  <tr><td class="dsphdr">Program</td>
+                      <td class="dspalph">$(programDesc)</td>
+                      <td class="dspalph">$(F_DTPGM)</td>
+                  </tr>
+        	      	
+                  <tr><td class="dsphdr">Timestamp</td>
+                      <td class="dspalph">$(V_DTTSTP)</td>
+                  </tr>
+              </table>
+          </fieldset>
+      %}
+      $(inquiryhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(DISPLAY) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}

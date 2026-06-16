@@ -1,0 +1,521 @@
+%{
+*********************************************************************
+* Copr 1979 2002 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job:  Open Positions Display                                     *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {	
+  page_title 	        = "Open Positions"
+  d2wName              = "HROpenPositions.d2w"
+  d2wVarBase           = "$(genericVarBase)&amp;hrCompany=@dtw_rurlescseq(hrCompany)&amp;backHome=@dtw_rurlescseq(backHome)"
+  nextPrevVar          = "$(d2wVarBase)"
+  wildDftVar           = "REPORT$(d2wVarBase)"
+  programName          = "HPEORU"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  facilityZero         = "0000"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext		= "1"
+  totalPages		= "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@hrCompany", "@dtw_rurlescseq(hrCompany)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "OPENPOSITIONS")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_HRCompanyName, "ORCOMP")
+                      @dtw_assign(uv_HomeDepartmentName, "ORDEPT")
+                      @dtw_assign(uv_HRLocationName, "ORLOC")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select PEORG.*, upper(ORTITL) as ORTITLU ", stmtSQL)
+                      @dtw_concat(fileSQL, " PEORG ", fileSQL)
+                      @dtw_concat(selectSQL, "ORCOMP=$(hrCompany) and ORASEM=0", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @OpenPositions_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) OpenPositions_Query (IN CHAR(64)    profileHandle,
+				            CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count != "1")
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="80%">
+                  <col width="15%">
+              <tr><td><h1> $(page_title)</h1></td>
+                  %if (formatToPrint != "Y")
+                      <td class="toolbar">
+                          %if ((backHome != "$(d2wName)/report") && (backHome != ""))
+                              <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Return To Company">$(portalHome)</a>
+                          %endif
+                          %INCLUDE "XMLFormat.icl"
+                          %INCLUDE "FormatToPrint.icl"
+                          %INCLUDE "HelpPage.icl"
+                      </td>
+                  %endif
+              </tr>
+              @RetHrCompNam(profileHandle, dataBaseID, hrCompany, facilityZero, coFacName)
+              <tr><td><h2>$(coFacName)</h2></td>
+          </table>
+          %INCLUDE "ConfMessageDisplay.icl"
+          $(hrTagAttr)
+
+          %if (formatToPrint != "Y")
+	           <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+                      <table $(quickSearchTable)>
+	   	           <tr><th class="colhdr">Title</th></tr>
+                          <tr><td class="inputalph">
+                              <input type="text" name="srchTitle" size="20" maxlength="26">
+                              <input type="hidden" name="operTitle" value="LIKE">
+                              </td>
+                              <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                          </tr>
+	               </table>
+                  <script TYPE="text/javascript">
+                      document.Search.srchTitle.focus();
+                  </script>
+              </form>
+
+              %INCLUDE "WildCardPage.icl"
+          %endif
+
+          <table $(contentTable)>
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("ORLEVL", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Level" title="Sequence By Level, Sequence"> Level</a></th>
+                  @OrderBy_Sort("ORSEQ", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Seq" title="Sequence By Sequence, Level"> Seq</a></th>
+                  @OrderBy_Sort("ORTITLU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Title" title="Sequence By Title, Location">Title</a></th>
+                  @OrderBy_Sort("ORLOC", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Loc" title="Sequence By Location, Department, Job Code">Location</a></th>
+                  @OrderBy_Sort("ORDEPT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Dept" title="Sequence By Department, Job Code, Level, Sequence">Dept</a></th>
+                  @OrderBy_Sort("ORJOB", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Job" title="Sequence By Job Code, Level, Sequence">Job<br>Code</a></th>
+                  @OrderBy_Sort("ORUNIO", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Union" title="Sequence By Union, Title">Union</a></th>
+                  @OrderBy_Sort("ORRTLV", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ToLevel" title="Sequence By Reports To Level, Reports To Sequence, Level, Sequence">Reports<br>To Level</a></th>
+                  @OrderBy_Sort("ORRTSQ", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ToSeq" title="Sequence By Reports To Sequence, Reports To Level, Level, Sequence">Reports<br>To Seq</a></th>
+                  @OrderBy_Sort("OREEOC", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=EEOCat" title="Sequence By EEO-1 Job Category, Level, Sequence">EEO-1 Job<br>Category</a></th>
+              </tr>
+          %INCLUDE "NoRecordsFound.icl"
+      %endif
+		
+              %ROW{
+                  @dtw_assign(maintainVar, "$(d2wVarBase)&amp;orgLevel=@dtw_rurlescseq(V_ORLEVL)&amp;orgSeq=@dtw_rurlescseq(V_ORSEQ)")
+                  %if (sql_Record_Count == "1")
+                      @Save_WebReg(webRegCurFile, profileHandle, d2wName, "", orderBy, orderByDisplay, "")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)HROrgOpenSelect.d2w/REPORT$(maintainVar)">
+                  %else
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          <td class="colcode">$(V_ORLEVL)</td>
+                          <td class="colcode">$(V_ORSEQ)</td>
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)HROrgOpenSelect.d2w/REPORT$(maintainVar)" title="View Company Position">$(V_ORTITL)</a></td>
+                          <td class="colcode">$(V_ORLOC)</td>
+                          <td class="colalph">$(V_ORDEPT)</td>
+                          <td class="colalph">$(V_ORJOB)</td>
+                          <td class="colcode">$(V_ORUNIO)</td>
+                          <td class="colcode">$(V_ORRTLV)</td>
+                          <td class="colcode">$(V_ORRTSQ)</td>
+                          <td class="colcode">$(V_OREEOC)</td>
+                      </tr>
+                  %endif
+	       %}
+	   </table>
+          %if (sql_Record_Count != "1")
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+              $(hrTagAttr)
+              %INCLUDE "Copyright.icl"
+          %endif
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  @dtw_assign(uv_HRCompanyName, "ORCOMP")
+  @dtw_assign(uv_HomeDepartmentName, "ORDEPT")
+  @dtw_assign(uv_HRLocationName, "ORLOC")
+  %INCLUDE "userview.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select PEORG.*, upper(ORTITL) as ORTITLU ", stmtSQL)
+  @dtw_concat(fileSQL, " PEORG ", fileSQL)
+  @dtw_concat(selectSQL, "ORCOMP=$(hrCompany) and ORASEM=0", selectSQL)
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @OpenPositions_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) OpenPositions_XMLQuery (IN CHAR(64) profileHandle,
+				           CHAR(2)   dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @RetHrCompNam(profileHandle, dataBaseID, hrCompany, facilityZero, coFacName)
+      @XMLBeginTag("OpenPositionsList")
+          %ROW{
+
+               @XMLIDTag(@DTW_rCONCAT(V_ORCOMP, @DTW_rCONCAT("/", @DTW_rCONCAT(V_ORLEVL, @DTW_rCONCAT("/", V_ORSEQ)))), "OrgStructure ID")
+                   @XMLTag(V_ORCOMP, "CompanyNumber")
+                   @XMLTag(coFacName, "CompanyName")
+                   @XMLTag(V_ORLEVL, "OrganizationLevel")
+                   @XMLTag(V_ORSEQ, "OrganizationSequence")
+                   @XMLTag(V_ORTITL, "PositionTitle")
+                   @XMLTag(V_OREEOC, "EEO1JobCategory")
+                   @XMLTag(V_ORLOC, "LocationCode")
+                   @XMLTag(V_ORDEPT, "DepartmentCode")
+                   @XMLTag(V_ORJOB, "JobCode")
+                   @XMLTag(V_ORUNIO, "UnionCode")
+                   @XMLTag(V_ORRTLV, "ReportsToLevel")
+                   @XMLTag(V_ORRTSQ, "ReportsToSequence")
+               @XMLEndTag("OrgStructure")
+          %}
+      @XMLEndTag("OpenPositionsList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      %INCLUDE "WebReg.icl"
+      %if (formatToPrint != "")
+          @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+      %else
+          %if (orderBy == "")
+              @DTW_ASSIGN(orderBy, "ORLEVL,ORSEQ")
+              @DTW_ASSIGN(orderByDisplay, "Level, Sequence")
+              @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+          %endif
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %endif
+      %INCLUDE "SearchReturn.icl"
+  %endif
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Level")
+      %if (orderBy == "ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderBy, "ORLEVL DESC,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Level (descending), Sequence")
+      %else
+          @DTW_ASSIGN(orderBy, "ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Level, Sequence")
+      %endif
+  %elif (sequence == "Seq")
+      %if (orderBy == "ORSEQ,ORLEVL")
+          @DTW_ASSIGN(orderBy, "ORSEQ DESC,ORLEVL")
+          @DTW_ASSIGN(orderByDisplay, "Sequence (descending), Level")
+      %else
+          @DTW_ASSIGN(orderBy, "ORSEQ,ORLEVL")
+          @DTW_ASSIGN(orderByDisplay, "Sequence, Level")
+      %endif
+  %elif (sequence == "Title")
+      %if (orderBy == "ORTITLU,ORLOC")
+          @DTW_ASSIGN(orderBy, "ORTITLU DESC,ORLOC")
+          @DTW_ASSIGN(orderByDisplay, "Title (descending), Location")
+      %else
+          @DTW_ASSIGN(orderBy, "ORTITLU,ORLOC")
+          @DTW_ASSIGN(orderByDisplay, "Title, Location")
+      %endif
+  %elif (sequence == "Number")
+      %if (orderBy == "ORASEM")
+          @DTW_ASSIGN(orderBy, "ORASEM DESC")
+          @DTW_ASSIGN(orderByDisplay, "Employee Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "ORASEM")
+          @DTW_ASSIGN(orderByDisplay, "Employee Number")
+      %endif
+  %elif (sequence == "Name")
+      %if (orderBy == "EMLNAMU")
+          @DTW_ASSIGN(orderBy, "EMLNAMU DESC")
+          @DTW_ASSIGN(orderByDisplay, "Employee Last Name (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "EMLNAMU")
+          @DTW_ASSIGN(orderByDisplay, "Employee Last Name")
+      %endif
+  %elif (sequence == "Loc")
+      %if (orderBy == "ORLOC,ORDEPT,ORJOB")
+          @DTW_ASSIGN(orderBy, "ORLOC DESC,ORDEPT,ORJOB")
+          @DTW_ASSIGN(orderByDisplay, "Location (descending), Department, Job Code")
+      %else
+          @DTW_ASSIGN(orderBy, "ORLOC,ORDEPT,ORJOB")
+          @DTW_ASSIGN(orderByDisplay, "Location, Department, Job Code")
+      %endif
+  %elif (sequence == "Dept")
+      %if (orderBy == "ORDEPT,ORJOB,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderBy, "ORDEPT DESC,ORJOB,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Department (descending), Job Code, Level, Sequence")
+      %else
+          @DTW_ASSIGN(orderBy, "ORDEPT,ORJOB,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Department, Job Code, Level, Sequence")
+      %endif
+  %elif (sequence == "Job")
+      %if (orderBy == "ORJOB,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderBy, "ORJOB DESC,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Job Code (descending), Level, Sequence")
+      %else
+          @DTW_ASSIGN(orderBy, "ORJOB,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Job Code, Level, Sequence")
+      %endif
+  %elif (sequence == "Union")
+      %if (orderBy == "ORUNIO,ORTITLU")
+          @DTW_ASSIGN(orderBy, "ORUNIO DESC,ORTITLU")
+          @DTW_ASSIGN(orderByDisplay, "Union (descending), Title")
+      %else
+          @DTW_ASSIGN(orderBy, "ORUNIO,ORTITLU")
+          @DTW_ASSIGN(orderByDisplay, "Union, Title")
+      %endif
+  %elif (sequence == "ToLevel")
+      %if (orderBy == "ORRTLV,ORRTSQ,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderBy, "ORRTLV DESC,ORRTSQ,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Reports To Level (descending), Reports To Seq, Level, Sequence")
+      %else
+          @DTW_ASSIGN(orderBy, "ORRTLV,ORRTSQ,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Reports To Level, Reports To Seq, Level, Sequence")
+      %endif
+  %elif (sequence == "ToSeq")
+      %if (orderBy == "ORRTSQ,ORRTLV,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderBy, "ORRTSQ DESC,ORRTLV,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Reports To Seq (descending), Reports To Level, Level, Sequence")
+      %else
+          @DTW_ASSIGN(orderBy, "ORRTSQ,ORRTLV,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Reports To Seq, Reports To Level, Level, Sequence")
+      %endif
+  %elif (sequence == "EEOCat")
+      %if (orderBy == "OREEOC,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderBy, "OREEOC DESC,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "EEO-1 Job Category (descending), Level, Sequence")
+      %else
+          @DTW_ASSIGN(orderBy, "OREEOC,ORLEVL,ORSEQ")
+          @DTW_ASSIGN(orderByDisplay, "EEO-1 Job Category, Level, Sequence")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchLevel, 1, 0) &&
+                      editNum(document.Search.srchSeq, 5, 0) &&
+                      editNum(document.Search.srchToLevel, 1, 0) &&
+                      editNum(document.Search.srchToSeq, 5, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "POSITIONSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      @RetHrCompNam(profileHandle, dataBaseID, hrCompany, facilityZero, coFacName)
+                      <h2> $(coFacName)</h2>
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Level</td>
+                              @dtw_assign(operNbr, "operLevel")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchLevel" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Sequence</td>
+                              @dtw_assign(operNbr, "operSeq")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchSeq" size="5" maxlength="5"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Title</td>
+                              @dtw_assign(operNbr, "operTitle")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchTitle" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">EEO-1 Job Category</td>
+                              @dtw_assign(operNbr, "operEEO")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchEEO" type="text" size="6" maxlength="6"><a href="$(homeURL)$(phpPath)HRCodesSearch.php$(altVarBase)&amp;docName=Search&amp;fldComp=@dtw_rurlescseq(hrCompany)&amp;fldType=Y&amp;fldName=srchEEO&amp;fldDesc=EEO1JobCatDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="EEO1JobCatDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Location</td>
+                              @dtw_assign(operNbr, "operLoc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchLoc" type="text" size="5" maxlength="4"><a href="$(homeURL)$(phpPath)HRCodesSearch.php$(altVarBase)&amp;docName=Search&amp;fldComp=@dtw_rurlescseq(hrCompany)&amp;fldType=O&amp;fldName=srchLoc&amp;fldDesc=locCodeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="locCodeDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Department</td>
+                              @dtw_assign(operNbr, "operDept")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchDept" type="text" size="5" maxlength="5"> <a href="$(homeURL)$(phpPath)DepartmentSearch.php$(altVarBase)&amp;docName=Search&amp;fldName=srchDept&amp;fldDesc=deptDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="deptDesc" value="$(deptDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Job Code</td>
+                              @dtw_assign(operNbr, "operJob")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchJob" type="text" size="5" maxlength="4"><a href="$(homeURL)$(phpPath)HRCodesSearch.php$(altVarBase)&amp;docName=Search&amp;fldComp=@dtw_rurlescseq(hrCompany)&amp;fldType=J&amp;fldName=srchJob&amp;fldDesc=jobCodeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="jobCodeDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Union</td>
+                              @dtw_assign(operNbr, "operUnion")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchUnion" type="text" size="5" maxlength="4"><a href="$(homeURL)$(phpPath)HRCodesSearch.php$(altVarBase)&amp;docName=Search&amp;fldComp=@dtw_rurlescseq(hrCompany)&amp;fldType=U&amp;fldName=srchUnion&amp;fldDesc=unionCodeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="unionCodeDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Reports To Level</td>
+                              @dtw_assign(operNbr, "operToLevel")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchToLevel" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Reports To Sequence</td>
+                              @dtw_assign(operNbr, "operToSeq")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchToSeq" size="5" maxlength="5"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchLevel.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("upper(ORTITL)", "Title", $(srchTitle), "U", operTitle, "A")
+  @Build_WildCard ("ORLEVL", "Level", $(srchLevel), "", operLevel, "N")
+  @Build_WildCard ("ORSEQ", "Sequence", $(srchSeq), "", operSeq, "N")
+  @Build_WildCard ("ORLOC", "Location", $(srchLoc), "U", operLoc, "A")
+  @Build_WildCard ("ORDEPT", "Department", $(srchDept), "U", operDept, "A")
+  @Build_WildCard ("ORJOB", "Job Code", $(srchJob), "U", operJob, "A")
+  @Build_WildCard ("ORUNIO", "Union", $(srchUnion), "U", operUnion, "A")
+  @Build_WildCard ("ORRTLV", "Reports To Level", $(srchToLevel), "", operToLevel, "N")
+  @Build_WildCard ("ORRTSQ", "Reports To Seq", $(srchToSeq), "", operToSeq, "N")
+  @Build_WildCard ("OREEOC", "EEO-1 Job Category", $(srchEEO), "", operEEO, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

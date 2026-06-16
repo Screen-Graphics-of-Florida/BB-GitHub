@@ -1,0 +1,342 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Employee Pay Transaction Detail Select                      *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title 	        = "Pay Transaction Detail"
+  d2wName              = "EmplPayTranDetailSelect.d2w"
+  d2wVarBase           = "$(genericVarBase)$(employeeVarBase)&amp;prCKTYPE=@dtw_rurlescseq(prCKTYPE)&amp;prCKSEPC=@dtw_rurlescseq(prCKSEPC)&amp;detailSequence=@dtw_rurlescseq(detailSequence)&amp;backHome=@dtw_rurlescseq(backHome)"
+  programName          = "HPRSBE"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  RPT_MAX_ROWS         = "99"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext	        = "1"
+  totalPages	        = "0"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+  @dtw_replace(workURL, "@@prCKTYPE", "@dtw_rurlescseq(prCKTYPE)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@prCKSEPC", "@dtw_rurlescseq(prCKSEPC)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@detailSequence", "@dtw_rurlescseq(detailSequence)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @dtw_assign(applicationID, "PR")
+  %INCLUDE "EmplUV.icl"
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                           @dtw_assign(pageID, "PAYDFLTSELECT")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " PRTIME inner join HREMPL on SBCOMP=EMCOMP and SBFACL=EMFACL and SBEMPL=EMEMPL ", fileSQL)
+                          @dtw_concat(selectSQL, " SBCOMP=$(prCompany) and SBFACL=$(prFacility) and SBEMPL=$(prEmployee) and SBTYPE='$(prCKTYPE)' and SBSEPC='$(prCKSEPC)' and SBSEQ=$(detailSequence) ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @PayTransaction_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+    %endif
+%}
+
+%FUNCTION(dtw_sql) PayTransaction_Query (IN CHAR(64)    profileHandle,
+				        CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+               %endif
+          </tr>
+
+          @Ret_Format_EmplName(prCompany, prFacility, prEmployee, "00", "000000000", "H", F_EmpName)
+          <tr><td><h2>$(F_EmpName)</h2></td>
+
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+      $(hrTagAttr)
+
+      %ROW {
+          <table $(contentTable)>
+              %if (V_SBREC == "H")
+                  @dtw_assign(checkType, "Regular")
+              %elif (V_SBREC == "V")
+                  @dtw_assign(checkType, "Void")
+              %elif (V_SBREC == "M")
+                  @dtw_assign(checkType, "Manual/History Adjustment")
+              %endif
+              <tr><td class="dsphdr">Check Type</td>
+                  <td class="dspalph">$(checkType)</td>
+              </tr>
+              %if (V_SBREC != "H")
+                  <tr><td class="dsphdr">Check Number</td>
+                      <td class="dspalph">$(V_SBCKNO)</td>
+                  </tr>
+                  @Format_Date(V_SBCKDT, "H", F_SBCKDT)
+                  <tr><td class="dsphdr">Check Date</td>
+                      <td class="dspdate">$(F_SBCKDT)</td>
+                  </tr>
+                  @Format_Date(V_SBPEDT, "H", F_SBPEDT)
+                  <tr><td class="dsphdr">Pay Period End Date</td>
+                      <td class="dspdate">$(F_SBPEDT)</td>
+                  </tr>
+              %endif
+              %if (V_SBSEPC != "")
+                  <tr><td class="dsphdr">Separate Check</td>
+                      <td class="dspalph">$(V_SBSEPC)</td>
+                  </tr>
+              %endif
+
+              @Format_Date(V_SBDTWK, "H", F_SBDTWK)
+              <tr><td class="dsphdr">Date Worked</td>
+                  <td class="dspdate">$(F_SBDTWK)</td>
+              </tr>
+              @RtvFldDesc("C2COMP=$(prCompany) and C2FACL=$(prFacility) and C2CODE='$(V_SBCODE)'", "PRCODE", "C2DESC", payCodeDesc)
+              <tr><td class="dsphdr">Pay Code</td>
+                  <td class="dspalph">$(V_SBCODE) &nbsp; $(payCodeDesc)</td>
+              </tr>
+              @RtvFldDesc("SUMCOD='$(V_SBSUMT)'", "PRSUMT", "SUMDSC", sumDesc)
+              <tr><td class="dsphdr">Summary Pay Type</td>
+                  <td class="dspalph">$(sumDesc)</td>
+              </tr>
+              %if (V_SBHRUN != "")
+                  %if (V_SBHRUN == "H")
+                      @dtw_assign(hoursUnits, "Hours")
+                  %elif (V_SBHRUN == "U")
+                      @dtw_assign(hoursUnits, "Units")
+                  %else
+                      @dtw_assign(hoursUnits, "")
+                  %endif
+                  @Format_Nbr($(V_SBHOUR), F_SBHOUR, "2", $(hrsEditCode), "", "", "")
+                  <tr><td class="dsphdr">Hours/Units</td>
+                      <td class="dspalph">$(F_SBHOUR) $(hoursUnits)</td>
+                  </tr>
+              %endif
+    	       %if((V_EMTYPE == "H" && sec_06 == "Y") || (V_EMTYPE != "H" && sec_08 == "Y"))
+                  %if (V_SBOVRT != ".000")
+                      @Format_Nbr($(V_SBOVRT), F_SBOVRT, $(rteNbrDec), $(rteEditCode), "", "", "")
+                      <tr><td class="dsphdr">Pay Rate</td>
+                          <td class="dspnmbr">$(F_SBOVRT)</td>
+                      </tr>
+                  %endif
+                  @Format_Nbr($(V_SBEARN), F_SBEARN, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">Earnings</td>
+                      <td class="dspnmbr">$(F_SBEARN)</td>
+                  </tr>
+              %endif
+              %if (V_SBSHFW != "")
+                  <tr><td class="dsphdr">Shift Worked</td>
+                      <td class="dspalph">$(V_SBSHFW)</td>
+                  </tr>
+              %endif
+              %if ((V_SBSTRT != "0") || (V_SBSTOP != "0"))
+                  <tr><td class="dsphdr">Start Time</td>
+                      <td class="dspnmbr">$(V_SBSTRT) $(V_SBSTCD)</td>
+                  </tr>
+                  <tr><td class="dsphdr">Stop Time</td>
+                      <td class="dspnmbr">$(V_SBSTOP) $(V_SBSPCD)</td>
+                  </tr>
+              %endif
+              @RtvFldDesc("EADEPT='$(V_SBDEPT)'", "PREXAC", "EANAME", prDeptName)
+              <tr><td class="dsphdr">Department Worked</td>
+                  <td class="dspalph">$(V_SBDEPT) $(prDeptName)</td>
+              </tr>
+              <tr><td class="dsphdr">G/L Account</td>
+                  @Format_Acct("$(V_SBACCT)", "$(V_SBSACT)", "Y", F_AcctSub)
+                  <td class="dspalph">$(F_AcctSub)</td>
+              </tr>
+              %if ((V_SBGLCO != prCompany) || (V_SBGLFA != prFacility))
+                  <tr><td class="dsphdr">Expense Company/Facility</td>
+                      <td class="dspnmbr">$(V_SBGLCO) / $(V_SBGLFA)</td>
+                  </tr>
+              %endif
+              %if (V_SBJOB != "")
+                  <tr><td class="dsphdr">Job Number</td>
+                      <td class="dspalph">$(V_SBJOB)</td>
+                  </tr>
+              %endif
+              %if (V_SBTHTY != "")
+                  %if (V_SBTHTY == "D")
+                      @dtw_assign(tipType, "Direct")
+                  %elif (V_SBTHTY == "I")
+                      @dtw_assign(hoursUnits, "Indirect")
+                  %else
+                      @dtw_assign(tipType, "")
+                  <tr><td class="dsphdr">Tip Hours Type</td>
+                      <td class="dspalph">$(tipType)</td>
+                  </tr>
+                  %endif
+              %endif
+              %if (V_SBEQDY != "0")
+                  @Format_Nbr($(V_SBEQDY), F_SBEQDY, "0", $(qtyEditCode), "", "", "")
+                  <tr><td class="dsphdr">Equivalent Days Worked</td>
+                      <td class="dspnmbr">$(F_SBEQDY)</td>
+                  </tr>
+              %endif
+              %if (V_SBJBCL != "0")
+                  @RtvFldDesc("JBCLAS='$(V_SBJBCL)'", "PRJBCL", "JBDESC", jobClassDesc)
+                  <tr><td class="dsphdr">Job Class</td>
+                      <td class="dspnmbr">$(V_SBJBCL) $(jobClassDesc)</td>
+                  </tr>
+              %endif
+
+    	       %if((V_EMTYPE == "H" && sec_06 == "Y") || (V_EMTYPE != "H" && sec_08 == "Y"))
+                  %if (V_SBTSWC != ".00")
+                      @Format_Nbr($(V_SBTSWC), F_SBTSWC, "2", $(amtEditCode), "", "", "")
+                      <tr><td class="dsphdr">SWC Taxable Wages</td>
+                          <td class="dspnmbr">$(F_SBTSWC)</td>
+                      </tr>
+                  %endif
+                  %if (V_SBXSWC != ".00")
+                      @Format_Nbr($(V_SBXSWC), F_SBXSWC, "2", $(amtEditCode), "", "", "")
+                      <tr><td class="dsphdr">SWC Exempt Wages</td>
+                          <td class="dspnmbr">$(F_SBXSWC)</td>
+                      </tr>
+                  %endif
+              %endif
+              %if (V_SBRSWC != ".00")
+                  @Format_Nbr($(V_SBRSWC), F_SBRSWC, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">Employer SWC Tax</td>
+                      <td class="dspnmbr">$(F_SBRSWC)</td>
+                  </tr>
+              %endif
+              %if (V_SBESWC != ".00")
+                  @Format_Nbr($(V_SBESWC), F_SBESWC, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">Employee SWC Tax</td>
+                      <td class="dspnmbr">$(F_SBESWC)</td>
+                  </tr>
+              %endif
+              %if (V_SBCOVR != "")
+                  <tr><td class="dsphdr">FSA Reimbursement Benefit Code</td>
+                      <td class="dspalph">$(V_SBCOVR)</td>
+                  </tr>
+                  <tr><td class="dsphdr">FSA Reimbursement Plan Code</td>
+                      <td class="dspalph">$(V_SBPLAN)</td>
+                  </tr>
+                  <tr><td class="dsphdr">FSA Reimbursement Claim Number</td>
+                      <td class="dspalph">$(V_SBCLAM)</td>
+                  </tr>
+                  @RtvYNDesc($(V_SBPYCL), syFlagDesc)
+                  <tr><td class="dsphdr">FSA Prior Year Claim</td>
+                      <td class="dspalph">$(syFlagDesc)</td>
+                  </tr>
+              %endif
+              %if (V_SBMFGD != "")
+                  <tr><td class="dsphdr">MFG Department/Work Center</td>
+                      <td class="dspalph">$(V_SBMFGD) $(V_SBWC)</td>
+                  </tr>
+              %endif
+              %if (V_SBLCOD != "")
+                  <tr><td class="dsphdr">Labor Code</td>
+                      <td class="dspalph">$(V_SBLCOD)</td>
+                  </tr>
+              %endif
+              %if (V_SBORD != "")
+                  <tr><td class="dsphdr">Order Number</td>
+                      <td class="dspalph">$(V_SBORD)</td>
+                  </tr>
+              %endif
+              %if (V_SBITM != "")
+                  <tr><td class="dsphdr">Item Number</td>
+                      <td class="dspalph">$(V_SBITM)</td>
+                  </tr>
+              %endif
+              %if (V_SBSEQN != "0")
+                  <tr><td class="dsphdr">Routing Number</td>
+                      <td class="dspalph">$(V_SBSEQN)</td>
+                  </tr>
+              %endif
+              %if (V_SBMACH != "")
+                  <tr><td class="dsphdr">Machine Number</td>
+                      <td class="dspalph">$(V_SBMACH)</td>
+                  </tr>
+              %endif
+              %if (V_SBMPON != ".00")
+                  <tr><td class="dsphdr">Override Crew Size</td>
+                      <td class="dspnmbr">$(V_SBMPON)</td>
+                  </tr>
+              %endif
+              %if ((V_SBQTYC != ".0000") || (V_SBQTYS != ".0000"))
+                  @Format_Nbr($(V_SBQTYC), F_SBQTYC, "4", $(qtyEditCode), "", "", "")
+                  <tr><td class="dsphdr">Quantity Good</td>
+                      <td class="dspnmbr">$(F_SBQTYC)</td>
+                  </tr>
+                  @Format_Nbr($(V_SBQTYS), F_SBQTYS, "4", $(qtyEditCode), "", "", "")
+                  <tr><td class="dsphdr">Quantity Scrapped</td>
+                      <td class="dspnmbr">$(F_SBQTYS)</td>
+                  </tr>
+              %endif
+          </table>
+      %}	
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}

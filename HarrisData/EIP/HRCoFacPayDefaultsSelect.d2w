@@ -1,0 +1,234 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Employee Pay Defaults Select                                *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title 	        = "Employee Pay Code Defaults"
+  d2wName              = "HRCoFacPayDefaultsSelect.d2w"
+  d2wVarBase           = "$(genericVarBase)$(employeeVarBase)&amp;codeSeq=@dtw_rurlescseq(codeSeq)&amp;payCode=@dtw_rurlescseq(payCode)&amp;backHome=@dtw_rurlescseq(backHome)"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  RPT_MAX_ROWS         = "99"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext	        = "1"
+  showError            = "Y"
+  totalPages	        = "0"	
+  EMU_06                  = ""
+  EMU_07                  = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+   @dtw_replace(workURL, "@@payCode", "@dtw_rurlescseq(payCode)", "1", "a", workURL)
+   @dtw_replace(workURL, "@@codeSeq", "@dtw_rurlescseq(codeSeq)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @dtw_assign(applicationID, "PR")
+  %INCLUDE "EmplUV.icl"
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                           @dtw_assign(pageID, "PAYDFLTSELECT")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          @dtw_concat(stmtSQL, "Select * From PREMDF inner join HREMPL on EMCOMP=C3COMP and EMFACL=C3FACL and EMEMPL=C3EMPL", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where C3COMP=$(prCompany) and C3FACL=$(prFacility) and ", stmtSQL)
+                          @dtw_concat(stmtSQL, " C3EMPL=$(prEmployee) and C3CODE='$(payCode)' and C3SEQ=$(codeSeq)", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @PayDefault_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) PayDefault_Query (IN CHAR(64)    profileHandle,
+				         CHAR(2)     dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+  @dtw_assign(programName, "HHREMU")
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      @dtw_assign(EMU_06, sec_06)
+      @dtw_assign(EMU_07, sec_07)
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+
+          <tr><td><h1> $(page_title) </h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+
+          @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+          <tr><td><h2>$(F_EmpName)</h2></td></tr>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+      $(hrTagAttr)
+
+      %ROW {
+          <table $(contentTable)>
+              <tr><td class="dsphdr">Pay Code</td>
+                  @RtvFldDesc("C2COMP=$(prCompany) and C2FACL=$(prFacility) and C2CODE='$(V_C3CODE)' ", "PRCODE", "C2DESC", payCodeDesc)
+                  <td class="dspalph">$(payCodeDesc)</td>
+              </tr>
+              <tr><td class="dsphdr">Sequence Number</td>
+                  <td class="dspnmbr">$(V_C3SEQ)</td>
+              </tr>
+              %if (V_C3ACCT != "0" || V_C3SUB != "0")
+                  @RtvFldDesc("CHACCT=$(V_C3ACCT) and CHSUB=$(V_C3SUB) ", "HDCHRT", "CHCHDS", acctDesc)
+                  <tr><td class="dsphdr">G/L Account</td>
+                      <td class="dspalph">$(V_C3ACCT) $(V_C3SUB) $(acctDesc)</td>
+                  </tr>
+              %endif
+
+              @RtvFldDesc("C2COMP=$(prCompany) and C2FACL=$(prFacility) and C2CODE='$(V_C3CODE)'", "PRCODE", "C2HRCD", payCodeType)
+              %if (payCodeType == "H")
+                  @dtw_assign(DefaultDesc, "Default Hours")
+              %elif (payCodeType == "U")
+                  @dtw_assign(DefaultDesc, "Default Units")
+              %else
+                  @dtw_assign(DefaultDesc, "Default Earnings")
+                  %if ((V_EMTYPE == "H" && EMU_06 == "N") || (V_EMTYPE != "H" && EMU_07 == "N"))
+                      @dtw_assign(V_C2HRS, ".00")
+                  %endif
+              %endif
+
+              %if(V_C2HRS != ".00")
+                  <tr><td class="dsphdr">$(DefaultDesc)</td>
+                      %if (payCodeType != "")
+                          @Format_Nbr($(V_C3HRS), F_C3HRS, "2", $(hrsEditCode), "", "", "")
+                          <td class="dspnmbr">$(F_C3HRS)</td>
+                      %else
+                          @Format_Nbr($(V_C3HRS), F_C3HRS, "2", $(amtEditCode), "", "$", "")
+                          <td class="dspnmbr">$(F_C3HRS)</td>
+                      %endif
+                  </tr>
+              %endif
+
+              %if (V_C3DEPT != "")
+                  @RtvFldDesc("EADEPT='$(V_C3DEPT)'", "PREXAC", "EANAME", prDeptName)
+                  <tr><td class="dsphdr">Department Worked</td>
+                      <td class="dspalph">$(prDeptName)</td>
+                  </tr>
+              %endif
+
+              %if ((V_EMTYPE == "H" && EMU_06 == "Y") || (V_EMTYPE != "H" && EMU_07 == "Y"))
+                  %if (V_C3OVRT != ".000")
+                      <tr><td class="dsphdr">Override Rate</td>
+                          @Format_Nbr($(V_C3OVRT), F_C3OVRT, $(rteNbrDec), $(rteEditCode), "", "", "")
+                          <td class="dspnmbr">$(F_C3OVRT)</td>
+                      </tr>
+                  %endif
+              %endif
+
+              %if (V_C3SHFW != "")
+                  <tr><td class="dsphdr">Shift Worked</td>
+                      <td class="dspalph">$(V_C3SHFW)</td>
+                  </tr>
+              %endif
+              %if (V_C3JOB != "")
+                  <tr><td class="dsphdr">Job Number</td>
+                      <td class="dspalph">$(V_C3JOB)</td>
+                  </tr>
+              %endif
+              %if (V_C3MAX1 != ".00")
+                  @Format_Nbr($(V_C3MAX1), F_C3MAX1, "2", $(hrsEditCode), "", "", "")
+                  <tr><td class="dsphdr">Maximum YTD Hours/Units</td>
+                      <td class="dspnmbr">$(F_C3MAX1)</td>
+                  </tr>
+              %endif
+
+              %if ((V_EMTYPE == "H" && EMU_06 == "Y") || (V_EMTYPE != "H" && EMU_07 == "Y"))
+                  %if (V_C3MAX2 != ".00")
+                      <tr><td class="dsphdr">Maximum YTD Earnings</td>
+                          @Format_Nbr($(V_C3MAX2), F_C3MAX2, "2", $(amtEditCode), "", "$", "")
+                          <td class="dspnmbr">$(F_C3MAX2)</td>
+                      </tr>
+                  %endif
+              %endif
+
+              %if (V_C3STRT != "0")
+                  @Format_Date(V_C3STRT, "H", F_C3STRT)
+                  <tr><td class="dsphdr">Start Date</td>
+                      <td class="dspdate">$(F_C3STRT)</td>
+                  </tr>
+              %endif
+              %if (V_C3END != "0")
+                  @Format_Date(V_C3END, "H", F_C3END)
+                  <tr><td class="dsphdr">End Date</td>
+                      <td class="dspdate">$(F_C3END)</td>
+                  </tr>
+              %endif
+              <tr><td class="dsphdr">Default Row</td>
+                  @RtvYNDesc($(V_C3DFLT), syFlagDesc)
+                  <td class="dspalph">$(syFlagDesc)</td>
+              </tr>
+          </table>
+      %}	
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(programName, "HPRPDM")
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}

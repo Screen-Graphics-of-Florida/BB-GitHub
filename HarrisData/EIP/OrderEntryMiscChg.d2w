@@ -1,0 +1,265 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Order Entry - Miscellaneous Charges                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Order Entry - Miscellaneous Charges"
+  d2wName                 = "OrderEntryMiscChg.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  userHeaderTable         = %table
+  tabID                   = "CHARGES"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@orderControlNumber", "@dtw_rurlescseq(orderControlNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "OrderEntryConfirm.icl"
+              function validate(chgForm) {
+                  if (editNum(document.Chg.freightCharge, 7, 2) &&
+                      editNum(document.Chg.specialCharge, 7, 2))
+                      return true;
+              }
+	       %INCLUDE "numedit.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ORDERREVIEW")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(stmtSQL, "Select * From OEHDWK Where H1OCTL=$(orderControlNumber)")
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Order_MiscChg_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Order_MiscChg_Query (IN CHAR(64)    profileHandle,
+                                           CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "OrderEntryProgOpt.icl"
+      %INCLUDE "OrderEntryTabs.icl"
+      %ROW {
+          <div class="quickLinksTop">
+              %if (V_H1TAXO == "Y")
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/RECALC$(d2wVarBase)&amp;freightCharge=@dtw_rurlescseq(V_H1FRT)&amp;specialCharge=@dtw_rurlescseq(V_H1CHRG)">$(recalcTaxesImageLrg)</a>
+              %endif
+              <a href="javascript:check(document.Chg)">$(acceptImageLrg)</a>
+              <a href="$(homeURL)$(cGIPath)$(d2wName)/CHARGES$(d2wVarBase)">$(cancelImageLrg)</a>
+          </div>
+
+          @dtw_assign(newTotal, orderTotal)
+          @dtw_add(newTotal, V_H1FRT,  newTotal)
+          @dtw_add(newTotal, V_H1STTA, newTotal)
+          @dtw_add(newTotal, V_H1CNTA, newTotal)
+          @dtw_add(newTotal, V_H1CTTA, newTotal)
+          @dtw_add(newTotal, V_H1LC1A, newTotal)
+          @dtw_add(newTotal, V_H1LC2A, newTotal)
+          @dtw_add(newTotal, V_H1LC3A, newTotal)
+          @dtw_add(newTotal, V_H1CHRG, newTotal)
+          <form class="formClass" METHOD=POST name="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/UPDATE$(d2wVarBase)&amp;subTotal=@dtw_rurlescseq(subTotal)&amp;turnaround=@dtw_rurlescseq(H1TURN)&amp;orderNumber=@dtw_rurlescseq(H1ORD#)&amp;maintCode=@dtw_rurlescseq(V_H1MNCD)&amp;allowTaxOverride=@dtw_rurlescseq(allowTaxOverride)">
+	       <table $(contentTable)>
+	           <tr><td class="dsphdr">Subtotal</td>
+	   	       <td class="dspnmbr">$(orderTotal)</td>
+                  </tr>
+	           <tr><td class="dsphdr">Freight Charge</td>
+	   	       <td class="inputnmbr"><input name="freightCharge" type="text" value="$(V_H1FRT)" size="11" maxlength="11"></td>
+                  </tr>
+                  %if (V_H1STTX != "")
+                      <tr><td class="dsphdr">State Tax</td>
+                          %if (allowTaxOverride == "Y")
+    	   	               <td class="inputnmbr"><input name="stateTax" type="text" value="$(V_H1STTA)" size="11" maxlength="11"></td>
+                          %else
+    	   	               <td class="dspnmbr">$(V_H1STTA)</td>
+                          %endif
+    	   	           <td><input name="stateTaxF" type="hidden" value="$(V_H1STTA)"></td>
+                      </tr>
+                  %endif
+                  %if (V_H1CNTX > "0" || V_H1CNTA > "0")
+                      <tr><td class="dsphdr">County Tax</td>
+                          %if (allowTaxOverride == "Y")
+    	   	               <td class="inputnmbr"><input name="countyTax" type="text" value="$(V_H1CNTA)" size="11" maxlength="11"></td>
+                          %else
+    	   	               <td class="dspnmbr">$(V_H1CNTA)</td>
+                          %endif
+    	   	           <td><input name="countyTaxF" type="hidden" value="$(V_H1CNTA)"></td>
+                      </tr>
+                  %endif
+                  %if (V_H1CTTX > "0" || V_H1CTTA > "0")
+                      <tr><td class="dsphdr">City Tax</td>
+                          %if (allowTaxOverride == "Y")
+    	   	               <td class="inputnmbr"><input name="cityTax" type="text" value="$(V_H1CTTA)" size="11" maxlength="11"></td>
+                          %else
+    	   	               <td class="dspnmbr">$(V_H1CTTA)</td>
+                          %endif
+    	   	           <td><input name="cityTaxF" type="hidden" value="$(V_H1CTTA)"></td>
+                      </tr>
+                  %endif
+                  %if (V_H1LOC1 > "0" || V_H1LC1A > "0")
+                      <tr><td class="dsphdr">Local 1 Tax</td>
+                          %if (allowTaxOverride == "Y")
+    	   	               <td class="inputnmbr"><input name="local1Tax" type="text" value="$(V_H1LC1A)" size="11" maxlength="11"></td>
+                          %else
+    	   	               <td class="dspnmbr">$(V_H1LC1A)</td>
+                          %endif
+    	   	           <td><input name="local1TaxF" type="hidden" value="$(V_H1LC1A)"></td>
+                      </tr>
+                  %endif
+                  %if (V_H1LOC2 > "0" || V_H1LC2A > "0")
+                      <tr><td class="dsphdr">Local 2 Tax</td>
+                          %if (allowTaxOverride == "Y")
+    	   	               <td class="inputnmbr"><input name="local2Tax" type="text" value="$(V_H1LC2A)" size="11" maxlength="11"></td>
+                          %else
+    	   	               <td class="dspnmbr">$(V_H1LC2A)</td>
+                          %endif
+    	   	           <td><input name="local2TaxF" type="hidden" value="$(V_H1LC2A)"></td>
+                      </tr>
+                  %endif
+                  %if (V_H1LOC3 > "0" || V_H1LC3A > "0")
+                      <tr><td class="dsphdr">Local 3 Tax</td>
+                          %if (allowTaxOverride == "Y")
+    	   	               <td class="inputnmbr"><input name="local3Tax" type="text" value="$(V_H1LC3A)" size="11" maxlength="11"></td>
+                          %else
+    	   	               <td class="dspnmbr">$(V_H1LC3A)</td>
+                          %endif
+    	   	           <td><input name="local3TaxF" type="hidden" value="$(V_H1LC3A)"></td>
+                      </tr>
+                  %endif
+	   	   <tr><td class="dsphdr">Special Charge</td>
+	   	       <td class="inputnmbr"><input name="specialCharge" type="text" value="$(V_H1CHRG)" size="11" maxlength="11"></td>
+                  </tr>
+	           <tr><td class="dsphdr">Order Total</td>
+	   	       <td class="dspnmbr">$(newTotal)</td>
+                  </tr>
+                  %if (V_H1STTX == "")
+                      <tr><td><input name="stateTax"  type="hidden" value="$(V_H1STTA)"></td>
+    	   	           <td><input name="stateTaxF" type="hidden" value="$(V_H1STTA)"></td>
+                      </tr>
+                  %endif
+                  %if (V_H1CNTX == "0")
+                      <tr><td><input name="countyTax"  type="hidden" value="$(V_H1CNTA)"></td>
+    	   	           <td><input name="countyTaxF" type="hidden" value="$(V_H1CNTA)"></td>
+                      </tr>
+                  %endif
+                  %if (V_H1CTTX == "0")
+                      <tr><td><input name="cityTax"  type="hidden" value="$(V_H1CTTA)"></td>
+    	   	           <td><input name="cityTaxF" type="hidden" value="$(V_H1CTTA)"></td>
+                      </tr>
+                  %endif
+                  %if (V_H1LOC1 == "0")
+                      <tr><td><input name="local1Tax"  type="hidden" value="$(V_H1LC1A)"></td>
+    	   	           <td><input name="local1TaxF" type="hidden" value="$(V_H1LC1A)"></td>
+                      </tr>
+                  %endif
+                  %if (V_H1LOC2 == "0")
+                      <tr><td><input name="local2Tax"  type="hidden" value="$(V_H1LC2A)"></td>
+    	   	           <td><input name="local2TaxF" type="hidden" value="$(V_H1LC2A)"></td>
+                      </tr>
+                  %endif
+                  %if (V_H1LOC3 == "0")
+                      <tr><td><input name="local3Tax" type="hidden" value="$(V_H1LC3A)"></td>
+    	   	           <td><input name="local3TaxF" type="hidden" value="$(V_H1LC3A)"></td>
+                      </tr>
+                  %endif
+	       </table>
+          </form>
+      %}
+      %INCLUDE "EndTabs.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(updateTotal, "T")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/CHARGES$(d2wVarBase)">
+%}
+
+%HTML(CHARGES) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(UPDATE) {
+  %INCLUDE "setLibraryList.icl"
+  %if (allowTaxOverride == "Y")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Update OEHDWK Set H1STTA=$(stateTax),  H1CNTA=$(countyTax), H1CTTA=$(cityTax), ", stmtSQL)
+      @dtw_concat(stmtSQL, "                   H1LC1A=$(local1Tax), H1LC2A=$(local2Tax), H1LC3A=$(local3Tax), H1TAXO='Y' ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where H1OCTL=$(orderControlNumber) and ", stmtSQL)
+      @dtw_concat(stmtSQL, "      ($(stateTax)<>$(stateTaxF) or $(countyTax)<>$(countyTaxF) or $(cityTax)<>$(cityTaxF) or ", stmtSQL)
+      @dtw_concat(stmtSQL, "       $(local1Tax)<>$(local1TaxF) or $(local2Tax)<>$(local2TaxF) or $(local3Tax)<>$(local3TaxF)) @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Update OETXWK Set TWSTTA=$(stateTax),  TWCNTA=$(countyTax), TWCTTA=$(cityTax), ", stmtSQL)
+      @dtw_concat(stmtSQL, "                   TWL1TA=$(local1Tax), TWL2TA=$(local2Tax), TWL3TA=$(local3Tax), TWTAXO='Y' ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where TWOCTL=$(orderControlNumber) and TWTURN=$(turnaround) and TWORD#=$(orderNumber) @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %endif
+
+  @dtw_assign(freightCharge,@dtw_rstrip(freightCharge))
+  @dtw_assign(specialCharge,@dtw_rstrip(specialCharge))
+
+  @DTW_ASSIGN(updateTotal, "X")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/CHARGES$(d2wVarBase)">
+%}
+
+%HTML(RECALC) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Update OEHDWK Set H1STTA=0,  H1CNTA=0, H1CTTA=0, H1LC1A=0, H1LC2A=0, H1LC3A=0, H1TAXO=' ' ", stmtSQL)
+  @dtw_concat(stmtSQL, " Where H1OCTL=$(orderControlNumber) @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  @DTW_ASSIGN(updateTotal, "")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/CHARGES$(d2wVarBase)">
+%}

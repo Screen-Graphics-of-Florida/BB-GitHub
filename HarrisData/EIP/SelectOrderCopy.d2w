@@ -1,0 +1,354 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Select Order Copy                                           *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {	
+  page_title              = "Select Order"
+  d2wName                 = "SelectOrderCopy.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;fromHistory=@dtw_rurlescseq(fromHistory)"
+  DATABASE                = "*LOCAL"
+  programName             = "HOEOEM"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  tabID                   = "COPY"
+  tabHistory              = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+              %INCLUDE "NewWindowOpen.icl"
+              function confirmCloseCancel() { return confirm("Confirm Close/Cancel Of Order")}
+              function checkSel(f,s) {
+                  for ( var i = 0; i < f.length; i++ ) {
+                    var type = f.elements[i].type;
+                    if (type=="checkbox" && f[i].disabled == false){
+                      f[i].checked = s;
+                    }
+                  }
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+              <table $(baseTable) onKeyPress="checkEnterChg()">
+                  <tr valign="top">
+                      %if (fromd2wName == "")
+                          @dtw_assign(pageID, "SELECTORDER")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          %if (fromHistory == "Y")
+                              @dtw_concat(stmtSQL, " Select DHORD# as ODORD#, DHORL# as ODORL#,DHBLN# as ODBLN#,DHWH as ODWH, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " DHQORD as ODQORD,DHOREC as ODOREC,DHITEM as ODITEM,DHIMDS as ODIMDS, DHSGEN as ODSGEN, DHSGBL as ODSGBL,", stmtSQL)
+                              @dtw_concat(stmtSQL, " (Select count(*) From HDIWHS Where IWITEM=DHITEM and IWWHS=DHWH) as IWCNT", stmtSQL)
+                              @dtw_concat(fileSQL, " OEORDH ", fileSQL)
+                              @dtw_concat(selectSQL, "DHORD#=$(orderNumber) and DHSEQ#=0 and DHBLN#=0 ", selectSQL)
+                          %else
+                              @dtw_concat(stmtSQL, " Select ODORL#,ODWH,ODQORD,ODOREC,ODITEM,ODIMDS,ODSGEN,ODSGBL, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " (Select count(*) From HDIWHS Where IWITEM=ODITEM and IWWHS=ODWH) as IWCNT", stmtSQL)
+                              @dtw_concat(fileSQL, " OEORDT ", fileSQL)
+                              @dtw_concat(selectSQL, "ODORD#=$(orderNumber) and ODBLN#=0 ", selectSQL)
+                          %endif
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By ODORD#,ODORL#,ODBLN#", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Select_Order_Copy_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Select_Order_Copy_Query (IN CHAR(64)    profileHandle,
+                                               CHAR(2)     dataBaseID,
+                                               CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @dtw_assign(tabHistory, "")
+      %if (fromHistory == "Y")
+          @dtw_assign(tabHistory, "Y")
+          @dtw_assign(orderSequence, "0")
+      %endif
+      %INCLUDE "SelectOrderTabs.icl"
+      @dtw_assign(orderType, V_OEORTY)
+      <div class="quickLinksTop">
+          <a href="javascript:check(document.Chg)">$(commentAcceptImage)</a>
+      </div>
+      <form class="formClass" METHOD=POST name="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;fromOrderNumber=@dtw_rurlescseq(V_OEORD#)">
+          <table $(contentTable)>
+              @dtw_assign(error, "")
+              %if (errFound != "")
+                  @dtw_assign(error, "Y")
+                  @dtw_assign(focusField, "")
+                  @EdtVarErr(profileHandle, typeValue, edtVar)
+                  @ErrVarErr(profileHandle, typeError, errVar)
+                  @DecatErr_Field("@@cust", "toCustomerNumber") @dtw_assign(Err_CUST, fieldValue)
+                  @DecatErr_Field("@@otyp", "toOrderType")      @dtw_assign(Err_TYPE, fieldValue)
+                  @DecatErr_Field("@@rclc", "recalcPricing")    @dtw_assign(Err_RCLC, fieldValue)
+                  @DecatErr_Field("@@cpyc", "copyComments")     @dtw_assign(Err_CPYC, fieldValue)
+                  @DecatErr_Field("@@savq", "saveQuote")        @dtw_assign(Err_SAVQ, fieldValue)
+                  @DecatErr_Field("@@link", "linkOrder")        @dtw_assign(Err_LINK, fieldValue)
+
+                  @Decat_Field("@@cust")   @dtw_assign(V_CUST, fieldValue)
+                  @Decat_Field("@@otyp")   @dtw_assign(V_OTYP, fieldValue)
+                  @Decat_Field("@@rclc")   @dtw_assign(V_RCLC, fieldValue)
+                  @Decat_Field("@@cpyc")   @dtw_assign(V_CPYC, fieldValue)
+                  @Decat_Field("@@savq")   @dtw_assign(V_SAVQ, fieldValue)
+                  @Decat_Field("@@link")   @dtw_assign(V_LINK, fieldValue)
+
+                  @dtw_assign(errFound, "")
+              %else
+                  @dtw_assign(focusField, "toCustomerNumber")
+                  @dtw_assign(V_CUST, H1SHTO)
+                  @dtw_assign(V_OTYP, H1ORTY)
+                  @dtw_assign(V_RCLC, orderCopyRecalcPrice)
+                  @dtw_assign(V_CPYC, orderCopyComments)
+                  @dtw_assign(V_SAVQ, "Y")
+                  @dtw_assign(V_LINK, "N")
+                  %if (H1ORTY == "X" || contractOrder > "0")
+                      @dtw_assign(V_LINK, "Y")
+                  %endif
+              %endif
+
+              @RtvFldDesc("CMCUST=$(V_CUST)", "HDCUST", "CMCNA1", V_CMCNA1)
+              @SetTextOvr(Err_CUST)
+              <tr><td class="dsphdr"><span $(textOvr)>Customer Number</span></td>
+                  <td class="inputalph"><input name="toCustomerNumber"  value="$(V_CUST)" type="text" size="7" maxlength="7"><a href="$(homeURL)$(phpPath)CustomerSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=toCustomerNumber&amp;fldDesc=toCustomerName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="toCustomerName" value="$(V_CMCNA1)" type="text" size="30" disabled></td>
+              </tr>
+              @DspErrMsg(Err_CUST)
+
+              @RtvFldDesc("OTOTCD='$(V_OTYP)' and OTAPID='OE'", "HDOTYP", "OTDESC", V_OTDESC)
+              @SetTextOvr(Err_TYPE)
+              <tr><td class="dsphdr"><span $(textOvr)>Order Type</span></td>
+                  <td class="inputalph"><input name="toOrderType" type="text" value="$(V_OTYP)" size="7" maxlength="1"><a href="$(homeURL)$(cGIPath)OrderTypeSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=toOrderType&amp;fldDesc=toOrderTypeDescH&amp;appID=OE" onclick="$(searchWinVar)"> $(searchImage) </a><input name="toOrderTypeDescH" value="$(V_OTDESC)" type="text" disabled></td>
+              </tr>
+              @DspErrMsg(Err_TYPE)
+ 	       		
+              @SetTextOvr(Err_RCLC)
+              <tr><td class="dsphdr"><span $(textOvr)>Recalculate Pricing</span></td>
+                  @dtw_tb_rows(yn01Table, maxRows)
+                  @dtw_assign(x, "1")
+                  %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_RCLC) && (x < maxRows))
+                      {@dtw_add(x, "1", x)%}
+                  <td>@dtw_tb_select(yn01Table, "recalcPricing", "2", "1", "N", "", x, "1")</td>
+              </tr>
+              @DspErrMsg(Err_RCLC)
+ 	
+              @SetTextOvr(Err_CPYC)
+              <tr><td class="dsphdr"><span $(textOvr)>Copy Order Comments</span></td>
+                  @dtw_tb_rows(yn02Table, maxRows)
+                  @dtw_assign(x, "1")
+                  %while((@dtw_tb_rgetv(yn02Table, x, "1") != V_CPYC) && (x < maxRows))
+                      {@dtw_add(x, "1", x)%}
+                  <td>@dtw_tb_select(yn02Table, "copyComments", "2", "1", "N", "", x, "1")</td>
+              </tr>
+              @DspErrMsg(Err_CPYC)
+ 	
+              %if (H1ORTY == "Q")
+                  @SetTextOvr(Err_SAVQ)
+                  <tr><td class="dsphdr"><span $(textOvr)>Save Quote</span></td>
+                      @dtw_tb_rows(yn03Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn03Table, x, "1") != V_SAVQ) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn03Table, "saveQuote", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_SAVQ)
+              %elif (H1ORTY == "X" || contractOrder > "0")
+                  @SetTextOvr(Err_LINK)
+                  <tr><td class="dsphdr"><span $(textOvr)>Link To Contract Order</span></td>
+                      @dtw_tb_rows(yn03Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn03Table, x, "1") != V_LINK) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn03Table, "linkOrder", "2", "1", "N", "", x, "1")</td>
+                      <td class="inputalph"><input name="contractOrder" type="hidden" value="$(contractOrder)"></td>
+                  </tr>
+                  @DspErrMsg(Err_LINK)
+                  @Format_Date(conStartDate, "D", F_conStartDate)
+                  <tr><td class="dsphdr"><span $(textOvr)>Start Date</span></td>
+                      %if (conStartErr == "Y")
+                          <td class="error">$(F_conStartDate) &nbsp; Warning - Contract Not Started</td>
+                      %else
+                          <td class="dspnmbr">$(F_conStartDate)</td>
+                      %endif
+                  </tr>
+                  @Format_Date(conEndDate, "D", F_conEndDate)
+                  <tr><td class="dsphdr"><span $(textOvr)>Expiration Date</span></td>
+                      %if (conEndErr == "Y")
+                          <td class="error">$(F_conEndDate) &nbsp; Warning - Contract Expired</td>
+                      %else
+                          <td class="dspnmbr">$(F_conEndDate)</td>
+                      %endif
+                  </tr>
+              %endif
+          </table>
+ 	
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+          <fieldset class="legendBody">
+              <legend class="legendTitle">Select Lines</legend>
+              <div class="quickLinksTop">
+                  <a href="#" onclick="checkSel(document.Chg,'CHECKED');">$(selectAllImage)</a>
+                  <a href="#" onclick="checkSel(document.Chg,'');">$(deselectAllImage)</a>
+              </div>
+
+          <table $(contentTable)>
+              <tr><th class="colhdr">Sel</th>	
+                  <th class="colhdr">Line</th>
+                  <th class="colhdr">Item Number</th>
+                  <th class="colhdr">Whs</th>
+                  <th class="colhdr">Description</th>
+                  <th class="colhdr">Quantity Ordered</th>
+              </tr>
+
+          %ROW {
+              %INCLUDE "SetRowClass.icl"
+              @Format_Nbr(V_ODQORD, F_ODQORD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @RtvFldDesc("WHWHS=$(V_ODWH)", "HDWHSM", "WHWHNM", whsName)
+              @dtw_assign(line, V_ODORL#)
+              %while(@dtw_rlength(line) != "3") {@dtw_insert("0", line, line)%}
+              @dtw_assign(ln, "@@l$(line)")
+              %if (error == "Y")
+                  @Decat_Field("@@l$(line)")   @dtw_assign(lnSel, fieldValue)
+              %else
+                  @dtw_assign(lnSel, "Y")
+              %endif
+              @Field_Checked(lnSel, "Y", lnChecked)
+              @dtw_assign(selDisabled, "")
+              %if (V_ODOREC != "N" && V_IWCNT == "0" || V_ODSGEN == "Y")
+                  @dtw_assign(lnChecked, "")
+                  @dtw_assign(selDisabled, "DISABLED")
+              %endif
+
+              <tr class="$(rowClass)">
+                  <td class="checkBox"><input type="checkbox" name="ln$(line)" $(lnChecked) value="Y" $(selDisabled)></td>
+                  <td class="colnmbr">%if (V_ODSGEN == "Y") ($(V_ODSGBL)) &nbsp; %endif $(V_ODORL#)</td>
+                  <td class="colalph">
+                      %if (V_ODOREC != "N" && V_IWCNT != "0")
+                          <a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_ODITEM))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_ODITEM)</a>
+                      %else
+                          $(V_ODITEM)
+                      %endif
+                  </td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(whsName)">$(V_ODWH)</span></td>
+                  <td class="colalph">$(V_ODIMDS)</td>
+                  <td class="colnmbr">$(F_ODQORD)</td>
+                  %if (V_ODOREC != "N" && V_IWCNT == "0")
+                      <td class="error">Item/Whs record not found</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+      </form>
+      %INCLUDE "EndTabs.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+%FUNCTION(DTW_directcall) Validate_Data (INOUT CHAR(64)     profileHandle,
+				                CHAR(2)      dataBaseID,
+				      	        DECIMAL(8,0) orderControlNumber,
+                                               CHAR(1)      errFound,
+                                               CHAR(32000)  edtVar,                             	
+                                               CHAR(32000)  errVar)
+
+{%EXEC {HOEOEC_W.PGM %}
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(toOrderType)
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@hist", fromHistory)
+  @Concat_Field("@@ord#", orderNumber)
+  @Concat_Field("@@cust", toCustomerNumber)
+  @Concat_Field("@@otyp", toOrderType)
+  @Concat_Field("@@rclc", recalcPricing)
+  @Concat_Field("@@cpyc", copyComments)
+  @Concat_Field("@@savq", saveQuote)
+  @Concat_Field("@@link", linkOrder)
+  @Concat_Field("@@cord", contractOrder)
+  @Concat_Field("@@pcfc", productCfgFormat)
+  @Concat_Field("@@lsel", "Y")
+  @Concat_Field("@@user", userProfile)
+  @dtw_assign(x, "001")
+  %while(x <= "999"){
+     %while(@dtw_rlength(x) != "3") {@dtw_insert("0", x, x)%}
+     @dtw_assign(ln, "ln$(x)")
+     %if ($($(ln)) == "Y")
+         @Concat_Field("@@l$(x)", "Y")
+     %endif
+     @dtw_add(x, "1", x)
+  %}
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, orderControlNumber, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      @RtvFldDesc("CMCUST=$(toCustomerNumber)", "HDCUST", "CMCNA1", toCustomerName)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)OrderEntryOrderReview.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(toCustomerNumber)&amp;customerName=@dtw_rurlescseq(toCustomerName)&amp;salesmanNumber=@dtw_rurlescseq(salesmanNumber)&amp;salesmanName=@dtw_rurlescseq(salesmanName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;checkCCL=Y">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;errFound=@dtw_rurlescseq(errFound)&amp;copyOrder=Y&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(maintenanceCode, "Z")
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if ((sec_02=="N" && sec_04=="N" && (maintenanceCode!="A" && maintenanceCode!="Z")) || (sec_01=="N" && maintenanceCode=="A") || ((sec_01=="N" || sec_05 == "N") && maintenanceCode=="Z"))
+      @dtw_assign(pgmOptAuth, "F")
+  %else
+      @dtw_assign(pgmOptAuth, "")
+  %endif
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @yn01_Table_Query(profileHandle, dataBaseID, "YORN      ", yn01Table)
+      @yn02_Table_Query(profileHandle, dataBaseID, "YORN      ", yn02Table)
+      @yn03_Table_Query(profileHandle, dataBaseID, "YORN      ", yn03Table)
+      @Set_SQL(stmtSQL)
+  %endif
+%}

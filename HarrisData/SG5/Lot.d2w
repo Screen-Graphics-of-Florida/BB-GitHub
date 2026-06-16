@@ -1,0 +1,554 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Lot                                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {	
+  page_title              = "Lot"
+  d2wName                 = "Lot.d2w"
+  programName             = "HIVLNM"
+  d2wVarBase              = "$(genericVarBase)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\r" + "\r" + text);}
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchWhs, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "LOT")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_PlantName, "LTPLT")
+                      @dtw_assign(uv_WarehouseName, "LTWH")
+                      @dtw_assign(uv_VendorName, "LTVEND")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select a.*, IMIMDS, IMIMDSU ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDLOT a", fileSQL)
+                      @dtw_concat(fileSQL, " left join HDIMST on a.LTITEM=IMITEM", fileSQL)
+                      %if (wildCardSearch!="" || uv_Sql != "")
+                          @dtw_concat(selectSQL, "LTITEM>' ' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Lot_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Lot_Query (IN  CHAR(64)    profileHandle,
+                                  CHAR(2)     dataBaseID,
+                                  CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count != "1")
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="80%">
+                  <col width="15%">
+              <tr><td><h1>$(page_title)</h1></td>
+                  %if (formatToPrint != "Y")
+                      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                      <td class="toolbar">
+                          %if (backHome != "$(d2wName)/report" && backHome != "")
+                              <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)&amp;backHome=@dtw_rurlescseq(backHome)" title="Back Home">$(portalHome)</a>
+                          %endif
+                          %INCLUDE "XMLFormat.icl"
+                          %INCLUDE "FormatToPrint.icl"
+                          %INCLUDE "HelpPage.icl"
+                      </td>
+                  %endif
+              </tr>
+          </table>
+          %INCLUDE "ConfMessageDisplay.icl"
+	
+          $(hrTagAttr)
+
+          %if (formatToPrint != "Y")
+              <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+                  <table $(quickSearchTable)>
+                      <tr><th class="colhdr">Item Number</th>
+                          <th class="colhdr">Description</th>
+                          <th class="colhdr">Whs</th>
+                          <th class="colhdr">Lot Number</th>
+                      </tr>
+                      <tr><td class="inputalph"><input type="text" name="srchItem" size="10" maxlength="15">
+                              <input type="hidden" name="operItem" value="LIKE">
+                          </td>
+                          <td class="inputalph"><input type="text" name="srchDesc" size="10" maxlength="30">
+                              <input type="hidden" name="operDesc" value="LIKE">
+                          </td>
+                          <td class="inputnmbr"><input name="srchWhs" type="text" size="3" maxlength="3">
+                              <input type="hidden" name="operWhs" value="=">
+                          </td>
+                          <td class="inputalph"><input name="srchLot" type="text" size="10" maxlength="15">
+                              <input type="hidden" name="operLot" value="LIKE">
+                          </td>
+                          <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                      </tr>
+                  </table>
+                  <script TYPE="text/javascript">
+                      document.Search.srchItem.focus();
+                  </script>
+              </form>
+
+              %INCLUDE "WildCardPage.icl"
+          %endif
+	   		
+          <table $(contentTable)>
+              <tr>
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_04 == "Y"))
+                      <th class="colhdr">$(optionHeading)</th>
+                  %endif
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("LTITEM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemNumber" title="Sequence By Item Number, Warehouse Number, Lot Number">Item Number</a></th>
+                  @OrderBy_Sort("IMIMDSU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemDesc" title="Sequence By Description, Item Number, Warehouse Number, Lot Number">Description</a></th>
+                  @OrderBy_Sort("LTWH", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=warehouseNumber" title="Sequence By Warehouse Number, Item Number, Lot Number">Whs</a></th>
+                  @OrderBy_Sort("LTLT#", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=lotNumber" title="Sequence By Lot Number, Warehouse Number, Item Number">Lot Number</a></th>
+                  %if (V_HDPDRL > "0")
+                      @OrderBy_Sort("LTPLT", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=plantNumber" title="Sequence By Plant Number, Item Number, Lot Number">Plt</a></th>
+                  %endif
+                  @OrderBy_Sort("LTPO#", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Document" title="Sequence By Document #, Warehouse Number, Item Number">Document<br>Number</a></th>
+                  @OrderBy_Sort("LTQOH", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Quantity" title="Sequence By Quantity On Hand">Quantity<br>On Hand</a></th>
+                  @OrderBy_Sort("LTDTEX", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=expireDate" title="Sequence By Expiration Date, Warehouse Number, Item Number">Expiration<br>Date</a></th>
+                  @OrderBy_Sort("LTLLDT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=lastTranDate" title="Sequence By Last Transaction Date, Warehouse Number, Item Number">Date Of Last<br>Transaction</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %endif
+
+              %ROW{
+
+                  %if (sec_03 == "Y" && V_LTQOH==".0000" && V_LTQAL==".0000" && V_LTLRCP==".0000" && V_LTLQHR==".0000" && V_LTQHSR==".0000")
+                      @dtw_assign(delRec, "Y")
+                  %else
+                      @dtw_assign(delRec, "")
+                  %endif
+                  @dtw_assign(maintainVar, "$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(V_LTPLT)&amp;itemNumber=@dtw_rurlescseq(V_LTITEM)&amp;warehouseNumber=@dtw_rurlescseq(V_LTWH)&amp;lotNumber=@dtw_rurlescseq(V_LTLT#)&amp;delRec=@dtw_rurlescseq(delRec)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+                  %if (sql_Record_Count == "1")
+                      @Save_WebReg(webRegCurFile, profileHandle, d2wName, "", orderBy, orderByDisplay, "")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)LotSelect.d2w/REPORT$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(V_LTITEM)&amp;warehouseNumber=@dtw_rurlescseq(V_LTWH)&amp;lotNumber=@dtw_rurlescseq(V_LTLT#)">
+                  %else
+                      %INCLUDE "SetRowClass.icl"
+                      @Format_Confirm_Desc("Lot Number", $(V_LTLT#), "", "", "", "", confirmDesc)
+                      @Format_Date(V_LTDTEX, "D", F_LTDTEX)
+                      @Format_Date(V_LTLLDT, "D", F_LTLLDT)
+                      @dtw_assign(lotCount, "0")
+                      %if (V_HDPDRL > "0")
+                          @RtvFldDesc("WLPPLT=$(V_LTPLT) and WLORD='$(V_LTMORD)'", "LTMWLM", "char(count(*))", lotCount1)
+                          @RtvFldDesc("WLPPLT=$(V_LTPLT) and WLCPN='$(V_LTITEM)' and WLLOTN='$(V_LTLT#)'", "LTMWLM", "char(count(*))", lotCount2)
+                      %endif
+
+                      <tr class="$(rowClass)">
+                          %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_04 == "Y"))
+                              <td class="opticon">
+                                  %if (sec_02 == "Y" || sec_03 == "Y")
+                                      <a href="$(homeURL)$(cGIPath)LotMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                                  %endif
+                                  %if (delRec=="Y")
+                                      <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)LotMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                                  %endif
+                              %if (lotCount1 > "0")
+                                  <a href="$(homeURL)$(cGIPath)LotNumberExplosionInquiry.d2w/DISPLAY$(maintainVar)" onclick="$(inquiryWinVar)">$(lotIndentExpImageLrg)</a>
+                              %endif
+                              %if (lotCount2 > "0")
+                                  <a href="$(homeURL)$(cGIPath)LotNumberWhereUsedInquiry.d2w/DISPLAY$(maintainVar)" onclick="$(inquiryWinVar)">$(lotIndentWUImageLrg)</a>
+                              %endif
+                              </td>
+                          %endif
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(maintainVar)" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_LTITEM)</a></td>
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_LTITEM)&amp;itemDescription=@dtw_rurlescseq(V_IMIMDS)" title="View Item">$(V_IMIMDS)</a></td>
+                          <td class="colnmbr"><a href="$(homeURL)$(cGIPath)WarehouseInquiry.d2w/DISPLAY$(maintainVar)" onclick="$(inquiryWinVar)" title="Warehouse Quickview">$(V_LTWH)</a></td>
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)LotSelect.d2w/REPORT$(maintainVar)&amp;backHome=$(d2wName)/report" title="View Lot">$(V_LTLT#)</a></td>
+                          %if (V_HDPDRL > "0")
+                              <td class="colnmbr">$(V_LTPLT)</td>
+                          %endif
+                          <td class="colnmbr">$(V_LTPO#)</td>
+                          <td class="colnmbr">$(V_LTQOH)</td>
+                          <td class="colnmbr">$(F_LTDTEX)</td>
+                          <td class="colnmbr">$(F_LTLLDT)</td>
+                      </tr>
+                  %endif
+              %}
+          </table>
+          %if (sql_Record_Count != "1")
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+              $(hrTagAttr)
+              %INCLUDE "Copyright.icl"
+          %endif
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  @dtw_assign(uv_PlantName, "LTPLT")
+  @dtw_assign(uv_WarehouseName, "LTWH")
+  @dtw_assign(uv_VendorName, "LTVEND")
+  %INCLUDE "userview.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select a.*, IMIMDS, IMIMDSU ", stmtSQL)
+  @dtw_concat(fileSQL, " HDLOT a", fileSQL)
+  @dtw_concat(fileSQL, " left join HDIMST on a.LTITEM=IMITEM", fileSQL)
+  %if (wildCardSearch!="" || uv_Sql != "")
+      @dtw_concat(selectSQL, "LTITEM>' ' ", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @Lot_Export_Query(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) Lot_Export_Query (IN  CHAR(64)    profileHandle,
+                                         CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @XMLBeginTag("LotList")
+          %ROW{
+              @Format_Date(V_LTDTEX, "4", F_LTDTEX)
+              @Format_Date(V_LTLLDT, "4", F_LTLLDT)
+
+	       @XMLIDTag("$(V_LTITEM)/$(V_LTWH)/$(V_LTLT#)", "Lot ID")
+                  @XMLTag(V_LTITEM, "ItemNumber")
+                  @XMLTag(V_IMIMDS, "ItemDescription")
+                  @XMLTag(V_LTWH,   "WarehouseNumber")
+                  @XMLTag(V_LTLT#,  "LotNumber")
+                  @XMLTag(V_LTPO#,  "P.O.Number")
+                  @XMLTag(V_LTMORD, "ManufacturingOrder")
+                  @XMLTag(V_LTQOH,  "QuantityOnHand")
+                  @XMLTag(F_LTDTEX, "ExpirationDate")
+                  @XMLTag(F_LTLLDT, "LastTransactionDate")
+              @XMLEndTag("Lot")
+          %}
+      @XMLEndTag("LotList")
+  %}
+%}
+
+%HTML(REPORT)
+{
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "LTITEM,LTWH,LTLT#")
+          @DTW_ASSIGN(orderByDisplay, "Item Number, Warehouse Number, Lot Number")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT)
+{
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit ()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(ORDERBY)
+{
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "plantNumber")
+      %if (orderBy == "LTPLT,LTITEM,LTLT#")
+          @DTW_ASSIGN(orderBy, "LTPLT DESC,LTITEM,LTLT#")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number (descending), Item Number, Lot Number")
+      %else
+          @DTW_ASSIGN(orderBy, "LTPLT,LTITEM,LTLT#")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number, Item Number, Lot Number")
+      %endif
+  %elseif (sequence == "itemNumber")
+      %if (orderBy == "LTITEM,LTWH,LTLT#")
+          @DTW_ASSIGN(orderBy, "LTITEM DESC,LTWH,LTLT#")
+          @DTW_ASSIGN(orderByDisplay, "Item Number (descending), Warehouse Number, Lot Number")
+      %else
+          @DTW_ASSIGN(orderBy, "LTITEM,LTWH,LTLT#")
+          @DTW_ASSIGN(orderByDisplay, "Item Number, Warehouse Number, Lot Number")
+      %endif
+  %elseif (sequence == "itemDesc")
+      %if (orderBy == "IMIMDSU,LTITEM,LTWH,LTLT#")
+          @DTW_ASSIGN(orderBy, "IMIMDSU DESC,LTITEM,LTWH,LTLT#")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Item Number, Warehouse Number, Lot Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IMIMDSU,LTITEM,LTWH,LTLT#")
+          @DTW_ASSIGN(orderByDisplay, "Description, Item Number, Warehouse Number, Lot Number")
+      %endif
+  %elseif (sequence == "warehouseNumber")
+      %if (orderBy == "LTWH,LTITEM,LTLT#")
+          @DTW_ASSIGN(orderBy, "LTWH DESC,LTITEM,LTLT#")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse Number (descending), Item Number, Lot Number")
+      %else
+          @DTW_ASSIGN(orderBy, "LTWH,LTITEM,LTLT#")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse Number, Item Number, Lot Number")
+      %endif
+  %elseif (sequence == "lotNumber")
+      %if (orderBy == "LTLT#,LTWH,LTITEM")
+          @DTW_ASSIGN(orderBy, "LTLT# DESC,LTWH,LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Lot Number (descending), Warehouse Number, Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "LTLT#,LTWH,LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Lot Number, Warehouse Number, Item Number")
+      %endif
+  %elseif (sequence == "Document")
+      %if (orderBy == "LTPO#,LTWH,LTITEM")
+          @DTW_ASSIGN(orderBy, "LTPO# DESC,LTWH,LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Document Number (descending), Warehouse Number, Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "LTPO#,LTWH,LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Document Number, Warehouse Number, Item Number")
+      %endif
+  %elseif (sequence == "Quantity")
+      %if (orderBy == "LTQOH")
+          @DTW_ASSIGN(orderBy, "LTQOH DESC")
+          @DTW_ASSIGN(orderByDisplay, "Quantity On Hand (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "LTQOH")
+          @DTW_ASSIGN(orderByDisplay, "Quantity On Hand")
+      %endif
+  %elseif (sequence == "expireDate")
+      %if (orderBy == "LTDTEX,LTWH,LTITEM")
+          @DTW_ASSIGN(orderBy, "LTDTEX DESC,LTWH,LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Expiration Date (descending), Warehouse Number, Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "LTDTEX,LTWH,LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Expiration Date, Warehouse Number, Item Number")
+      %endif
+  %elseif (sequence == "lastTranDate")
+      %if (orderBy == "LTLLDT,LTWH,LTITEM")
+          @DTW_ASSIGN(orderBy, "LTLLDT DESC,LTWH,LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Last Transaction Date (descending), Warehouse Number, Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "LTLLDT,LTWH,LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Last Transaction Date, Warehouse Number, Item Number")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH)
+{
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "dateedit.icl"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (
+                      %if (V_HDPDRL > "0")
+                          editNum(document.Search.srchPlt, 3, 0) &&
+                      %endif
+                      editNum(document.Search.srchWhs, 3, 0) &&
+                      editNum(document.Search.srchQuantity, 13, 4) &&
+                      editdate(document.Search.srchLDate) &&
+                      editdate(document.Search.srchEDate))
+                  return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "LOTSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          %if (V_HDPDRL > "0")
+                              <tr><td class="dsphdr">Plant Number</td>
+                                  @dtw_assign(operNbr, "operPlt")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"> <input type="text" name="srchPlt" size="3" maxlength="3"></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchDesc" size="15" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Item Number</td>
+                              @dtw_assign(operNbr, "operItem")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchItem" size="15" maxlength="15"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Warehouse Number</td>
+                              @dtw_assign(operNbr, "operWhs")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchWhs" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Lot Number</td>
+                              @dtw_assign(operNbr, "operLot")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchLot" size="15" maxlength="15"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Document Number</td>
+                              @dtw_assign(operNbr, "operDocument")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchDocument" size="9" maxlength="9"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Quantity On Hand</td>
+                              @dtw_assign(operQuantity, "operBdgt")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchQuantity" size="13" maxlength="13"></td>	
+                          </tr>
+
+                          <tr><td class="dsphdr">Expiration Date</td>
+                              @dtw_assign(operNbr, "operEDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchEDate" size="6" maxlength="6"> 		
+                                  <a href="javascript:calWindow('srchEDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Last Transaction Date</td>
+                              @dtw_assign(operNbr, "operLDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchLDate" size="6" maxlength="6"> 		
+                                  <a href="javascript:calWindow('srchLDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchPlt.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD)
+{
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("LTPLT", "Plant Number", $(srchPlt), "", operPlt, "N")
+  @Build_WildCard ("LTITEM", "Item Number", $(srchItem), "U", operItem, "A")
+  @Build_WildCard ("IMIMDSU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("LTWH", "Warehouse Number", $(srchWhs), "", operWhs, "N")
+  @Build_WildCard ("LTLT#", "Lot Number", $(srchLot), "", operLot, "A")
+  @Build_WildCard ("LTPO#", "Document", $(srchDocument), "", operDocument, "A")
+  @Build_WildCard ("LTQOH", "Quantity On Hand", $(srchQuantity), "", operQuantity, "N")
+  @Build_WildCard ("LTDTEX", "Expiration Date", $(srchEDate), "", operEDate, "N")
+  @Build_WildCard ("LTLLDT", "Last Transaction Date", $(srchLDate), "", operLDate, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

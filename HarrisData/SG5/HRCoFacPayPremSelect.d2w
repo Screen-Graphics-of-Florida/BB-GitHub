@@ -1,0 +1,164 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Premium Pay Rate Select                                     *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title 	        = "Premium Rate"
+  d2wName              = "HRCoFacPayPremSelect.d2w"
+  d2wVarBase           = "$(genericVarBase)$(hrCoFacVarBase)&amp;shiftDept=@dtw_rurlescseq(shiftDept)&amp;shiftWorked=@dtw_rurlescseq(shiftWorked)&amp;backHome=@dtw_rurlescseq(backHome)"
+  programName          = "HPRPRM"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  RPT_MAX_ROWS         = "99"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext	        = "1"
+  totalPages	        = "0"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "HrCoFacURL.icl"
+   @dtw_replace(workURL, "@@shiftWorked", "@dtw_rurlescseq(shiftWorked)", "1", "a", workURL)
+   @dtw_replace(workURL, "@@shiftDept", "@dtw_rurlescseq(shiftDept)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                       @dtw_assign(pageID, "PREMSELECT")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_CompanyName, "PPCOMP")
+                      @dtw_assign(uv_FacilityName, "PPFACL")
+                      @dtw_assign(uv_HomeDepartmentName, "PPDEPT")
+                      %INCLUDE "userview.icl"
+
+                      @dtw_assign(stmtSQL, "")
+                      @dtw_concat(stmtSQL, "Select * From PRPREM ", stmtSQL)
+                      @dtw_concat(stmtSQL, " Where PPCOMP=$(prCompany) and PPFACL=$(prFacility) ", stmtSQL)
+                      @dtw_concat(stmtSQL, " and PPDEPT='$(shiftDept)' and PPSHFT='$(shiftWorked)'", stmtSQL)
+                      %if (uv_Sql != "")
+                          @dtw_concat(stmtSQL, " and $(uv_Sql) ", stmtSQL)
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Premium_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Premium_Query (IN CHAR(64)    profileHandle,
+				      CHAR(2)     dataBaseID,
+                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "$(d2wName)/report") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+
+          @RetHrCompNam(profileHandle, dataBaseID, prCompany, prFacility, coFacName)
+          <tr><td><h2>$(coFacName)</h2></td></tr>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+      $(hrTagAttr)
+
+      %ROW {
+          <table $(contentTable)>
+              <tr><td class="dsphdr">Shift Worked</td>
+                  <td class="dspalph">$(V_PPSHFT)</td>
+              </tr>
+              <tr><td class="dsphdr">Description</td>
+                  <td class="dspalph">$(V_PPDESC)</td>
+              </tr>
+              %if (V_PPDEPT != "")
+                  @RtvFldDesc("EADEPT='$(V_PPDEPT)'", "PREXAC", "EANAME", prDeptName)
+              %else
+                  @dtw_assign(prDeptName, "All")
+              %endif
+              <tr><td class="dsphdr">Department Worked</td>
+                  <td class="dspalph">$(prDeptName)</td>
+              </tr>
+              @Format_Nbr($(V_PPAMT), F_PPAMT, "2", $(amtEditCode), "", "", "")
+              <tr><td class="dsphdr">Premium Amount</td>
+                  <td class="dspalph">$(F_PPAMT)</td>
+              </tr>
+              @Format_Nbr($(V_PPPCT), F_PPPCT, "4", $(pctEditCode), "", "", "")
+              <tr><td class="dsphdr">Premium Percent</td>
+                  <td class="dspalph">$(F_PPPCT)</td>
+              </tr>
+              <tr><td class="dsphdr">Apply To Hourly</td>
+                  @RtvYNDesc($(V_PPHRLY), syFlagDesc)
+                  <td class="dspalph">$(syFlagDesc)</td>
+              </tr>
+              <tr><td class="dsphdr">Apply To Salary</td>
+                  @RtvYNDesc($(V_PPSLRY), syFlagDesc)
+                  <td class="dspalph">$(syFlagDesc)</td>
+              </tr>
+              <tr><td class="dsphdr">Apply OT/DT Multipliers</td>
+                  @RtvYNDesc($(V_PPOTM), syFlagDesc)
+                  <td class="dspalph">$(syFlagDesc)</td>
+              </tr>
+          </table>
+      %}	
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if (sec_05 == "N")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)progOptSecError.d2w/DISPLAY$(genericVarBase)&amp;page_title=@dtw_rurlescseq(page_title)">
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}

@@ -1,0 +1,472 @@
+%{
+*********************************************************************
+* Copr 1979 2005 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Application Control Search                                  *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Application Control Search"
+  d2wName                 = "WFApplicationControlSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;specificWFProcess=@dtw_rurlescseq(specificWFProcess)&amp;docName=@dtw_rurlescseq(docName)&amp;fldProc=@dtw_rurlescseq(fldProc)&amp;fldProgram=@dtw_rurlescseq(fldProgram)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldProgram              = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL)  {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %if (specificWFProcess == "")
+                  function selectProgram(wfProcess,wfProgram, wfProgramDescription){
+                      window.opener.document.$(docName).$(fldProc).value = wfProcess;
+                      window.opener.document.$(docName).$(fldProgram).value = wfProgram;
+                      window.opener.document.$(docName).$(fldDesc).value = wfProgramDescription;
+                      window.opener.document.$(docName).$(fldProgram).focus();
+                      window.close();
+                  }
+              %else
+                  function selectProgram(wfProgram, wfProgramDescription){
+                      window.opener.document.$(docName).$(fldProgram).value = wfProgram;
+                      window.opener.document.$(docName).$(fldDesc).value = wfProgramDescription;
+                      window.opener.document.$(docName).$(fldProgram).focus();
+                      window.close();
+                  }
+              %endif
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      %if (specificWFProcess != "")
+          @dtw_assign(wfProcess, specificWFProcess)
+      %endif
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select WFAPCT.*, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(PRDESC,' ') as PRDESC, coalesce(PRDESCU,' ') as PRDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(FLDESC,' ') as FLDESC, upper(coalesce(FLDESC,' ')) as FLDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(PDDESC,' ') as PDDESC, coalesce(PDDESCU,' ') as PDDESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " WFAPCT ", fileSQL)
+                      @dtw_concat(fileSQL, " left join WFPRHD on PRPROC=ACPROC ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYFLAG on FLTYPE='WFAPPLSTAT' and FLVALU=ACSTAT ", fileSQL)
+                      @dtw_concat(fileSQL, " left join WFPRDT on PDPROC=ACPROC and PDPONT=ACPONT and PDSEQ=ACSEQ ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, " ACPROC='$(wfProcess)' and ACPGM=$(wfProgram) ", selectSQL)
+                      %elif (specificWFProcess != "")
+                          @dtw_concat(selectSQL, " ACPROC='$(specificWFProcess)' ", selectSQL)
+                      %elif (wildCardSearch!="")
+                          @dtw_concat(selectSQL, " ACPROC>' ' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      %if (specificWFProcess != "")
+          <table $(contentTable)>
+              @RtvFldDesc("PRPROC='$(specificWFProcess)'", "WFPRHD", "PRDESC", wfProcessDescription)
+              @Format_Header("", $(wfProcessDescription), $(specificWFProcess))
+          </table>
+      %endif
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr>
+                      <th class="colhdr">Description</th>
+                      <th class="colhdr">Program</th>
+                      %if (specificWFProcess == "")
+                          <th class="colhdr">Process</th>
+                      %endif
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchDesc" size="15" maxlength="50">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchProgram" size="10" maxlength="10">
+                          <input type="hidden" name="operProgram" value="LIKE">
+                      </td>
+                      %if (specificWFProcess == "")
+                          <td><input type="text" class="inputalph" name="srchProcess" size="15" maxlength="50">
+                              <input type="hidden" name="operProcess" value="LIKE">
+                          </td>
+                      %endif
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>	
+
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @OrderBy_Sort("ACDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description"  title="Sequence By Description, Program, Process">Description</a></th>
+                  @OrderBy_Sort("ACPGM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Program"      title="Sequence By Program, Process">Program</a></th>
+                  %if (specificWFProcess == "")
+                      @OrderBy_Sort("PRDESCU", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Process"      title="Sequence By Process, Program">Process</a></th>
+                  %endif
+                  @OrderBy_Sort("FLDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Status"       title="Sequence By Status, Program, Process">Status</a></th>
+                  @OrderBy_Sort("PDDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DetailPoint"  title="Sequence By Entry Detail Point, Program, Process">Entry Detail Point</a></th>
+                  @OrderBy_Sort("ACEFFF", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ValidFrom"    title="Sequence By Valid From, Program, Process">Valid From</a></th>
+                  @OrderBy_Sort("ACEFFT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ValidTo"      title="Sequence By Valid To, Program, Process">Valid To</a></th>
+              </tr>
+
+              %INCLUDE "NoRecordsFound.icl"
+      %endif		
+              %ROW{
+                  @Format_Quote(V_ACPROC, F_ACPROC)
+                  @Format_Quote(V_PDDESC, F_PDDESC)
+
+                  %if (moreInfo != "Y")	
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          %if (specificWFProcess == "")
+                              <td class="colalph"><a href="javascript:selectProgram('$(F_ACPROC)','$(V_ACPGM)','$(F_ACDESC)')" title="Select Program">$(V_ACDESC)</a></td>
+                          %else
+                              <td class="colalph"><a href="javascript:selectProgram($(V_ACPGM),$(V_PDSEQ),'$(F_ACDESC)')" title="Select Program">$(V_ACDESC)</a></td>
+                          %endif
+                          <td class="colalph">$(V_ACPGM)</td>                                      	
+                          %if (specificWFProcess == "")
+                              <td class="colalph" $(helpCursor)><span title="$(V_ACPROC)">$(V_PRDESC)</span></td>                                      	
+                          %endif
+                          <td class="colalph" $(helpCursor)><span title="$(V_ACSTAT)">$(V_FLDESC)</span></td>                                      	
+                          <td class="colalph" $(helpCursor)><span title="$(V_ACPONT)-$(V_ACSEQ)">$(V_ACDESC)</span></td>                                      	
+                          <td class="colalph">$(V_ACEFFF)</td>                                      	
+                          <td class="colalph">$(V_ACEFFT)</td>                                      	
+                      </tr>
+
+                  %else
+                      <table $(contentTable)>
+                          <tr><td>
+                              %if (specificWFProcess == "")
+                                  <a href="javascript:selectProgram('$(F_ACPROC)','$(V_ACPGM)','$(F_ACDESC)')" title="Select Program">$(selectImageLrg)</a>
+                              %else
+                                  <a href="javascript:selectProgram('$(V_ACPGM)','$(F_ACDESC)')" title="Select Program">$(selectImageLrg)</a>
+                              %endif
+                          </td></tr>
+                      </table>
+
+                      <table $(contentTable)>
+                          %if (specificWFProcess == "")
+                              <tr><td class="dsphdr">Process</td>
+                                  @Format_Code(V_ACPROC, F_ACPROC)
+                                  <td class="dspalph">$(V_procPRDESC) $(F_ACPROC)</td></tr>
+                          %endif
+
+                          <tr><td class="dsphdr"><span $(textOvr)>Program</span></td>
+                              <td class="dspalph">$(V_ACPGM)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              <td class="dspalph">$(V_ACDESC)</td>
+                          </tr>
+
+                          @Format_Code(V_ACSTAT, F_ACSTAT)
+                          @RtvFldDesc("FLTYPE='WFAPPLSTAT' and FLVALU='$(V_ACSTAT)'", "SYFLAG", "FLDESC", fieldDesc)
+                          <tr><td class="dsphdr">Status</td>
+                              <td class="dspalph">$(fieldDesc) $(F_ACSTAT)</td>
+                          </tr>
+
+                          @Format_Code("$(V_ACPONT)-$(V_ACSEQ)", F_ACPONT)
+                          @Default_Zero(V_ACPONT)
+                          @Default_Zero(V_ACSEQ)
+                          @RtvFldDesc("PDPROC='$(V_ACPROC)' and PDPONT=$(V_ACPONT) and PDSEQ=$(V_ACSEQ) ", "WFPRDT", "PDDESC", fieldDesc)
+                          <tr><td class="dsphdr">Entry Detail Point</td>
+                              <td class="dspnmbr">$(fieldDesc) $(F_ACPONT)</td>
+                          </tr>
+                      </table>
+
+                      <table $(contentTable)>
+                          <tr><td class="dsphdr">&nbsp;</td>
+                              <td class="colhdr">Date</td>
+                              <td class="colhdr">Time</td>
+                          </tr>
+
+        	           <tr><td class="dsphdr">Effective From</td>
+                              <td class="dspnmbr">$(V_ACEFFFDate)</td>
+                              <td class="dspnmbr">$(V_ACEFFFTime)</td> 		
+                          </tr>
+
+        	           <tr><td class="dsphdr">Effective To</td>
+                              <td class="dspnmbr">$(V_ACEFFTDate)</td>
+                              <td class="dspnmbr">$(V_ACEFFTTime)</td> 		
+                          </tr>
+                      </table>
+                  %endif
+              %}
+          </table>
+	   %if (moreInfo != "Y")	
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+	   %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "ACDESCU,ACPGM,PDSEQ")
+      @DTW_ASSIGN(orderByDisplay, "Description, Detail Point")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+
+  %if (sequence == "Description")
+      %if (orderBy == "ACDESCU,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderBy, "ACDESCU DESC,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Program, Process")
+      %else
+          @DTW_ASSIGN(orderBy, "ACDESCU,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Description, Program, Process")
+      %endif
+  %elif (sequence == "Program")
+      %if (orderBy == "ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderBy, "ACPGM DESC,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Program (descending), Process")
+      %else
+          @DTW_ASSIGN(orderBy, "ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Program, Process")
+      %endif
+  %elif (sequence == "Process")
+      %if (orderBy == "PRDESCU,ACPGM")
+          @DTW_ASSIGN(orderBy, "PRDESCU DESC,ACPGM")
+          @DTW_ASSIGN(orderByDisplay, "Process (descending), Program")
+      %else
+          @DTW_ASSIGN(orderBy, "PRDESCU,ACPGM")
+          @DTW_ASSIGN(orderByDisplay, "Process, Program")
+      %endif
+  %elif (sequence == "Status")
+      %if (orderBy == "FLDESCU,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderBy, "FLDESCU DESC,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Status (descending), Program, Process")
+      %else
+          @DTW_ASSIGN(orderBy, "FLDESCU,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Status, Program, Process")
+      %endif
+  %elif (sequence == "DetailPoint")
+      %if (orderBy == "PDDESCU,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderBy, "PDDESCU DESC,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Entry Detail Point (descending), Program, Process")
+      %else
+          @DTW_ASSIGN(orderBy, "PDDESCU,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Entry Detail Point, Program, Process")
+      %endif
+  %elif (sequence == "ValidFrom")
+      %if (orderBy == "ACEFFF,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderBy, "ACEFFF DESC,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Valid From (descending), Program, Process")
+      %else
+          @DTW_ASSIGN(orderBy, "ACEFFF,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Valid From, Program, Process")
+      %endif
+  %elif (sequence == "ValidTo")
+      %if (orderBy == "ACEFFT,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderBy, "ACEFFT DESC,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Valid To (descending), Program, Process")
+      %else
+          @DTW_ASSIGN(orderBy, "ACEFFT,ACPGM,PRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Valid To, Program, Process")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchPoint, 4, 3) &&
+                      editNum(document.Search.srchSequence, 4, 3) &&
+                      editNum(document.Search.srchRating, 2, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "WFDETAILSEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="15" maxlength="50"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Program</td>
+                              @dtw_assign(operNbr, "operProgram")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchProgram" size="10" maxlength="10"></td>
+                          </tr>
+
+                          %if (specificWFProcess == "")
+                              <tr><td class="dsphdr">Process</td>
+                                  @dtw_assign(operNbr, "operProcess")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchProcess" size="15" maxlength="50"></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Status</td>
+                              @dtw_assign(operNbr, "operStatus")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchStatus" size="15" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Entry Detail Point</td>
+                              @dtw_assign(operNbr, "operDtlPoint")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDtlPoint" size="15" maxlength="50"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Entry Point</td>
+                              @dtw_assign(operNbr, "operPoint")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchPoint" size="8" maxlength="8"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Entry Sequence</td>
+                              @dtw_assign(operNbr, "operSequence")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchSequence" size="8" maxlength="8"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchDesc.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("ACDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("ACPGM",   "Program", $(srchProgram), "U", operProgram, "A")
+  @Build_WildCard ("PRDESCU", "Process", $(srchProcess), "U", operProcess, "A")
+  @Build_WildCard ("upper(FLDESC)", "Status", $(srchStatus), "U", operStatus, "A")
+  @Build_WildCard ("PDDESCU", "Entry Detail Point", $(srchDtlPoint), "U", operDtlPoint, "A")
+  @Build_WildCard ("ACPONT",  "Entry Point", $(srchPoint), "", operPoint, "N")
+  @Build_WildCard ("ACSEQ",   "Entry Sequence", $(srchSequence), "", operSequence, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

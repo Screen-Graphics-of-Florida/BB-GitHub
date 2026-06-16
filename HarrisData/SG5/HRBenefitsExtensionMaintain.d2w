@@ -1,0 +1,419 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: H/R Benefits Extension Maintenance                          *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "hrbenefitsMaintain.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "ynFlagTable.icl"
+
+%Define {
+  page_title 		  = "Benefit Extension Maintenance"
+  d2wName                 = "HRBenefitsExtensionMaintain.d2w"
+  d2wVarBase           = "$(genericVarBase)$(hrCoFacVarBase)&amp;backHome=@dtw_rurlescseq(backHome)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL            = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;benefitCode=@dtw_rurlescseq(benefitCode)&amp;planCode=@dtw_rurlescseq(planCode)&amp;benefitDesc=@dtw_rurlescseq(benefitDesc)&amp;planDesc=@dtw_rurlescseq(planDesc)&amp;seqNumber=@dtw_rurlescseq(seqNumber)&amp;effectiveDate=@dtw_rurlescseq(effectiveDate)&amp;maintenanceCode=D"
+  programName             = "HPECVE"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  UVPREmpl             = "00000"
+  prCompany            = "00"
+  prFacility           = "0000"
+  prCompanyFld         = "00"
+  prFacilityFld        = "0000"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "HrCoFacURL.icl"
+  @dtw_replace(workURL, "@@benefitCode", "@dtw_rurlescseq(benefitCode)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@planCode", "@dtw_rurlescseq(planCode)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@benefitDesc", "@dtw_rurlescseq(benefitDesc)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@planDesc", "@dtw_rurlescseq(planDesc)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@seqNumber", "@dtw_rurlescseq(seqNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@effectiveDate", "@dtw_rurlescseq(effectiveDate)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @CoFacUserView(profileHandle, dataBaseID, userPass, prCompany, prFacility)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script type="text/javascript">
+	           %INCLUDE "numedit.icl"
+                  %INCLUDE "dateedit.icl"
+                  %INCLUDE "calendar.icl"
+                  %INCLUDE "CheckEnterChg.icl"
+                  function validate(chgForm) {
+                      if (document.Chg.benefitCode.value =="" ||
+                          document.Chg.planCode.value =="" ||
+
+                          document.Chg.effectiveDate.value =="" ||
+                          document.Chg.expirationDate.value =="" )
+			 {alert("$(reqFieldError)"); return false;}
+                      if (editdate(document.Chg.effectiveDate) &&
+                          editdate(document.Chg.expirationDate) &&
+
+                          editNum(document.Chg.employerCost, 5, 2) &&
+                          editNum(document.Chg.acaLowCostEmpl, 11, 2))
+                      return true;
+              }
+              function confirmDelete() {return confirm("$(delRecordConf)")}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "BENEFITEXTENSIONMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(stmtSQL, "")
+                      %if (maintenanceCode == "A")
+                          @dtw_concat(stmtSQL, " Select * From CBCOVR ", stmtSQL)
+                          @dtw_concat(stmtSQL, " WHERE (CVCOMP=$(prCompany) and CVFACL=$(prFacility) and CVCOVR='$(benefitCode)' and CVPLAN = '$(planCode)')", stmtSQL)
+                      %else
+                          @dtw_concat(stmtSQL, " Select * From CBCOVR left join CBCOVE a on (CVCOMP,CVFACL,CVCOVR,CVPLAN)=(CECOMP,CEFACL,CECOVR,CEPLAN)", stmtSQL)
+                          @dtw_concat(stmtSQL, " WHERE (CECOMP=$(prCompany) and CEFACL=$(prFacility) and CECOVR='$(benefitCode)' and CEPLAN = '$(planCode)' and CESEQU = '$(seqNumber)')", stmtSQL)
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      $(hrTagAttr)
+
+
+
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+
+			
+      <form class="formClass" METHOD=POST name="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "prCompanyFld")
+                          @RtvFldDesc("CECOMP=$(prCompany) and CEFACL=$(prFacility) ", "HRCOFC", "CFNAME", fieldDesc)
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@facl", "prFacilityFld")         @dtw_assign(Err_CEFACL, fieldValue)
+                          @DecatErr_Field("@@covr", "benefitCode")           @dtw_assign(Err_CECOVR, fieldValue)
+                          @DecatErr_Field("@@plan", "planCode")              @dtw_assign(Err_CEPLAN, fieldValue)
+                          @DecatErr_Field("@@sequ", "seqNumber")             @dtw_assign(Err_CESEQU, fieldValue)
+                          @DecatErr_Field("@@ecef", "effectiveDate")         @dtw_assign(Err_CEECEF, fieldValue)
+                          @DecatErr_Field("@@ecex", "expirationDate")        @dtw_assign(Err_CEECEX, fieldValue)
+                          @DecatErr_Field("@@cstm", "employerCost")          @dtw_assign(Err_CECSTM, fieldValue)
+                          @DecatErr_Field("@@plfu", "acaPlanFunding")        @dtw_assign(Err_CEPLFU, fieldValue)
+                          @DecatErr_Field("@@amec", "acaMinCoverage")        @dtw_assign(Err_CEAMEC, fieldValue)
+                          @DecatErr_Field("@@mval", "acaMinValue")           @dtw_assign(Err_CEMVAL, fieldValue)
+                          @DecatErr_Field("@@lcec", "acaLowCostEmpl")        @dtw_assign(Err_CELCEC, fieldValue)
+                          @DecatErr_Field("@@covt", "acaCoverageType")       @dtw_assign(Err_CECOVT, fieldValue)
+                      %endif
+                      @Decat_Field("@@comp")   @dtw_assign(V_CECOMP, fieldValue)
+                      @Decat_Field("@@facl")   @dtw_assign(V_CEFACL, fieldValue)
+                      @Decat_Field("@@covr")   @dtw_assign(V_CECOVR, fieldValue)
+                      @Decat_Field("@@plan")   @dtw_assign(V_CEPLAN, fieldValue)
+                      @Decat_Field("@@sequ")   @dtw_assign(V_CESEQU, fieldValue)
+                      @Decat_Field("@@ecef")   @dtw_assign(V_CEECEF, fieldValue)
+                      @Decat_Field("@@ecex")   @dtw_assign(V_CEECEX, fieldValue)
+                      @Decat_Field("@@cstm")   @dtw_assign(V_CECSTM, fieldValue)
+                      @Decat_Field("@@plfu")   @dtw_assign(V_CEPLFU, fieldValue)
+                      @Decat_Field("@@amec")   @dtw_assign(V_CEAMEC, fieldValue)
+                      @Decat_Field("@@mval")   @dtw_assign(V_CEMVAL, fieldValue)
+                      @Decat_Field("@@lcec")   @dtw_assign(V_CELCEC, fieldValue)
+                      @Decat_Field("@@covt")   @dtw_assign(V_CECOVT, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+
+                          @RtvFldDesc("CFCOMP=$(prCompany) and CFFACL=$(prFacility) ", "HRCOFC", "CFNAME", fieldDesc)
+
+                          @dtw_assign(effectiveDate, "000000")
+                          @dtw_assign(expirationDate, "000000")
+                          @dtw_assign(employerCost, "0000000")
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elseif (maintenanceCode == "Z")
+		  
+
+                      @RtvFldDesc("CFCOMP=$(prCompany) and CFFACL=$(prFacility) ", "HRCOFC", "CFNAME", fieldDesc)
+                      @DateInputFromCYMD(V_CEECEF)
+                      @DateInputFromCYMD(V_CEECEX)
+
+                  %elseif (maintenanceCode != "A")
+                      @DateInputFromCYMD(V_CEECEF)
+                      @DateInputFromCYMD(V_CEECEX)
+                  %endif
+          </table>
+
+          <a name="definition"></a>
+
+              <table $(contentTable)>
+                  <colgroup>
+                      <col width="40%">
+        	       <col width="60%">
+
+
+                  @SetTextOvr(Err_CEFACL)
+                  <tr><td class="dsphdr"><span $(textOvr)>Company/Facility</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          @Format_HRCoFac(prCompany, prFacility, "F", F_CoFac)
+                          <td class="dspnmbr">$(returnFldDesc) &nbsp; $(F_CoFac)</td>
+                          <td class="inputnmbr"><input name="prCompanyFld" type="hidden" value="$(prCompany)" size="2" maxlength="2">
+                                                <input name="prFacilityFld" type="hidden" value="$(prFacility)" size="4" maxlength="4"></td>
+                      %else
+                          @Format_HRCoFac(V_CECOMP, V_CEFACL, "F", F_CoFac)
+                          <td class="dspnmbr">$(returnFldDesc) &nbsp; $(F_CoFac)</td>
+                          <td class="inputnmbr"><input name="prCompanyFld" type="hidden" value="$(V_CECOMP)" size="2" maxlength="2">
+                                                <input name="prFacilityFld" type="hidden" value="$(V_CEFACL)" size="4" maxlength="4"></td>
+                                                <input name="seqNumberFld" type="hidden" value="$(seqNumber)" size="5" maxlength="5">
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CEFACL)
+
+                  @SetTextOvr(Err_CECOVR)
+                  <tr><td class="dsphdr"><span $(textOvr)>Benefit Code</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input name="benefitDesc" type="hidden" value="$(benefitDesc)" size="30" maxlength="30">$(benefitDesc)
+                                                <input name="benefitCode" type="hidden" value="$(benefitCode)" size="2" maxlength="2">&nbsp&nbsp[$(benefitCode)]</td>
+                      %else
+                          <td class="inputalph"><input name="benefitDesc" type="hidden" value="$(benefitDesc)" size="30" maxlength="30">$(benefitDesc)
+                                                <input name="benefitCode" type="hidden" value="$(V_CECOVR)" size="2" maxlength="2">&nbsp&nbsp[$(V_CECOVR)]</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CECOVR)
+
+                  @SetTextOvr(Err_CEPLAN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Plan Code</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input name="planDesc" type="hidden" value="$(planDesc)" size="30" maxlength="30">$(planDesc)
+                                                <input name="planCode" type="hidden" value="$(planCode)" size="3" maxlength="3">&nbsp&nbsp[$(planCode)]</td>
+                      %else
+                          <td class="inputalph"><input name="planDesc" type="hidden" value="$(planDesc)" size="30" maxlength="30">$(planDesc)
+                                                <input name="planCode" type="hidden" value="$(V_CEPLAN)" size="3" maxlength="3">&nbsp&nbsp[$(V_CEPLAN)]</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CEPLAN)
+
+                  @SetTextOvr(Err_CVCSTM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Current Employer Cost Of Coverage - Monthly</span></td>
+                      <td class="inputnmbr"><input name="currentEmployerCost" type="hidden" value="$(V_CVCSTM)" size="7" maxlength="7">$(V_CVCSTM)</td>
+                  </tr>
+                  @DspErrMsg(Err_CVCSTM) 
+                  
+                  @SetTextOvr(Err_CEECEF)
+                  <tr><td class="dsphdr"><span $(textOvr)>Effective Date</span></td>
+                  %if (maintenanceCode == "D")
+                      <td class="inputnmbr"><input name="effectiveDateFld" type="text" value="$(effectiveDate)" size="6" maxlength="6"> $(reqFieldChar)
+                  %else
+                      <td class="inputnmbr"><input name="effectiveDate" type="text" value="$(V_CEECEF)" size="6" maxlength="6"> $(reqFieldChar)
+                  %endif
+                              <a href="javascript:calWindow('effectiveDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_CEECEF)
+    		
+                  @SetTextOvr(Err_CEECEX)
+                  <tr><td class="dsphdr"><span $(textOvr)>Expiration Date</span></td>
+                      <td class="inputnmbr"><input name="expirationDate" type="text" value="$(V_CEECEX)" size="6" maxlength="6"> $(reqFieldChar)
+                              <a href="javascript:calWindow('expirationDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_CEECEX)
+	
+                  @SetTextOvr(Err_CECSTM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Employer Cost Of Coverage - Monthly</span></td>
+                      <td class="inputnmbr"><input name="employerCost" type="text" value="$(V_CECSTM)" size="8" maxlength="8"> $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_CECSTM) 
+    			
+                  @RtvFldDesc("FLTYPE='ACAPLAN' and FLVALU='$(V_CEPLFU)'", "SYFLAG", "FLDESC", acaPlanFundingDesc)
+                  @SetTextOvr(Err_CEPLFU)
+                  <tr><td class="dsphdr"><span $(textOvr)>ACA Plan Funding</span></td>
+                      <td class="inputalph"><input name="acaPlanFunding" type="text" value="$(V_CEPLFU)" size="3" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=ACAPLAN&amp;flagSrchHdr=@dtw_rurlescseq("ACA Plan Funding")&amp;docName=Chg&amp;fldName=acaPlanFunding&amp;fldDesc=acaPlanFundingDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="acaPlanFundingDesc" value="$(acaPlanFundingDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_CEPLFU)
+
+		 	  @Field_Checked(V_CEAMEC, "1", acaMinCoverageChecked)
+                  @SetTextOvr(Err_CEAMEC)
+                  <tr><td class="dsphdr"><span $(textOvr)>ACA Minimum Essential Coverage</span></td>
+                      <td class="inputalph"><input name="acaMinCoverage" type="checkbox" $(acaMinCoverageChecked) value="1"></td>
+                  </tr>
+                  @DspErrMsg(Err_CEAMEC)
+
+		 	  @Field_Checked(V_CEMVAL, "1", acaMinValueChecked)
+                  @SetTextOvr(Err_CEMVAL)
+                  <tr><td class="dsphdr"><span $(textOvr)>ACA Minimum Value</span></td>
+                      <td class="inputalph"><input name="acaMinValue" type="checkbox" $(acaMinValueChecked) value="1"></td>
+                  </tr>
+                  @DspErrMsg(Err_CEMVAL)
+	
+                  @SetTextOvr(Err_CELCEC)
+                  <tr><td class="dsphdr"><span $(textOvr)>ACA Employee Share Lowest Cost Premium</span></td>
+                      <td class="inputnmbr"><input name="acaLowCostEmpl" type="text" value="$(V_CELCEC)" size="15" maxlength="14"></td>
+                  </tr>
+                  @DspErrMsg(Err_CELCEC)
+    			
+                  @RtvFldDesc("FLTYPE='ACACOVTYPE' and FLVALU='$(V_CECOVT)'", "SYFLAG", "FLDESC", acaCoverageTypeDesc)
+                  @SetTextOvr(Err_CECOVT)
+                  <tr><td class="dsphdr"><span $(textOvr)>ACA Coverage Type</span></td>
+                      <td class="inputalph"><input name="acaCoverageType" type="text" value="$(V_CECOVT)" size="3" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=ACACOVTYPE&amp;flagSrchHdr=@dtw_rurlescseq("ACA Coverage Type")&amp;docName=Chg&amp;fldName=acaCoverageType&amp;fldDesc=acaCoverageTypeDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="acaCoverageTypeDesc" value="$(acaCoverageTypeDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_CECOVT)
+               </table>
+
+    	   %}
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64) profileHandle,
+                                                INOUT CHAR(2) dataBaseID,
+                                                INOUT CHAR(1) maintenanceCode,
+                                                INOUT CHAR(1) errFound,
+                                                INOUT CHAR(32000) edtVar,
+                                                INOUT CHAR(32000) errVar)
+  {%EXEC {HPECVE_W.PGM %}
+%}
+
+%HTML(HRBENEFITSEXTENSION) {
+
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if ((sec_02 == "N" && sec_03 == "N" && maintenanceCode != "A") || (sec_01 == "N" && maintenanceCode == "A") || (sec_04 == "N" && maintenanceCode == "Z"))
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)progOptSecError.d2w/DISPLAY$(genericVarBase)&amp;page_title=@dtw_rurlescseq(page_title)">
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(benefitCode)
+
+  @dtw_assign(effectiveDate,@dtw_rstrip(effectiveDate))
+  @dtw_assign(expirationDate,@dtw_rstrip(expirationDate))
+  @dtw_assign(employerCost,@dtw_rstrip(employerCost))
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  %if (maintenanceCode == "A")
+      @dtw_assign(prCompany, prCompanyFld)
+      @dtw_assign(prFacility, prFacilityFld)
+  %endif
+  %if (maintenanceCode == "C")
+      @dtw_assign(seqNumber, seqNumberFld)
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@comp", prCompany)
+  @Concat_Field("@@facl", prFacility)
+  @Concat_Field("@@covr", benefitCode)
+  @Concat_Field("@@plan", planCode)
+  @Concat_Field("@@sequ", seqNumber)
+  @Concat_Field("@@bcst", currentEmployerCost)
+
+  %if (maintenanceCode == "D")
+      @Concat_Field("@@ecef", effectiveDateFld)  
+  %else
+      @Concat_Field("@@ecef", effectiveDate)  
+  %endif
+  @Concat_Field("@@ecex", expirationDate)
+  @Concat_Field("@@cstm", employerCost)
+  @Concat_Field("@@plfu", acaPlanFunding)
+  %if (acaMinCoverage != "1")
+      @dtw_assign(acaMinCoverage , "0")
+  %endif
+  @Concat_Field("@@amec", acaMinCoverage)
+  %if (acaMinValue!= "1")
+      @dtw_assign(acaMinValue, "0")
+  %endif
+  @Concat_Field("@@mval", acaMinValue)
+  @Concat_Field("@@lcec", acaLowCostEmpl)
+  @Concat_Field("@@covt", acaCoverageType)
+
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      %if (maintenanceCode == "D")
+          @Format_Date(effectiveDate, "D", effectiveDate)
+       %else
+	  @DateMDYCYMD(effectiveDate)
+	  @Format_Date(effectiveDate, "D", effectiveDate)
+       %endif
+      @Format_ConfMsg_Desc(maintenanceCode, $(benefitDesc), $(benefitCode), $(planDesc), $(planCode), "Effective Date", $(effectiveDate), confMessage)
+
+      %if (maintenanceCode == "D")
+          %if ((fromD2w != "") && (fromD2w != "HRBenefitSelect.d2w"))
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;benefitCode=@dtw_rurlescseq(benefitCode)&amp;planCode=@dtw_rurlescseq(planCode)&amp;benefitDesc=@dtw_rurlescseq(benefitDesc)&amp;planDesc=@dtw_rurlescseq(planDesc)&amp;effectiveDate=$(effectiveDate)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)hrbenefitsextension.d2w/REPORT$(d2wVarBase)&amp;benefitCode=@dtw_rurlescseq(benefitCode)&amp;planCode=@dtw_rurlescseq(planCode)&amp;benefitDesc=@dtw_rurlescseq(benefitDesc)&amp;planDesc=@dtw_rurlescseq(planDesc)&amp;effectiveDate=$(effectiveDate)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %endif
+      %elseif (fromD2w != "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;benefitCode=@dtw_rurlescseq(benefitCode)&amp;planCode=@dtw_rurlescseq(planCode)&amp;benefitDesc=@dtw_rurlescseq(benefitDesc)&amp;planDesc=@dtw_rurlescseq(planDesc)&amp;effectiveDate=$(effectiveDate)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)hrbenefitsextension.d2w/REPORT$(d2wVarBase)&amp;benefitCode=@dtw_rurlescseq(benefitCode)&amp;planCode=@dtw_rurlescseq(planCode)&amp;benefitDesc=@dtw_rurlescseq(benefitDesc)&amp;planDesc=@dtw_rurlescseq(planDesc)&amp;effectiveDate=$(effectiveDate)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+
+  %elseif (maintenanceCode == "D")
+      @DecatErr_Field("@@covr", "benefitCode")
+      @Format_ConfMsg_Desc("", $(benefitDesc), $(benefitCode), $(planDesc), $(planCode), "Effective Date", $(effectiveDate), confMessage)
+      %if (fromD2w != "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)hrBenefits.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/HRBENEFITSEXTENSION$(d2wVarBase)&amp;benefitCode=@dtw_rurlescseq(benefitCode)&amp;planCode=@dtw_rurlescseq(planCode)&amp;benefitDesc=@dtw_rurlescseq(benefitDesc)&amp;planDesc=@dtw_rurlescseq(planDesc)&amp;seqNumber=@dtw_rurlescseq(seqNumber)&amp;effectiveDate=@dtw_rurlescseq(effectiveDate)&amp;errFound=@dtw_rurlescseq(errFound)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

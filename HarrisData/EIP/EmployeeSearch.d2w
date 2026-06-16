@@ -1,0 +1,454 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job:  Employee Search                                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Employee Search"
+  d2wName                 = "EmployeeSearch.d2w"
+  d2wVarBase              = "$(genericVarBase))&amp;docName=@dtw_rurlescseq(docName)&amp;specificHRCompany=@dtw_rurlescseq(specificHRCompany)&amp;fldprCompany=@dtw_rurlescseq(fldprCompany)&amp;fldprFacility=@dtw_rurlescseq(fldprFacility)&amp;fldprEmployee=@dtw_rurlescseq(fldprEmployee)&amp;fldhrCompany=@dtw_rurlescseq(fldhrCompany)&amp;fldhrEmployee=@dtw_rurlescseq(fldhrEmployee)&amp;inclActive=@dtw_rurlescseq(inclActive)&amp;inclTerminated=@dtw_rurlescseq(inclTerminated)&amp;enterOrFocus=@dtw_rurlescseq(enterOrFocus)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HHREMU"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  inclActive              = ""
+  inclTerminated          = ""
+  fldprCompany            = ""
+  fldprFacility           = ""
+  fldprEmployee           = ""
+  fldhrCompany            = ""
+  fldhrEmployee           = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %if (specificHRCompany == "")
+                  function selectEmployee(comp, facl, empl, pecp, pemp){
+                          window.opener.document.$(docName).$(fldprCompany).value = comp;
+                          window.opener.document.$(docName).$(fldprFacility).value = facl;
+                          window.opener.document.$(docName).$(fldprEmployee).value = empl;
+                          window.opener.document.$(docName).$(fldhrCompany).value = pecp;
+                          window.opener.document.$(docName).$(fldhrEmployee).value = pemp;
+                      %if (enterOrFocus=="F")
+                          window.opener.document.$(docName).$(fldprCompany).focus();
+                      %elseif (enterOrFocus!="")
+                          window.opener.document.$(docName).$(enterOrFocus).focus();
+                      %else
+                          window.opener.document.$(docName).submit();
+                      %endif
+                      window.close();
+                      }
+              %else
+                  function selectEmployee(pemp, employeeDescription){
+                      window.opener.document.$(docName).$(fldhrEmployee).value = pemp;
+                      window.opener.document.$(docName).$(fldDesc).value = employeeDescription;
+                      window.opener.document.$(docName).$(fldhrEmployee).focus();
+                      window.close();
+                  }
+              %endif
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "UserViewEmpl.icl"
+    	               %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, "SELECT EMCOMP, EMFACL, EMEMPL, EMRNAM, EMADR1, EMADR2, EMCITY,", stmtSQL)
+                      @dtw_concat(stmtSQL, " EMSTAT, EMZIP, EMPHON, EMDOB, EMLOC, EMTYPE, EMDEPT, EMHIRE, EMPECP, EMPEMP,", stmtSQL)
+                      @dtw_concat(stmtSQL, " EMLNAM, EMLNAMU, EMFNAM, EMFNAMU, EMMIDI, EMTRCD ", stmtSQL)
+                      @dtw_concat(fileSQL, " HREMPL ", fileSQL)
+                      @dtw_concat(selectSQL, " EMACT != 'X' ", selectSQL)
+                      %if (specificHRCompany != "")
+                          @dtw_concat(selectSQL, " and EMPECP=$(specificHRCompany) and EMPEMP<>999999999 ", selectSQL)
+                      %endif
+                      %if ((inclActive == "Y") && (inclTerminated != "Y"))
+                          @dtw_concat(selectSQL, "  and EMTRCD = ' '", selectSQL)
+                      %elseif ((inclActive != "Y") && (inclTerminated == "Y"))
+                          @dtw_concat(selectSQL, "  and EMTRCD <> ' '", selectSQL)
+                      %elseif ((inclActive != "Y") && (inclTerminated != "Y"))
+                          @dtw_concat(selectSQL, "  and EMTRCD = ' ' and EMTRCD <> ' '", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " ORDER BY $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Employee_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Employee_Search (IN  CHAR(64) profileHandle,
+				        CHAR(2)   dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      %if (specificHRCompany != "")
+          <table $(contentTable)>
+              @RtvFldDesc("CFCOMP=$(specificHRCompany) and CFFACL=0 ", "HRCOFC", "CFNAME", employeeDescription)
+              @Format_Header("H/R Company", $(employeeDescription), $(specificHRCompany))
+          </table>
+      %endif
+      $(searchhrTagAttr)
+      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+          <table $(quickSearchTable)>
+              <tr><th class="colhdr">Last Name</th>
+                  <th class="colhdr">First Name</th>
+              </tr>
+              <tr><td class="inputalph"><input type="text" name="srchLast" size="18" maxlength="18">
+                      <input type="hidden" name="operLast" value="LIKE">
+                  </td>
+                  <td class="inputalph"><input type="text" name="srchFirst" size="18" maxlength="18">
+                      <input type="hidden" name="operFirst" value="LIKE">
+                  </td>
+                  <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+              </tr>
+          </table>
+          <script TYPE="text/javascript">
+              document.Search.srchLast.focus();
+          </script>
+      </form>
+
+      %INCLUDE "ActiveTerminatedChecked.icl"
+      @dtw_assign(viewCheckBox, "HR")
+      %INCLUDE "WildCardPage.icl"
+
+      <table $(contentTable)>
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("EMLNAMU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Name" title="Sequence By Last Name, First Name, Company/Facility, Employee Number">Name</a></th>
+              %if (specificHRCompany == "")
+                  @OrderBy_Sort("EMCOMP", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CoFac" title="Sequence By Company/Facility, Employee Number">Co/Fac</a></th>
+                  @OrderBy_Sort("EMEMPL", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Number" title="Sequence By Employee Number, Company/Facility">Employee<br>Number</a></th>
+                  @OrderBy_Sort("EMPECP", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=HrCompany" title="Sequence By H/R Company, H/R Employee">H/R<br>Company</a></th>
+              %endif
+              @OrderBy_Sort("EMPEMP", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=HrEmployee" title="Sequence By H/R Employee, H/R Company">H/R<br>Employee</a></th>
+              @OrderBy_Sort("EMLOC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Loc" title="Sequence By Location, Last Name, First Name, Company/Facility, Employee Number">Location</a></th>
+              @OrderBy_Sort("EMDEPT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Dept" title="Sequence By Department, Last Name, First Name, Company/Facility, Employee Number">Dept</a></th>
+          </tr>
+			
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @Format_HRCoFac(V_EMCOMP, V_EMFACL, "N", F_CoFac)
+              @Format_EmplName(V_EMFNAM, V_EMLNAM, V_EMMIDI, V_EMRNAM, V_EMTRCD, "D", F_EmpName)
+              @Format_Quote(V_EMRNAM, F_EMRNAM)
+
+              %INCLUDE "SetRowClass.icl"
+
+              <tr class="$(rowClass)">
+                  %if (specificHRCompany == "")
+                      <td class="colalph"><a href="javascript:selectEmployee($(V_EMCOMP),$(V_EMFACL),$(V_EMEMPL),$(V_EMPECP),$(V_EMPEMP))" title="Select Employee">$(F_EmpName)</a></td>
+                      <td class="colalph">$(F_CoFac)</td>                                      	
+                      <td class="colnmbr">$(V_EMEMPL)</td>
+                      <td class="colcode">$(V_EMPECP)</td>
+                  %else
+                      <td class="colalph"><a href="javascript:selectEmployee($(V_EMPEMP),'$(F_EMRNAM)')" title="Select Employee">$(F_EmpName)</a></td>
+                  %endif
+                  <td class="colnmbr">$(V_EMPEMP)</td>
+                  <td class="colalph">$(V_EMLOC)</td>
+                  <td class="colalph">$(V_EMDEPT)</td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if (sec_05 == "N")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)progOptSecError.d2w/DISPLAY$(genericVarBase)&amp;page_title=@dtw_rurlescseq(page_title)">
+  %else
+      %INCLUDE "WebReg.icl"
+      %if (orderBy == "")
+          %if (specificHRCompany == "")
+              @DTW_ASSIGN(orderBy, "EMLNAMU,EMCOMP,EMFACL,EMEMPL")
+              @DTW_ASSIGN(orderByDisplay, "Last Name, First Name, Company/Facility, Employee Number")
+          %else
+              @DTW_ASSIGN(orderBy, "EMPECP,EMPEMP")
+              @DTW_ASSIGN(orderByDisplay, "H/R Employee, H/R Company")
+          %endif
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %elseif (chgActive == "Y" && inclActive == "Y")
+          @dtw_assign(inclActive, "")
+      %elseif (chgActive == "Y")
+          @dtw_assign(inclActive, "Y")
+      %elseif (chgTerminated == "Y" && inclTerminated == "Y")
+          @dtw_assign(inclTerminated, "")
+      %elseif (chgTerminated == "Y")
+          @dtw_assign(inclTerminated, "Y")
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %if (inclActive == "" && inclTerminated == "" && chgActive != "Y" && chgTerminated != "Y")
+          @dtw_assign(inclActive, activeEmpl)
+          @dtw_assign(inclTerminated, terminatedEmpl)
+      %endif
+      %INCLUDE "SearchReturn.icl"
+  %endif
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Name")
+      %if (orderBy == "EMLNAMU,EMFNAMU,EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderBy, "EMLNAMU DESC,EMFNAMU,EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderByDisplay, "Last Name (descending), First Name, Company/Facility, Employee Number")
+      %else
+          @DTW_ASSIGN(orderBy, "EMLNAMU,EMFNAMU,EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderByDisplay, "Last Name, First Name, Company/Facility, Employee Number")
+      %endif
+  %elseif (sequence == "CoFac")
+      %if (orderBy == "EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderBy, "EMCOMP DESC,EMFACL DESC,EMEMPL")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility (descending), Employee Number")
+      %else
+          @DTW_ASSIGN(orderBy, "EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility, Employee Number")
+      %endif
+  %elseif (sequence == "Number")
+      %if (orderBy == "EMEMPL,EMCOMP,EMFACL")
+          @DTW_ASSIGN(orderBy, "EMEMPL DESC,EMCOMP,EMFACL")
+          @DTW_ASSIGN(orderByDisplay, "Employee Number (descending), Company/Facility")
+      %else
+          @DTW_ASSIGN(orderBy, "EMEMPL,EMCOMP,EMFACL")
+          @DTW_ASSIGN(orderByDisplay, "Employee Number, Company/Facility")
+      %endif
+  %elseif (sequence == "HrCompany")
+      %if (orderBy == "EMPECP,EMPEMP")
+          @DTW_ASSIGN(orderBy, "EMPECP DESC,EMPEMP")
+          @DTW_ASSIGN(orderByDisplay, "H/R Company (descending), H/R Employee")
+      %else
+          @DTW_ASSIGN(orderBy, "EMPECP,EMPEMP")
+          @DTW_ASSIGN(orderByDisplay, "H/R Company, H/R Employee")
+      %endif
+  %elseif (sequence == "HrEmployee")
+      %if (orderBy == "EMPEMP,EMPECP")
+          @DTW_ASSIGN(orderBy, "EMPEMP DESC,EMPECP")
+          @DTW_ASSIGN(orderByDisplay, "H/R Employee (descending), H/R Company")
+      %else
+          @DTW_ASSIGN(orderBy, "EMPEMP,EMPECP")
+          @DTW_ASSIGN(orderByDisplay, "H/R Employee, H/R Company")
+      %endif
+  %elseif (sequence == "Loc")
+      %if (orderBy == "EMLOC,EMLNAMU,EMFNAMU,EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderBy, "EMLOC DESC,EMLNAMU,EMFNAMU,EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderByDisplay, "Location (descending), Last Name, First Name, Company/Facility, Employee Number")
+      %else
+          @DTW_ASSIGN(orderBy, "EMLOC,EMLNAMU,EMFNAMU,EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderByDisplay, "Location, Last Name, First Name, Company/Facility, Employee Number")
+      %endif
+  %elseif (sequence == "Dept")
+      %if (orderBy == "EMDEPT,EMLNAMU,EMFNAMU,EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderBy, "EMDEPT DESC,EMLNAMU,EMFNAMU,EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderByDisplay, "Department (descending), Last Name, First Name, Company/Facility, Employee Number")
+      %else
+          @DTW_ASSIGN(orderBy, "EMDEPT,EMLNAMU,EMFNAMU,EMCOMP,EMFACL,EMEMPL")
+          @DTW_ASSIGN(orderByDisplay, "Department, Last Name, First Name, Company/Facility, Employee Number")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script type="text/javascript">
+              %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (
+                      %if (specificHRCompany == "")
+                          editNum(document.Search.srchEmployee, 5, 0) &&
+                          editNum(document.Search.srchCo, 2, 0) &&
+                          editNum(document.Search.srchFac, 4, 0) &&
+                          editNum(document.Search.srchHRCo, 2, 0) &&
+                      %endif
+                      editNum(document.Search.srchHREmpl, 9, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Last Name</td>
+                              @dtw_assign(operNbr, "operLast")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchLast" size="18" maxlength="18"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">First Name</td>
+                              @dtw_assign(operNbr, "operFirst")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchFirst" size="18" maxlength="18"></td>
+                          </tr>
+
+                          %if (specificHRCompany == "")
+                              <tr><td class="dsphdr">Company</td>
+                                  @dtw_assign(operNbr, "operCo")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchCo" size="2" maxlength="2"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Facility</td>
+                                  @dtw_assign(operNbr, "operFac")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchFac" size="4" maxlength="4"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Employee Number</td>
+                                  @dtw_assign(operNbr, "operEmployee")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchEmployee" size="5" maxlength="5"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">H/R Company</td>
+                                  @dtw_assign(operNbr, "operHRCo")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchHRCo" size="2" maxlength="2"></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">H/R Employee</td>
+                              @dtw_assign(operNbr, "operHREmpl")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchHREmpl" size="5" maxlength="5"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Location</td>
+                              @dtw_assign(operNbr, "operLocation")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchLocation" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Department</td>
+                              @dtw_assign(operNbr, "operDept")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDept" size="5" maxlength="5"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchLast.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("EMLNAMU", "Last Name", $(srchLast), "U", operLast, "A")
+  @Build_WildCard ("EMFNAMU", "First Name", $(srchFirst), "U", operFirst, "A")
+  @Build_WildCard ("EMCOMP", "Company Number", $(srchCo), "", operCo, "N")
+  @Build_WildCard ("EMFACL", "Facility Number", $(srchFac), "", operFac, "N")
+  @Build_WildCard ("EMEMPL", "Employee Number", $(srchEmployee), "", operEmployee, "N")
+  @Build_WildCard ("EMPECP", "H/R Company", $(srchHRCo), "", operHRCo, "N")
+  @Build_WildCard ("EMPEMP", "H/R Employee", $(srchHREmpl), "", operHREmpl, "N")
+  @Build_WildCard ("EMLOC", "Location", $(srchLocation), "U", operLocation, "A")
+  @Build_WildCard ("EMDEPT", "Department", $(srchDept), "U", operDept, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

@@ -1,0 +1,330 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Program Option Security                                     *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Program Option Security"
+  d2wName                 = "ProgramOption.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;forUserProfile=@dtw_rurlescseq(forUserProfile)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HSYPSU"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "PROGRAMOPT")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(distinctSQL, "SOPGID", distinctSQL)
+                      @dtw_concat(stmtSQL, " Select distinct SOPGID, coalesce(PTDESC, ' ') as PTDESC, upper(coalesce(PTDESC, ' ')) as PTDESCU, ", stmtSQL)
+                      %if (forUserProfile != "")
+                          @dtw_concat(stmtSQL, "       case when coalesce(SPUSER,' ') = '$(forUserProfile)' THEN 'Y' ", stmtSQL)
+                          @dtw_concat(stmtSQL, "            ELSE ' ' END as USREXISTS ", stmtSQL)
+                      %else
+                          @dtw_concat(stmtSQL, "       case when coalesce(SPUSER,' ') = ' ' THEN ' ' ", stmtSQL)
+                          @dtw_concat(stmtSQL, "            ELSE 'Y' END as USREXISTS ", stmtSQL)
+                      %endif
+                      @dtw_concat(fileSQL, " SYPGMO left join SYILET on SOPGID=PTPGID", fileSQL)
+                      %if (forUserProfile != "")
+                          @dtw_concat(fileSQL, "        left join SYPGMS on SOPGID=SPPGID and SPUSER='$(forUserProfile)'", fileSQL)
+                      %else
+                          @dtw_concat(fileSQL, "        left join SYPGMS on SOPGID=SPPGID", fileSQL)
+                      %endif
+                      %if (wildCardSearch!="")
+                          @dtw_concat(selectSQL, "SOPGID>' ' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy)", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Program_Option_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Program_Option_Query (IN CHAR(64)    profileHandle,
+                                            CHAR(2)     dataBaseID,
+                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if (forUserProfile != "")
+                          <a href="$(homeURL)$(cGIPath)ProgramOptionByUser.d2w/REPORT$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      %if (forUserProfile != "")
+          @dtw_assign(existDesc, "Exists For<br>User Profile")
+          @RtvFldDesc("USUSER='$(forUserProfile)' ", "SYUSER", "USDESC", userName)
+          <table $(contentTable)>
+              @Format_Header("User Profile", $(forUserProfile), $(userName))
+          </table>
+      %else
+          @dtw_assign(existDesc, "Exists")
+      %endif
+
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Program Name</th>
+                      <th class="colhdr">Description</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchProg" size="10" maxlength="10">
+                          <input type="hidden" name="operProg" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchDesc" size="10" maxlength="10">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchProg.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("SOPGID", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Prog" title="Sequence By Program Name">Program<br>Name</a></th>
+              @OrderBy_Sort("PTDESCU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Desc" title="Sequence By Description, Program Name">Description</a></th>
+              @OrderBy_Sort("USREXISTS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Exists" title="Sequence By Exists, Program Name">$(existDesc)</a></th>
+              <th class="colhdr">HDS<br>Exists</th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("SPUSER='HDS' and SPPGID='$(V_SOPGID)'", "SYPGMS", "char(count(*))", hdsCnt)
+
+              <tr class="$(rowClass)">
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ProgramOptionMaintain.d2w/LOAD$(d2wVarBase)&amp;progName=@dtw_rurlescseq(V_SOPGID)&amp;progDesc=@dtw_rurlescseq(V_PTDESC)" title="Click here to maintain program option security for $(V_SOPGID)">$(V_SOPGID)</a></td>
+                  <td class="colalph">$(V_PTDESC)</td>
+                  <td class="colcode">$(V_USREXISTS)</td>
+                  <td class="colcode">
+                      %if (hdsCnt > "0")
+                          Y
+                      %else
+                          &nbsp;
+                      %endif
+                  </td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      %INCLUDE "WebReg.icl"
+      %if (formatToPrint != "")
+          @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+      %else
+          %if (orderBy == "")
+              @DTW_ASSIGN(orderBy, "SOPGID")
+              @DTW_ASSIGN(orderByDisplay, "Program Name")
+              @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+          %endif
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %endif
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Prog")
+      %if (orderBy == "SOPGID")
+          @DTW_ASSIGN(orderBy, "SOPGID DESC")
+          @DTW_ASSIGN(orderByDisplay, "Program Name (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "SOPGID")
+          @DTW_ASSIGN(orderByDisplay, "Program Name")
+      %endif
+  %elif (sequence == "Desc")
+      %if (orderBy == "PTDESCU,SOPGID")
+          @DTW_ASSIGN(orderBy, "PTDESCU DESC,SOPGID")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Program Name")
+      %else
+          @DTW_ASSIGN(orderBy, "PTDESCU,SOPGID")
+          @DTW_ASSIGN(orderByDisplay, "Description, Program Name")
+      %endif
+  %elif (sequence == "Exists")
+      %if (orderBy == "USREXISTS,SOPGID")
+          @DTW_ASSIGN(orderBy, "USREXISTS DESC,SOPGID")
+          @DTW_ASSIGN(orderByDisplay, "Exists (descending), Program Name")
+      %else
+          @DTW_ASSIGN(orderBy, "USREXISTS,SOPGID")
+          @DTW_ASSIGN(orderByDisplay, "Exists, Program Name")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "PROGRAMOPT")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Program Name</td>
+                              @dtw_assign(operNbr, "operProg")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchProg" type="text" size="10" maxlength="10"><a href="$(homeURL)$(cGIPath)ProgramOptionSeqSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchProg&amp;fldDesc=srchProgDesc&amp;fldSeq=srchProgSeq" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchProgDesc" type="text" size="35" disabled><input name="srchProgSeq" type="hidden"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchDesc" type="text" size="10" maxlength="20"></td>
+                          </tr>
+                          %INCLUDE "SearchBottom.icl"
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                      </form>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+  @Build_WildCard ("SOPGID", "Program Name", $(srchProg), "U", $(operProg), "A")
+  @Build_WildCard ("upper(PTDESC)", "Description", $(srchDesc), "U", $(operDesc), "A")
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

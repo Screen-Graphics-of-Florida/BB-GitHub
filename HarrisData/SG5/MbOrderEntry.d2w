@@ -1,0 +1,204 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Mobile Order Entry                                          *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Mobile Order Entry"
+  d2wName                 = "MbOrderEntry.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;customerCity=@dtw_rurlescseq(customerCity)&amp;customerState=@dtw_rurlescseq(customerState)&amp;customerWhs=@dtw_rurlescseq(customerWhs)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=@dtw_rurlescseq(lineNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)"
+  nextPrevVar             = "$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "10"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "MbHead.icl"
+          <script TYPE="text/javascript">
+              function confirmCancel() { return confirm("Confirm Cancel Of Order")}
+	       %INCLUDE "NumZero.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              function validate(chgForm) {
+                  if (document.Chg.upcNumber.value =="" ||
+                      document.Chg.orderQty.value =="")
+                     {alert("$(reqFieldError)"); return false;}
+                  if (editZero(document.Chg.upcNumber, 14, 0) &&
+                      editZero(document.Chg.orderQty, 9, 0))
+                  return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "MbBanner.icl"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %if (maintenanceCode == "A")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, "SELECT OEDTWK.*, Decimal(O1QORD,9,0) as QORD, digits(IMUPC) as IMUPC ", stmtSQL)
+                          @dtw_concat(fileSQL, " OEDTWK inner join HDIMST on O1ITEM=IMITEM ", fileSQL)
+                          @dtw_concat(selectSQL, "O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber) ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Mobile_Order_Entry(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "MbTrailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Mobile_Order_Entry (IN CHAR(64)    profileHandle,
+				           CHAR(2)     dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <tr>
+              <td class="hdrdata"><h2>$(customerName)</h2>$(customerCity), $(customerState)</td>
+              <td class="hdrdata">$(mbLogo)</td>
+          </tr>
+      </table>
+      <form class="formClass" NAME="Chg" METHOD=POST ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@upc@", "upcNumber")     @dtw_assign(Err_O1UDA1, fieldValue)
+                          @DecatErr_Field("@@qty@", "orderQty")      @dtw_assign(Err_O1QORD, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@upc@")   @dtw_assign(V_IMUPC, fieldValue)
+                      @Decat_Field("@@qty@")   @dtw_assign(V_QORD, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(V_QORD, "1")
+                          @dtw_assign(lineNumber, "0")
+                      %endif
+                      @dtw_assign(errFound, "")
+                  %endif
+
+                  %if (focusField=="" && maintenanceCode=="A")
+                      @dtw_assign(focusField, "upcNumber")
+                  %elif (focusField=="" && maintenanceCode=="C")
+                      @dtw_assign(focusField, "orderQty")
+                  %endif
+
+                  @SetTextOvr(Err_O1UDA1)
+    	           <tr><td class="dsphdr"><span $(textOvr)>UPC:</span></td>
+                      <td class="inputnmbr">
+                          %if (maintenanceCode == "A")
+                              <input name="upcNumber" type="text" value="$(V_IMUPC)" size="14" maxlength="14">
+                          %else
+                              <input name="upcNumber" type="hidden" value="$(V_IMUPC)">$(V_IMUPC)
+                          %endif
+                      </td>
+                  </tr>
+                  %if (Err_O1UDA1!="")
+                      @DspErrMsg(Err_O1UDA1)
+                  %endif
+
+                  @SetTextOvr(Err_O1QORD)
+    	           <tr><td class="dsphdr"><span $(textOvr)>QTY:</span></td>
+                      <td class="inputnmbr"><input name="orderQty" type="text" value="$(V_QORD)" size="14" maxlength="13"></td>
+                  </tr>
+                  %if (Err_O1QORD!="")
+                      @DspErrMsg(Err_O1QORD)
+                  %endif
+              %}
+          </table>
+          %if (focusField!="")
+              <script TYPE="text/javascript">
+                  document.Chg.$(focusField).focus();
+              </script>
+          %endif
+      </form>
+      @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1BLN#=0", "OEDTWK", " char(count(O1ITEM))", numberOfItems)
+      %if (maintenanceCode == "A")
+          <a href="javascript:check(document.Chg)">$(mbOrderAdd)</a>
+      %else
+          <a href="javascript:check(document.Chg)">$(mbOrderChg)</a>
+      %endif
+      %if (numberOfItems > "0")
+          <a href="$(homeURL)$(cGIPath)MbOrderReview.d2w/REPORT$(d2wVarBase)">$(mbOrderReview)</a>
+      %endif
+      <a onClick="return confirmCancel()" href="$(homeURL)$(cGIPath)MbOrderAccept.d2w/CANCEL$(d2wVarBase)">$(mbOrderCancel)</a>
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HOEATO_M.PGM %}
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(orderQty,@dtw_rstrip(orderQty))
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@whs@", customerWhs)
+  @Concat_Field("@@upc@", upcNumber)
+  @Concat_Field("@@qty@", orderQty)
+  @Concat_Field("@@orl#", lineNumber)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "" && maintenanceCode=="A")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/ENTRY$(d2wVarBase)">
+  %elif (errFound == "")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)MbOrderReview.d2w/REPORT$(d2wVarBase)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/ENTRY$(d2wVarBase)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}

@@ -1,0 +1,1086 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Order Entry Feature/Option Selection                        *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%if (catalogVarName != "")
+    %INCLUDE "$(catalogVarName)"
+    @dtw_assign(bannerName, "$(catBanner)")
+    @dtw_assign(trailerName, "$(catTrailer)")
+%else
+    @dtw_assign(bannerName, "banner.icl")
+    @dtw_assign(trailerName, "trailer.icl")
+%endif
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Product Configuration"
+  d2wName                 = "OrderEntryFeatureOption.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=@dtw_rurlescseq(lineNumber)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;vendCustItemsFound=@dtw_rurlescseq(vendCustItemsFound)&amp;reliefCode=@dtw_rurlescseq(reliefCode)&amp;addToOrder=@dtw_rurlescseq(addToOrder)&amp;price=@dtw_rurlescseq(price)&amp;orderTypeDesc=@dtw_rurlescseq(orderTypeDesc)&amp;catalogVarName=@dtw_rurlescseq(catalogVarName)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "99999"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "99999"
+  prtMaxRows              = "99999"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  errFound                = ""
+  imageExists             = ""
+  itemNumber              = ""
+  itemDesc                = ""
+  releaseNumber           = "000"
+  qtyOrdered              = "0"
+  qtyShipped              = "0"
+  price                   = "0"
+  qtyOpen                 = "0"
+  relQty                  = "0"
+  relErr                  = ""
+  maintCode               = ""
+  mandatory               = ""
+  allowMultiple           = ""
+  variableQty             = ""
+  linkVariable            = ""
+  floatLinks              = ""
+  popUpWin                = "Y"
+  V_SPPART                = ""
+  whsNumber               = ""
+  plantNumber             = ""
+  promptsExist            = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@orderControlNumber", "@dtw_rurlescseq(orderControlNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@lineNumber", "@dtw_rurlescseq(lineNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          @Get_Detail_Line(profileHandle, dataBaseID, orderControlNumber, lineNumber, dropShipNumber, itemNumber, itemDesc, qtyOrdered, qtyShippped, pricedByKit, qtyOpen, relQty, relErr, maintCode)
+          %if (displayQtyAvail != "N")
+              @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber)", "OEDTWK", "char(O1WH)", whsNumber)
+              @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber)", "OEDTWK", "char(O1PLT)", plantNumber)
+          %endif
+          <script TYPE="text/javascript">
+              var optionWin;
+              %INCLUDE "AJAXRequest.icl"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "NewWindowOpen.icl"
+              function submitForm(action) {document.Chg.action = action; return true;}
+
+              %if (formatToPrint != "Y" && specSheet !="Y")
+
+                // this function is executed only once after the document is loaded
+                // f = form name (ie. document.Chg)
+                  function addhandlers(f) {
+                      holdradio = new Object();                                            // create a new object to hold radio button's selection (this is needed to reverse rules)
+                      for (var fx = 0; fx < f.elements.length; fx++) {                     // get all the elements in the form
+                          var elem = f.elements[fx];
+                          if (elem.value == "1") {
+                             continue;
+                          }   
+                          var srcnv = elem.name + elem.value;                              // srcnv = the name of the object that contains an element's rules and/or segment prompt (these objects were created in the Rule_Query and Prompt_Query net.data functions)
+                          if (srcnv in window) {
+                              if (window[srcnv].rules) {                                   // if the element has rules,
+                                  elem.rules = window[srcnv].rules;                        //      create a new element property (rules) that references the element's rules object
+                              }
+                              if (window[srcnv].segp) {                                    // if the element has a segment prompt,
+                                  elem.segp = window[srcnv].segp;                          //      create a new element property (segp) that references the element's segp property
+                              }
+                              if (window[srcnv].segv) {                                    // if the element has a segment value,
+                                  elem.segv = window[srcnv].segv;                          //      create a new element property (segv) that references the element's segv property
+                              }
+                          }
+                          if (elem.type == "checkbox") {
+                              elem.onclick = applyc;                                       // assign the applyc function to all checkbox onclick events
+                          }
+                          if (elem.type == "radio") {
+                              elem.onclick = applyr;                                       // assign the applyr function to all radio onclick events
+                              if (elem.checked) {                                          // if the radio button is checked,
+                                  var ename = elem.name;                                   //     save it's name/value in holdradio
+                                  var evalu = elem.value;
+                                  holdradio[ename] = evalu;
+                                  if (elem.rules) {apply(f,elem.rules,(this.checked));}
+                              }
+                          }
+                      }
+                  }
+
+                // this function is executed when a checkbox is clicked
+                  function applyc() {
+                      if (!this.checked) {uncheck(this.form,this.name);}             // if unselected, set the SAMNCD to blank in HDOPWW
+                      if (this.checked) {applyrule(this.form,this.name,true,false);} // if selected, set the SAMNCD to 'S' in HDOPWW
+                      if (this.rules) {apply(this.form,this.rules,(!this.checked));} // if rules exist, apply/reverse them
+                      %if (V_CIUSMP == "Y")
+                          updateS();
+                      %endif
+                  }
+
+                // this function is executed when a radio button is clicked
+                  function applyr() {
+                      var prevn = this.name;                                                           // prevn = the HTML name attribute of the radio button
+                      if ((prevn in holdradio) && (holdradio[prevn] != null)) {                        // if a previous selection was saved in the holdradio object,
+                          var prevv = holdradio[prevn];
+                          var prevx = prevv - (prevn.substring(1,prevn.length)) - 1;
+                          uncheck(this.form,[prevn,prevx]);                                            //     set the SAMNCD to blank in HDOPWW
+                          var prevnv = this.name + prevv;
+                          if (prevnv in window) {
+                              if (window[prevnv].rules) {apply(this.form,window[prevnv].rules,true);}  //     if the previous selection has rules, reverse them
+                          }
+                      }
+                      holdradio[prevn] = this.value;                                                   // save the current selection's name/value in holdradio
+                      var thisx = this.value - (this.name.substring(1,this.name.length)) - 1;
+                      applyrule(this.form,[this.name,thisx],true,false);                               // set the SAMNCD to 'S' in HDOPWW
+                      if (this.rules) {apply(this.form,this.rules,(!this.checked));}                   // if the current selection has rules, apply them
+                      %if (V_CIUSMP == "Y")
+                          updateS();
+                      %endif
+                  }
+
+                // this function will apply or reverse rules
+                // f = form name (ie. document.Chg)
+                // rs = the element's rules
+                // rv = reverse indicator
+                  function apply(f,rs,rv) {
+                      for (var r = 0; r < rs.length; r++) {
+                          var sources = rs[r].sources;
+                          if ((!sources) || (addlsources(f,sources))) {
+                              if ("include" in rs[r]) {
+                                  var target = rs[r].include;
+                                  var targetn = target[0];
+                                  for ( var i = 0; i < f.length; i++ ) {
+                                    var type = f.elements[i].type;
+                                    var rname = f.elements[i].name;
+                                    if (type=="radio" && rname==targetn){
+                                      if (rv) {f[i].disabled = false;}
+                                      else    {f[i].disabled = true;}
+                                    }
+                                  }
+
+                                  if (rv) {
+                                      uncheck(f,target);
+                                  }
+                                  else {
+                                      var check = true;
+                                      var disable = false;
+                                      applyrule(f,target,check,disable);
+                                  }
+                              }
+                              if ("exclude" in rs[r]) {
+                                  var target = rs[r].exclude;
+                                  if (rv) {
+                                      enable(f,target);
+                                  }
+                                  else
+                                  {
+                                      var check = false;
+                                      var disable = true;
+                                      applyrule(f,target,check,disable);
+                                  }
+                              }
+                          }
+                      }
+                  }
+
+                  function addlsources(form,sources) {
+                      for (var s = 0; s < sources.length; s++) {
+                          var source = sources[s];
+                          if (typeof(source) == "object") {
+                              var sourcen = source[0];
+                              var sourcex = source[1];
+                              if (form[sourcen][sourcex].checked == false) {return false;}
+                          }
+                          else
+                          {
+                              if (form[source].checked == false) {return false;}
+                          }
+                      }
+                      return true;
+                  }
+
+                  function applyrule(f,t,c,d) {
+                      var set = "Set SAMNCD=";
+                      var v = "";
+                      if (c) {set += "'S', SASELC=' '";};
+                      if (d) {set += "' ', SASELC='Y'";};
+                      if (typeof(t) == "object") {
+                          var targetn = t[0];
+                          var targetx = t[1];
+                          f[targetn][targetx].checked = c;
+                          f[targetn][targetx].disabled = d;
+
+                          if (c) {
+                              if (f[targetn][targetx].segp) {
+                                  if (f[targetn][targetx].segv) {v = f[targetn][targetx].segv;};
+                                  v = prompt(f[targetn][targetx].segp, v);
+                                  if (v) {
+                                      set = set + ", SASCRV='" + v.substr(0,30) + "'";
+                                      f[targetn][targetx].segv = v;
+                                  }
+                              }
+                          }
+
+                          updateW(set,targetn,targetx+1);
+                      }
+                      else
+                      {
+                          f[t].checked = c;
+                          f[t].disabled = d;
+
+                          if (c) {
+                              if (f[t].segp) {
+                                  if (f[t].segv) {v = f[t].segv;};
+                                  v = prompt(f[t].segp, v);
+                                  if (v) {
+                                      set = set + ", SASCRV='" + v.substr(0,30) + "'";
+                                      f[t].segv = v;
+                                  }
+                              }
+                          }
+
+                          updateW(set,t);
+                      }
+                  }
+
+                  function enable(f,t) {
+                      var set = "Set SASELC=' ' ";
+                      if (typeof(t) == "object") {
+                          var targetn = t[0];
+                          var targetx = t[1];
+                          f[targetn][targetx].disabled = false;
+                          updateW(set,targetn,targetx+1);
+                      }
+                      else
+                      {
+                          f[t].disabled = false;
+                          updateW(set,t);
+                      }
+                  }
+
+                  function uncheck(f,t) {
+                      var set = "Set SAMNCD=' ' ";
+                      if (typeof(t) == "object") {
+                          var targetn = t[0];
+                          var targetx = t[1];
+                          f[targetn][targetx].checked = false;
+                          updateW(set,targetn,targetx+1);
+                      }
+                      else
+                      {
+                          f[t].checked = false;
+                          updateW(set,t);
+                      }
+                  }
+
+                  function updateW(s,t,x) {
+                      var stmt = "Update HDOPWW " + s + " Where SAOCTL=$(orderControlNumber) and SANAME='" + t + "'";
+                      if (arguments.length == 3) {stmt += " and SAINDX=" + x;};
+                      var url = "$(homeURL)$(cGIPath)OrderEntryFeatureOptionUpdate.d2w/UPDATEW?baseVar=@dtw_rurlescseq(baseVar)&orderControlNumber=$(orderControlNumber)&lineNumber=$(lineNumber)&itemNumber=$(itemNumber)&updateStmt=" + stmt + "&dummy=" + new Date().getTime();
+                      request.open("GET", url, false);
+                      request.send(null);
+                  }
+
+                  function updateS() {
+                      var stmt = "";
+                      var url = "$(homeURL)$(cGIPath)OrderEntryFeatureOptionUpdate.d2w/UPDATE?baseVar=@dtw_rurlescseq(baseVar)&orderControlNumber=$(orderControlNumber)&lineNumber=$(lineNumber)&itemNumber=$(itemNumber)&updateStmt=" + stmt + "&dummy=" + new Date().getTime();
+                      request.open("GET", url, true);
+                      request.onreadystatechange = updateSmartPart;
+                      request.send(null);
+                  }
+
+                  function updateSmartPart() {
+                    if (request.readyState == 4 && request.status == 200) {
+                       var response = request.responseText.split("|");
+                       test=response[0].substr(0,8);
+                       if (test=="NET.DATA"){
+                          response[1]="Invalid";
+                       }
+                       else{
+                           document.getElementById("smartPart").value = response[0];
+                       }
+                     }
+                  }
+
+                  function Rule(t,ie,a) {
+                      if (ie == "I") {this.include = t;}
+                      if (ie == "E") {this.exclude = t;}
+                      if (arguments.length == 3) {this.sources = a;}
+                  }
+
+              %endif
+
+
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(bannerName)"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+
+                      %if (formatToPrint == "")
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDOPWW ", fileSQL)
+                          @dtw_concat(selectSQL, "SAOCTL=$(orderControlNumber) and SAFEAT>' ' and SAOPTN=' ' ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By SARSEQ ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Link_Query(profileHandle, dataBaseID, stmtSQL)
+                      %endif
+
+                      %if (formatToPrint != "Y" && specSheet !="Y")
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select Concat(RWSRCN,RWSRCV) as SRCNV, RWRULE, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " RWTRGN, RWTRGV, RWTRGI, RWSRCA ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDRLXW ", fileSQL)
+                          @dtw_concat(selectSQL, "RWOCTL=$(orderControlNumber) and RWSRCN<>' ' and RWSRCV<>' '", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By SRCNV ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Rule_Query(profileHandle, dataBaseID, stmtSQL)
+                      %endif
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDOPWW ", fileSQL)
+                      @dtw_concat(selectSQL, "SAOCTL=$(orderControlNumber) ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @dtw_assign(stmtSQL, "")
+                      @dtw_concat(stmtSQL, " Select * From HDOPWW", stmtSQL)
+                      @dtw_concat(stmtSQL, " Where SAOCTL=$(orderControlNumber) ", stmtSQL)
+                      %if (formatToPrint == "Y" && specSheet !="Y")
+                          @dtw_concat(stmtSQL, " and SAMNCD='S' ", stmtSQL)
+                      %endif
+                      @dtw_concat(stmtSQL, " Order By SARSEQ ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %if (formatToPrint == "Y" && specSheet !="Y")
+                          @Feature_Item_Print(profileHandle, dataBaseID, stmtSQL)
+                      %else
+                          @Feature_Item_Query(profileHandle, dataBaseID, stmtSQL)
+                      %endif
+
+                      %if (formatToPrint != "Y" && specSheet !="Y" && V_CIUSMP == "Y" && promptsExist == "Y")
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select Concat(SANAME,SAVALU) as SRCNV, SASCRP, SASCRV ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDOPWW ", fileSQL)
+                          @dtw_concat(selectSQL, "SAOCTL=$(orderControlNumber) and SAOPTN<>' ' and SASCRP<>' '", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By SRCNV ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+
+                          @Prompt_Query(profileHandle, dataBaseID, stmtSQL)
+                      %endif
+
+                      %if (formatToPrint != "Y" && specSheet !="Y")
+                          <script TYPE="text/javascript">
+                              addhandlers(document.Chg);
+                          </script>
+                      %endif
+
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+              %INCLUDE "$(trailerName)"
+          <!-- End Of Trailer Code -->
+
+          %if (formatToPrint == "" && dspFloatMenu == "Y")
+              <script>
+                  if (!document.layers)
+                  document.write('<div id="divStayTop" style="position:absolute">')
+              </script>
+
+              <layer id="divStayTop">
+
+              <!--EDIT BELOW CODE TO YOUR OWN MENU-->
+              <table border="1" cellspacing="0" cellpadding="0" bgcolor="#FFFFEE">
+                <tr><td class="colhdr">Feature</td></tr>
+                <tr><td>$(floatLinks)</td></tr>
+              </table>
+              <!--END OF EDIT-->
+
+              </layer>
+
+              <script type="text/javascript">
+
+                  /*
+                  Floating Menu script-  Roy Whittle (http://www.javascript-fx.com/)
+                  Script featured on/available at http://www.dynamicdrive.com/
+                  This notice must stay intact for use
+                  */
+
+                  //Enter "frombottom" or "fromtop"
+                  var verticalpos="frombottom"
+
+                  if (!document.layers)
+                  document.write('</div>')
+
+                  function JSFX_FloatTopDiv()
+                  {
+                       startX = screen.width*.6;
+                       startY = screen.height*.6;
+                  	var ns = (navigator.appName.indexOf("Netscape") != -1);
+                  	var d = document;
+                  	function ml(id)
+                  	{
+                  		var el=d.getElementById?d.getElementById(id):d.all?d.all[id]:d.layers[id];
+                  		if(d.layers)el.style=el;
+                  		el.sP=function(x,y){this.style.left=x;this.style.top=y;};
+                  		el.x = startX;
+                  		if (verticalpos=="fromtop")
+                  		el.y = startY;
+                  		else{
+                  		el.y = ns ? pageYOffset + innerHeight : document.body.scrollTop + document.body.clientHeight;
+                  		el.y -= startY;
+                  		}
+                  		return el;
+                  	}
+                  	window.stayTopLeft=function()
+                  	{
+                  		if (verticalpos=="fromtop"){
+                  		var pY = ns ? pageYOffset : document.body.scrollTop;
+                  		ftlObj.y += (pY + startY - ftlObj.y)/8;
+                  		}
+                  		else{
+                  		var pY = ns ? pageYOffset + innerHeight : document.body.scrollTop + document.body.clientHeight;
+                  		ftlObj.y += (pY - startY - ftlObj.y)/8;
+                  		}
+                  		ftlObj.sP(ftlObj.x, ftlObj.y);
+                  		setTimeout("stayTopLeft()", 10);
+                  	}
+                  	ftlObj = ml("divStayTop");
+                  	stayTopLeft();
+                  }
+                  JSFX_FloatTopDiv();
+              </script>
+          %endif
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Link_Query (IN CHAR(64)    profileHandle,
+                                  CHAR(2)     dataBaseID,
+                                  CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @dtw_assign(linkVariable, "")
+      @dtw_assign(floatLinks, "<tr><td class=""colcode""><a href=""#top"">$(topOfFormImage)</a><a href=""#bottom"">$(botOfFormImage)</a>")
+      @dtw_concat(floatLinks, "<a href=""javascript:document.Chg.updatePrice.value='N';document.Chg.submit()"">$(acceptImageLrg)</a>", floatLinks)
+      @dtw_concat(floatLinks, "<a href=""javascript:document.Chg.updatePrice.value='Y';document.Chg.submit()"">$(orderUpdPriceImage)</a>", floatLinks)
+      @dtw_concat(floatLinks, "<a href=""$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)&amp;formatToPrint=Y&amp;specSheet=Y"" target=_blank>$(specSheetMed)</a>", floatLinks)
+      @dtw_concat(floatLinks, "<a href=""$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)&amp;formatToPrint=Y"" target=_blank>$(formatPrintMed)</a>", floatLinks)
+      @dtw_concat(floatLinks, "</td></tr><tr><td class=""dspalph"">", floatLinks)
+
+      %ROW{
+          @dtw_concat(floatLinks, "<a href=""#$(V_SAFEAT)"">$(V_SADESC)</a><br>", floatLinks)
+          @dtw_concat(linkVariable, "<tr><td class=""dspalph""><a href=""#$(V_SAFEAT)"">$(V_SADESC)</a>", linkVariable)
+          %if (V_SAMAND == "Y")
+              @dtw_concat(linkVariable, "$(reqFieldChar)", linkVariable)
+          %endif
+          @dtw_concat(linkVariable, "</td>", linkVariable)
+          @RtvFldDesc("SAOCTL=$(V_SAOCTL) and SAFEAT='$(V_SAFEAT)' and SAMNCD='S'", "HDOPWW", " char(count(SAOPTN))", optionCount)
+          %if (optionCount > "0")
+              @dtw_concat(linkVariable, "<td align=""center"">$(selectedOptionImage)</td>", linkVariable)
+          %elif (V_SAER# == "HHD0640")
+              @dtw_concat(linkVariable, "<td align=""center"">$(notselectedImage)</td>", linkVariable)
+          %else
+              @dtw_concat(linkVariable, "<td>&nbsp;</td>", linkVariable)
+          %endif
+          %if (V_SAER# != "" && V_SAER# != "HHD0640")
+              @Ret_Error_Msg(profileHandle, dataBaseID, $(V_SAER#), errorMessage)
+              @dtw_concat(linkVariable, "<td class=""error"">$(errorMessage)</td>", linkVariable)
+          %elif (optionCount > "0" && V_CIUSMP == "Y")
+              @dtw_assign(optionError, "")
+              @RtvFldDesc("SAOCTL=$(V_SAOCTL) and SAFEAT='$(V_SAFEAT)' and SAMNCD='S' and SAER#<>' '", "HDOPWW", " SAER#", optionError)
+              %if (optionError != "")
+                  @Ret_Error_Msg(profileHandle, dataBaseID, optionError, errorMessage)
+                  @dtw_concat(linkVariable, "<td class=""error"">$(errorMessage)</td>", linkVariable)
+              %endif
+          %endif
+          @dtw_concat(linkVariable, "</tr>", linkVariable)
+      %}
+  %}
+%}
+
+%FUNCTION(dtw_sql) Rule_Query (IN CHAR(64)    profileHandle,
+                                  CHAR(2)     dataBaseID,
+                                  CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      <script TYPE="text/javascript">
+      @dtw_assign(saveSource, "")
+
+      %ROW{
+          %if (saveSource != V_SRCNV)
+              $(V_SRCNV) = new Object();
+              $(V_SRCNV).rules = new Array();
+              @dtw_assign(saveSource, V_SRCNV)
+              @dtw_assign(x, "0")
+          %endif
+          @dtw_assign(additionals, "")
+          @dtw_assign(target, "")
+          @dtw_assign(s, "1")
+          @dtw_assign(l, "6")
+          %if (@dtw_rlength(@dtw_rstrip(V_RWSRCA)) > "0")
+              @dtw_concat(additionals, "[", additionals)
+          %endif
+          %while (s < @dtw_rlength(@dtw_rstrip(V_RWSRCA))) {
+              %if (s > "1")
+                   @dtw_concat(additionals, ",", additionals)
+              %endif
+              @dtw_assign(index, "0")
+              @dtw_assign(name, @dtw_rsubstr(V_RWSRCA,s,l))
+              @dtw_add(s,l,s)
+              @dtw_assign(l, @dtw_rsubtract(@dtw_rpos("}{",V_RWSRCA,s),s))
+              %if (l > "0")
+                  @dtw_assign(index, @dtw_rsubstr(V_RWSRCA,s,l))
+              %endif
+              %if (index > "0")
+                   @dtw_concat(additionals, "[", additionals)
+              %endif
+              @dtw_concat(additionals, "'$(name)'", additionals)
+              %if (index > "0")
+                   @dtw_concat(additionals, ",@dtw_rsubtract($(index),"1")]", additionals)
+              %endif
+              @dtw_add(s,@dtw_radd(l,"2"),s)
+              @dtw_assign(l, "6")
+          %}
+          %if (additionals != "")
+              @dtw_concat(additionals, "]", additionals)
+          %endif
+          %if (V_RWTRGI > "0")
+               @dtw_concat(target, "[", target)
+          %endif
+          @dtw_concat(target, "'$(V_RWTRGN)'", target)
+          %if (V_RWTRGI > "0")
+               @dtw_concat(target, ",@dtw_rsubtract($(V_RWTRGI),"1")]", target)
+          %endif
+          %if (additionals == "")
+              $(V_SRCNV).rules[$(x)] = new Rule($(target),'$(V_RWRULE)');
+          %else
+              $(V_SRCNV).rules[$(x)] = new Rule($(target),'$(V_RWRULE)',$(additionals));
+          %endif
+          @dtw_add(x,"1",x)
+      %}
+      </script>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Prompt_Query (IN CHAR(64)    profileHandle,
+                                    CHAR(2)     dataBaseID,
+                                    CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{ 
+
+      <script TYPE="text/javascript">
+      @dtw_assign(saveSource, "")
+
+      %ROW{ 
+          %if (saveSource != V_SRCNV)
+              if (!("$(V_SRCNV)" in window)) {$(V_SRCNV) = new Object();}
+              @dtw_assign(saveSource, V_SRCNV)
+          %endif
+          $(V_SRCNV).segp = '$(V_SASCRP)';
+          %if (V_SASCRV != "")
+              $(V_SRCNV).segv = '$(V_SASCRV)';
+          %endif
+      %}
+      </script>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Feature_Item_Query (IN  CHAR(64)    profileHandle,
+                                           CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="top"></a>
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint == "")
+                  <td class="toolbar">
+                      <a href="javascript:document.Chg.updatePrice.value='N';document.Chg.submit()">$(acceptImageLrg)</a>
+                      <a href="javascript:document.Chg.updatePrice.value='Y';document.Chg.submit()">$(orderUpdPriceImage)</a>
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)&amp;formatToPrint=Y&amp;specSheet=Y" target=_blank>$(specSheetMed)</a>
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)&amp;formatToPrint=Y" target=_blank>$(formatPrintMed)</a>
+                      @dtw_assign(medIcon, "Y")
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      $(hrTagAttr)
+
+      <table $(contentTable)>
+          <tr>
+              <td class="colhdr">Item Number</td>
+              <td class="colhdr">Description</td>
+              <td class="colhdr">Quantity</td>
+              %if (specSheet !="Y")
+                  <td class="colhdr">Price</td>
+                  <td class="colhdr">Extended Price</td>
+              %elif (specSheet =="Y")
+                  <td colspan="2">&nbsp; %INCLUDE "RequiredField.icl"</td>
+              %endif
+          </tr>
+          %INCLUDE "SetRowClass.icl"
+          <tr class="$(rowClass)">
+              <td class="colalph">$(itemNumber)</td>		
+              <td class="colalph">$(itemDesc)</td>		
+              @Format_Nbr(qtyOrdered, F_qtyOrdered, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              %if (specSheet !="Y")
+                  <td class="colnmbr">$(F_qtyOrdered)</td>
+                  @Format_Nbr(price, F_price, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                  <td class="colnmbr">$(F_price)</td>
+                  @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber)", "OEDTWK", "O1ORUF", O1ORUF)
+                  @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(qtyOrdered, price), O1ORUF)", ExtendedPrice, "2", $(amtEditCode), "Y", "$", "")
+                  <td class="colnmbr">$(ExtendedPrice)</td>
+              %else
+                  <td class="colnmbr"></td>
+              %endif
+              %if (formatToPrint == "" && catalogVarName == "")
+                  @RtvFldDesc("O4OCTL=$(orderControlNumber) and O4ORL#=$(lineNumber)", "OECMWK", "char(count(*))", cmtCount)
+    		   %if (cmtCount > "0")
+                      <td class="colicon"><a href="javascript:document.Chg.updateComments.value='Y';document.Chg.submit()">$(commentExistImage)</a></td>
+                  %else
+                      <td class="colicon"><a href="javascript:document.Chg.updateComments.value='Y';document.Chg.submit()">$(commentImage)</a></td>
+                  %endif
+              %endif
+          </tr>
+      </table>
+      %if (V_CIUSMP == "Y" && specSheet !="Y")
+          <table $(contentTable)>
+             <tr><td><div style="width: 600px; overflow: scroll; overflow-y: hidden; padding-bottom:1px;"><input name="smartPart" id="smartPart" value="@dtw_rqhtmlencode($(V_SPPART))" size="1000" type="text" readonly style="font-size: 10pt; font-weight: bold; background-color:#FFFFEE;"></div></td></tr>
+          </table>
+      %endif
+      %if (formatToPrint == "")
+          <table $(contentTable)>
+              <tr>
+                  <td class="colhdr">Feature</td>
+                  <td class="colhdr">Selected</td>
+                  <td colspan="2">&nbsp; %INCLUDE "RequiredField.icl"</td>
+              </tr>
+              $(linkVariable)
+          </table>
+      %endif
+
+      <form class="formClass" Name="Chg" METHOD=POST action="$(homeURL)$(cGIPath)$(d2wName)/ACCEPT$(d2wVarBase)">
+
+      @dtw_assign(saveFeature, "")
+      @dtw_assign(promptsExist, "")
+		
+      %ROW{
+          %if (V_SAOPTN != "" && V_SASCRP != "")
+              @dtw_assign(promptsExist, "Y")
+          %endif
+          %if (saveFeature != "" && saveFeature != V_SAFEAT)
+              %if (saveBiLevel != "" && V_SABLVL != "")
+                  </td></tr>
+              %endif
+              </table>
+              %if (saveBiLevel != "")
+                  </fieldset>
+              %endif
+
+              %if (allowMultiple != "Y" && optionCount > "1" && mandatory != "Y" && specSheet !="Y")
+                  <tr><td class="colalph"><input type="radio" name="S$(featureSeq)" value="1">None</td></tr>
+              %endif
+
+              </table>
+              </fieldset>
+          %endif
+          %if (saveFeature != V_SAFEAT)
+              @dtw_assign(mandatory, V_SAMAND)
+              %if (mandatory == "Y")
+                  @dtw_assign(reqField, $(reqFieldChar))
+              %else
+                  @dtw_assign(reqField, "")
+              %endif
+              @dtw_assign(allowMultiple, V_SAMULT)
+              @dtw_assign(variableQty, V_SAVARQ)
+              @dtw_assign(saveFeature, V_SAFEAT)
+              @dtw_assign(featureSeq, V_SARSEQ)
+              %while(@dtw_rlength(featureSeq) != "5") {@dtw_insert("0", featureSeq, featureSeq)%}
+              <a name="$(V_SAFEAT)"></a>
+              <fieldset class="legendBodyFO">
+              <legend class="legendTitleFO">$(V_SADESC) $(reqField)</legend>
+              <table $(contentTable)>
+                  <colgroup>
+                      <col width="90%">
+                      <col width="10%">
+                  %if (formatToPrint == "")
+                      <tr>
+                          %if (V_SAER# != "")
+                              @Ret_Error_Msg(profileHandle, dataBaseID, $(V_SAER#), errorMessage)
+                              <td class="error"  colspan=8>$(errorMessage)</td>
+                          %else
+                              <td>&nbsp;</td>
+                          %endif
+                          <td><a href="#top">$(topOfFormImage)</a> <a href="#bottom">$(botOfFormImage)</a></td>
+                      </tr>
+                  %endif
+                  %if (allowMultiple != "Y")
+                      @RtvFldDesc("SAOCTL=$(V_SAOCTL) and SAFEAT='$(V_SAFEAT)' and SAOPTN<>' ' ", "HDOPWW", " char(count(SAOPTN))", optionCount)
+                  %endif
+                  @dtw_assign(saveBiLevel, "beginNewLevel")
+                  <tr><td>
+          %else
+              %if (saveBiLevel != V_SABLVL)
+                  %if (saveBiLevel != "beginNewLevel")
+                      </table>
+                      %if (saveBiLevel != "")
+                          </fieldset>
+                      %endif
+                  %endif
+                  @dtw_assign(saveBiLevel, V_SABLVL)
+                  %if (saveBiLevel != "")
+                      <fieldset class="legendSubBodyFO">
+                          <legend class="legendSubTitleFO">$(V_SABLDS)</legend>
+                  %endif
+                  @RtvFldDesc("SAOCTL=$(V_SAOCTL) and SAFEAT='$(V_SAFEAT)' and SABLVL='$(V_SABLVL)' and SAOPTN<>' ' and SAXCHG>0", "HDOPWW", " char(count(SAXCHG))", xchgItems)
+                  <table $(contentTable)>
+                      <colgroup>
+                          <col width="30%">
+                          <col width="15%">
+                          <col width="15%">
+                          <col width="15%">
+                          <col width="10%">
+                          <col width="10%">
+                      <tr><td class="colalph">Select</td>
+                          %if (xchgItems > "0")
+                              <td class="colnmbr">Extra Charge</td>
+                          %else
+                              <td>&nbsp;</td>
+                          %endif
+                          %if (variableQty == "Y")
+                              <td class="colnmbr">Quantity</td>
+                          %endif
+                          %if (displayQtyAvail == "Y" || displayQtyAvail == "Z")
+                              <td class="colnmbr">Quantity<br>Available</td>
+                          %endif
+                          <td>&nbsp;</td>
+                      </tr>
+                      <tr><td>
+              %endif
+
+              <tr>
+                  @Check_Item_Comments(profileHandle, dataBaseID, V_SAOPTN, "", customerNumber, "WEB", headerTrailer, itemComments)
+                  @dtw_assign(itemImage, "$(V_SAOPTN)$(itemImageExt)")
+                  @dtwf_exists(itemImage, imageExists)
+                  %if (V_SAMNCD == "S" && specSheet !="Y")
+                      @dtw_assign(optionChecked, "CHECKED")
+                  %else
+                      @dtw_assign(optionChecked, "")
+                  %endif
+                  %if (V_SAVCAT == "Y")
+                      @dtw_assign(optionClass, "colvcat")
+                  %else
+                      @dtw_assign(optionClass, "colalph")
+                  %endif
+                  %if (V_SASELC == "Y")
+                      @dtw_assign(optionDisabled, "disabled")
+                  %else
+                      @dtw_assign(optionDisabled, "")
+                  %endif
+                  %if (V_SADSPC != "")
+                      @dtw_concat("$(V_SADSPC) &nbsp;", V_SADESC, V_SADESC)
+                  %endif
+                  %while(@dtw_rlength(V_SARSEQ) != "5") {@dtw_insert("0", V_SARSEQ, V_SARSEQ)%}
+                  <td class="$(optionClass)">
+                      %if (allowMultiple == "Y")
+                          <input type="checkbox" name="S$(V_SARSEQ)" value="S" $(optionChecked) $(optionDisabled)><span title="Item $(V_SAOPTN)">$(V_SADESC)</span>
+                      %elif (allowMultiple != "Y" && optionCount == "1")
+                          <input type="checkbox" name="S$(featureSeq)" value="$(V_SARSEQ)" $(optionChecked) $(optionDisabled)><span title="Item $(V_SAOPTN)">$(V_SADESC)</span>
+                      %else
+                          <input type="radio" name="S$(featureSeq)" value="$(V_SARSEQ)" $(optionChecked) $(optionDisabled)><span title="Item $(V_SAOPTN)">$(V_SADESC)</span>
+                      %endif
+                  </td>
+                  @Format_Nbr(V_SAXCHG, F_SAXCHG, "5", "4", "Y", "$", "")
+                  <td class="colnmbr">$(F_SAXCHG)</td>
+                  %if (variableQty == "Y")
+                      <td class="colnmbr"><input name="Q$(V_SARSEQ)" type="text" value="$(V_SAOQTY)" size="8" maxlength="14"></td>
+                  %endif
+
+                  %if ((displayQtyAvail == "Y" || displayQtyAvail == "Z") && V_SAVCAT != "Y")
+                      @dtw_assign(qtyAvailable, "0")
+                      @Get_Qty_Avail(profileHandle, dataBaseID, V_SAOPTN, whsNumber, qtyAvailable)
+                      %if (displayQtyAvail == "Z" && qtyAvailable < "0")
+                          @dtw_assign(qtyAvailable, "0")
+                      %endif
+                      @Format_Nbr(qtyAvailable, F_qtyAvailable, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)OrderEntryItemWhsQty.d2w/REPORT$(genericVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;itemNumber=@dtw_rurlescseq(V_SAOPTN)&amp;warehouseNumber=@dtw_rurlescseq(whsNumber)&amp;atpPlant=@dtw_rurlescseq(plantNumber)&amp;inquiryOnly=Y" onclick="$(inquiryWinVar)" title="View Item/Whs Quantities">$(F_qtyAvailable)</a></td>
+                  %elif (displayQtyAvail == "Y" || displayQtyAvail == "Z")
+                      <td>&nbsp;</td>
+                  %endif
+
+                  <td class="colicon">
+                      @dtw_assign(commentVar, "$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(V_SAOPTN)&amp;vendCustItemNumber=&amp;itemDesc=@dtw_rurlescseq(V_SADESC)&amp;vendCustNumber=@dtw_rurlescseq(customerNumber)&amp;vendCustFlag=C")
+                      %if (itemComments == "Y" && formatToPrint == "")
+                          <a href="$(homeURL)$(cGIPath)ItemComments.d2w/REPORT$(commentVar)" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                      %elif (itemComments != "" && formatToPrint == "")
+                          <a href="$(homeURL)$(cGIPath)VendCustItemComments.d2w/REPORT$(commentVar)" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                      %endif
+                      %if (imageExists == "Y" && formatToPrint == "")
+                          <a href="$(homeURL)$(cGIPath)ImageDisplay.d2w/DISPLAY$(genericVarBase)&amp;imageDisplayPath=$(homeURL)$(itemImage)&amp;imageDesc=@dtw_rurlescseq(V_SADESC)" onclick="$(itemImageWinVar)">$(foundImage)</a>
+                      %endif
+                  </td>
+              </tr>
+              %if (V_SAER# != "")
+                  @Ret_Error_Msg(profileHandle, dataBaseID, $(V_SAER#), errorMessage)
+                  <tr><td class="error" colspan=8>$(errorMessage)</td></tr>
+              %endif
+          %endif
+      %}
+          <tr>
+              <td><input type="hidden" name="rows" value="$(sql_Record_Count)">
+                  <input type="hidden" name="updatePrice" value="N">
+                  <input type="hidden" name="updateComments" value="N">
+              </td>
+          </tr>
+      </table>
+      %if (saveBiLevel != "")
+          </fieldset>
+      %endif
+      %if (saveFeature != "" && allowMultiple != "Y" && optionCount > "1" && mandatory != "Y" && specSheet !="Y")
+          <tr><td class="colalph"><input type="radio" name="S$(featureSeq)" value="1">None</td></tr>
+      %endif
+      </table>
+      </fieldset>
+      %if (formatToPrint == "")
+          <a href="javascript:document.Chg.updatePrice.value='N';document.Chg.submit()">$(acceptImageLrg)</a>
+          <a href="javascript:document.Chg.updatePrice.value='Y';document.Chg.submit()">$(orderUpdPriceImage)</a>
+          <a href="$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)&amp;formatToPrint=Y&amp;specSheet=Y" target=_blank>$(specSheetMed)</a>
+          <a href="$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)&amp;formatToPrint=Y" target=_blank>$(formatPrintMed)</a>
+          @dtw_assign(medIcon, "Y")
+          %INCLUDE "HelpPage.icl"
+      %endif
+      </form>
+  <a name="bottom"></a>
+  $(hrTagAttr)
+  %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_sql) Feature_Item_Print (IN  CHAR(64)    profileHandle,
+                                           CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td></tr>
+          <tr><td><h2>$(customerName)</h2></td></tr>
+      </table>
+
+      $(hrTagAttr)
+
+      <table $(contentTable)>
+          <tr>
+              <td class="colhdr">Item Number</td>
+              <td class="colhdr">Description</td>
+              <td class="colhdr">Quantity</td>
+              <td class="colhdr">Price</td>
+              <td class="colhdr">Extended Price</td>
+          </tr>
+          %INCLUDE "SetRowClass.icl"
+          %if (V_CIUSMP == "Y")
+              @dtw_assign(UpdSP, "")
+              @Features_Options_Update(orderControlNumber, lineNumber, UpdSP, V_CIUVCT, V_SPPART)
+              %if (V_SPPART != "")
+                  @dtw_assign(itemDesc, V_SPPART)
+              %endif
+          %endif
+          <tr class="$(rowClass)">
+              <td class="colalph">$(itemNumber)</td>		
+              <td class="colalph">$(itemDesc)</td>		
+              @Format_Nbr(qtyOrdered, F_qtyOrdered, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              <td class="colnmbr">$(F_qtyOrdered)</td>
+              @Format_Nbr(price, F_price, $(prcNbrDec), $(amtEditCode), "", "", "")
+              <td class="colnmbr">$(F_price)</td>
+              @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber)", "OEDTWK", "O1ORUF", O1ORUF)
+              @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(qtyOrdered, price), O1ORUF)", ExtendedPrice, "2", $(amtEditCode), "Y", "$", "")
+              <td class="colnmbr">$(ExtendedPrice)</td>
+          </tr>
+      </table>
+      <table $(contentTable)>
+          <tr>
+              <td class="colhdr">Feature</td>
+              <td class="colhdr">Option</td>
+              <td class="colhdr">Description</td>
+              <td class="colhdr">Quantity</td>
+              <td class="colhdr">Extra Charge</td>
+          </tr>
+          @dtw_assign(saveFeature, "")
+		
+          %ROW{
+              %if (saveFeature != V_SAFEAT)
+                  %INCLUDE "SetRowClass.icl"
+                  @dtw_assign(saveFeature, V_SAFEAT)
+                  @dtw_assign(newFeature, V_SAFEAT)
+              %else
+                  @dtw_assign(newFeature, "")
+              %endif
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(newFeature)</td>
+                  <td class="colalph">$(V_SAOPTN)</td>
+                  <td class="colalph">$(V_SADESC)</td>
+                  @Format_Nbr(V_SAOQTY, F_SAOQTY, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  <td class="colnmbr">$(F_SAOQTY)</td>
+                  @Format_Nbr(V_SAXCHG, F_SAXCHG, $(prcNbrDec), $(amtEditCode), "", "$", "")
+                  <td class="colnmbr">$(F_SAXCHG)</td>
+              </tr>
+          %}
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(DTW_directcall) Get_Detail_Line (INOUT CHAR(64)  profileHandle,
+                                                 CHAR(2)   dataBaseID,
+                                                 DEC(8,0)  orderControlNumber,
+                                                 DEC(3,0)  lineNumber,
+                                                 DEC(7,0)  dropShipNumber,
+                                                 CHAR(15)  itemNumber,
+                                                 CHAR(30)  itemDesc,
+                                                 DEC(13,4) qtyOrdered,
+                                                 DEC(13,4) qtyShipped,
+                                                 CHAR(1)   pricedByKit,
+                                                 DEC(13,4) qtyOpen,
+                                                 DEC(13,4) relQty,
+                                                 CHAR(1)   relErr,
+                                                 CHAR(1)   maintCode)
+{%EXEC {HOEDWR_W.PGM %}
+%}
+
+%FUNCTION(dtw_directcall) Update_Feature_Option (INOUT CHAR(64)    profileHandle,
+                                                 INOUT CHAR(32000) edtVar,
+                                                 INOUT CHAR(32000) errVar,
+                                                 INOUT CHAR(1)     errFound,
+                                                 INOUT DEC(13,5)   price)
+{%EXEC {HHDFOP_W.PGM %}
+%}
+
+%HTML(ACCEPT) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@xhnd", profileHandle)
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@orl#", lineNumber)
+  @Concat_Field("@@ucat", productCfgOptionDesc)
+  %if (updatePrice == "Y")
+      @Concat_Field("@@mncd", "W")
+  %else
+      @Concat_Field("@@mncd", "U")
+  %endif
+  @dtw_assign(x, "10000")
+  @dtw_assign(y, "1")
+  %while(y <= rows) {
+      @dtw_assign(S, "S$(x)")
+      @dtw_assign(Q, "Q$(x)")
+      @dtw_add(x, "1", x)
+      @dtw_add(y, "1", y)
+      @Concat_Field("$(S)", "$($(S))")
+      @Concat_Field("$(Q)", "$($(Q))")
+  %}
+
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Update_Feature_Option(profileHandle, edtVar, errVar, errFound, price)
+
+  @Decat_Field("@@mfgr") @dtw_assign(mfgReview, fieldValue)
+  %if (mfgReview != "")
+      %if (prtActivity == "N")
+          @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "char(H1ORD#)", orderNumber)
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Update WKVMOC Set MOPRT=' ' ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where MOOCTL=$(orderControlNumber) and MOORD#=$(orderNumber) and MOORL#=$(lineNumber) @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)      
+      %endif
+  %endif    
+  %if (errFound == "" && updateComments == "Y")
+      @dtw_assign(fromD2W, "$(d2wName)/INPUT")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryComments.d2w/COMMENTS$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDesc)&amp;lineNumber=@dtw_rurlescseq(lineNumber)&amp;fromD2W=@dtw_rurlescseq(fromD2W)">
+  %elif (updatePrice == "Y" || errFound == "Y")
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)">
+  %else
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Update OEORVW Set RVMPTY=$(priority) ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where RVOCTL=$(orderControlNumber) @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %if (V_CIUSMP == "Y")
+          @dtw_assign(UpdSP, "Y")
+          @Features_Options_Update(orderControlNumber, lineNumber, UpdSP, V_CIUVCT, V_SPPART)
+      %endif
+
+      @DTW_ASSIGN(updateTotal, "Y")
+      @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+      <script TYPE="text/javascript">
+          opener.location.href=opener.location.href;
+          window.close()
+      </script>
+  %endif
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@orl#", lineNumber)
+  @Concat_Field("@@mncd", maintenanceCode)
+  @Concat_Field("@@ucat", productCfgOptionDesc)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Update_Feature_Option(profileHandle, edtVar, errVar, errFound, price)
+
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)&amp;updateRowNum=@dtw_rurlescseq(updateRowNum)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+%}
+
+%HTML(DISPLAY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (updateRowNum > "0")
+      @dtw_assign(START_ROW_NUM,  "$(updateRowNum)")
+  %endif
+  %if (V_CIUSMP == "Y")
+      @dtw_assign(UpdSP, "")
+      @Features_Options_Update(orderControlNumber, lineNumber, UpdSP, V_CIUVCT, V_SPPART)
+  %endif
+  @Set_SQL(stmtSQL)
+%}

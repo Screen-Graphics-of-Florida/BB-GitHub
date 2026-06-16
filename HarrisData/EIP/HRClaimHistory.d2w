@@ -1,0 +1,147 @@
+%{
+*********************************************************************
+* Copr 1979 2002 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Display Claim Payment History                               *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Claim Payment History"
+  d2wName                 = "HRClaimHistory.d2w"
+  d2wVarBase              = "$(genericVarBase)$(employeeVarBase)&amp;backHome=@dtw_rurlescseq(backHome)"
+  programName             = "HPRCHI"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "99"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+  @dtw_replace(workURL, "@@benefitCode", "@dtw_rurlescseq(benefitCode)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@planCode", "@dtw_rurlescseq(planCode)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@claimNumber", "@dtw_rurlescseq(claimNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "EmplUV.icl"
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "$(searchBanner)"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "Select EMRNAM, EMCOMP, EMFACL, EMPEMP, EHCKDT, EHCKNO, SHREC,  ", stmtSQL)
+                          @dtw_concat(stmtSQL, "       SHCLAM, SHCOVR, SHPLAN, SHEARN  ", stmtSQL)
+                          @dtw_concat(fileSQL, " PRCKHS inner join PRDTHS on EHPREF=SHPREF ", fileSQL)
+                          @dtw_concat(fileSQL, "        inner join HREMPL on SHCOMP=EMCOMP and SHFACL=EMFACL and SHEMPL=EMEMPL ", fileSQL)
+                          @dtw_concat(selectSQL, " EMCOMP=$(prCompany) and EMFACL=$(prFacility) and EMPEMP=$(hrEmployee) and SHCOVR='$(benefitCode)' and SHPLAN='$(planCode)' and SHCLAM='$(claimNumber)'", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @Claim_History(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "$(searchTrailer)"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+%FUNCTION(dtw_sql) Claim_History (IN  CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+      <table $(contentTable)>
+          <tr><td><h2>$(F_EmpName)</h2></td></tr>
+      </table>
+      $(hrTagAttr)
+      <table $(contentTable)>
+          <tr><td class="dsphdr">Benefit Code</td>
+              <td class="dspalph">$(benefitCode)</td></tr>
+          <tr><td class="dsphdr">Plan Code</td>
+              <td class="dspalph">$(planCode)</td></tr>
+          <tr><td class="dsphdr">Claim Number</td>
+              <td class="dspalph">$(claimNumber)</td></tr>
+      </table>
+      $(hrTagAttr)
+
+      <table $(contentTable)>
+          <tr>
+              <th class="colhdr">Check Type</th>
+              <th class="colhdr">Check Date</th>
+              <th class="colhdr">Check Number</th>
+              <th class="colhdr">Reimbursement<br>Amount</th>
+          </tr>
+
+      %INCLUDE "NoRecordsFound.icl"
+      %ROW{
+
+          @Format_Date(V_EHCKDT, "D", F_EHCKDT)
+          %INCLUDE "SetRowClass.icl"
+
+          %if (V_SHREC == "H")
+              @dtw_assign(checkType, "Regular")
+          %elif (V_SHREC == "M")
+              @dtw_assign(checkType, "Hand Written")
+          %elif (V_SHREC == "V")
+              @dtw_assign(checkType, "Void")
+          %endif
+	   <tr class="$(rowClass)">
+              <td class="colalph">$(checkType)</td>
+	       <td class="coldate">$(F_EHCKDT)</td>
+	       <td class="colcode">$(V_EHCKNO)</td>
+	       <td class="colnmbr">$(V_SHEARN)</td>
+	   </tr>
+      %}
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      @Set_SQL(stmtSQL)
+  %endif
+%}

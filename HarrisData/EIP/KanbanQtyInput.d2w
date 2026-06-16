@@ -1,0 +1,146 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Kanban Quantity Input                                       *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "BrowserType.icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Kanban Adjustments"
+  d2wName                 = "KanbanQtyInput.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(fromPlant)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;plantName=@dtw_rurlescseq(plantName)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;kanbanType=@dtw_rurlescseq(kanbanType)&amp;adjQuantity=@dtw_rurlescseq(adjQuantity)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@plantNumber", "@dtw_rurlescseq(plantNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@itemNumber", "@dtw_rurlescseq(itemNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Enter_Quantity () {	
+  <html>
+      <head>
+          %INCLUDE "headcmt.icl"
+          <script TYPE="text/javascript">
+              %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "NoFormValidate.icl"
+                  function validate(chgForm) {
+                      if (editNum(document.Chg.quantity, 5, 0))
+                          return true;
+                  }
+          </script>
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          @dtw_assign(displayCloseIcon, "Y")
+          %INCLUDE "$(cmtBanner)"
+          <!-- End Of Banner Code -->
+          <table width="100%" $(contentTable)>
+              <tr valign="top">
+                  <td>
+                      @dtw_assign(medIcon, "Y")
+                      %INCLUDE "PageTitle.icl"
+                      <table $(contentTable)>
+                          @Format_Header("Plant", $(plantName), $(plantNumber))
+                          @Format_Header("Item", $(itemDescription), $(itemNumber))
+                      </table>
+                      $(hrTagAttr)
+                      @dtw_assign(focusField, "quantity")
+
+                      <table $(contentTable)>
+                          <form class="formClass" METHOD=POST NAME="Chg"  ACTION="$(homeURL)$(cGIPath)$(d2wName)/ACCEPT$(d2wVarBase)">
+                              <tr>
+                                  %if (kanbanType == "AddKbn")
+                                      <td class="dsphdr">Container Adjustment</td>
+                                  %else
+                                      <td class="dsphdr">Number Of Travelers</td>
+                                  %endif
+                                  <td class="inputnmbr"><input name="quantity" type="text" value="$(adjQuantity)" size="5" maxlength="5"></td>
+                              </tr>
+                      </table>
+            	         <table $(contentTable)>
+                          <tr>
+                              <td valign="top">
+                                  <a href="javascript:check(document.Chg)">$(commentAcceptImage)</a>
+                                  <a href="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)">$(commentResetImage)</a>
+                                  %INCLUDE "CloseWindow.icl"
+                              </td>
+                          </tr>
+                      </table>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(cmtTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(10)    kanbanType,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+
+{%EXEC {HSIKBM_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Enter_Quantity ()
+%}
+
+%HTML(ACCEPT) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(maintenanceCode, "A")
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@plt@", plantNumber)
+  @Concat_Field("@@item", itemNumber)
+  @Concat_Field("@@turn", turnaroundNumber)
+  @Concat_Field("@@xqty", quantity)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, kanbanType, edtVar, errVar)
+
+  %if (kanbanType == "AddKbn")
+      @dtw_assign(confMessage, "Confirm Addition Of Kanban Turnaround Number(S)")
+  %else
+      @dtw_assign(confMessage, "Confirm Addition Of Traveler Turnaround Number(S)")
+  %endif
+
+  @BrowserType(browserCode)
+  %if (browserCode == "IE")
+      <script TYPE="text/javascript">
+          %if (kanbanType == "AddKbn")
+              opener.location.href='$(homeURL)$(cGIPath)KanbanMaintain.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';
+          %else
+              opener.location.href='$(homeURL)$(cGIPath)KanbanTraveler.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';
+          %endif
+          window.close();
+      </script>
+  %else
+      %if (kanbanType == "AddKbn")
+          <meta http-equiv="refresh" content="0; URL=javascript:opener.document.location='$(homeURL)$(cGIPath)KanbanMaintain.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';self.close();">
+      %else
+          <meta http-equiv="refresh" content="0; URL=javascript:opener.document.location='$(homeURL)$(cGIPath)KanbanTraveler.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';self.close();">
+      %endif
+  %endif
+
+%}

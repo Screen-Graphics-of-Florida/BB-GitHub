@@ -1,0 +1,513 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: G/L Unposted Sub Ledger Journal                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Unposted Sub-Ledger Journal"
+  d2wName                 = "GLUnpostSubLedger.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;backHome=@dtw_rurlescseq(backHome)&amp;SubLedger=@dtw_rurlescseq(SubLedger)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  noMsg                   = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchPeriod, 4, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "GLUNPOSTJRNL")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Delete From  GLUSFDWK ", stmtSQL)
+                      @dtw_concat(stmtSQL, " Where WFXHND='$(profileHandle)'  ", stmtSQL)
+                      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+                      @SQL_Update(stmtSQL, status)
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(stmtSQL, " From GLUSFD ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @GL_Fill_UnpostedSubLedger(profileHandle, dataBaseID, stmtSQL)
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select GLUSFDWK.*, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(FLDESC,' ') as transFLDESC, upper(coalesce(FLDESC,' ')) as transFLDESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " GLUSFDWK ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYFLAG on FLTYPE='GLTRANTYP' and FLVALU=WFTTYP ", fileSQL)
+                      @dtw_concat(selectSQL, "WFXHND='$(profileHandle)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) GL_Fill_UnpostedSubLedger (IN  CHAR(64)    profileHandle,
+                                                  CHAR(2)     dataBaseID,
+                                                  CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      %if (SubLedger=="AP" || SubLedger=="")  %{ Accounts Payable %}
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into GLUSFDWK (WFXHND,            WFFILE,  WFJRNL,WFPER#,WFDATE,WFTTYP,WFFCUR,WFDESC,            WFUAMT,    WFDESCU) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Select                '$(profileHandle)','HDAPTR',JAJRNL,JAPER#,JADATE,JATTYP,JAFCUR,'Accounts Payable',SUM(JAAMT),Upper('Accounts Payable')  ", stmtSQL)
+          @dtw_concat(stmtSQL, " From HDAPTR   ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where JAAMT>0  ", stmtSQL)
+          @dtw_concat(stmtSQL, " GROUP BY JAJRNL,JAPER#,JADATE,JATTYP,JAFCUR ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      %if (SubLedger=="AR" || SubLedger=="")  %{ Accounts Receivable %}
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into GLUSFDWK (WFXHND,            WFFILE,  WFJRNL,WFPER#,WFDATE,WFTTYP,WFFCUR,WFDESC,               WFUAMT,    WFDESCU) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Select                '$(profileHandle)','HDARTR',JRJRNL,JRPER#,JRDATE,JRTTYP,JRFCUR,'Accounts Receivable',SUM(JRAMT),Upper('Accounts Receivable')  ", stmtSQL)
+          @dtw_concat(stmtSQL, " From HDARTR   ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where JRAMT>0  ", stmtSQL)
+          @dtw_concat(stmtSQL, " GROUP BY JRJRNL,JRPER#,JRDATE,JRTTYP,JRFCUR ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      %if (SubLedger=="FA" || SubLedger=="")  %{ Fixed Assets %}
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into GLUSFDWK (WFXHND,            WFFILE,  WFJRNL,WFPER#,WFDATE,WFTTYP,WFFCUR,WFDESC,        WFUAMT,    WFDESCU) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Select                '$(profileHandle)','HDFATR',JFJRNL,JFPER#,JFDATE,JFTTYP,' '   ,'Fixed Assets',SUM(JFAMT),Upper('Fixed Assets')  ", stmtSQL)
+          @dtw_concat(stmtSQL, " From HDFATR   ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where JFAMT>0  ", stmtSQL)
+          @dtw_concat(stmtSQL, " GROUP BY JFJRNL,JFPER#,JFDATE,JFTTYP ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      %if (SubLedger=="PR" || SubLedger=="")  %{ Payroll %}
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into GLUSFDWK (WFXHND,            WFFILE,  WFJRNL,WFPER#,WFDATE,WFTTYP,WFFCUR,WFDESC,   WFUAMT,    WFDESCU) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Select                '$(profileHandle)','HDPRTR',JPJRNL,JPPER#,JPDATE,JPTTYP,' '   ,'Payroll',SUM(JPAMT),Upper('Payroll')  ", stmtSQL)
+          @dtw_concat(stmtSQL, " From HDPRTR   ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where JPAMT>0  ", stmtSQL)
+          @dtw_concat(stmtSQL, " GROUP BY JPJRNL,JPPER#,JPDATE,JPTTYP ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      %if (SubLedger=="IV" || SubLedger=="")  %{ Inventory %}
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into GLUSFDWK (WFXHND,            WFFILE,  WFJRNL,WFPER#,WFDATE,WFTTYP,WFFCUR,WFDESC,     WFUAMT,    WFDESCU) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Select                '$(profileHandle)','HDIVTR',JIJRNL,JIPER#,JIDATE,JITTYP,' '   ,'Inventory',SUM(JIAMT),Upper('Inventory')  ", stmtSQL)
+          @dtw_concat(stmtSQL, " From HDIVTR   ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where JIAMT>0  ", stmtSQL)
+          @dtw_concat(stmtSQL, " GROUP BY JIJRNL,JIPER#,JIDATE,JITTYP ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      %if (SubLedger=="PO" || SubLedger=="")  %{ Purchasing %}
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into GLUSFDWK (WFXHND,            WFFILE,  WFJRNL,WFPER#,WFDATE,WFTTYP,WFFCUR,WFDESC,      WFUAMT,    WFDESCU) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Select                '$(profileHandle)','HDPOTR',JOJRNL,JOPER#,JODATE,JOTTYP,' '   ,'Purchasing',SUM(JOAMT),Upper('Purchasing')  ", stmtSQL)
+          @dtw_concat(stmtSQL, " From HDPOTR   ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where JOAMT>0  ", stmtSQL)
+          @dtw_concat(stmtSQL, " GROUP BY JOJRNL,JOPER#,JODATE,JOTTYP ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      <table $(contentTable)>
+          %ROW{
+              %if (SubLedger=="")
+                  %INCLUDE "stmtSQLClear.icl"
+                  @dtw_concat(stmtSQL, " Insert Into GLUSFDWK (WFXHND,            WFFILE,       WFJRNL,WFPER#,WFDATE,WFTTYP,WFFCUR,WFDESC,       WFUAMT,    WFDESCU) ", stmtSQL)
+                  @dtw_concat(stmtSQL, " Select                '$(profileHandle)','$(V_FDFILE)',JFJRNL,JFPER#,JFDATE,JFTTYP,JFFCUR,'$(V_FDDESC)',SUM(JFAMT),Upper('$(V_FDDESC)')  ", stmtSQL)
+                  @dtw_concat(stmtSQL, " From $(V_FDFILE)   ", stmtSQL)
+                  @dtw_concat(stmtSQL, " Where JFAMT>0  ", stmtSQL)
+                  @dtw_concat(stmtSQL, " GROUP BY JFJRNL,JFPER#,JFDATE,JFTTYP,JFFCUR ", stmtSQL)
+                  @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+                  @SQL_Update(stmtSQL, status)
+               %endif
+	   %}
+      </table>
+  %}
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64) profileHandle,
+                                   CHAR(2)   dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      $(hrTagAttr)
+
+      %if (formatToPrint == "")
+          <form class="formClass" METHOD=POST name="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Sub-Ledger</th>
+                      <th class="colhdr">Period</th>
+                      <th class="colhdr">Description</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchJrnl" size="6" maxlength="6">
+                          <input type="hidden" name="operJrnl" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputnmbr"  name="srchPeriod" size="4" maxlength="4">
+                          <input type="hidden" name="operPeriod" value="=">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchDesc" size="20" maxlength="20">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchJrnl.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+     %endif
+
+      <table $(contentTable)>
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("WFFILE", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=SubLedger" title="Sequence By Sub-Ledger, Period">Sub-Ledger</a></th>
+              @OrderBy_Sort("WFPER#", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Period"    title="Sequence By Period, Sub-Ledger">Period</a></th>
+              @OrderBy_Sort("WFJRNL", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Journal"   title="Sequence By Journal, Sub-Ledger">Journal</a></th>
+              @OrderBy_Sort("WFDATE", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Date"      title="Sequence By Transaction Date, Sub-Ledger">Transaction Date</a></th>
+              @OrderBy_Sort("transFLDESCU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Type"      title="Sequence By Transaction Type, Sub-Ledger">Transaction Type</a></th>
+              @OrderBy_Sort("WFDESCU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description" title="Sequence By Description, Period, Sub-Ledger">Description</a></th>
+              @OrderBy_Sort("WFUAMT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Amount" title="Sequence By Amount, Sub-Ledger">Amount</a></th>
+
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+
+              @dtw_assign(F_WFPER#, V_WFPER#)
+              @PeriodFromCYP(F_WFPER#)
+              @Format_Date(V_WFDATE, "D", F_WFDATE)
+              @Format_Nbr($(V_WFUAMT), F_WFUAMT, "2", $(amtEditCode), "Y", "", "")
+              <tr class="$(rowClass)">
+                  %if (V_WFFILE=="HDAPTR")
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)GLHDAPTRJrnl.d2w/ENTRY$(genericVarBase)&amp;glJournal=@dtw_rurlescseq(V_WFJRNL)&amp;glPer=@dtw_rurlescseq(V_WFPER#)&amp;glDate=@dtw_rurlescseq(V_WFDATE)&amp;glTransType=@dtw_rurlescseq(V_WFTTYP)&amp;glFrCur=@dtw_rurlescseq(V_WFFCUR)" title="View Unposted $(V_WFDESC)">$(V_WFFILE)</a></td>
+                  %elif (V_WFFILE=="HDARTR")
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)GLHDARTRJrnl.d2w/ENTRY$(genericVarBase)&amp;glJournal=@dtw_rurlescseq(V_WFJRNL)&amp;glPer=@dtw_rurlescseq(V_WFPER#)&amp;glDate=@dtw_rurlescseq(V_WFDATE)&amp;glTransType=@dtw_rurlescseq(V_WFTTYP)&amp;glFrCur=@dtw_rurlescseq(V_WFFCUR)" title="View Unposted $(V_WFDESC)">$(V_WFFILE)</a></td>
+                  %elif (V_WFFILE=="HDFATR")
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)GLHDFATRJrnl.d2w/ENTRY$(genericVarBase)&amp;glJournal=@dtw_rurlescseq(V_WFJRNL)&amp;glPer=@dtw_rurlescseq(V_WFPER#)&amp;glDate=@dtw_rurlescseq(V_WFDATE)&amp;glTransType=@dtw_rurlescseq(V_WFTTYP)&amp;glFrCur=@dtw_rurlescseq(V_WFFCUR)" title="View Unposted $(V_WFDESC)">$(V_WFFILE)</a></td>
+                  %elif (V_WFFILE=="HDIVTR")
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)GLHDIVTRJrnl.d2w/ENTRY$(genericVarBase)&amp;glJournal=@dtw_rurlescseq(V_WFJRNL)&amp;glPer=@dtw_rurlescseq(V_WFPER#)&amp;glDate=@dtw_rurlescseq(V_WFDATE)&amp;glTransType=@dtw_rurlescseq(V_WFTTYP)&amp;glFrCur=@dtw_rurlescseq(V_WFFCUR)" title="View Unposted $(V_WFDESC)">$(V_WFFILE)</a></td>
+                  %elif (V_WFFILE=="HDPOTR")
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)GLHDPOTRJrnl.d2w/ENTRY$(genericVarBase)&amp;glJournal=@dtw_rurlescseq(V_WFJRNL)&amp;glPer=@dtw_rurlescseq(V_WFPER#)&amp;glDate=@dtw_rurlescseq(V_WFDATE)&amp;glTransType=@dtw_rurlescseq(V_WFTTYP)&amp;glFrCur=@dtw_rurlescseq(V_WFFCUR)" title="View Unposted $(V_WFDESC)">$(V_WFFILE)</a></td>
+                  %elif (V_WFFILE=="HDPRTR")
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)GLHDPRTRJrnl.d2w/ENTRY$(genericVarBase)&amp;glJournal=@dtw_rurlescseq(V_WFJRNL)&amp;glPer=@dtw_rurlescseq(V_WFPER#)&amp;glDate=@dtw_rurlescseq(V_WFDATE)&amp;glTransType=@dtw_rurlescseq(V_WFTTYP)&amp;glFrCur=@dtw_rurlescseq(V_WFFCUR)" title="View Unposted $(V_WFDESC)">$(V_WFFILE)</a></td>
+                  %else
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)GLGLUSFDJrnl.d2w/ENTRY$(genericVarBase)&amp;journalHeading=@dtw_rurlescseq(V_WFDESC)&amp;journalTable=@dtw_rurlescseq(V_WFFILE)&amp;glJournal=@dtw_rurlescseq(V_WFJRNL)&amp;glPer=@dtw_rurlescseq(V_WFPER#)&amp;glDate=@dtw_rurlescseq(V_WFDATE)&amp;glTransType=@dtw_rurlescseq(V_WFTTYP)&amp;glFrCur=@dtw_rurlescseq(V_WFFCUR)" title="View Unposted $(V_WFDESC)">$(V_WFFILE)</a></td>
+                  %endif
+                  <td class="colnmbr">$(F_WFPER#)</td>
+                  <td class="colalph">$(V_WFJRNL)</td>
+                  <td class="colnmbr">$(F_WFDATE)</td>
+                  <td class="colalph" $(helpCursor)><span title="$(V_WFTTYP)">$(V_transFLDESC)</span></td>
+                  <td class="colalph">$(V_WFDESC)</td>
+                  <td class="colnmbr">$(F_WFUAMT)</td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From  GLUSFDWK ", stmtSQL)
+  @dtw_concat(stmtSQL, " Where WFXHND='$(profileHandle)'  ", stmtSQL)
+  @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+  @dtw_concat(stmtSQL, " From GLUSFD ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @GL_Fill_UnpostedSubLedger(profileHandle, dataBaseID, stmtSQL)
+
+  %INCLUDE "QuickLinkClear.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+  @dtw_concat(fileSQL, " GLUSFDWK ", fileSQL)
+  @dtw_concat(selectSQL, "WFXHND='$(profileHandle)' ", selectSQL)
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @List_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) List_XMLQuery (IN  CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @XMLBeginTag("UnpostSubLedgerList")
+          %ROW{
+              @EditPhoneNumber(V_CMPHON)
+
+              @XMLIDTag("$(V_WFFILE)-$(V_WFPER#)", "UnpostSubLedger ID")
+                  @XMLTag(V_WFFILE, "File")
+                  @XMLTag(V_WFPER#, "Period")
+                  @XMLTag(V_WFDESC, "Description")
+                  @XMLTag(V_WFUAMT, "UnpostedNetActivity")
+              @XMLEndTag("UnpostSubLedger")
+          %}
+      @XMLEndTag("UnpostSubLedgerList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "WFFILE,WFPER#")
+          @DTW_ASSIGN(orderByDisplay, "Sub-Ledger, Period")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Period")
+      %if (orderBy == "WFPER#,WFFILE")
+          @DTW_ASSIGN(orderBy, "WFPER# DESC,WFFILE")
+          @DTW_ASSIGN(orderByDisplay, "Period (descending), Sub-Ledger")
+      %else
+          @DTW_ASSIGN(orderBy, "WFPER#,WFFILE")
+          @DTW_ASSIGN(orderByDisplay, "Period, Sub-Ledger")
+      %endif
+  %elif (sequence == "SubLedger")
+      %if (orderBy == "WFFILE,WFPER#")
+          @DTW_ASSIGN(orderBy, "WFFILE DESC,WFPER#")
+          @DTW_ASSIGN(orderByDisplay, "Sub-Ledger (descending), Period")
+      %else
+          @DTW_ASSIGN(orderBy, "WFFILE,WFPER#")
+          @DTW_ASSIGN(orderByDisplay, "Sub-Ledger, Period")
+      %endif
+  %elif (sequence == "Description")
+      %if (orderBy == "WFDESCU,WFPER#,WFFILE")
+          @DTW_ASSIGN(orderBy, "WFDESCU DESC,WFPER#,WFFILE")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Period, Sub-Ledger")
+      %else
+          @DTW_ASSIGN(orderBy, "WFDESCU,WFPER#,WFFILE")
+          @DTW_ASSIGN(orderByDisplay, "Description, Period, Sub-Ledger")
+      %endif
+  %elif (sequence == "Amount")
+      %if (orderBy == "WFUAMT,WFPER#,WFFILE")
+          @DTW_ASSIGN(orderBy, "WFUAMT DESC,WFPER#,WFFILE")
+          @DTW_ASSIGN(orderByDisplay, "Amount (descending), Period, Sub-Ledger")
+      %else
+          @DTW_ASSIGN(orderBy, "WFUAMT,WFPER#,WFFILE")
+          @DTW_ASSIGN(orderByDisplay, "Amount, Period, Sub-Ledger")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "calendar.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchPeriod, 4, 0) &&
+                      editNum(document.Search.srchAmount, 13, 2))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "GLUNPOSTJRNLSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Period</td>
+                              @dtw_assign(operNbr, "operPeriod")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchPeriod" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Sub-Ledger</td>
+                              @dtw_assign(operNbr, "operJrnl")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchJrnl" size="6" maxlength="6"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Amount</td>
+                              @dtw_assign(operNbr, "operAmount")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchAmount" size="17" maxlength="17"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchPeriod.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("WFPER#", "Period", $(srchPeriod), "", operPeriod, "DP")
+  @Build_WildCard ("WFFILE", "Sub-Ledger", $(srchJrnl), "U", operJrnl, "A")
+  @Build_WildCard ("WFDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("WFUAMT", "Amount", $(srchAmount), "", operAmount, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

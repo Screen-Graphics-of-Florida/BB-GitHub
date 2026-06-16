@@ -1,0 +1,493 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Import Cross Reference Search                               *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Import Cross Reference Search"
+  d2wName                 = "MapXRefSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;fldTable=@dtw_rurlescseq(fldTable)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldTable                = ""
+  fldName                 = ""
+  fldDesc                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectRecord(mapImportTable, crossReference, crossReferenceDescription){
+                  window.opener.document.$(docName).$(fldTable).value = mapImportTable;
+                  window.opener.document.$(docName).$(fldName).value = crossReference;
+                  window.opener.document.$(docName).$(fldDesc).value = crossReferenceDescription;
+                  window.opener.document.$(docName).$(fldName).focus();
+                  window.close();
+              }
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select SYMXRF.*, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(PMPRMD,' ') as PMPRMD, coalesce(PMPRMDU,' ') as PMPRMDU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(a.FLDESC,' ') as fldtFLDESC, coalesce(upper(a.FLDESC),' ') as fldtFLDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(b.FLDESC,' ') as upprFLDESC, coalesce(upper(b.FLDESC),' ') as upprFLDESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYMXRF ", fileSQL)
+                      @dtw_concat(fileSQL, " left join WFPARM on PMPARM=MXPARM ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYFLAG a on a.FLTYPE='XRFFLDTYP' and a.FLVALU=MXFLDT ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYFLAG b on b.FLTYPE='BY' and b.FLVALU=MXUPPR ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_assign(START_ROW_NUM, "1")
+                          @dtw_assign(RPT_MAX_ROWS, "9999")
+                          @dtw_concat(selectSQL, " MXXREF='$(crossReference)' and MXIFIL='$(mapImportTable)' ", selectSQL)
+                      %elif (wildCardSearch!="")
+                          @dtw_concat(selectSQL, " MXXREF>' ' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+
+                      %if (moreInfo == "Y")
+                          @dtw_assign(SAVE_ROW_NUM, START_ROW_NUM)
+                          @dtw_assign(SAVE_MAX_ROWS, RPT_MAX_ROWS)
+                          @dtw_assign(START_ROW_NUM, "1")
+                          @dtw_assign(RPT_MAX_ROWS, "9999")
+
+                          %{Value %}
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select *  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From SYMXRV ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where MVXREF='$(crossReference)' and MVIFIL='$(mapImportTable)' ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Order By MVFVAL, MVTVAL ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Process_Select_Value(profileHandle, dataBaseID, stmtSQL)
+
+                          @dtw_assign(START_ROW_NUM, SAVE_ROW_NUM)
+                          @dtw_assign(RPT_MAX_ROWS, SAVE_MAX_ROWS)
+                      %endif
+
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Description</th>
+                      <th class="colhdr">Workflow Parameter</th>
+                      <th class="colhdr">Import Table</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchDesc" size="10" maxlength="50">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchMapParm" size="10" maxlength="50">
+                          <input type="hidden" name="operMapParm" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchTable" size="10" maxlength="10">
+                          <input type="hidden" name="operTable" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("MXDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description"        title="Sequence By Description, Cross Reference">Description</a></th>
+                  @OrderBy_Sort("MXXREF", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CrossReference"     title="Sequence By Cross Reference, Import Table">Cross Reference</a></th>
+                  @OrderBy_Sort("MXIFIL", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Table"              title="Sequence By Import Table, Cross Reference">Import Table</a></th>
+                  @OrderBy_Sort("fldtFLDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ColumnType"          title="Sequence By Column Type, Cross Reference">Column Type</a></th>
+                  @OrderBy_Sort("MXSIZE", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=WholePrecision"     title="Sequence By Whole Number Precision, Cross Reference">Whole Number Precision</a></th>
+                  @OrderBy_Sort("MXDECM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DecimalPrecision"   title="Sequence By Decimal Precision, Cross Reference">Decimal Precision</a></th>
+                  @OrderBy_Sort("upprFLDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Upper"              title="Sequence By Convert To Upper, Cross Reference">Convert To Upper</a></th>
+                  @OrderBy_Sort("PMPRMDU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Parameter"          title="Sequence By Workflow Parameter, Cross Reference">Workflow Parameter</a></th>
+              </tr>
+
+              %INCLUDE "NoRecordsFound.icl"
+      %endif		
+
+              %ROW{
+                  @Format_Quote(V_MXIFIL, F_MXIFIL)
+                  @Format_Quote(V_MXXREF, F_MXXREF)
+                  @Format_Quote(V_MXDESC, F_MXDESC)
+
+                  %if (moreInfo != "Y")	
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          <td class="colalph"><a href="javascript:selectRecord('$(F_MXIFIL)','$(F_MXXREF)','$(F_MXDESC)')" title="Select Cross Reference">$(V_MXDESC)</a></td>
+                          <td class="colalph">$(V_MXXREF)</td>                                      	
+                          <td class="colalph">$(V_MXIFIL)</td>                                      	
+                          <td class="colalph" $(helpCursor)><span title="$(V_MXFLDT)">$(V_fldtFLDESC)</span></td>
+                          <td class="colnmbr">$(V_MXSIZE)</td>                                      	
+                          <td class="colnmbr">$(V_MXDECM)</td>                                      	
+                          <td class="colalph" $(helpCursor)><span title="$(V_MXUPPR)">$(V_upprFLDESC)</span></td>
+                          <td class="colalph" $(helpCursor)><span title="$(V_MXPARM)">$(V_PMPRMD)</span></td>                                      	
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;crossReference=@dtw_rurlescseq(V_MXXREF)&amp;mapImportTable=@dtw_rurlescseq(V_MXIFIL)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      <table $(contentTable)>
+                          <tr><td><a href="javascript:selectRecord('$(F_MXIFIL)','$(F_MXXREF)','$(F_MXDESC)')" title="Select Cross Reference">$(selectImageLrg)</a>
+                              </td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Cross Reference</td>
+                              <td class="dspalph">$(V_MXXREF)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Import Table</td>
+                              <td class="dspalph">$(V_MXIFIL)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              <td class="dspalph">$(V_MXDESC)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Workflow Parameter</td>
+                              @Format_Code(V_MXPARM, F_MXPARM)
+                              <td class="dspalph">$(V_PMPRMD) $(F_MXPARM)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Column Type</td>
+                              @Format_Code(V_MXFLDT, F_MXFLDT)
+                              <td class="dspalph">$(V_fldtFLDESC) $(F_MXFLDT)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Whole Number Precision</td>
+                              <td class="dspnmbr">$(V_MXSIZE)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Decimal Precision</td>
+                              <td class="dspnmbr">$(V_MXDECM)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Convert To Upper</td>
+                              @Format_Code(V_MXUPPR, F_MXUPPR)
+                              <td class="dspalph">$(V_upprFLDESC) $(F_MXUPPR)</td>
+                          </tr>
+                      </table>
+                  %endif
+              %}
+
+      %if (moreInfo != "Y")	
+          </table>
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+      %endif	   	
+  %}
+%}
+
+%FUNCTION(dtw_sql) Process_Select_Value (IN  CHAR(64)    profileHandle,
+                                             CHAR(2)     dataBaseID,
+                                             CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Value</legend>
+          <table $(contentTable)>
+              <tr>
+                  <th class="colhdr">From Value</th>
+                  <th class="colhdr">To Value</th>
+              </tr>
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colalph">$(V_MVFVAL)&nbsp;</td>
+                      <td class="colalph">$(V_MVTVAL)&nbsp;</td>
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "MXDESCU,MXXREF,MXIFIL")
+      @DTW_ASSIGN(orderByDisplay, "Description, Cross Reference, Import Table")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Description")
+      %if (orderBy == "MXDESCU,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderBy, "MXDESCU DESC,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Cross Reference, Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "MXDESCU,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Description, Cross Reference, Import Table")
+      %endif
+  %elif (sequence == "CrossReference")
+      %if (orderBy == "MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderBy, "MXXREF DESC,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Cross Reference (descending), Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Cross Reference, Import Table")
+      %endif
+  %elif (sequence == "Table")
+      %if (orderBy == "MXIFIL,MXXREF")
+          @DTW_ASSIGN(orderBy, "MXIFIL DESC,MXXREF")
+          @DTW_ASSIGN(orderByDisplay, "Import Table (descending), Cross Reference")
+      %else
+          @DTW_ASSIGN(orderBy, "MXIFIL,MXXREF")
+          @DTW_ASSIGN(orderByDisplay, "Import Table, Cross Reference")
+      %endif
+  %elif (sequence == "ColumnType")
+      %if (orderBy == "fldtFLDESCU,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderBy, "fldtFLDESCU DESC,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Column Type (descending), Cross Reference, Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "fldtFLDESCU,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Column Type, Cross Reference, Import Tabler")
+      %endif
+  %elif (sequence == "WholePrecision")
+      %if (orderBy == "MXSIZE,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderBy, "MXSIZE DESC,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Whole Number Precision (descending), Cross Reference, Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "MXSIZE,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Whole Number Precision, Cross Reference, Import Table")
+      %endif
+  %elif (sequence == "DecimalPrecision")
+      %if (orderBy == "MXDECM,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderBy, "MXDECM DESC,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Decimal Precision (descending), Cross Reference, Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "MXDECM,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Decimal Precision, Cross Reference, Import Table")
+      %endif
+  %elif (sequence == "Upper")
+      %if (orderBy == "upprFLDESCU,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderBy, "upprFLDESCU DESC,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Convert To Upper (descending), Cross Reference, Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "upprFLDESCU,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Convert To Upper, Cross Reference, Import Table")
+      %endif
+  %elif (sequence == "Parameter")
+      %if (orderBy == "PMPRMDU,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderBy, "PMPRMDU DESC,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Workflow Parameter (descending), Cross Reference, Import Table")
+      %else
+          @DTW_ASSIGN(orderBy, "PMPRMDU,MXXREF,MXIFIL")
+          @DTW_ASSIGN(orderByDisplay, "Workflow Parameter, Cross Reference, Import Table")
+      %endif
+   %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchWhole, 5, 0) &&
+                      editNum(document.Search.srchDecimal, 2, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "MAPXREFSEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="15" maxlength="50"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Cross Reference</td>
+                              @dtw_assign(operNbr, "operXRef")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchXRef" size="10" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Import Table</td>
+                              @dtw_assign(operNbr, "operTable")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchTable" size="10" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Column Type</td>
+                              @dtw_assign(operNbr, "operFieldType")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchFieldType" size="15" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Whole Number Precision</td>
+                              @dtw_assign(operNbr, "operWhole")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchWhole" size="5" maxlength="5"></td>
+                          </tr>	
+
+                          <tr><td class="dsphdr">Decimal Precision</td>
+                              @dtw_assign(operNbr, "operDecimal")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchDecimal" size="1" maxlength="1"></td>
+                          </tr>	
+
+                          <tr><td class="dsphdr">Convert To Upper</td>
+                              @dtw_assign(operNbr, "operUpper")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchUpper" size="15" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Workflow Parameter</td>
+                              @dtw_assign(operNbr, "operMapParm")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchMapParm" size="15" maxlength="50"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchDesc.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("MXDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("MXXREF",  "Cross Reference", $(srchXRef), "U", operXRef, "A")
+  @Build_WildCard ("MXIFIL",  "Import Table", $(srchTable), "U", operTable, "A")
+  @Build_WildCard ("coalesce(upper(a.FLDESC),' ')",  "Column Type", $(srchFieldType), "U", operFieldType, "A")
+  @Build_WildCard ("MXSIZE",  "Whole Number Precision", $(srchWhole), "", operWhole, "N")
+  @Build_WildCard ("MXDECM",  "Decimal Precision", $(srchDecimal), "", operDecimal, "N")
+  @Build_WildCard ("coalesce(upper(b.FLDESC),' ')",  "Convert To Upper", $(srchUpper), "U", operUpper, "A")
+  @Build_WildCard ("PMPRMDU", "Workflow Parameter", $(srchMapParm), "U", operMapParm, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

@@ -1,0 +1,469 @@
+%{
+*********************************************************************
+* Copr 1979 2005 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Detail Point Search                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Detail Point Search"
+  d2wName                 = "WFDetailSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;specificWFProcess=@dtw_rurlescseq(specificWFProcess)&amp;specificDelegateFlag=@dtw_rurlescseq(specificDelegateFlag)&amp;docName=@dtw_rurlescseq(docName)&amp;fldProc=@dtw_rurlescseq(fldProc)&amp;fldProcDesc=@dtw_rurlescseq(fldProcDesc)&amp;fldPoint=@dtw_rurlescseq(fldPoint)&amp;fldSequence=@dtw_rurlescseq(fldSequence)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldPoint                = ""
+  fldSequence             = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL)  {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %if (specificWFProcess == "")
+                  function selectDetailPoint(wfProcess, wfProcessDescription, wfPoint, wfSequence, wfPointDescription){
+                      window.opener.document.$(docName).$(fldProc).value = wfProcess;
+                      window.opener.document.$(docName).$(fldProcDesc).value = wfProcessDescription;
+                      window.opener.document.$(docName).$(fldPoint).value = wfPoint;
+                      window.opener.document.$(docName).$(fldSequence).value = wfSequence;
+                      window.opener.document.$(docName).$(fldDesc).value = wfPointDescription;
+                      window.opener.document.$(docName).$(fldProc).focus();
+                      window.close();
+                  }
+              %else
+                  function selectDetailPoint(wfPoint, wfSequence, wfPointDescription){
+                      window.opener.document.$(docName).$(fldPoint).value = wfPoint;
+                      window.opener.document.$(docName).$(fldSequence).value = wfSequence;
+                      window.opener.document.$(docName).$(fldDesc).value = wfPointDescription;
+                      window.opener.document.$(docName).$(fldPoint).focus();
+                      window.close();
+                  }
+              %endif
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchPoint, 4, 3) &&
+                      editNum(document.Search.srchRating, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      %if (specificWFProcess != "")
+          @dtw_assign(wfProcess, specificWFProcess)
+      %endif
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select WFPRDT.*, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(PPDESC,' ') as PPDESC, coalesce(PPDESCU,' ') as PPDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(ATDESC,' ') as ATDESC, coalesce(ATDESCU,' ') as ATDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(a.PRDESC,' ') as procPRDESC, coalesce(a.PRDESCU,' ') as procPRDESCU,  ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(b.PRDESC,' ') as pontPRDESC, coalesce(b.PRDESCU,' ') as pontPRDESCU  ", stmtSQL)
+                      @dtw_concat(fileSQL, " WFPRDT ", fileSQL)
+                      @dtw_concat(fileSQL, " left join WFPRDF on PPPROC=PDPROC and PPPONT=PDPONT", fileSQL)
+                      @dtw_concat(fileSQL, " left join WFPRAC on ATPROC=PDPPRC and ATACTV=PDPACT ", fileSQL)
+                      @dtw_concat(fileSQL, " left join WFPRHD a on a.PRPROC=PDPROC ", fileSQL)
+                      @dtw_concat(fileSQL, " left join WFPRHD b on b.PRPROC=PDPPRC ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, " PDPROC='$(wfProcess)' and PDPONT=$(wfPoint) and PDSEQ=$(wfSequence)", selectSQL)
+                      %elif (specificWFProcess != "")
+                          @dtw_concat(selectSQL, " PDPROC='$(specificWFProcess)' ", selectSQL)
+                      %elif (wildCardSearch!="" || specificDelegateFlag == "Y")
+                          @dtw_concat(selectSQL, " PDPROC>' ' ", selectSQL)
+                      %endif
+                      %if (specificDelegateFlag == "Y")
+                          @dtw_concat(selectSQL, " and (PDPACT=' ' or exists (Select * From WFPRAC where ATPROC=PDPPRC and ATACTV=PDPACT and ATDELG='Y' and ATMODE='M')) ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      %if (specificWFProcess != "")
+          <table $(contentTable)>
+              @RtvFldDesc("PRPROC='$(specificWFProcess)'", "WFPRHD", "PRDESC", wfProcessDescription)
+              @Format_Header("", $(wfProcessDescription), $(specificWFProcess))
+          </table>
+      %endif
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr>
+                      <th class="colhdr">Description</th>
+                      %if (specificWFProcess == "")
+                          <th class="colhdr">Process</th>
+                      %endif
+                      <th class="colhdr">Point</th>
+                      <th class="colhdr">Detail Point Activity</th>
+                      <th class="colhdr">Detail Point Process</th>
+                      <th class="colhdr">Complexity Rating</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchDesc" size="15" maxlength="50">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      %if (specificWFProcess == "")
+                          <td><input type="text" class="inputalph" name="srchProcess" size="15" maxlength="50">
+                              <input type="hidden" name="operProcess" value="LIKE">
+                          </td>
+                      %endif
+                      <td><input type="text" class="inputnmbr" name="srchPoint" size="8" maxlength="8">
+                          <input type="hidden" name="operPoint" value="=">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchActivity" size="15" maxlength="50">
+                          <input type="hidden" name="operActivity" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchPointProcess" size="15" maxlength="50">
+                          <input type="hidden" name="operPointProcess" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputnmbr" name="srchRating" size="3" maxlength="3">
+                          <input type="hidden" name="operRating" value="=">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>	
+
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @OrderBy_Sort("PDDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description"    title="Sequence By Description, Detail Point">Description</a></th>
+                  %if (specificWFProcess == "")
+                      @OrderBy_Sort("procPRDESCU", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Process" title="Sequence By Process, Activity">Process</a></th>
+                  %endif
+                  @OrderBy_Sort("PDPONT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Point"  title="Sequence By Detail Point">Detail Point</a></th>
+                  @OrderBy_Sort("ATDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PointActivity" title="Sequence By Detail Point Activity, Detail Point">Detail Point Activity</a></th>
+                  @OrderBy_Sort("pontPRDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PointProcess"    title="Sequence By Detail Point Process, Detail Point">Detail Point Process</a></th>
+                  @OrderBy_Sort("PDRATE", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Rating"    title="Sequence By Complexity Rating, Detail Point">Complexity Rating</a></th>
+              </tr>
+
+              %INCLUDE "NoRecordsFound.icl"
+      %endif		
+              %ROW{
+                  @Format_Quote(V_PDPROC, F_PDPROC)
+                  @Format_Quote(V_PDDESC, F_PDDESC)
+                  @Format_Quote(V_procPRDESC, F_procPRDESC)
+
+                  %if (moreInfo != "Y")	
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          %if (specificWFProcess == "")
+                              <td class="colalph"><a href="javascript:selectDetailPoint('$(F_PDPROC)','$(F_procPRDESC)',$(V_PDPONT),$(V_PDSEQ),'$(F_PDDESC)')" title="Select Detail Point">$(V_PDDESC)</a></td>
+                              <td class="colalph" $(helpCursor)><span title="$(V_PDPROC)">$(V_procPRDESC)</span></td>
+                          %else
+                              <td class="colalph"><a href="javascript:selectDetailPoint($(V_PDPONT),$(V_PDSEQ),'$(F_PDDESC)')" title="Select Detail Point">$(V_PDDESC)</a></td>
+                          %endif
+                          <td class="colnmbr">$(V_PDPONT)-$(V_PDSEQ)</td>                                      	
+                          <td class="colalph" $(helpCursor)><span title="$(V_PDPACT)">$(V_ATDESC)</span</td>
+                          <td class="colalph" $(helpCursor)><span title="$(V_PDPPRC)">$(V_pontPRDESC)</span></td>
+                          <td class="colnmbr">$(V_PDRATE)</td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)$(orderByVarBase)&amp;wfProcess=@dtw_rurlescseq(V_PDPROC)&amp;wfPoint=@dtw_rurlescseq(V_PDPONT)&amp;wfSequence=@dtw_rurlescseq(V_PDSEQ)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      <table $(contentTable)>
+                          <tr><td>
+                              %if (specificWFProcess == "")
+                                  <a href="javascript:selectDetailPoint('$(F_PDPROC)','$(F_procPRDESC)',$(V_PDPONT),$(V_PDSEQ),'$(F_PDDESC)')" title="Select Detail Point">$(selectImageLrg)</a>
+                              %else
+                                  <a href="javascript:selectDetailPoint($(V_PDPONT),$(V_PDSEQ),'$(F_PDDESC)')" title="Select Detail Point">$(selectImageLrg)</a>
+                              %endif
+                          </td></tr>
+                      </table>
+
+                      <table $(contentTable)>
+                          %if (specificWFProcess == "")
+                              <tr><td class="dsphdr">Process</td>
+                                  @Format_Code(V_PDPROC, F_PDPROC)
+                                  <td class="dspalph">$(V_procPRDESC) $(F_PDPROC)</td></tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Point</td>
+                              @Format_Code(V_PDPONT, F_PDPONT)
+                              <td class="dspalph">$(V_PPDESC) $(F_PDPONT)</td></tr>
+
+                          <tr><td class="dsphdr">Sequence</td>
+                              <td class="dspalph">$(V_PDSEQ)</td></tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              <td class="dspalph">$(V_PDDESC)</td></tr>
+
+                          <tr><td class="dsphdr">Detail Point Process</td>
+                              @Format_Code(V_PDPPRC, F_PDPPRC)
+                              <td class="dspalph">$(V_pontPRDESC) $(F_PDPPRC)</td></tr>
+
+                          <tr><td class="dsphdr">Detail Point Activity</td>
+                              @Format_Code(V_PDPACT, F_PDPACT)
+                              <td class="dspalph">$(V_ATDESC) $(F_PDPACT)</td></tr>
+
+                          <tr><td class="dsphdr">Complexity Rating</td>
+                              <td class="dspnmbr">$(V_PDRATE)</td></tr>
+                      </table>
+                  %endif
+              %}
+          </table>
+	   %if (moreInfo != "Y")	
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+	   %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "PDDESCU,PDPONT,PDSEQ")
+      @DTW_ASSIGN(orderByDisplay, "Description, Detail Point")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+
+  %if (sequence == "Description")
+      %if (orderBy == "PDDESCU,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderBy, "PDDESCU DESC,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Detail Point")
+      %else
+          @DTW_ASSIGN(orderBy, "PDDESCU,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Description, Detail Point")
+      %endif
+ %elif (sequence == "Process")
+      %if (orderBy == "procPRDESCU,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderBy, "procPRDESCU DESC,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Process (descending), Detail Point")
+      %else
+          @DTW_ASSIGN(orderBy, "procPRDESCU,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Process, Detail Point")
+      %endif
+  %elif (sequence == "Point")
+      %if (orderBy == "PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderBy, "PDPONT DESC,PDSEQ DESC")
+          @DTW_ASSIGN(orderByDisplay, "Detail Point (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Detail Point")
+      %endif
+  %elif (sequence == "PointActivity")
+      %if (orderBy == "ATDESCU,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderBy, "ATDESCU DESC,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Detail Point Activity (descending), Detail Point")
+      %else
+          @DTW_ASSIGN(orderBy, "ATDESCU,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Detail Point Activity, Detail Point")
+      %endif
+ %elif (sequence == "PointProcess")
+      %if (orderBy == "pontPRDESCU,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderBy, "pontPRDESCU DESC,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Detail Point Process (descending), Detail Point")
+      %else
+          @DTW_ASSIGN(orderBy, "pontPRDESCU,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Detail Point Process, Detail Point")
+      %endif
+ %elif (sequence == "Rating")
+      %if (orderBy == "PDRATE,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderBy, "PDRATE DESC,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Complexity Rating (descending), Detail Point")
+      %else
+          @DTW_ASSIGN(orderBy, "PDRATE,PDPONT,PDSEQ")
+          @DTW_ASSIGN(orderByDisplay, "Complexity Rating, Detail Point")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchPoint, 4, 3) &&
+                      editNum(document.Search.srchSequence, 4, 3) &&
+                      editNum(document.Search.srchRating, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "WFDETAILSEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="15" maxlength="50"></td>
+                          </tr>
+
+                          %if (specificWFProcess == "")
+                              <tr><td class="dsphdr">Process</td>
+                                  @dtw_assign(operNbr, "operProcess")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input name="srchProcess" type="text" size="15" maxlength="50"></td>
+                              </tr>
+                          %endif            			
+
+                          <tr><td class="dsphdr">Point</td>
+                              @dtw_assign(operNbr, "operPoint")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchPoint" size="8" maxlength="8"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Sequence</td>
+                              @dtw_assign(operNbr, "operSequence")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchSequence" size="8" maxlength="8"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Detail Point Activity</td>
+                              @dtw_assign(operNbr, "operActivity")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchActivity" size="15" maxlength="50"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Detail Point Process</td>
+                              @dtw_assign(operNbr, "operPointProcess")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchPointProcess" size="15" maxlength="50"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Complexity Rating</td>
+                              @dtw_assign(operNbr, "operRating")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchRating" size="3" maxlength="3"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchDesc.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("PDDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("a.PRDESCU", "Process", $(srchProcess), "U", operProcess, "A")
+  @Build_WildCard ("PDPONT",  "Point", $(srchPoint), "", operPoint, "N")
+  @Build_WildCard ("PDSEQ",   "Sequence", $(srchSequence), "", operSequence, "N")
+  @Build_WildCard ("coalesce(ATDESCU,' ')", "Detail Point Activity", $(srchActivity), "U", operActivity, "A")
+  @Build_WildCard ("coalesce(b.PRDESCU,' ')", "Detail Point Process", $(srchPointProcess), "U", operPointProcess, "A")
+  @Build_WildCard ("PDRATE",  "Complexity Rating", $(srchRating), "", operRating, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

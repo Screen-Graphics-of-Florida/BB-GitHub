@@ -1,0 +1,180 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Select Order Comments                                       *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Open Order"
+  d2wName                 = "SelectOrderComment.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;lineNumber=@dtw_rurlescseq(lineNumber)&amp;batchNumber=@dtw_rurlescseq(batchNumber)&amp;turnaround=@dtw_rurlescseq(turnaround)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "9999"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  advanceSearch           = "N"
+  tabID                   = ""
+  lgCTitle                = "Click here to cancel this shipment"	
+  lgHTitle                = "Click here to hold this shipment"	
+  lgOTitle                = "Click here to omit this shipment from the billing cycle"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %if (lineNumber == "000")
+      @dtw_assign(tabID, "COMMENT")
+  %else
+      @dtw_assign(tabID, "")
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              function confirmCloseCancel() { return confirm("Confirm Close/Cancel Of Order")}
+              function confirmCancel(turn,order) { return confirm("Confirm Cancel Of Shipment" + "\n" + "\n" + "Turnaround " + turn + "\n" + "Order Number " + order)}
+              function confirmHold(turn,order)   { return confirm("Confirm Hold Of Shipment" + "\n" + "\n" + "Turnaround " + turn + "\n" + "Order Number " + order)}
+              function confirmOmit(turn,order)   { return confirm("Confirm Omit From Billing Cycle" + "\n" + "\n" + "Turnaround " + turn + "\n" + "Order Number " + order)}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      %if (lineNumber == "000")
+          <body $(bodyTagAttr)>
+      %else
+          <body $(bodyTagAttr) onLoad="window.focus()" onBlur="window.close()">
+      %endif
+          <!-- Start Of Banner Code -->
+          %if (lineNumber == "000")
+              %INCLUDE "banner.icl"
+          %else
+              %INCLUDE "$(inquiryBanner)"
+          %endif
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "" && lineNumber == "000")
+                      @dtw_assign(pageID, "SELECTORDERCOMMENT")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " OEOCMT ", fileSQL)
+                      @dtw_concat(selectSQL, "OCORD#=$(orderNumber) and ", selectSQL)
+                      %if (lineNumber > "0" && lineNumber < "999")
+                          @dtw_concat(selectSQL, "  OCORL#=$(lineNumber)", selectSQL)
+                      %else
+                          @dtw_concat(selectSQL, " (OCORL#=0 or OCORL#=999)", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By OCDOCT,OCORL#,OCCSEQ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Select_Order_Comments_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %if (lineNumber == "000")
+              %INCLUDE "trailer.icl"
+          %else
+              %INCLUDE "$(inquiryTrailer)"
+          %endif
+          <!-- End Of Trailer Code -->
+     </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Select_Order_Comments_Query (IN CHAR(64)    profileHandle,
+                                                   CHAR(2)     dataBaseID,
+                                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (lineNumber == "000")
+          %INCLUDE "SelectOrderTabs.icl"
+      %else
+          %INCLUDE "PageTitle.icl"
+          <table $(contentTable)>
+              @Format_Header("Order Number", $(orderNumber), "")
+              @Format_Header("Line", $(lineNumber), "")
+              @Format_Header("Item", $(itemDescription), $(itemNumber))
+              @Format_Header("Warehouse", $(whsName), $(whsNumber))
+          </table>
+          $(inquiryhrTagAttr)
+      %endif
+      @dtw_assign(saveDocType, "")
+      @dtw_assign(saveLine, "")
+
+          %ROW{
+              %if (saveDocType != V_OCDOCT || saveLine != V_OCORL#)
+                  @RtvFldDesc("DODOCT='$(V_OCDOCT)'", "HDDOCT", "DODESC", doctDesc)
+                  %if (doctDesc == "") @dtw_assign(doctDesc, V_OCDOCT) %endif
+                  %if (V_OCORL# == "000")
+                      @dtw_concat(doctDesc, "&nbsp; (Header)", doctDesc)
+                  %elif (V_OCORL# == "999")
+                      @dtw_concat(doctDesc, "&nbsp; (Trailer)", doctDesc)
+                  %endif
+                  %if (saveDocType != "" || saveLine != "")
+                      </table>
+                      </fieldset>
+                  %endif
+                  @dtw_assign(saveDocType, V_OCDOCT)
+                  @dtw_assign(saveLine, V_OCORL#)
+                  <fieldset class="legendBody">
+                  <legend class="legendTitle">$(doctDesc)</legend>
+                  <table $(contentTable)>
+              %endif
+              %if (V_OCCMNT == "")
+                  @dtw_assign(V_OCCMNT, "&nbsp;")
+              %endif
+              <tr>
+                  <td class="colalph">$(V_OCCMNT)</td>
+              </tr>
+          %}
+          %if (saveDocType != "" || saveLine != "")
+              </table>
+              </fieldset>
+          %endif
+      %if (lineNumber == "000")
+          %INCLUDE "EndTabs.icl"
+      %endif
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}

@@ -1,0 +1,747 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Item/Warehouse Stock Status Report                          *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "BuildSortSeqSel.icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SubmitScheduleVar.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Item/Whs Stock Status Report"
+  d2wName                 = "ItemWarehouseStockStatusReport.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;stockLocActive=@dtw_rurlescseq(stockLocActive)&amp;printstockLocations=@dtw_rurlescseq(printstockLocations)&amp;reportSelType=@dtw_rurlescseq(reportSelType)&amp;backHome=@dtw_rurlescseq(backHome)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  sortSeqMax              = "6"
+  printstockLocations     = ""
+  stockLocActive          = ""
+  V_N2SEL                 = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL () {
+  %INCLUDE "$(docType)"	
+  %if (V_CISTKL=="Y")		
+      @dtw_assign(stockLocActive, "Y")
+  %endif
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "Calendar.icl"
+              %INCLUDE "DateEdit.icl"
+              %INCLUDE "EditFromToAll.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              function validate(chgForm) {
+                  if (editNum(document.Chg.fromWarehouse, 3, 0) &&
+                      editNum(document.Chg.toWarehouse, 3, 0) &&
+                      editNum(document.Chg.fromPrimaryVendor, 7, 0) &&
+                      editNum(document.Chg.toPrimaryVendor, 7, 0) &&
+                      editFromToAll(document.Chg.fromItemNumber, document.Chg.toItemNumber, document.Chg.allItemNumber, "A") &&
+                      editFromToAll(document.Chg.fromWarehouse, document.Chg.toWarehouse, document.Chg.allWarehouse, 3) &&
+                      editFromToAll(document.Chg.fromProductClass, document.Chg.toProductClass, document.Chg.allProductClass, "A") &&
+                      editFromToAll(document.Chg.fromPrimaryVendor, document.Chg.toPrimaryVendor, document.Chg.allPrimaryVendor, 7) &&
+                      editFromToAll(document.Chg.fromInventoryType, document.Chg.toInventoryType, document.Chg.allInventoryType, "A") &&
+                      editFromToAll(document.Chg.fromABCClassCode, document.Chg.toABCClassCode, document.Chg.allABCClassCode, "A")
+                      %if (stockLocActive == "Y")
+                          && editFromToAll(document.Chg.fromStockroom, document.Chg.toStockroom, document.Chg.allStockroom, "A")
+                          && editFromToAll(document.Chg.fromAisle, document.Chg.toAisle, document.Chg.allAisle, "A")
+                          && editFromToAll(document.Chg.fromLocation, document.Chg.toLocation, document.Chg.allLocation, "A")
+                      %endif
+                     )
+                     return true;
+              }
+              function returndate9() {
+                       document.Chg.schDate.value = '' + padout(month - 0 + 1) + padout(day) + yr2(year);
+                       date9win.close();
+               }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "Banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ITEMWAREHOUSESTOCKSTATUSREPORT")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SubmitScheduleTop.icl"
+                      %INCLUDE "ConfMessageDisplayNoTable.icl"
+                      $(hrTagAttr)
+                      <form class="formClass" METHOD=POST NAME="Chg"  onSubmit="return validate(document.Chg)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)">
+                          <table $(contentTable)>
+                              @dtw_assign(focusField, "fromItemNumber")
+                              %if (errFound != "" || scheduleJobSwitch == "Y")
+                                  @dtw_assign(scheduleJobSwitch, "")
+                                  @EdtVarErr(profileHandle, typeValue, edtVar)
+                                  @dtw_assign(focusField, "")
+                                  @ErrVarErr(profileHandle, typeError, errVar)
+                                  @Decat_Field("@@sbjb")   @dtw_assign(submitSchedule,  fieldValue)
+                                  @DecatErr_Field("@@slct", "reportUM")            @dtw_assign(Err_N1SLCT,  fieldValue)
+                                  @DecatErr_Field("@@sel@", "stockLocations")      @dtw_assign(Err_N2SEL,  fieldValue)
+                                  @DecatErr_Field("@@hneg", "negativeOH")          @dtw_assign(Err_N5HNEG,  fieldValue)
+                                  @DecatErr_Field("@@hpos", "positiveOH")          @dtw_assign(Err_N5HPOS,  fieldValue)
+                                  @DecatErr_Field("@@hzro", "zeroOH")              @dtw_assign(Err_N5HZRO,  fieldValue)
+                                  @DecatErr_Field("@@qoo@", "onOrder")             @dtw_assign(Err_N5QOO,  fieldValue)
+                                  @DecatErr_Field("@@fitm", "fromItemNumber")      @dtw_assign(Err_N5FR01,  fieldValue)
+                                  @DecatErr_Field("@@titm", "toItemNumber")        @dtw_assign(Err_N5TO01,  fieldValue)
+                                  @DecatErr_Field("@@aitm", "allItemNumber")       @dtw_assign(Err_N5AL01,  fieldValue)
+                                  @DecatErr_Field("@@sitm", "sortItemNumber")      @dtw_assign(Err_N5SQ01,  fieldValue)
+                                  @DecatErr_Field("@@pitm", "totalItemNumber")     @dtw_assign(Err_N5PT01,  fieldValue)
+                                  @DecatErr_Field("@@fwhs", "fromWarehouse")       @dtw_assign(Err_N5FR02,  fieldValue)
+                                  @DecatErr_Field("@@twhs", "toWarehouse")         @dtw_assign(Err_N5TO02,  fieldValue)
+                                  @DecatErr_Field("@@awhs", "allWarehouse")        @dtw_assign(Err_N5AL02,  fieldValue)
+                                  @DecatErr_Field("@@swhs", "sortWarehouse")       @dtw_assign(Err_N5SQ02,  fieldValue)
+                                  @DecatErr_Field("@@pwhs", "totalWarehouse")      @dtw_assign(Err_N5PT02,  fieldValue)
+                                  @DecatErr_Field("@@fpcl", "fromProductClass")    @dtw_assign(Err_N5FR03,  fieldValue)
+                                  @DecatErr_Field("@@tpcl", "toProductClass")      @dtw_assign(Err_N5TO03,  fieldValue)
+                                  @DecatErr_Field("@@apcl", "allProductClass")     @dtw_assign(Err_N5AL03,  fieldValue)
+                                  @DecatErr_Field("@@spcl", "sortProductClass")    @dtw_assign(Err_N5SQ03,  fieldValue)
+                                  @DecatErr_Field("@@ppcl", "totalProductClass")   @dtw_assign(Err_N5PT03,  fieldValue)
+                                  @DecatErr_Field("@@fven", "fromPrimaryVendor")   @dtw_assign(Err_N5FR04,  fieldValue)
+                                  @DecatErr_Field("@@tven", "toPrimaryVendor")     @dtw_assign(Err_N5TO04,  fieldValue)
+                                  @DecatErr_Field("@@aven", "allPrimaryVendor")    @dtw_assign(Err_N5AL04,  fieldValue)
+                                  @DecatErr_Field("@@sven", "sortPrimaryVendor")   @dtw_assign(Err_N5SQ04,  fieldValue)
+                                  @DecatErr_Field("@@pven", "totalPrimaryVendor")  @dtw_assign(Err_N5PT04,  fieldValue)
+                                  @DecatErr_Field("@@finv", "fromInventoryType")   @dtw_assign(Err_N5FR05,  fieldValue)
+                                  @DecatErr_Field("@@tinv", "toInventoryType")     @dtw_assign(Err_N5TO05,  fieldValue)
+                                  @DecatErr_Field("@@ainv", "allInventoryType")    @dtw_assign(Err_N5AL05,  fieldValue)
+                                  @DecatErr_Field("@@sinv", "sortInventoryType")   @dtw_assign(Err_N5SQ05,  fieldValue)
+                                  @DecatErr_Field("@@pinv", "totalInventoryType")  @dtw_assign(Err_N5PT05,  fieldValue)
+                                  @DecatErr_Field("@@fabc", "fromABCClassCode")    @dtw_assign(Err_N5FR06,  fieldValue)
+                                  @DecatErr_Field("@@tabc", "toABCClassCode")      @dtw_assign(Err_N5TO06,  fieldValue)
+                                  @DecatErr_Field("@@aabc", "allABCClassCode")     @dtw_assign(Err_N5AL06,  fieldValue)
+                                  @DecatErr_Field("@@sabc", "sortABCClassCode")    @dtw_assign(Err_N5SQ06,  fieldValue)
+                                  @DecatErr_Field("@@pabc", "totalABCClassCode")   @dtw_assign(Err_N5PT06,  fieldValue)
+                                  %if (stockLocActive == "Y")
+                                     @DecatErr_Field("@@fstk", "fromStockroom")    @dtw_assign(Err_N5FR07,  fieldValue)
+                                     @DecatErr_Field("@@tstk", "toStockroom")      @dtw_assign(Err_N5TO07,  fieldValue)
+                                     @DecatErr_Field("@@astk", "allStockroom")     @dtw_assign(Err_N5AL07,  fieldValue)
+                                     @DecatErr_Field("@@fisl", "fromAisle")        @dtw_assign(Err_N5FR08,  fieldValue)
+                                     @DecatErr_Field("@@tisl", "toAisle")          @dtw_assign(Err_N5TO08,  fieldValue)
+                                     @DecatErr_Field("@@aisl", "allAisle")         @dtw_assign(Err_N5AL08,  fieldValue)
+                                     @DecatErr_Field("@@floc", "fromLocation")     @dtw_assign(Err_N5FR09,  fieldValue)
+                                     @DecatErr_Field("@@tloc", "toLocation")       @dtw_assign(Err_N5TO09,  fieldValue)
+                                     @DecatErr_Field("@@aloc", "allLocation")      @dtw_assign(Err_N5AL09,  fieldValue)
+                                  %endif
+
+                                  %if (submitSchedule != "")
+                                      %INCLUDE "ScheduleJobErr.icl"    %{ Schedule Entries Errors %}
+                                  %endif
+
+                                  @Decat_Field("@@slct")  @dtw_assign(V_N1SLCT,  fieldValue)
+                                  @Decat_Field("@@sel@")  @dtw_assign(V_N2SEL,   fieldValue)
+                                  @Decat_Field("@@hneg")  @dtw_assign(V_N5HNEG,  fieldValue)
+                                  @Decat_Field("@@hpos")  @dtw_assign(V_N5HPOS,  fieldValue)
+                                  @Decat_Field("@@hzro")  @dtw_assign(V_N5HZRO,  fieldValue)
+                                  @Decat_Field("@@qoo@")  @dtw_assign(V_N5QOO,   fieldValue)
+                                  @Decat_Field("@@fitm")  @dtw_assign(V_N5FR01,  fieldValue)
+                                  @Decat_Field("@@titm")  @dtw_assign(V_N5TO01,  fieldValue)
+                                  @Decat_Field("@@aitm")  @dtw_assign(V_N5AL01,  fieldValue)
+                                  @Decat_Field("@@sitm")  @dtw_assign(V_N5SQ01,  fieldValue)
+                                  @Decat_Field("@@pitm")  @dtw_assign(V_N5PT01,  fieldValue)
+                                  @Decat_Field("@@fwhs")  @dtw_assign(V_N5FR02,  fieldValue)
+                                  @Decat_Field("@@twhs")  @dtw_assign(V_N5TO02,  fieldValue)
+                                  @Decat_Field("@@awhs")  @dtw_assign(V_N5AL02,  fieldValue)
+                                  @Decat_Field("@@swhs")  @dtw_assign(V_N5SQ02,  fieldValue)
+                                  @Decat_Field("@@pwhs")  @dtw_assign(V_N5PT02,  fieldValue)
+                                  @Decat_Field("@@fpcl")  @dtw_assign(V_N5FR03,  fieldValue)
+                                  @Decat_Field("@@tpcl")  @dtw_assign(V_N5TO03,  fieldValue)
+                                  @Decat_Field("@@apcl")  @dtw_assign(V_N5AL03,  fieldValue)
+                                  @Decat_Field("@@spcl")  @dtw_assign(V_N5SQ03,  fieldValue)
+                                  @Decat_Field("@@ppcl")  @dtw_assign(V_N5PT03,  fieldValue)
+                                  @Decat_Field("@@fven")  @dtw_assign(V_N5FR04,  fieldValue)
+                                  @Decat_Field("@@tven")  @dtw_assign(V_N5TO04,  fieldValue)
+                                  @Decat_Field("@@aven")  @dtw_assign(V_N5AL04,  fieldValue)
+                                  @Decat_Field("@@sven")  @dtw_assign(V_N5SQ04,  fieldValue)
+                                  @Decat_Field("@@pven")  @dtw_assign(V_N5PT04,  fieldValue)
+                                  @Decat_Field("@@finv")  @dtw_assign(V_N5FR05,  fieldValue)
+                                  @Decat_Field("@@tinv")  @dtw_assign(V_N5TO05,  fieldValue)
+                                  @Decat_Field("@@ainv")  @dtw_assign(V_N5AL05,  fieldValue)
+                                  @Decat_Field("@@sinv")  @dtw_assign(V_N5SQ05,  fieldValue)
+                                  @Decat_Field("@@pinv")  @dtw_assign(V_N5PT05,  fieldValue)
+                                  @Decat_Field("@@fabc")  @dtw_assign(V_N5FR06,  fieldValue)
+                                  @Decat_Field("@@tabc")  @dtw_assign(V_N5TO06,  fieldValue)
+                                  @Decat_Field("@@aabc")  @dtw_assign(V_N5AL06,  fieldValue)
+                                  @Decat_Field("@@sabc")  @dtw_assign(V_N5SQ06,  fieldValue)
+                                  @Decat_Field("@@pabc")  @dtw_assign(V_N5PT06,  fieldValue)
+
+                                 %if (stockLocActive == "Y")
+                                     @Decat_Field("@@fstk")  @dtw_assign(V_N5FR07, fieldValue)
+                                     @Decat_Field("@@tstk")  @dtw_assign(V_N5TO07, fieldValue)
+                                     @Decat_Field("@@astk")  @dtw_assign(V_N5AL07, fieldValue)
+                                     @Decat_Field("@@fisl")  @dtw_assign(V_N5FR08, fieldValue)
+                                     @Decat_Field("@@tisl")  @dtw_assign(V_N5TO08, fieldValue)
+                                     @Decat_Field("@@aisl")  @dtw_assign(V_N5AL08, fieldValue)
+                                     @Decat_Field("@@floc")  @dtw_assign(V_N5FR09, fieldValue)
+                                     @Decat_Field("@@tloc")  @dtw_assign(V_N5TO09, fieldValue)
+                                     @Decat_Field("@@aloc")  @dtw_assign(V_N5AL09, fieldValue)
+                                  %endif
+
+                                  %INCLUDE "ScheduleJobValue.icl"    %{ Schedule Entries Values %}
+                                  %if (V_N1SLCT == "02")
+                                      @dtw_assign(StockingUM, "")
+                                      @dtw_assign(PurchasingUM, "CHECKED")
+                                  %else
+                                      @dtw_assign(StockingUM, "CHECKED")
+                                      @dtw_assign(PurchasingUM, "")
+                                  %endif
+                                  %if (V_N2SEL == "02")
+                                      @dtw_assign(stockLocationsNo, "")
+                                      @dtw_assign(stockLocationsYes, "CHECKED")
+                                  %else
+                                      @dtw_assign(stockLocationsNo, "CHECKED")
+                                      @dtw_assign(stockLocationsYes, "")
+                                  %endif
+                                  %if (V_N5HNEG == "01")
+                                      @dtw_assign(checkedNegativeOH, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedNegativeOH, "")
+                                  %endif
+                                  %if (V_N5HPOS == "01")
+                                      @dtw_assign(checkedPositiveOH, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedPositiveOH, "")
+                                  %endif
+                                  %if (V_N5HZRO == "01")
+                                      @dtw_assign(checkedZeroOH, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedZeroOH, "")
+                                  %endif
+                                  %if (V_N5QOO == "01")
+                                      @dtw_assign(checkedOnOrder, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedOnOrder, "")
+                                  %endif
+                                  %if (V_N5AL01 == "ALL")
+                                      @dtw_assign(checkedAllItemNumber, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllItemNumber, "")
+                                  %endif
+                                  %if (V_N5AL02 == "ALL")
+                                      @dtw_assign(checkedAllWarehouse, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllWarehouse, "")
+                                  %endif
+                                  %if (V_N5AL03 == "ALL")
+                                      @dtw_assign(checkedAllProductClass, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllProductClass, "")
+                                  %endif
+                                  %if (V_N5AL04 == "ALL")
+                                      @dtw_assign(checkedAllPrimaryVendor, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllPrimaryVendor, "")
+                                  %endif
+                                  %if (V_N5AL05 == "ALL")
+                                      @dtw_assign(checkedAllInventoryType, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllInventoryType, "")
+                                  %endif
+                                  %if (V_N5AL06 == "ALL")
+                                      @dtw_assign(checkedAllABCClassCode, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllABCClassCode, "")
+                                  %endif
+                                  %if (stockLocActive == "Y")
+                                     %if (V_N5AL07 == "ALL")
+                                         @dtw_assign(checkedAllStockroom, "CHECKED")
+                                     %else
+                                          @dtw_assign(checkedAllStockroom, "")
+                                     %endif
+                                     %if (V_N5AL08 == "ALL")
+                                         @dtw_assign(checkedAllAisle, "CHECKED")
+                                     %else
+                                         @dtw_assign(checkedAllAisle, "")
+                                     %endif
+                                     %if (V_N5AL09 == "ALL")
+                                         @dtw_assign(checkedAllLocation, "CHECKED")
+                                     %else
+                                         @dtw_assign(checkedAllLocation, "")
+                                     %endif
+                                  %endif
+
+                                  %if (V_N5PT01 == "Y")
+                                      @dtw_assign(checkedItemNumberTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedItemNumberTotals, "")
+                                  %endif
+                                  %if (V_N5PT02 == "Y")
+                                      @dtw_assign(checkedWarehouseTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedWarehouseTotals, "")
+                                  %endif
+                                  %if (V_N5PT03 == "Y")
+                                      @dtw_assign(checkedProductClassTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedProductClassTotals, "")
+                                  %endif
+                                  %if (V_N5PT04 == "Y")
+                                      @dtw_assign(checkedPrimaryVendorTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedPrimaryVendorTotals, "")
+                                  %endif
+                                  %if (V_N5PT05 == "Y")
+                                      @dtw_assign(checkedInventoryTypeTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedInventoryTypeTotals, "")
+                                  %endif
+                                  %if (V_N5PT06 == "Y")
+                                      @dtw_assign(checkedABCClassCodeTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedABCClassCodeTotals, "")
+                                  %endif
+                              %else
+                                  @dtw_assign(StockingUM, "CHECKED")
+                                  @dtw_assign(PurchasingUM, "")
+                                  @dtw_assign(stockLocationsNo, "CHECKED")
+                                  @dtw_assign(stockLocationsYes, "")
+                                  @dtw_assign(checkedNegativeOH, "")
+                                  @dtw_assign(checkedPositiveOH, "CHECKED")
+                                  @dtw_assign(checkedZeroOH, "")
+                                  @dtw_assign(checkedOnOrder, "")
+                                  @dtw_assign(checkedAllItemNumber, "CHECKED")
+                                  @dtw_assign(checkedAllWarehouse, "CHECKED")
+                                  @dtw_assign(checkedAllProductClass, "CHECKED")
+                                  @dtw_assign(checkedAllPrimaryVendor, "CHECKED")
+                                  @dtw_assign(checkedAllInventoryType, "CHECKED")
+                                  @dtw_assign(checkedAllABCClassCode, "CHECKED")
+                                  %if (stockLocActive == "Y")
+                                     @dtw_assign(checkedAllStockroom, "CHECKED")
+                                     @dtw_assign(checkedAllAisle, "CHECKED")
+                                     @dtw_assign(checkedAllLocation, "CHECKED")
+                                  %endif
+                                  @dtw_assign(checkedItemNumberTotals, "")
+                                  @dtw_assign(checkedWarehouseTotals, "")
+                                  @dtw_assign(checkedProductClassTotals, "")
+                                  @dtw_assign(checkedPrimaryVendorTotals, "")
+                                  @dtw_assign(checkedInventoryTypeTotals, "")
+                                  @dtw_assign(checkedABCClassCodeTotals, "")
+                              %endif
+                              @dtw_assign(chgStockLocations, "")
+
+                              @SetTextOvr(Err_N1SLCT)
+                              <tr><td  class="dsphdr"><span $(textOvr)>Report U/M Selection</span></td>
+                                  <td class="inputnmbr"><input name="reportUM" type="radio" VALUE='01' $(StockingUM)>Stocking</td>
+                              </tr>
+                              @DspErrMsg(Err_N1SLCT)
+
+                              <tr><td>&nbsp;</td>
+                                  <td class="inputnmbr"><input name="reportUM" type="radio" VALUE='02' $(PurchasingUM)>Purchasing</td>
+                              </tr>
+
+                              %if (stockLocActive == "Y")
+                                 @SetTextOvr(Err_N2SEL)
+                                 <tr><td  class="dsphdr"><span $(textOvr)>Print Stock Locations</span></td>
+                                     <td class="inputnmbr"><input name="stockLocations" type="radio" VALUE='01' $(stockLocationsNo)>No</td>
+                                 </tr>
+                                 @DspErrMsg(Err_N2SEL)
+
+                                 <tr><td>&nbsp;</td>
+                                     <td class="inputnmbr"><input name="stockLocations" type="radio" VALUE='02' $(stockLocationsYes)>Yes</td>
+                                 </tr>
+                              %endif
+
+                              @SetTextOvr(Err_N5HNEG)
+                              <tr><td class="dsphdr"><span $(textOvr)>Include Options</span></td>
+                                  <td class="inputnmbr"><input name="negativeOH" type="checkbox" VALUE='01' $(checkedNegativeOH)>Negative On Hand</td>
+                              </tr>
+                              @DspErrMsg(Err_N5HNEG)
+
+                              <tr><td>&nbsp;</td>
+                                  <td class="inputnmbr"><input name="positiveOH" type="checkbox" VALUE='01' $(checkedPositiveOH)>Positive On Hand</td>
+                              </tr>
+
+                              <tr><td>&nbsp;</td>
+                                  <td class="inputnmbr"><input name="zeroOH" type="checkbox" VALUE='01' $(checkedZeroOH)>Zero On Hand</td>
+                              </tr>
+
+                              <tr><td>&nbsp;</td>
+                                  <td class="inputnmbr"><input name="onOrder" type="checkbox" VALUE='01' $(checkedOnOrder)>On Order</td>
+                              </tr>
+
+                          </table>
+
+                          <table $(contentTable)>
+                              <tr><td>&nbsp;</td>
+                                  <td class="colhdr">From</td>
+                                  <td class="colhdr">To</td>
+                                  <td class="colhdr">All</td>
+                                  <td class="colhdr">Sort<br>Sequence</td>
+                                  <td class="colhdr">Print<br>Totals</td>
+                              </tr>
+
+                              @SetTextOvr(Err_N5FR01)
+                              %if (textOvr == "") @SetTextOvr(Err_N5TO01) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5AL01) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5SQ01) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5PT01) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>Item Number</span></td>
+                                  <td class="inputalph"><input name="fromItemNumber" value="$(V_N5FR01)" type="text" size="15" maxlength="15"><a href="$(homeURL)$(phpPath)ItemSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=fromItemNumber&amp;fldDesc=fitemDescription" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fitemDescription" type="hidden"></td>
+                                  <td class="inputalph"><input name="toItemNumber" value="$(V_N5TO01)" type="text" size="15" maxlength="15"><a href="$(homeURL)$(phpPath)ItemSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=toItemNumber&amp;fldDesc=toitemDescription" onclick="$(searchWinVar)"> $(searchImage) </a><input name="toitemDescription" type="hidden"></td>
+                                  <td class="inputalph"><input name="allItemNumber" value='ALL' $(checkedAllItemNumber) type="checkbox" onClick="if (this.checked) this.form.fromItemNumber.value='', this.form.toItemNumber.value='';"></td>
+                                  @Build_Sort_Select("sortItemNumber", "$(V_N5SQ01)")
+                                  <td align=center ><input name="totalItemNumber" type="checkbox" $(checkedItemNumberTotals) VALUE='Y'></td>
+                              </tr>
+                              @DspErrMsg(Err_N5FR01)
+                              @DspErrMsg(Err_N5TO01)
+                              @DspErrMsg(Err_N5AL01)
+                              @DspErrMsg(Err_N5SQ01)
+                              @DspErrMsg(Err_N5PT01)
+
+                              @SetTextOvr(Err_N5FR02)
+                              %if (textOvr == "") @SetTextOvr(Err_N5TO02) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5AL02) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5SQ02) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5PT02) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>Warehouse</span></td>
+                                  <td class="inputnmbr"><input name="fromWarehouse" value="$(V_N5FR02)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)WarehouseSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=fromWarehouse&amp;fldDesc=fwarehouseName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fwarehouseName" type="hidden"></td>
+                                  <td class="inputnmbr"><input name="toWarehouse" value="$(V_N5TO02)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)WarehouseSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=toWarehouse&amp;fldDesc=twarehouseName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="twarehouseName" type="hidden"></td>
+                                  <td class="inputalph"><input name="allWarehouse" value='ALL' $(checkedAllWarehouse) type="checkbox" onClick="if (this.checked) this.form.fromWarehouse.value='', this.form.toWarehouse.value='';"></td>
+                                  @Build_Sort_Select("sortWarehouse", "$(V_N5SQ02)")
+                                  <td align=center ><input name="totalWarehouse" type="checkbox" $(checkedWarehouseTotals) VALUE='Y'></td>
+                              </tr>
+                              @DspErrMsg(Err_N5FR02)
+                              @DspErrMsg(Err_N5TO02)
+                              @DspErrMsg(Err_N5AL02)
+                              @DspErrMsg(Err_N5SQ02)
+                              @DspErrMsg(Err_N5PT02)
+
+                              @SetTextOvr(Err_N5FR03)
+                              %if (textOvr == "") @SetTextOvr(Err_N5TO03) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5AL03) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5SQ03) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5PT03) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>Product Class</span></td>
+                                  <td class="inputalph"><input name="fromProductClass" value="$(V_N5FR03)" type="text" size="8" maxlength="4"><a href="$(homeURL)$(cGIPath)ProdClassSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=fromProductClass&amp;fldDesc=fproductClassDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fproductClassDesc" type="hidden"></td>
+                                  <td class="inputalph"><input name="toProductClass" value="$(V_N5TO03)" type="text" size="8" maxlength="4"><a href="$(homeURL)$(cGIPath)ProdClassSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=toProductClass&amp;fldDesc=tproductClassDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="tproductClassDesc" type="hidden"></td>
+                                  <td class="inputalph"><input name="allProductClass" value='ALL' $(checkedAllProductClass) type="checkbox" onClick="if (this.checked) this.form.fromProductClass.value='', this.form.toProductClass.value='';"></td>
+                                  @Build_Sort_Select("sortProductClass", "$(V_N5SQ03)")
+                                  <td align=center ><input name="totalProductClass" type="checkbox" $(checkedProductClassTotals) VALUE='Y'></td>
+                              </tr>
+                              @DspErrMsg(Err_N5FR03)
+                              @DspErrMsg(Err_N5TO03)
+                              @DspErrMsg(Err_N5AL03)
+                              @DspErrMsg(Err_N5SQ03)
+                              @DspErrMsg(Err_N5PT03)
+
+                              @SetTextOvr(Err_N5FR04)
+                              %if (textOvr == "") @SetTextOvr(Err_N5TO04) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5AL04) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5SQ04) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5PT04) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>Primary Vendor</span></td>
+                                  <td class="inputnmbr"><input name="fromPrimaryVendor" value="$(V_N5FR04)" type="text" size="7" maxlength="7"><a href="$(homeURL)$(phpPath)VendorSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=fromPrimaryVendor&amp;fldDesc=fvendorName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fvendorName" type="hidden"></td>
+                                  <td class="inputnmbr"><input name="toPrimaryVendor" value="$(V_N5TO04)" type="text" size="7" maxlength="7"><a href="$(homeURL)$(phpPath)VendorSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=toPrimaryVendor&amp;fldDesc=tvendorName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="tvendorName" type="hidden"></td>
+                                  <td class="inputalph"><input name="allPrimaryVendor" value='ALL' $(checkedAllPrimaryVendor) type="checkbox" onClick="if (this.checked) this.form.fromPrimaryVendor.value='', this.form.toPrimaryVendor.value='';"></td>
+                                  @Build_Sort_Select("sortPrimaryVendor", "$(V_N5SQ04)")
+                                  <td align=center ><input name="totalPrimaryVendor" type="checkbox" $(checkedPrimaryVendorTotals) VALUE='Y'></td>
+                              </tr>
+                              @DspErrMsg(Err_N5FR04)
+                              @DspErrMsg(Err_N5TO04)
+                              @DspErrMsg(Err_N5AL04)
+                              @DspErrMsg(Err_N5SQ04)
+                              @DspErrMsg(Err_N5PT04)
+
+                              @SetTextOvr(Err_N5FR05)
+                              %if (textOvr == "") @SetTextOvr(Err_N5TO05) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5AL05) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5SQ05) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5PT05) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>Inventory Type</span></td>
+                                  <td class="inputalph"><input name="fromInventoryType" value="$(V_N5FR05)" type="text" size="6" maxlength="4"><a href="$(homeURL)$(cGIPath)invtypesearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=fromInventoryType&amp;fldDesc=finventoryTypeDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="finventoryTypeDesc"  type="hidden"></td>
+                                  <td class="inputalph"><input name="toInventoryType" value="$(V_N5TO05)" type="text" size="6" maxlength="4"><a href="$(homeURL)$(cGIPath)invtypesearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=toInventoryType&amp;fldDesc=tinventoryTypeDesc" onclick="$(searchWinVar)">$(searchImage) </a><input name="tinventoryTypeDesc"  type="hidden"></td>
+                                  <td class="inputalph"><input name="allInventoryType" value='ALL' $(checkedAllInventoryType) type="checkbox" onClick="if (this.checked) this.form.fromInventoryType.value='', this.form.toInventoryType.value='';"></td>
+                                  @Build_Sort_Select("sortInventoryType", "$(V_N5SQ05)")
+                                  <td align=center ><input name="totalInventoryType" type="checkbox" $(checkedInventoryTypeTotals) VALUE='Y'></td>
+                              </tr>
+                              @DspErrMsg(Err_N5FR05)
+                              @DspErrMsg(Err_N5TO05)
+                              @DspErrMsg(Err_N5AL05)
+                              @DspErrMsg(Err_N5SQ05)
+                              @DspErrMsg(Err_N5PT05)
+
+                              @SetTextOvr(Err_N5FR06)
+                              %if (textOvr == "") @SetTextOvr(Err_N5TO06) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5AL06) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5SQ06) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N5PT06) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>ABC Class Code</span></td>
+                                  <td class="inputalph"><input name="fromABCClassCode" value="$(V_N5FR06)" type="text" size="1" maxlength="1"></td>
+                                  <td class="inputalph"><input name="toABCClassCode" value="$(V_N5TO06)" type="text" size="1" maxlength="1"></td>
+                                  <td class="inputalph"><input name="allABCClassCode" value='ALL' $(checkedAllABCClassCode) type="checkbox" onClick="if (this.checked) this.form.fromABCClassCode.value='', this.form.toABCClassCode.value='';"></td>
+                                  @Build_Sort_Select("sortABCClassCode", "$(V_N5SQ06)")
+                                  <td align=center ><input name="totalABCClassCode" type="checkbox" $(checkedABCClassCodeTotals) VALUE='Y'></td>
+                              </tr>
+                              @DspErrMsg(Err_N5FR06)
+                              @DspErrMsg(Err_N5TO06)
+                              @DspErrMsg(Err_N5AL06)
+                              @DspErrMsg(Err_N5SQ06)
+                              @DspErrMsg(Err_N5PT06)
+
+                              %if (stockLocActive == "Y")
+
+                                 @SetTextOvr(Err_N5FR07)
+                                 %if (textOvr == "") @SetTextOvr(Err_N5TO07) %endif
+                                 %if (textOvr == "") @SetTextOvr(Err_N5AL07) %endif
+                                 <tr><td  class="dsphdr"><span $(textOvr)>Stockroom</span></td>
+                                     <td class="inputalph"><input name="fromStockroom" value="$(V_N5FR07)" type="text" size="5" maxlength="3"><a href="$(homeURL)$(phpPath)StockLocSearch.php$(altVarBase)&amp;docName=Chg&amp;forWhs=@dtw_rurlescseq(warehouseNumber)&amp;fldStkr=fromStockroom&amp;fldAisle=fromAisle&amp;fldLoc=fromLocation&amp;fldStkID=stockLocId" onclick="$(searchWinVar)"> $(searchImage) </a><input name="stockLocId" type="hidden"></td>
+                                     <td class="inputalph"><input name="toStockroom" value="$(V_N5TO07)" type="text" size="5" maxlength="3"><a href="$(homeURL)$(phpPath)StockLocSearch.php$(altVarBase)&amp;docName=Chg&amp;forWhs=@dtw_rurlescseq(warehouseNumber)&amp;fldStkr=toStockroom&amp;fldAisle=toAisle&amp;fldLoc=toLocation&amp;fldStkID=stockLocId" onclick="$(searchWinVar)"> $(searchImage) </a></td>
+                                     <td class="inputalph"><input name="allStockroom" value='ALL' $(checkedAllStockroom) type="checkbox" onClick="if (this.checked) this.form.fromStockroom.value='', this.form.toStockroom.value='';"></td>
+                                 </tr>
+                                 @DspErrMsg(Err_N5FR07)
+                                 @DspErrMsg(Err_N5TO07)
+                                 @DspErrMsg(Err_N5AL07)
+
+                                 @SetTextOvr(Err_N5FR08)
+                                 %if (textOvr == "") @SetTextOvr(Err_N5TO08) %endif
+                                 %if (textOvr == "") @SetTextOvr(Err_N5AL08) %endif
+                                 <tr><td  class="dsphdr"><span $(textOvr)>Aisle</span></td>
+                                     <td class="inputalph"><input name="fromAisle" value="$(V_N5FR08)" type="text" size="6" maxlength="4"><a href="$(homeURL)$(phpPath)StockLocSearch.php$(altVarBase)&amp;docName=Chg&amp;forWhs=@dtw_rurlescseq(warehouseNumber)&amp;fldStkr=fromStockroom&amp;fldAisle=fromAisle&amp;fldLoc=fromLocation&amp;fldStkID=stockLocId" onclick="$(searchWinVar)"> $(searchImage) </a><input name="stockLocId" type="hidden"></td>
+                                     <td class="inputalph"><input name="toAisle" value="$(V_N5TO08)" type="text" size="6" maxlength="4"><a href="$(homeURL)$(phpPath)StockLocSearch.php$(altVarBase)&amp;docName=Chg&amp;forWhs=@dtw_rurlescseq(warehouseNumber)&amp;fldStkr=toStockroom&amp;fldAisle=toAisle&amp;fldLoc=toLocation&amp;fldStkID=stockLocId" onclick="$(searchWinVar)"> $(searchImage) </a><input name="stockLocId" type="hidden"></td>
+                                     <td class="inputalph"><input name="allAisle" value='ALL' $(checkedAllAisle) type="checkbox" onClick="if (this.checked) this.form.fromAisle.value='', this.form.toAisle.value='';"></td>
+                                 </tr>
+                                 @DspErrMsg(Err_N5FR08)
+                                 @DspErrMsg(Err_N5TO08)
+                                 @DspErrMsg(Err_N5AL08)
+
+                                 @SetTextOvr(Err_N5FR09)
+                                 %if (textOvr == "") @SetTextOvr(Err_N5TO09) %endif
+                                 %if (textOvr == "") @SetTextOvr(Err_N5AL09) %endif
+                                 <tr><td  class="dsphdr"><span $(textOvr)>Location</span></td>
+                                     <td class="inputalph"><input name="fromLocation" value="$(V_N5FR09)" type="text" size="12" maxlength="8"><a href="$(homeURL)$(phpPath)StockLocSearch.php$(altVarBase)&amp;docName=Chg&amp;forWhs=@dtw_rurlescseq(warehouseNumber)&amp;fldStkr=fromStockroom&amp;fldAisle=fromAisle&amp;fldLoc=fromLocation&amp;fldStkID=stockLocId" onclick="$(searchWinVar)"> $(searchImage) </a><input name="stockLocId" type="hidden"></td>
+                                     <td class="inputalph"><input name="toLocation" value="$(V_N5TO09)" type="text" size="12" maxlength="8"><a href="$(homeURL)$(phpPath)StockLocSearch.php$(altVarBase)&amp;docName=Chg&amp;forWhs=@dtw_rurlescseq(warehouseNumber)&amp;fldStkr=toStockroom&amp;fldAisle=toAisle&amp;fldLoc=toLocation&amp;fldStkID=stockLocId" onclick="$(searchWinVar)"> $(searchImage) </a><input name="stockLocId" type="hidden"></td>
+                                     <td class="inputalph"><input name="allLocation" value='ALL' $(checkedAllLocation) type="checkbox" onClick="if (this.checked) this.form.fromLocation.value='', this.form.toLocation.value='';"></td>
+                                 </tr>
+                                 @DspErrMsg(Err_N5FR09)
+                                 @DspErrMsg(Err_N5TO09)
+                                 @DspErrMsg(Err_N5AL09)
+
+                              %endif
+
+                          </table>
+
+                          @dtw_assign(envProgram, "HIVSSR")
+                          @dtw_assign(envPrinter, "QSYSPRT")
+                          %INCLUDE "ScheduleJob.icl"
+                          %INCLUDE "SubmitScheduleBottom.icl"
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+
+                          %if (focusField !="")
+                              <script TYPE="text/javascript">
+                                  document.Chg.$(focusField).focus();
+                              </script>
+                          %endif
+                      </form>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "Trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     submitSchedule,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,            	
+                                        INOUT CHAR(32000) errVar)
+  {%EXEC {HIVSSS_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "SetLibraryList.icl"
+  @Set_SQL()
+
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "SetLibraryList.icl"
+  @dtw_mUPPERCASE(fromItemNumber)
+  @dtw_mUPPERCASE(toItemNumber)
+  @dtw_mUPPERCASE(allItemNumber)
+  @dtw_mUPPERCASE(allWarehouse)
+  @dtw_mUPPERCASE(fromProductClass)
+  @dtw_mUPPERCASE(toProductClass)
+  @dtw_mUPPERCASE(allProductClass)
+  @dtw_mUPPERCASE(allPrimaryVendor)
+  @dtw_mUPPERCASE(fromInventoryType)
+  @dtw_mUPPERCASE(toInventoryType)
+  @dtw_mUPPERCASE(allInventoryType)
+  @dtw_mUPPERCASE(fromABCClassCode)
+  @dtw_mUPPERCASE(toABCClassCode)
+  @dtw_mUPPERCASE(allABCClassCode)
+  %if (stockLocActive == "Y" &&  stockLocations == "02")
+      @dtw_mUPPERCASE(fromStockroom)
+      @dtw_mUPPERCASE(toStockroom)
+      @dtw_mUPPERCASE(allStockroom)
+      @dtw_mUPPERCASE(fromAisle)
+      @dtw_mUPPERCASE(toAisle)
+      @dtw_mUPPERCASE(allAisle)
+      @dtw_mUPPERCASE(fromLocation)
+      @dtw_mUPPERCASE(toLocation)
+      @dtw_mUPPERCASE(allLocation)
+  %endif
+
+  @dtw_assign(sortItemNumber,@dtw_rstrip(sortItemNumber))
+  @dtw_assign(fromWarehouse,@dtw_rstrip(fromWarehouse))
+  @dtw_assign(toWarehouse,@dtw_rstrip(toWarehouse))
+  @dtw_assign(sortWarehouse,@dtw_rstrip(sortWarehouse))
+  @dtw_assign(sortProductClass,@dtw_rstrip(sortProductClass))
+  @dtw_assign(fromPrimaryVendor,@dtw_rstrip(fromPrimaryVendor))
+  @dtw_assign(toPrimaryVendor,@dtw_rstrip(toPrimaryVendor))
+  @dtw_assign(sortPrimaryVendor,@dtw_rstrip(sortPrimaryVendor))
+  @dtw_assign(sortInventoryType,@dtw_rstrip(sortInventoryType))
+  @dtw_assign(sortABCClassCode,@dtw_rstrip(sortABCClassCode))
+  %if (stockLocActive == "Y" &&  V_N2SEL == "02")
+      @dtw_assign(sortStockroom,@dtw_rstrip(sortStockroom))
+      @dtw_assign(sortAisle,@dtw_rstrip(sortAisle))
+      @dtw_assign(sortLocation,@dtw_rstrip(sortLocation))
+  %endif
+
+
+  %if (allItemNumber != "ALL")
+      @dtw_assign(allItemNumber, "")
+  %endif
+  %if (allWarehouse != "ALL")
+      @dtw_assign(allWarehouse, "")
+  %endif
+  %if (allProductClass != "ALL")
+      @dtw_assign(allProductClass, "")
+  %endif
+  %if (allPrimaryVendor != "ALL")
+      @dtw_assign(allPrimaryVendor, "")
+  %endif
+  %if (allInventoryType != "ALL")
+      @dtw_assign(allInventoryType, "")
+  %endif
+  %if (allABCClassCode != "ALL")
+      @dtw_assign(allABCClassCode, "")
+  %endif
+  %if (stockLocActive == "Y" &&  stockLocations == "02")
+      %if (allStockroom != "ALL")
+          @dtw_assign(allStockroom, "")
+      %endif
+      %if (allAisle != "ALL")
+          @dtw_assign(allAisle, "")
+      %endif
+      %if (allLocation != "ALL")
+          @dtw_assign(allLocation, "")
+      %endif
+  %endif
+
+  %if (totalItemNumber != "Y")
+      @dtw_assign(totalItemNumber, "N")
+  %endif
+  %if (totalWarehouse != "Y")
+      @dtw_assign(totalWarehouse, "N")
+  %endif
+  %if (totalProductClass != "Y")
+      @dtw_assign(totalProductClass, "N")
+  %endif
+  %if (totalPrimaryVendor != "Y")
+      @dtw_assign(totalPrimaryVendor, "N")
+  %endif
+  %if (totalInventoryType != "Y")
+      @dtw_assign(totalInventoryType, "N")
+  %endif
+  %if (totalABCClassCode != "Y")
+      @dtw_assign(totalABCClassCode, "N")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@cstk", chgStockLocations)
+  @Concat_Field("@@stkl", stockLocActive)
+  @Concat_Field("@@slct", reportUM)
+  %if (stockLocActive == "Y")
+     @Concat_Field("@@sel@", stockLocations)
+  %endif
+  @Concat_Field("@@hneg", negativeOH)
+  @Concat_Field("@@hpos", positiveOH)
+  @Concat_Field("@@hzro", zeroOH)
+  @Concat_Field("@@qoo@", onOrder)
+  @Concat_Field("@@fitm", fromItemNumber)
+  @Concat_Field("@@titm", toItemNumber)
+  @Concat_Field("@@aitm", allItemNumber)
+  @Concat_Field("@@sitm", sortItemNumber)
+  @Concat_Field("@@pitm", totalItemNumber)
+  @Concat_Field("@@fwhs", fromWarehouse)
+  @Concat_Field("@@twhs", toWarehouse)
+  @Concat_Field("@@awhs", allWarehouse)
+  @Concat_Field("@@swhs", sortWarehouse)
+  @Concat_Field("@@pwhs", totalWarehouse)
+  @Concat_Field("@@fpcl", fromProductClass)
+  @Concat_Field("@@tpcl", toProductClass)
+  @Concat_Field("@@apcl", allProductClass)
+  @Concat_Field("@@spcl", sortProductClass)
+  @Concat_Field("@@ppcl", totalProductClass)
+  @Concat_Field("@@fven", fromPrimaryVendor)
+  @Concat_Field("@@tven", toPrimaryVendor)
+  @Concat_Field("@@aven", allPrimaryVendor)
+  @Concat_Field("@@sven", sortPrimaryVendor)
+  @Concat_Field("@@pven", totalPrimaryVendor)
+  @Concat_Field("@@finv", fromInventoryType)
+  @Concat_Field("@@tinv", toInventoryType)
+  @Concat_Field("@@ainv", allInventoryType)
+  @Concat_Field("@@sinv", sortInventoryType)
+  @Concat_Field("@@pinv", totalInventoryType)
+  @Concat_Field("@@fabc", fromABCClassCode)
+  @Concat_Field("@@tabc", toABCClassCode)
+  @Concat_Field("@@aabc", allABCClassCode)
+  @Concat_Field("@@sabc", sortABCClassCode)
+  @Concat_Field("@@pabc", totalABCClassCode)
+  %if (stockLocActive == "Y" &&  stockLocations == "02")
+     @Concat_Field("@@fstk", fromStockroom)
+     @Concat_Field("@@tstk", toStockroom)
+     @Concat_Field("@@astk", allStockroom)
+     @Concat_Field("@@fisl", fromAisle)
+     @Concat_Field("@@tisl", toAisle)
+     @Concat_Field("@@aisl", allAisle)
+     @Concat_Field("@@floc", fromLocation)
+     @Concat_Field("@@tloc", toLocation)
+     @Concat_Field("@@aloc", allLocation)
+  %else
+     @Concat_Field("@@astk", "ALL")
+     @Concat_Field("@@aisl", "ALL")
+     @Concat_Field("@@aloc", "ALL")
+  %endif
+
+  %INCLUDE "ScheduleJobConcat.icl"    %{ Schedule Entries Values %}
+
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, submitSchedule, errFound, edtVar, errVar)
+
+  %if (chgStockLocations == "Y")
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, typeReset)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;chgStockLocations=Y">
+  %endif
+
+  %INCLUDE "SubmitScheduleUpdate.icl"
+%}

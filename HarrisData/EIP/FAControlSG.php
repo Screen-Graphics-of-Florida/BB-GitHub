@@ -1,0 +1,13 @@
+<?php
+
+$ACNOPD="N";
+$ACGLTR="S";
+$ACGLRP="Y";
+$ACMSCH="02";
+$ACTSCH="02";
+$ACBSCH="01";
+$ACDIFC="Y";
+$ACRCLR="O";
+$ACALIB="AN";
+$ACALYN="";
+?>

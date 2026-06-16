@@ -1,0 +1,253 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Drill Down Account Budget Detail                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Account Budget Detail"
+  d2wName                 = "GLDDBudget.d2w"
+  d2wVarBase              = "$(genericVarBase)$(glDDVarBase)&amp;accountNumber=@dtw_rurlescseq(accountNumber)&amp;subAccount=@dtw_rurlescseq(subAccount)&amp;coNumber=@dtw_rurlescseq(coNumber)&amp;facNumber=@dtw_rurlescseq(facNumber)&amp;accountAmount=@dtw_rurlescseq(accountAmount)&amp;planNumber=@dtw_rurlescseq(planNumber)&amp;fromPer=@dtw_rurlescseq(fromPer)&amp;toPer=@dtw_rurlescseq(toPer)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "1000"
+  prtMaxRows              = "1000"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  acctName                = ""
+  balanceIncome           = ""
+  currencyUnit            = ""
+  currencyType            = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <link rel=stylesheet type="text/css" href="$(homeURL)$(homePath)$(GLDDStyleSheet)">
+          <script TYPE="text/javascript">
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(inquiryBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td>
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDPBED ", fileSQL)
+                      @dtw_concat(selectSQL, " PDPER# between $(fromPer) and $(toPer) ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " ORDER BY PDPER# ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(inquiryTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64) profileHandle,
+                                   CHAR(2)   dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if (ddReport!="")
+                          <a href="$(homeURL)$(cGIPath)glDDReport.d2w/REPORT$(genericVarBase)$(glDDVarBase)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))" title="Return To Drill Down Report">$(portalHome)</a>
+                      %endif
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/ENTRY$(d2wVarBase)&amp;formatToPrint=Y" target=_blank>$(formatPrintDesc)</a>
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      $(inquiryhrTagAttr)
+
+      <table $(contentTable)>
+          <tr><th class="colhdr">Budget<br>Plan</th>
+              <th class="colhdr">Description</th>
+              <th class="colhdr">Co/Fac</th>
+              <th class="colhdr">Name</th>
+              <th class="colhdr">Account</th>
+              <th class="colhdr">Account Name</th>
+              <th class="colhdr">Type</th>
+              <th class="colhdr">Usage</th>
+              %if (V_HDMCRL > "0")
+                  <th class="colhdr">Cur</th>
+              %endif
+              <th class="colhdr">Budget<br>Amount</th>
+              <th class="colhdr">Opening<br>Balance</th>
+          </tr>
+
+          @RtvFldDesc("DDGRSN='$(ddReport)'", "GLDDRP", "DDUNPS", V_DDUNPS)
+          @RtvFldDesc("BGNMBR=$(planNumber)", "GLBGHD", "BGDESC", V_BGDESC)
+          @Retrieve_AcctJrnl_Data(profileHandle,
+                                 dataBaseID,
+                                 coNumber,
+                                 facNumber,
+                                 accountNumber,
+                                 subAccount,
+                                 fromPer,
+                                 toPer,
+                                 V_DDUNPS,
+                                 acctName,
+                                 coFacName,
+                                 balanceIncome,
+                                 currencyUnit,
+                                 currencyType,
+                                 beginBal)
+
+          @Format_CoFac("$(coNumber)", "$(facNumber)", "", F_CoFac)
+          @Format_Acct("$(accountNumber)", "$(subAccount)", "", F_AcctSub)
+          @Format_Nbr($(beginBal), F_beginBal, "2", $(amtEditCode), "Y", "", "")
+
+          %INCLUDE "SetRowClass.icl"
+
+          <tr class="$(rowClass)">
+              <td class="colnmbr">$(planNumber)</td>
+              <td class="colnmbr">$(V_BGDESC)</td>
+              <td class="colnmbr">$(F_CoFac)</td>
+              <td class="colalph">$(coFacName)</td>
+              <td class="colnmbr">$(F_AcctSub)</td>
+              <td class="colalph">$(acctName)</td>
+              <td class="colalph">$(balanceIncome)</td>
+              <td class="colalph">$(currencyUnit) </td>
+              %if (V_HDMCRL > "0")
+                  <td class="colalph">$(currencyType) </td>
+              %endif
+              <td class="colnmbr">$(accountAmount)</td>
+              <td class="colnmbr">$(F_beginBal)</td>
+          </tr>
+      </table>
+      <table $(contentTable)>
+          <tr>
+              <th class="colhdr">Period</th>
+              <th class="colhdr">Budget<br>Amount</th>
+              <th class="colhdr">Actual<br>Amount</th>
+              <th class="colhdr">Variance</th>
+              <th class="colhdr">Variance<br>Percent<br>To Budget</th>
+          </tr>
+
+          %ROW{
+
+              %INCLUDE "SetRowClass.icl"
+
+              @RtvFldDesc("BDNMBR=$(planNumber) and BDCO=$(coNumber) and BDFAC=$(facNumber) and BDACCT=$(accountNumber) and BDSUB=$(subAccount) and BDPER#=$(V_PDPER#) ", "GLBGDT", "CHAR(coalesce(BDBDG,0))", V_BDBDG)
+              @Format_Nbr($(V_BDBDG), F_BDBDG, "0", $(amtEditCode), "Y", "", "")
+
+              @RtvFldDesc("DDGRSN='$(ddReport)'", "GLDDRP", "DDEOYA", V_DDEOYA)
+              %if (V_DDEOYA=="Y" && V_DDUNPS=="Y")
+                  @RtvFldDesc("TSCO=$(coNumber) and TSFAC=$(facNumber) and TSACCT=$(accountNumber) and TSSUB=$(subAccount) and TSPER#=$(V_PDPER#)", "GLTRSM", "CHAR(coalesce(SUM(TSEAMT+TSUAMT),0))", V_TSEAMT)
+              %elif (V_DDEOYA=="Y" && V_DDUNPS=="N")
+                  @RtvFldDesc("TSCO=$(coNumber) and TSFAC=$(facNumber) and TSACCT=$(accountNumber) and TSSUB=$(subAccount) and TSPER#=$(V_PDPER#)", "GLTRSM", "CHAR(coalesce(SUM(TSEAMT),0))", V_TSEAMT)
+              %elif (V_DDEOYA=="N" && V_DDUNPS=="Y")
+                  @RtvFldDesc("TSCO=$(coNumber) and TSFAC=$(facNumber) and TSACCT=$(accountNumber) and TSSUB=$(subAccount) and TSPER#=$(V_PDPER#) and TSEOYF=' '", "GLTRSM", "CHAR(coalesce(TSEAMT+TSUAMT,0))", V_TSEAMT)
+              %else
+                  @RtvFldDesc("TSCO=$(coNumber) and TSFAC=$(facNumber) and TSACCT=$(accountNumber) and TSSUB=$(subAccount) and TSPER#=$(V_PDPER#) and TSEOYF=' '", "GLTRSM", "CHAR(coalesce(TSEAMT,0))", V_TSEAMT)
+              %endif
+              @Format_Nbr($(V_TSEAMT), F_TSEAMT, "2", $(amtEditCode), "Y", "", "")
+
+              @RtvFldDesc("CTCALV='1'", "GLCTRL", "coalesce(CTCALV,' ')", V_CTCALV)
+              %if (V_CTCALV == "1")
+                  @dtw_SUBTRACT(V_TSEAMT, V_BDBDG, Variance)
+              %else
+                  @dtw_SUBTRACT(V_BDBDG, V_TSEAMT, Variance)
+              %endif
+              @Format_Nbr($(Variance), R_Variance, "0", $(amtEditCode), "Y", "", "")
+              @Format_Nbr("@dtw_rMultiply(@dtw_rDivide(Variance, V_BDBDG), "100")", Percent, "3", $(pctEditCode), "Y", "", "")
+
+              @PeriodFromCYP(V_PDPER#)
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr">$(V_PDPER#)</td>
+                  <td class="colnmbr">$(F_BDBDG)</td>
+                  <td class="colnmbr">$(F_TSEAMT)</td>
+                  <td class="colnmbr">$(R_Variance)</td>
+                  <td class="colnmbr">$(Percent)</td>
+              </tr>
+          %}
+
+          <tr><td>&nbsp;</td></tr>
+
+          %INCLUDE "SetRowClass.icl"
+          @RtvFldDesc("BDNMBR=$(planNumber) and BDCO=$(coNumber) and BDFAC=$(facNumber) and BDACCT=$(accountNumber) and BDSUB=$(subAccount) and BDPER# between $(fromPer) and $(toPer) ", "GLBGDT", "CHAR(coalesce(SUM(BDBDG),0))", V_BDBDG)
+          @Format_Nbr($(V_BDBDG), F_BDBDG, "0", $(amtEditCode), "Y", "", "")
+
+          %if (V_DDEOYA=="Y" && V_DDUNPS=="Y")
+              @RtvFldDesc("TSCO=$(coNumber) and TSFAC=$(facNumber) and TSACCT=$(accountNumber) and TSSUB=$(subAccount) and TSPER# between $(fromPer) and $(toPer)", "GLTRSM", "CHAR(coalesce(SUM(TSEAMT+TSUAMT),0))", V_TSEAMT)
+          %elif (V_DDEOYA=="Y" && V_DDUNPS=="N")
+              @RtvFldDesc("TSCO=$(coNumber) and TSFAC=$(facNumber) and TSACCT=$(accountNumber) and TSSUB=$(subAccount) and TSPER# between $(fromPer) and $(toPer)", "GLTRSM", "CHAR(coalesce(SUM(TSEAMT),0))", V_TSEAMT)
+          %elif (V_DDEOYA=="N" && V_DDUNPS=="Y")
+              @RtvFldDesc("TSCO=$(coNumber) and TSFAC=$(facNumber) and TSACCT=$(accountNumber) and TSSUB=$(subAccount) and TSPER# between $(fromPer) and $(toPer) and TSEOYF=' '", "GLTRSM", "CHAR(coalesce(TSEAMT+TSUAMT,0))", V_TSEAMT)
+          %else
+              @RtvFldDesc("TSCO=$(coNumber) and TSFAC=$(facNumber) and TSACCT=$(accountNumber) and TSSUB=$(subAccount) and TSPER# between $(fromPer) and $(toPer) and TSEOYF=' '", "GLTRSM", "CHAR(coalesce(TSEAMT,0))", V_TSEAMT)
+          %endif
+          @Format_Nbr($(V_TSEAMT), F_TSEAMT, "2", $(amtEditCode), "Y", "", "")
+
+          @RtvFldDesc("CTCALV='1'", "GLCTRL", "coalesce(CTCALV,' ')", V_CTCALV)
+          %if (V_CTCALV == "1")
+              @dtw_SUBTRACT(V_TSEAMT, V_BDBDG, Variance)
+          %else
+              @dtw_SUBTRACT(V_BDBDG, V_TSEAMT, Variance)
+          %endif
+          @Format_Nbr($(Variance), R_Variance, "0", $(amtEditCode), "Y", "", "")
+          @Format_Nbr("@dtw_rMultiply(@dtw_rDivide(Variance, V_BDBDG), "100")", Percent, "3", $(pctEditCode), "Y", "", "")
+          <tr class="$(rowClass)">
+              <td class="colalph">Total</td>
+              <td class="colnmbr">$(F_BDBDG)</td>
+              <td class="colnmbr">$(F_TSEAMT)</td>
+              <td class="colnmbr">$(R_Variance)</td>
+              <td class="colnmbr">$(Percent)</td>
+          </tr>
+
+      </table>
+      $(inquiryhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (formatToPrint == "Y")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  @Set_SQL(stmtSQL)
+%}

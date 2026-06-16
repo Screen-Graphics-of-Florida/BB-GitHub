@@ -1,0 +1,164 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: A/R Aging                                                   *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ARControl$(dataBaseID).icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title           = "A/R Aging"
+  d2wName              = "ARAging.d2w"
+  d2wVarBase           = "$(genericVarBase)&amp;backHome=@dtw_rurlescseq(backHome)"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  RPT_MAX_ROWS	        = "99"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext	        = "1"
+  totalPages	        = "0"	
+  allCustomers	        = "0"	
+
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+   @dtw_replace(workURL, "@@backHome", "FMSMgmt.d2w/REPORT", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>  	
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                       @dtw_assign(pageID, "ARAGING")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @LoadARAging(profileHandle, allCustomers)
+                      %INCLUDE "QuickLinkClear.icl"
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select AIBCKT, sum(AIIVAM) as IVAMT, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce((Select Count(*) from ARAIWK b Where b.AIXHND='$(profileHandle)' and b.AIBCKT=a.AIBCKT and b.AIIVCD<>'U') ,0) as INV_COUNT ", stmtSQL)
+                      @dtw_concat(fileSQL, " ARAIWK a ", fileSQL)
+                      @dtw_concat(selectSQL, "AIXHND='$(profileHandle)'", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Group By AIBCKT ", stmtSQL)
+                      @dtw_concat(stmtSQL, " Order By AIBCKT ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @AR_Aging(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) AR_Aging (IN CHAR(64)    profileHandle,
+				 CHAR(2)     dataBaseID,
+                                CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      $(hrTagAttr)
+      <table $(contentTable)>
+          <tr>
+              <th class="colhdr">Aging Days</th>
+              <th class="colhdr">Amount Due</th>
+              <th class="colhdr">Number Of<br>Invoices</th>
+          </tr>
+          @dtw_assign(T_IVAMT, "0")
+          @dtw_assign(T_INV_COUNT, "0")
+
+          %ROW{
+              %if (V_AIBCKT == "1")
+                  @dtw_assign(agingDesc, "Current")
+              %elif (V_AIBCKT == "2")
+                  @dtw_assign(agingDesc, "1 - $(V_CRAGE1)")
+              %elif (V_AIBCKT == "3")
+                  @dtw_assign(agingDesc, "@dtw_radd(V_CRAGE1, "1") - $(V_CRAGE2)")
+              %elif (V_AIBCKT == "4")
+                  @dtw_assign(agingDesc, "@dtw_radd(V_CRAGE2, "1") - $(V_CRAGE3)")
+              %elif (V_AIBCKT == "5")
+                  @dtw_assign(agingDesc, "@dtw_radd(V_CRAGE3, "1") - $(V_CRAGE4)")
+              %elif (V_AIBCKT == "6")
+                  @dtw_assign(agingDesc, "@dtw_radd(V_CRAGE4, "1") - over")
+              %elif (V_AIBCKT == "7")
+                  @dtw_assign(agingDesc, "Credits")
+              %endif
+
+              @dtw_add(T_IVAMT, V_IVAMT, "15", T_IVAMT)
+              @dtw_add(T_INV_COUNT, V_INV_COUNT, "15", T_INV_COUNT)
+              @Format_Nbr($(V_IVAMT), F_IVAMT, "2", $(amtEditCode), "", "", "")
+
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colcode">$(agingDesc)</td>
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=177&amp;fKey1=AIBCKT&amp;fVal1=@dtw_rurlescseq(V_AIBCKT)&amp;fDsc1=@dtw_rurlescseq(agingDesc)&amp;fKey2=IVOPEN&amp;fVal2=Y&amp;fDsc2=null" title="View Customer Invoices">$(F_IVAMT)</a></td>
+                  <td class="colnmbr">$(V_INV_COUNT)</td>
+              </tr>
+          %}
+
+          @Format_Nbr(T_IVAMT, F_IVAMT, "2", $(amtEditCode), "", "", "")
+          %INCLUDE "SetRowClass.icl"
+          <tr>
+              <td class="coltotal">Total</td>
+              <td class="coltotal">$(F_IVAMT)</td>
+              <td class="coltotal">$(T_INV_COUNT)</td>
+          </tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}

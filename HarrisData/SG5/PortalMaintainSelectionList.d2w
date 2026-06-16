@@ -1,0 +1,542 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Portal Maintenance                                          *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Portal Maintenance"
+  d2wName                 = "PortalMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;urlPortal=@dtw_rurlescseq(urlPortal)&amp;urlPage=@dtw_rurlescseq(urlPage)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(genericVarBase)&amp;urlPortal=@dtw_rurlescseq(urlPortal)&amp;urlPage=@dtw_rurlescseq(urlPage)&amp;maintenanceCode=D"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HSYQLU_W"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "6"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  selectedLinks           = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "NewWindowOpen.icl"
+              function check(chgForm) {
+                   if (saveSel())
+                      chgForm.submit();
+              }
+              function moveSelOver(url, desc) {
+                  var boxLength = document.Chg.choiceBox.length;
+                  var descText = desc.value;
+                      for (i = descText.length; i > 1 && i < 21; i++) {
+                          descText = descText + '.';
+                      }
+                  var selectedText = descText+' '+url.value;
+                  var selectedValue = url.value;
+                  var i;
+                  var isNew = true;
+                  if (boxLength != 0) {
+                      for (i = 0; i < boxLength; i++) {
+                          thisitem = document.Chg.choiceBox.options[i].text;
+                          if (thisitem == selectedText) {
+                              isNew = false;
+                              break;
+                          }
+                      }
+                  }
+                  if (isNew) {
+                      newoption = new Option(selectedText, selectedValue, false, false);
+                      document.Chg.choiceBox.options[boxLength] = newoption;
+                  }
+              }
+              function saveSel() {
+                  var strValues = "";
+                  var boxLength = document.Chg.choiceBox.length;
+                  var count = 0;
+                  if (boxLength != 0) {
+                      for (i = 0; i < boxLength; i++) {
+                          if (count == 0) {
+                              strValues = document.Chg.choiceBox.options[i].value;
+                              document.Chg.choices.value =  "@@rn0" + (i+1) + document.Chg.choiceBox.options[i].value;
+                          }
+                          else {
+                              strValues = strValues + document.Chg.choiceBox.options[i].value;
+                              if (count < 9) {
+                                  document.Chg.choices.value =  document.Chg.choices.value + "}{" + "@@rn0" + (i+1) + document.Chg.choiceBox.options[i].value;
+                              }
+                          else {
+                                  document.Chg.choices.value =  document.Chg.choices.value + "}{" + "@@rn" + (i+1) + document.Chg.choiceBox.options[i].value;
+                              }
+                          }
+                          count++;
+                      }
+                  }
+                  return true;
+              }
+              function removeSel(box) {
+                  for(var i=0; i<box.options.length; i++) {
+                      if(box.options[i].selected && box.options[i] != "") {
+                          box.options[i].value = "";
+                          box.options[i].text = "";
+                      }
+                  }
+                  bumpUp(box);
+                  }
+              function bumpUp(abox) {
+                  for(var i = 0; i < abox.options.length; i++) {
+                      if(abox.options[i].value == "")  {
+                          for(var j = i; j < abox.options.length - 1; j++)  {
+                             abox.options[j].value = abox.options[j + 1].value;
+                             abox.options[j].text = abox.options[j + 1].text;
+                          }
+                          var ln = i;
+                          break;
+                      }
+                  }
+                  if(ln < abox.options.length)  {
+                      abox.options.length -= 1;
+                      bumpUp(abox);
+                  }
+              }
+              function moveSelUp(dbox) {
+                  for(var i = 0; i < dbox.options.length; i++) {
+                      if (dbox.options[i].selected && dbox.options[i] != "" && dbox.options[i] != dbox.options[0]) {
+                          var tmpval = dbox.options[i].value;
+                          var tmpval2 = dbox.options[i].text;
+                          dbox.options[i].value = dbox.options[i - 1].value;
+                          dbox.options[i].text = dbox.options[i - 1].text;
+                          dbox.options[i-1].value = tmpval;
+                          dbox.options[i-1].text = tmpval2;
+                          dbox.options[i].selected = false;
+                          dbox.options[i-1].selected = true;
+                      }
+                  }
+              }
+              function moveSelDown(ebox) {
+                  for(var i = 0; i < ebox.options.length; i++) {
+                      if (ebox.options[i].selected && ebox.options[i] != "" && ebox.options[i+1] != ebox.options[ebox.options.length]) {
+                          var tmpval = ebox.options[i].value;
+                          var tmpval2 = ebox.options[i].text;
+                          ebox.options[i].value = ebox.options[i+1].value;
+                          ebox.options[i].text = ebox.options[i+1].text;
+                          ebox.options[i+1].value = tmpval;
+                          ebox.options[i+1].text = tmpval2;
+                          ebox.options[i].selected = false;
+                          ebox.options[i+1].selected = true;
+                          var i = ebox.options.length;
+
+                     }
+                  }
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "PORTALMAINT")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(selectedLinks, "")
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYPORT", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYURLM on FUID=FPID ", fileSQL)
+                      @dtw_concat(selectSQL, " FPPORT='$(urlPortal)' and FPPAGE='$(urlPage)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By FPSEQ ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @SelectedLinks_Query(profileHandle, dataBaseID, stmtSQL)
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      %INCLUDE "AddRecordSQL.icl"
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) SelectedLinks_Query (IN CHAR(64)    profileHandle,
+                                           CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      %ROW {
+          %if (V_FPDESC != "")
+              @dtw_assign(FPDESC, V_FPDESC)
+              %while(@dtw_rlength(FPDESC) != "21") {@dtw_insert(FPDESC, "." , FPDESC)%}
+              @dtw_concat(selectedLinks, " <option value=""$(V_FPID)"">$(FPDESC) $(V_FPID)", selectedLinks)
+          %else
+              @dtw_assign(FUDESC, V_FUDESC)
+              %while(@dtw_rlength(FUDESC) != "21") {@dtw_insert(FUDESC, ".", FUDESC)%}
+              @dtw_concat(selectedLinks, " <option value=""$(V_FPID)"">$(FUDESC) $(V_FPID)", selectedLinks)
+          %endif
+      %}	
+  %}
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+
+      <table $(contentTable)>
+          @Format_Header("Portal", $(urlPortal), "")
+          @Format_Header("Page", $(urlPage), "")
+      </table>
+
+      $(hrTagAttr)
+
+      %ROW{
+          <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+              <table $(contentTable)>
+                  <tr><td><input name="url" type="text" size="50" onFocus="moveSelOver(url, desc);"><input name="desc" type="hidden"><a href="$(homeURL)$(cGIPath)URLSearchTest.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=url&amp;fldDesc=desc" onclick="$(searchWinVar)">$(searchImage)</a></td></tr>
+                  <tr><td valign="top" class="colhdr"> Selected: <br>
+                          <select multiple name="choiceBox" size="25" class="lc">
+                              $(selectedLinks)
+                          </select>
+                      </td>
+                      <td valign="middle">
+                          <a onClick="moveSelUp(document.Chg.choiceBox)">$(topOfFormImage)</a><br><br>
+                          <a onClick="moveSelDown(document.Chg.choiceBox)">$(botOfFormImage)</a><br><br>
+                          <a onClick="removeSel(document.Chg.choiceBox)">$(deleteImageSml)</a>
+                          <input name="choices" type="hidden">
+                      </td>
+                  </tr>
+              </table>
+          </form>
+      %}
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ADD) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              function validate(chgForm) {
+                  if (document.Chg.addRole.value =="" ||
+                      document.Chg.addD2W.value =="" )
+                     {alert("$(reqFieldError)"); return false;}
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "QUICKLINKBYUSERADD")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      <table $(baseTable)>
+                          <colgroup>
+                              <col width="80%">
+                              <col width="15%">
+                          <tr><td align="justify"><h1>Add Quick Links By Role</h1></td>
+                              <td class="toolbar">
+                                  %INCLUDE "MaintainTopNoTable.icl"
+                              </td>
+                          </tr>
+                      </table>
+
+                      $(hrTagAttr)
+                      %INCLUDE "RequiredField.icl"
+                      %INCLUDE "ErrorDisplay.icl"
+
+                      <form class="formClass" METHOD=POST name=Chg ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Add$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+                          <table $(contentTable)>
+                              @dtw_assign(focusField, "addRole")
+                              %if (errFound != "" || maintenanceCode == "A")
+                                  %if (errFound == "" && maintenanceCode == "A")
+                                      @dtw_assign(edtVar, "")
+                                  %else
+                                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                                      @dtw_assign(focusField, "")
+                                      @ErrVarErr(profileHandle, typeError, errVar)
+                                      @DecatErr_Field("@@role", "addRole")   @dtw_assign(Err_QSROLE,  fieldValue)
+                                      @DecatErr_Field("@@d2wn", "addD2W")    @dtw_assign(Err_QSD2WN,  fieldValue)
+                                  %endif
+
+                                  @Decat_Field("@@role")   @dtw_assign(V_QSROLE,  fieldValue)
+                                  @Decat_Field("@@d2wn")   @dtw_assign(V_QSD2WN,  fieldValue)
+
+                                  @dtw_assign(errFound, "")
+
+                              %elseif (maintenanceCode == "Z")
+                                  @dtw_assign(V_QSROLE, "")
+                                  @dtw_assign(V_QSD2WN, urlPage)
+                              %endif
+
+                              @SetTextOvr(Err_QSROLE)
+                              <tr><td class="dsphdr"><span $(textOvr)>Role</span></td>
+                                  <td class="inputalph"><input name="addRole" value="$(V_QSROLE)" type="text" size="15" maxlength="10"><a href="$(homeURL)$(cGIPath)RoleMasterSearch.d2w/REPORT$(genericVarBase)&amp;docName=Chg&amp;fldName=addRole&amp;fldDesc=addRoleName" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="addRoleName" value="$(fieldDesc)" type="text" size="30" maxlength="30"></td>
+                              </tr>
+                              @DspErrMsg(Err_QSROLE)
+
+                              @SetTextOvr(Err_QSD2WN)
+                              <tr><td class="dsphdr"><span $(textOvr)>D2W Name</span></td>
+                                  <td class="inputalph"><input name="addD2W" value="$(V_QSD2WN)" type="text" size="30" maxlength="50"><a href="$(homeURL)$(cGIPath)QuickLinksD2WSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=addD2W" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a></td>
+                              </tr>
+                              @DspErrMsg(Err_QSD2WN)
+                          </table>
+
+                          <script TYPE="text/javascript">
+                              document.Chg.$(focusField).focus();
+                          </script>
+
+                      </form>
+                      %INCLUDE "MaintainBottom.icl"
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HSYQLU_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if ((sec_02 == "N" && sec_03 == "N" && maintenanceCode != "A") || (sec_01 == "N" && maintenanceCode == "A") || (sec_04 == "N" && maintenanceCode == "Z"))
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)progOptSecError.d2w/DISPLAY$(genericVarBase)&amp;page_title=@dtw_rurlescseq(page_title)">
+  %else
+      %INCLUDE "WebReg.icl"
+      %if (formatToPrint != "")
+          @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+      %else
+          %if (orderBy == "")
+              @DTW_ASSIGN(orderBy, "FUID")
+              @DTW_ASSIGN(orderByDisplay, "URL ID")
+              @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+          %endif
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %endif
+      %INCLUDE "SearchReturn.icl"
+  %endif
+%}
+
+%HTML(Edit_Add) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@role", addRole)
+  @Concat_Field("@@d2wn", addD2W)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(genericVarBase)&amp;urlPortal=@dtw_rurlescseq(addRole)&amp;urlPage=@dtw_rurlescseq(addD2W)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/ADD$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@port", urlPortal)
+  @Concat_Field("@@page", urlPage)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @dtw_concat(edtVar, choices, edtVar)
+  @dtw_concat(edtVar, "}{", edtVar)
+  $(edtVar)
+%}
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "URLID")
+      %if (orderBy == "FUID")
+          @DTW_ASSIGN(orderBy, "FUID DESC")
+          @DTW_ASSIGN(orderByDisplay, "URL ID (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FUID")
+          @DTW_ASSIGN(orderByDisplay, "URL ID")
+      %endif
+  %elseif (sequence == "Desc")
+      %if (orderBy == "FUDESCU,FUID")
+          @DTW_ASSIGN(orderBy, "FUDESCU DESC,FUID")
+          @DTW_ASSIGN(orderByDisplay, "Description, (descending), URL ID")
+      %else
+          @DTW_ASSIGN(orderBy, "FUDESCU,FUID")
+          @DTW_ASSIGN(orderByDisplay, "Description, URL ID")
+      %endif
+  %elseif (sequence == "URLTitle")
+      %if (orderBy == "FUTITLU,FUDESCU,FUID")
+          @DTW_ASSIGN(orderBy, "FUTITLU DESC,FUDESCU,FUID")
+          @DTW_ASSIGN(orderByDisplay, "Title (descending), Description, URL ID")
+      %else
+          @DTW_ASSIGN(orderBy, "FUTITLU,FUDESCU,FUID")
+          @DTW_ASSIGN(orderByDisplay, "Title, Description, URL ID")
+      %endif
+  %elseif (sequence == "URL")
+      %if (orderBy == "FUURL,FUID")
+          @DTW_ASSIGN(orderBy, "FUURL DESC,FUID")
+          @DTW_ASSIGN(orderByDisplay, "URL (descending), URL ID")
+      %else
+          @DTW_ASSIGN(orderBy, "FUURL,FUID")
+          @DTW_ASSIGN(orderByDisplay, "URL, URL ID")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "URLMASTERSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">URL ID</td>
+                              @dtw_assign(operNbr, "operID")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="urlID" size="30" maxlength="55"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="urlDesc" size="30" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Title</td>
+                              @dtw_assign(operNbr, "operTitle")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="urlTitle" size="30" maxlength="50"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">URL</td>
+                              @dtw_assign(operNbr, "operURL")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="uRL" size="30" maxlength="512"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.urlID.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("FUID", "URL ID", $(urlID), "U", operID, "A")
+  @Build_WildCard ("FUDESCU", "Description", $(urlDesc), "U", operDesc, "A")
+  @Build_WildCard ("upper(FUTITL)", "Title", $(urlTitle), "U", operTitle, "A")
+  @Build_WildCard ("upper(FUURL)", "URL", $(uRL), "U", operURL, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

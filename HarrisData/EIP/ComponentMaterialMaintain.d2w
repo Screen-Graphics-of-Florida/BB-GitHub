@@ -1,0 +1,400 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  			                             *
+*  Job: Component Material Maintenance                              *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Component Material Maintenance"
+  d2wName                 = "ComponentMaterialMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;mfgOrder=@dtw_rurlescseq(mfgOrder)&amp;fromSequence=@dtw_rurlescseq(fromSequence)&amp;fromComponent=@dtw_rurlescseq(fromComponent)&amp;plrsf=@dtw_rurlescseq(plrsf)&amp;laborExists=@dtw_rurlescseq(laborExists)&amp;plrseq=@dtw_rurlescseq(plrseq)&amp;chgQtyAllowed=@dtw_rurlescseq(chgQtyAllowed)&amp;qtyExists=@dtw_rurlescseq(qtyExists)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;sequenceNumber=@dtw_rurlescseq(fromSequence)&amp;componentNumber=@dtw_rurlescseq(fromComponent)&amp;maintenanceCode=D"
+  programName             = "HSI203"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  chgQtyAllowed           = ""
+  qtyexists               = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @PlantUserView(profileHandle, dataBaseID, userPass, plantNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(chgForm) {
+                      if (
+                          %if (plrsf == "Y")
+                              document.Chg.sequenceNumber.value =="" ||
+                          %endif
+                          document.Chg.componentNumber.value =="" ||
+                          document.Chg.quantityPer.value =="")
+                          {alert("$(reqFieldError)");
+                           return false;}
+                      if (
+                          %if (plrsf == "Y")
+                              editNum(document.Chg.sequenceNumber, 3, 0) &&
+                          %endif
+                          editNum(document.Chg.quantityPer, 4, 5) &&
+                          editNum(document.Chg.scrapPercent, 1, 2) &&
+                          editNum(document.Chg.qtyRequired, 9, 4))
+                          return true;
+                  }
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+                  %INCLUDE "numedit.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "COMPONENTMATERIALMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, "SELECT * FROM HDMCRM", stmtSQL)
+                              @dtw_concat(stmtSQL, " WHERE CRPPLT=$(plantNumber)", stmtSQL)
+                              @dtw_concat(stmtSQL, " and CRORD='$(mfgOrder)'", stmtSQL)
+                              @dtw_concat(stmtSQL, " and CRCPN='$(fromComponent)'", stmtSQL)
+                              @dtw_concat(stmtSQL, " and CRSEQN=$(fromSequence)", stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      %INCLUDE "MaintainTop.icl"
+      <table $(contentTable)>
+          @Format_Header("Plant", $(plantName), $(plantNumber))
+          @Format_Header("Mfg Order", $(mfgOrder), "")
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          %if (plrsf == "Y" && laborExists > "0")
+                              @dtw_assign(focusField, "sequenceNumber")
+                          %else
+                              @dtw_assign(focusField, "componentNumber")
+                          %endif
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@pplt", "plantNumber")     @dtw_assign(Err_CRPPLT, fieldValue)
+                          @DecatErr_Field("@@ord@", "mfgOrder")        @dtw_assign(Err_CRORD,  fieldValue)
+                          @DecatErr_Field("@@seqn", "sequenceNumber")  @dtw_assign(Err_CRSEQN, fieldValue)
+                          @DecatErr_Field("@@cpn@", "componentNumber") @dtw_assign(Err_CRCPN,  fieldValue)
+                          @DecatErr_Field("@@qper", "quantityPer")     @dtw_assign(Err_CRQPER, fieldValue)
+                          @DecatErr_Field("@@ecn@", "engChange")       @dtw_assign(Err_CRECN,  fieldValue)
+                          @DecatErr_Field("@@dwgr", "dwgRevision")     @dtw_assign(Err_CRDWGR, fieldValue)
+                          @DecatErr_Field("@@fstk", "backFlush")       @dtw_assign(Err_CRFSTK, fieldValue)
+                          @DecatErr_Field("@@scpp", "scrapPercent")    @dtw_assign(Err_CRSCPP, fieldValue)
+                          @DecatErr_Field("@@rqty", "qtyRequired")     @dtw_assign(Err_CRRQTY, fieldValue)
+                      %endif
+                      @Decat_Field("@@pplt")   @dtw_assign(V_CRPPLT, fieldValue)
+                      @Decat_Field("@@ord@")   @dtw_assign(V_CRORD,  fieldValue)
+                      @Decat_Field("@@seqn")   @dtw_assign(V_CRSEQN, fieldValue)
+                      @Decat_Field("@@cpn@")   @dtw_assign(V_CRCPN,  fieldValue)
+                      @Decat_Field("@@qper")   @dtw_assign(V_CRQPER, fieldValue)
+                      @Decat_Field("@@ecn@")   @dtw_assign(V_CRECN,  fieldValue)
+                      @Decat_Field("@@dwgr")   @dtw_assign(V_CRDWGR, fieldValue)
+                      @Decat_Field("@@fstk")   @dtw_assign(V_CRFSTK, fieldValue)
+                      @Decat_Field("@@scpp")   @dtw_assign(V_CRSCPP, fieldValue)
+                      @Decat_Field("@@rqty")   @dtw_assign(V_CRRQTY, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(qtyExists, "")
+                          %if (plrsf == "Y" && laborExists > "0")
+                              @dtw_assign(V_CRSEQN, "")
+                              @dtw_assign(focusField, "sequenceNumber")
+                          %else
+                              @dtw_assign(V_CRSEQN, $(plrseq))
+                              @dtw_assign(focusField, "componentNumber")
+                          %endif
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elif (maintenanceCode == "Z")
+                      @dtw_assign(V_CRCPN, "")
+                      @dtw_assign(qtyExists, "")
+                      %if (plrsf == "Y" && laborExists > "0")
+                          @dtw_assign(V_CRSEQN, "")
+                          @dtw_assign(focusField, "sequenceNumber")
+                      %else
+                          @dtw_assign(V_CRSEQN, $(plrseq))
+                          @dtw_assign(focusField, "componentNumber")
+                      %endif
+                  %else
+                      %if (V_CRQTYI == ".0000" && V_CRQTYS == ".0000")
+                          @dtw_assign(qtyExists, "")
+                      %else
+                          @dtw_assign(qtyExists, "Y")
+                      %endif
+                      %if (plrsf == "Y" && laborExists > "0" && qtyExists == "")
+                          @dtw_assign(focusField, "sequenceNumber")
+                      %elif (qtyExists == "")
+                          @dtw_assign(focusField, "componentNumber")
+                      %elif (chgQtyAllowed == "Y")
+                          @dtw_assign(focusField, "qtyRequired")
+                      %else
+                          @dtw_assign(focusField, "")
+                      %endif
+                  %endif
+
+                  %if (chgQtyAllowed!="Y" && focusField=="qtyRequired")
+                      @dtw_assign(focusField, "")
+                  %endif
+
+                  %if (plrsf == "Y")
+                      @SetTextOvr(Err_CRSEQN)
+                      <tr><td class="dsphdr"><span $(textOvr)>Routing Sequence</span></td>
+                          %if (laborExists > "0" && qtyExists == "")
+                              <td class="inputnmbr"><input name="sequenceNumber" type="text" value="$(V_CRSEQN)" size="3" maxlength="3"> $(reqFieldChar)</td>
+                          %else
+                              <td class="inputnmbr"><input name="sequenceNumber" type="hidden" value="$(V_CRSEQN)" size="3" maxlength="3">$(V_CRSEQN)</td>
+                          %endif
+                      </tr>
+                      @DspErrMsg(Err_CRSEQN)
+                  %else
+                      <tr><td class="inputnmbr"><input name="sequenceNumber" type="hidden" value="$(plrseq)"></td></tr>
+                  %endif
+
+                  @RtvFldDesc("IMITEM='$(V_CRCPN)'", "HDIMST", "IMIMDS", compDesc)
+                  @SetTextOvr(Err_CRCPN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Component Item Number</span></td>
+                      %if (qtyExists == "")
+                          <td class="inputalph"><input name="componentNumber" value="$(V_CRCPN)" type="text" size="15" maxlength="15"> $(reqFieldChar) <a href="$(homeURL)$(cGIPath)itemplantsearch.d2w/ENTRY$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;docName=Chg&amp;fldName=componentNumber&amp;fldDesc=compDesc" onclick="$(searchWinVar)">  $(searchImage) </a> <input disabled name="compDesc" value="$(compDesc)"  type="text" size="30" maxlength="30"></td>
+                      %else
+                          <td class="inputalph"><input name="componentNumber" value="$(V_CRCPN)" type="hidden" size="15" maxlength="15">$(V_CRCPN) &nbsp; $(compDesc)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CRCPN)
+
+                  @SetTextOvr(Err_CRQPER)
+                  <tr><td class="dsphdr"><span $(textOvr)>Quantity Per</span></td>
+                      %if (qtyExists == "")
+                          <td class="inputnmbr"><input type="text" name="quantityPer" value="$(V_CRQPER)" size="10" maxlength="10"> $(reqFieldChar) </td>
+                      %else
+                          <td class="inputnmbr"><input type="hidden" name="quantityPer" value="$(V_CRQPER)" size="10" maxlength="10">$(V_CRQPER)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CRQPER)
+
+                  @SetTextOvr(Err_CRECN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Engineering Change Notice</span></td>
+                      %if (qtyExists == "")
+                          <td class="inputalph"><input name="engChange" value="$(V_CRECN)" type="text" size="5" maxlength="5"></td>
+                      %else
+                          <td class="inputalph"><input name="engChange" value="$(V_CRECN)" type="hidden" size="5" maxlength="5">$(V_CRECN)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CRECN)
+
+                  @SetTextOvr(Err_CRDWGR)
+                  <tr><td class="dsphdr"><span $(textOvr)>Drawing Revision Letter</span></td>
+                      %if (qtyExists == "")
+                          <td class="inputalph"><input name="dwgRevision" value="$(V_CRDWGR)" type="text" size="2" maxlength="2"></td>
+                      %else
+                          <td class="inputalph"><input name="dwgRevision" value="$(V_CRDWGR)" type="hidden" size="2" maxlength="2">$(V_CRDWGR)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CRDWGR)
+    	   		
+    	           @RtvFldDesc("FLTYPE='BACKFLUSH' and FLVALU='$(V_CRFSTK)'", "SYFLAG", "FLDESC", codeDesc)
+                  @SetTextOvr(Err_CRFSTK)
+                  <tr><td class="dsphdr"><span $(textOvr)>Backflush Code</span></td>
+                      %if (qtyExists == "")
+                          <td class="inputalph"><input type="text" name="backFlush" value="$(V_CRFSTK)" size="1" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=BACKFLUSH&amp;flagSrchHdr=@dtw_rurlescseq("Backflush Code")&amp;docName=Chg&amp;fldName=backFlush&amp;fldDesc=codeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="codeDesc" value="$(codeDesc)"  type="text" size="30" maxlength="30"></td>
+                      %else
+                          <td class="inputalph"><input type="hidden" name="backFlush" value="$(V_CRFSTK)" size="1" maxlength="1">$(V_CRFSTK) &nbsp; $(codeDesc)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CRFSTK)
+
+                  @SetTextOvr(Err_CRSCPP)
+                  <tr><td class="dsphdr"><span $(textOvr)>Scrap Percent</span></td>
+                      %if (qtyExists == "")
+                          <td class="inputnmbr"><input type="text" name="scrapPercent" value="$(V_CRSCPP)" size="4" maxlength="4"></td>
+                      %else
+                          <td class="inputnmbr"><input type="hidden" name="scrapPercent" value="$(V_CRSCPP)" size="4" maxlength="4">$(V_CRSCPP)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CRSCPP)
+
+                  %if (maintenanceCode != "A" && maintenanceCode != "Z")
+                      @SetTextOvr(Err_CRRQTY)
+                      <tr><td class="dsphdr"><span $(textOvr)>Quantity Required</span></td>
+                          %if (sec_05 == "Y")
+                              %if (chgQtyAllowed == "Y")
+                                  <td class="inputnmbr"><input type="text" name="qtyRequired" value="$(V_CRRQTY)" size="14" maxlength="14"><a href="$(homeURL)$(cGIPath)$(d2wName)/CHANGEQTY$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;changeQuantity=N">$(chgQtyImageSml)</a></td>
+                              %else
+                                  <td class="inputnmbr"><input type="hidden" name="qtyRequired" value="$(V_CRRQTY)" size="14" maxlength="14">$(V_CRRQTY)<a href="$(homeURL)$(cGIPath)$(d2wName)/CHANGEQTY$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;changeQuantity=Y">$(chgQtyImageSml)</a></td>
+                              %endif
+                          %else
+                              <td class="inputnmbr"><input type="hidden" name="qtyRequired" value="$(V_CRRQTY)" size="14" maxlength="14">$(V_CRRQTY)</td>
+                          %endif
+                      </tr>
+                      @DspErrMsg(Err_CRRQTY)
+                  %else
+                      <tr><td class="inputnmbr"><input name="qtyRequired" type="hidden" value="$(V_CRRQTY)"></td></tr>
+                  %endif
+    	   		
+              %}	
+          </table>
+
+          <script TYPE="text/javascript">
+              %if (focusField != "")
+                  document.Chg.$(focusField).focus();
+              %endif
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(CHANGEQTY) {
+  %INCLUDE "setLibraryList.icl"
+  %if  (changeQuantity == "Y")
+       @DTW_ASSIGN(chgQtyAllowed, "Y")
+  %else
+       @DTW_ASSIGN(chgQtyAllowed, "")
+  %endif
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HSI203_W.PGM %}
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(mfgOrder)
+  @dtw_mUPPERCASE(componentNumber)
+  @dtw_mUPPERCASE(engChange)
+  @dtw_mUPPERCASE(dwgRevision)
+  @dtw_mUPPERCASE(backFlush)
+  @dtw_mUPPERCASE(fromComponent)
+  @dtw_mUPPERCASE(chgQtyAllowed)
+
+  @dtw_assign(plantNumber,   @dtw_rstrip(plantNumber))
+  @dtw_assign(sequenceNumber,@dtw_rstrip(sequenceNumber))
+  @dtw_assign(quantityPer,   @dtw_rstrip(quantityPer))
+  @dtw_assign(scrapPercent,  @dtw_rstrip(scrapPercent))
+  @dtw_assign(qtyRequired,   @dtw_rstrip(qtyRequired))
+  @dtw_assign(fromSequence,  @dtw_rstrip(fromSequence))
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@pplt", plantNumber)
+  @Concat_Field("@@ord@", mfgOrder)
+  @Concat_Field("@@seqn", sequenceNumber)
+  @Concat_Field("@@cpn@", componentNumber)
+  @Concat_Field("@@qper", quantityPer)
+  @Concat_Field("@@ecn@", engChange)
+  @Concat_Field("@@dwgr", dwgRevision)
+  @Concat_Field("@@fstk", backFlush)
+  @Concat_Field("@@scpp", scrapPercent)
+  @Concat_Field("@@rqty", qtyRequired)
+  %if (maintenanceCode == "A" || maintenanceCode == "Z")
+      @Concat_Field("@@svsq", sequenceNumber)
+      @Concat_Field("@@svcp", componentNumber)
+  %else
+      @Concat_Field("@@svsq", fromSequence)
+      @Concat_Field("@@svcp", fromComponent)
+  %endif
+  @Concat_Field("@@cgrq", chgQtyAllowed)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      %if (plrsf == "Y")
+          @Format_ConfMsg_Desc(maintenanceCode, "Routing Sequence", $(sequenceNumber), "Component Item", $(componentNumber), "", "", confMessage)
+      %else
+          @Format_ConfMsg_Desc(maintenanceCode, "Component Item", $(componentNumber), "", "", "", "", confMessage)
+      %endif
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)ComponentMaterial.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;mfgOrder=@dtw_rurlescseq(mfgOrder)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %elif (maintenanceCode == "D")
+      @DecatErr_Field("@@cpn@", "fromComponent")
+      @Format_ConfMsg_Desc("", "Component Item", $(fromComponent), "<br>$(fieldValue)", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)ComponentMaterial.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;mfgOrder=@dtw_rurlescseq(mfgOrder)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

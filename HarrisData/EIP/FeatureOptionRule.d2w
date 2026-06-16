@@ -1,0 +1,585 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Feature Option Rule                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Features And Options Rule"
+  d2wName                 = "FeatureOptionRule.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;plantName=@dtw_rurlescseq(plantName)&amp;dspConstraint=@dtw_rurlescseq(dspConstraint)&amp;dspParameter=@dtw_rurlescseq(dspParameter)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HHDRUM_E"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  plantNumber             = ""
+  dspConstraint           = ""
+  dspParameter            = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) { 	
+  @dtw_assign(userPass, "")
+  %if (plantNumber > "0")
+      @PlantUserView(profileHandle, dataBaseID, userPass, plantNumber)
+  %endif
+
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+                  %INCLUDE "CheckEnterSearch.icl"
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "numedit.icl"
+                  %if (plantNumber > "0")
+                      function validate(searchForm) {
+                          if (editNum(document.Search.srchPlant, 3, 0))
+                              return true;
+                      }
+                  %else
+                      %INCLUDE "NoFormValidate.icl"
+                  %endif
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          @dtw_assign(pageID, "FEATUREOPTIONRULE")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          @dtw_assign(uv_PlantName, "RUPLT")
+                          %INCLUDE "userview.icl"
+
+                          %INCLUDE "stmtSQLClear.icl"
+
+                          @dtw_concat(stmtSQL, " Select RUPLT,RUGPID,RUTSSQ,RUFPRT,RUSFET,RUSOPT, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " RUTBLN,RUCOLN,RUCOND,RUFVLU,RUTVLU, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " RUTFET,RUTOPT,RURULE, ", stmtSQL)
+                          %if (plantNumber == "")
+                              @dtw_concat(stmtSQL, " coalesce(PLNAME,' ') as PLNAME, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " coalesce(upper(PLNAME),' ') as PLNAMEU ", stmtSQL)
+                          %endif
+                          @dtw_concat(fileSQL, " HDRULE ", fileSQL)
+                          %if (plantNumber == "")
+                              @dtw_concat(fileSQL, " left join HDPLNT on RUPLT=PLPLNT ", fileSQL)
+                          %endif
+                          %if (dspConstraint == "Y")
+                              @dtw_concat(selectSQL, "  RUTYPE='C'", selectSQL)
+                          %elif (dspParameter == "Y")
+                              @dtw_concat(selectSQL, "  RUTYPE='P'", selectSQL)
+                          %else
+                              @dtw_concat(selectSQL, "  RUTYPE='C'", selectSQL)
+                              @dtw_assign(dspConstraint, "Y")
+                              @dtw_assign(dspParameter, "")
+                          %endif
+                          %if (plantNumber > "0")
+                              @dtw_concat(selectSQL, " and RUPLT=$(plantNumber) ", selectSQL)
+                          %endif
+
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @Rule_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Rule_Query (IN CHAR(64)    profileHandle,
+                                  CHAR(2)     dataBaseID,
+                                  CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (plantNumber > "0")
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      %endif
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      <a href="$(homeURL)$(cGIPath)MFGConfiguration.d2w/REPORT$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)FeatureOptionRuleMaintain.d2w/MAINTAIN$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(plantNumber)&amp;fromName=@dtw_rurlescseq(plantName)&amp;dspConstraint=@dtw_rurlescseq(dspConstraint)&amp;dspParameter=@dtw_rurlescseq(dspParameter)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %if (sec_05 == "Y")
+                          <a onClick="return confirmUpdate()" href="$(homeURL)$(cGIPath)FeatureOptionRulePublish.d2w/REPORT$(d2wVarBase)&amp;reportSelType=U&amp;backHome=$(d2wName)/REPORT">$(publishLrg)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      %if (plantNumber > "0")
+          <table $(contentTable)>
+              @Format_Header_URL("Plant", $(plantName), $(plantNumber), "$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(d2wVarBase)")
+          </table>
+      %endif
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+			
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Group ID</th>
+                      <th class="colhdr">Target Feature</th>
+                      %if (plantNumber == "")
+                          <th class="colhdr">Plant</th>
+                      %endif
+                  </tr>
+                  <tr>
+                      <td class="inputalph">
+                          <input type="text" name="srchGroupID" size="15" maxlength="15">
+                          <input type="hidden" name="operGroupID" value="LIKE">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchTargetFeat" size="15" maxlength="15">
+                          <input type="hidden" name="operTargetFeat" value="LIKE">
+                      </td>
+                      %if (plantNumber == "")
+                          <td><input type="text" class="inputnmbr" name="srchPlant" size="5" maxlength="3">
+                              <input type="hidden" name="operPlant" value="=">
+                          </td>
+                      %endif
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchGroupID.focus();
+              </script>
+          </form>
+	
+          %if (dspConstraint == "Y")
+              @dtw_assign(constraintChecked, "CHECKED")
+              @dtw_assign(parameterChecked, "")
+              @dtw_assign(dspParameter, "")
+          %elif (dspParameter == "Y")
+              @dtw_assign(constraintChecked, "")
+              @dtw_assign(dspConstraint, "")
+              @dtw_assign(parameterChecked, "CHECKED")
+          %else
+              @dtw_assign(constraintChecked, "CHECKED")
+              @dtw_assign(dspConstraint, "Y")
+              @dtw_assign(parameterChecked, "")
+              @dtw_assign(dspParameter, "")
+          %endif
+
+          @dtw_assign(viewRadioButton, "RuleType")
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y"))
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("RUGPID", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=GroupID" title="Sequence By Group ID, Test Seq"> Group ID</a></th>
+              <th class="colhdr"> Test Seq</th>
+              %if (dspConstraint == "Y")
+                  @OrderBy_Sort("RUSFET", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=SourceFeat" title="Sequence By Source Feature, Group ID"> Source Feature</a></th>
+                  @OrderBy_Sort("RUSOPT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=SourceOpt" title="Sequence By Source Option, Group ID"> Source Option</a></th>
+              %else
+                  @OrderBy_Sort("RUTBLN", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TableName" title="Sequence By Table Name, Group ID"> Table Name</a></th>
+                  <th class="colhdr"> Column Name</th>
+                  <th class="colhdr"> Condition</th>
+                  <th class="colhdr"> From Value</th>
+                  <th class="colhdr"> To Value</th>
+              %endif
+              @OrderBy_Sort("RUFPRT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=FeatItem" title="Sequence By Featured Item/Family, Group ID"> Featured Item/<br>Family</a></th>
+              @OrderBy_Sort("RUTFET", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TargetFeat" title="Sequence By Target Feature, Group ID"> Target Feature</a></th>
+              @OrderBy_Sort("RUTOPT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TargetOpt" title="Sequence By Target Option, Group ID"> Target Option</a></th>
+              @OrderBy_Sort("RURULE", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=IeRule" title="Sequence By Rule, Group ID"> Rule</a></th>
+              %if (plantNumber == "")
+                  @OrderBy_Sort("RUPLT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlantNumber" title="Sequence By Plant, Group ID">Plant</a></th>
+                  @OrderBy_Sort("PLNAMEU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlantName" title="Sequence By Plant Name, Group ID">Plant Name</a></th>
+              %endif
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_assign(maintainVar, "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(plantNumber)&amp;fromName=@dtw_rurlescseq(plantName)&amp;dspConstraint=@dtw_rurlescseq(dspConstraint)&amp;dspParameter=@dtw_rurlescseq(dspParameter)&amp;plantNumber=@dtw_rurlescseq(V_RUPLT)&amp;groupID=@dtw_rurlescseq(V_RUGPID)&amp;testSeq=@dtw_rurlescseq(V_RUTSSQ)&amp;featItem=@dtw_rurlescseq(V_RUFPRT)&amp;targetFeat=@dtw_rurlescseq(V_RUTFET)&amp;targetOpt=@dtw_rurlescseq(V_RUTOPT)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("(FLTYPE='RULE' and FLVALU='$(V_RURULE)')", "SYFLAG", "FLDESC", ruleDesc)
+              @Format_Confirm_Desc($(ruleDesc), $(V_RUTFET), "", "", "", "", confirmDesc)
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y"))
+                      <td class="opticon">
+                          %if (sec_02 == "Y" || sec_03 == "Y")
+                              <a href="$(homeURL)$(cGIPath)FeatureOptionRuleMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          %endif
+                          %if (sec_01=="Y" && sec_04=="Y")
+                              <a href="$(homeURL)$(cGIPath)FeatureOptionRuleMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+    		           %endif
+                          %if (sec_03 == "Y")
+                              <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)FeatureOptionRuleMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                          %endif
+                      </td>
+                  %endif
+                  <td class="colalph">$(V_RUGPID)</td>
+                  <td class="colnmbr">$(V_RUTSSQ)</td>
+                  %if (dspConstraint == "Y")
+                      <td class="colalph">$(V_RUSFET)</td>
+                      <td class="colalph">$(V_RUSOPT)</td>
+                  %else
+                      <td class="colalph">$(V_RUTBLN)</td>
+                      <td class="colalph">$(V_RUCOLN)</td>
+                      <td class="colcode">$(V_RUCOND)</td>
+                      <td class="colalph">$(V_RUFVLU)</td>
+                      <td class="colalph">$(V_RUTVLU)</td>
+                  %endif
+                  <td class="colalph">$(V_RUFPRT)</td>
+                  <td class="colalph">$(V_RUTFET)</td>
+                  <td class="colalph">$(V_RUTOPT)</td>
+                  <td class="colalph">$(ruleDesc)</td>
+                  %if (plantNumber == "")
+                      <td class="colnmbr">$(V_RUPLT)</td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(V_RUPLT)&amp;plantName=@dtw_rurlescseq(V_PLNAME)" title="View Plant">$(V_PLNAME)</a></td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (plantNumber > "0" && orderBy == "PLNAMEU,RUGPID,RUTSSQ,RUTFET")
+          @dtw_assign(orderBy, "")
+      %endif
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number, Group ID")
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %elif (chgConstraint == "Y")
+          @dtw_assign(dspConstraint, "Y")
+          @dtw_assign(dspParameter, "")
+      %elif (chgParameter == "Y")
+          @dtw_assign(dspConstraint, "")
+          @dtw_assign(dspParameter, "Y")
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %if (dspConstraint == "" && dspParameter == "" && chgConstraint != "Y" && chgParameter != "Y")
+          @dtw_assign(dspConstraint, "Y")
+          @dtw_assign(dspParameter, "")
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "GroupID")
+      %if (orderBy == "RUGPID,RUPLT,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderBy, "RUGPID DESC,RUPLT,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Group ID (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "RUGPID,RUPLT,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Group ID")
+      %endif
+  %elif (sequence == "SourceFeat")
+      %if (orderBy == "RUSFET,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderBy, "RUSFET DESC,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Source Feature (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "RUSFET,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Source Feature")
+      %endif
+  %elif (sequence == "SourceOpt")
+      %if (orderBy == "RUSOPT,RUPLT,RUSFET,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderBy, "RUSOPT DESC,RUPLT,RUSFET,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Source Option (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "RUSOPT,RUPLT,RUSFET,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Source Option")
+      %endif
+  %elif (sequence == "TableName")
+      %if (orderBy == "RUTBLN,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderBy, "RUTBLN DESC,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Table Name (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "RUTBLN,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Table Name")
+      %endif
+  %elif (sequence == "FeatItem")
+      %if (orderBy == "RUFPRT,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderBy, "RUFPRT DESC,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Featured Item/Family (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "RUFPRT,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Featured Item/Family")
+      %endif
+  %elif (sequence == "TargetFeat")
+      %if (orderBy == "RUTFET,RUPLT,RUGPID,RUTSSQ")
+          @DTW_ASSIGN(orderBy, "RUTFET DESC,RUPLT,RUGPID,RUTSSQ")
+          @DTW_ASSIGN(orderByDisplay, "Target Feature (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "RUTFET,RUPLT,RUGPID,RUTSSQ")
+          @DTW_ASSIGN(orderByDisplay, "Target Feature")
+      %endif
+  %elif (sequence == "TargetOpt")
+      %if (orderBy == "RUTOPT,RUPLT,RUTFET,RUGPID,RUTSSQ")
+          @DTW_ASSIGN(orderBy, "RUTOPT DESC,RUPLT,RUTFET,RUGPID,RUTSSQ")
+          @DTW_ASSIGN(orderByDisplay, "Target Option (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "RUTOPT,RUPLT,RUTFET,RUGPID,RUTSSQ")
+          @DTW_ASSIGN(orderByDisplay, "Target Option")
+      %endif
+  %elif (sequence == "IeRule")
+      %if (orderBy == "RURULE,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderBy, "RURULE DESC,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Rule (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "RURULE,RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Rule")
+      %endif
+  %elif (sequence == "PlantNumber")
+      %if (orderBy == "RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderBy, "RUPLT DESC,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number (descending), Group ID")
+      %else
+          @DTW_ASSIGN(orderBy, "RUPLT,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number, Group ID")
+      %endif
+  %elif (sequence == "PlantName")
+      %if (orderBy == "PLNAMEU,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderBy, "PLNAMEU DESC,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Plant Name (descending), Group ID")
+      %else
+          @DTW_ASSIGN(orderBy, "PLNAMEU,RUGPID,RUTSSQ,RUTFET")
+          @DTW_ASSIGN(orderByDisplay, "Plant Name, Group ID")
+      %endif
+  %endif		
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "CheckEnterSearch.icl"
+              %if (plantNumber == "")
+                  function validate(searchForm) {
+                      if (editNum(document.Search.srchPlant, 3, 0))
+                          return true;
+                  }
+              %else
+                  %INCLUDE "NoFormValidate.icl"
+              %endif
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "FEATOPTRULESEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Group ID</td>
+                              @dtw_assign(operNbr, "operGroupID")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchGroupID" size="5" maxlength="5"></td>
+                          </tr>
+
+                          %if (dspConstraint == "Y")
+                              <tr><td class="dsphdr">Source Feature</td>
+                                  @dtw_assign(operNbr, "operSourceFeat")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchSourceFeat" size="15" maxlength="15"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Source Option</td>
+                                  @dtw_assign(operNbr, "operSourceOpt")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchSourceOpt" size="15" maxlength="15"></td>
+                              </tr>
+                          %else
+                              <tr><td class="dsphdr">Table Name</td>
+                                  @dtw_assign(operNbr, "operTableName")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchTableName" size="15" maxlength="100"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Column Name</td>
+                                  @dtw_assign(operNbr, "operColumnName")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchColumnName" size="15" maxlength="100"></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Featured Item/Family</td>
+                              @dtw_assign(operNbr, "operFeatItem")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchFeatItem" size="15" maxlength="15"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Target Feature</td>
+                              @dtw_assign(operNbr, "operTargetFeat")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchTargetFeat" size="15" maxlength="15"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Target Option</td>
+                              @dtw_assign(operNbr, "operTargetOpt")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchTargetOpt" size="15" maxlength="15"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Rule</td>
+                              @dtw_assign(operNbr, "operIeRule")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchIeRule" size="5" maxlength="1"></td>
+                          </tr>
+
+                          %if (plantNumber == "")
+                              <tr><td class="dsphdr">Plant Number</td>
+                                  @dtw_assign(operNbr, "operPlant")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchPlant" size="5" maxlength="3"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Plant Name</td>
+                                  @dtw_assign(operNbr, "operName")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"> <input type="text" name="srchName" size="15" maxlength="26"></td>
+                              </tr>
+                          %endif
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchItem.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("RUGPID", "Group ID", $(srchGroupID), "U", operGroupID, "A")
+  %if (dspConstraint == "Y")
+      @Build_WildCard ("RUSFET", "Source Feature", $(srchSourceFeat), "U", operSourceFeat, "A")
+      @Build_WildCard ("RUSOPT", "Source Option", $(srchSourceOpt), "U", operSourceOpt, "A")
+  %else
+      @Build_WildCard ("RUTBLN", "Table Name", $(srchTableName), "U", operTableName, "A")
+      @Build_WildCard ("RUCOLN", "Column Name", $(srchColumnName), "U", operColumnName, "A")
+  %endif
+  @Build_WildCard ("RUFPRT", "Featured Item/Family", $(srchFeatItem), "U", operFeatItem, "A")
+  @Build_WildCard ("RUTFET", "Target Feature", $(srchTargetFeat), "U", operTargetFeat, "A")
+  @Build_WildCard ("RUTOPT", "Target Option", $(srchTargetOpt), "U", operTargetOpt, "A")
+  @Build_WildCard ("RURULE", "Rule", $(srchIeRule), "U", operIeRule, "A")
+  %if (plantNumber == "")
+      @Build_WildCard ("RUPLT", "Plant Number", $(srchPlant), "", operPlant, "N")
+      @Build_WildCard ("upper(PLNAME)", "Plant Name", $(srchName), "U", operName, "A")
+  %endif
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

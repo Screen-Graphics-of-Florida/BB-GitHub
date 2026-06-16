@@ -1,0 +1,371 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Lot Maintenance                                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Lot Maintenance"
+  d2wName                 = "LotMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromSel=@dtw_rurlescseq(fromSel)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;lotNumber=@dtw_rurlescseq(lotNumber)&amp;delRec=@dtw_rurlescseq(delRec)&amp;maintenanceCode=D"
+  programName             = "HIVLNM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @LotUserView(profileHandle, dataBaseID, userPass, warehouseNumber, itemNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "numedit.icl"
+                  %INCLUDE "dateedit.icl"
+                  %INCLUDE "calendar.icl"
+                  %INCLUDE "CheckEnterChg.icl"
+                  function validate(chgForm) {
+                      if (document.Chg.itemNumber.value =="" ||
+                          document.Chg.warehouseNumber.value =="" ||
+                          document.Chg.lotNumber.value =="")
+                         {alert("$(reqFieldError)"); return false;}
+                      if (editNum(document.Chg.warehouseNumber, 3, 0) &&
+                          editNum(document.Chg.expirationDate, 6, 0) &&
+                          editdate(document.Chg.expirationDate) &&
+                          editNum(document.Chg.vendorNumber, 7, 0) &&
+                          editNum(document.Chg.documentNumber, 8, 0) &&
+                          editNum(document.Chg.documentLineNumber, 3, 0) &&
+                          editNum(document.Chg.Cost, 13, 5) &&
+                          editNum(document.Chg.requestedShipDate, 6, 0) &&
+                          editdate(document.Chg.requestedShipDate))
+                          return true;
+                  }
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "LOTMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, "Select * From HDLOT Where LTITEM='$(itemNumber)' and LTWH=$(warehouseNumber) and (trim(LTLT#)='$(lotNumber)' or LTLT#='$(lotNumber)') ", stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (fromSel == "Y")
+          @dtw_assign(backURL, "$(homeURL)$(cGIPath)LotSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;lotNumber=@dtw_rurlescseq(@dtw_rstrip(lotNumber))")
+      %else
+          @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+          %if (backURL == "")
+              @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=183")
+          %endif
+      %endif
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %if (sec_03 == "Y")
+          @RtvFldDesc("LTITEM='$(itemNumber)' and LTWH=$(warehouseNumber) and LTLT#='$(lotNumber)' ", "HDLOT", "char(LTQOH+LTQAL+LTLRCP+LTLQHR+LTQHSR)", lotQty)
+          %if (sec_03 == "Y" && lotQty > ".0000")
+              @dtw_assign(sec_03, "N")
+          %endif
+      %endif
+      %INCLUDE "MaintainTop.icl"
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "itemNumber")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@item", "itemNumber")          @dtw_assign(Err_LTITEM, fieldValue)
+                          @DecatErr_Field("@@wh@@", "warehouseNumber")     @dtw_assign(Err_LTWH,   fieldValue)
+                          @DecatErr_Field("@@lt#@", "lotNumber")           @dtw_assign(Err_LTLT#,  fieldValue)
+                          @DecatErr_Field("@@dtex", "expirationDate")      @dtw_assign(Err_LTDTEX, fieldValue)
+                          @DecatErr_Field("@@vend", "vendorNumber")        @dtw_assign(Err_LTVEND, fieldValue)
+                          @DecatErr_Field("@@vlot", "vendorLotNumber")     @dtw_assign(Err_LTVLOT, fieldValue)
+                          @DecatErr_Field("@@po#@", "documentNumber")      @dtw_assign(Err_LTPO#,  fieldValue)
+                          @DecatErr_Field("@@line", "documentLineNumber")  @dtw_assign(Err_LTLINE, fieldValue)
+                          @DecatErr_Field("@@imcs", "Cost")                @dtw_assign(Err_LTIMCS, fieldValue)
+                          @DecatErr_Field("@@ltcm", "Comment")             @dtw_assign(Err_LTLTCM, fieldValue)
+                          @DecatErr_Field("@@tsdt", "requestedShipDate")   @dtw_assign(Err_LTTSDT, fieldValue)
+                          @DecatErr_Field("@@ecn@", "ECN")                 @dtw_assign(Err_LTECN,  fieldValue)
+                          @DecatErr_Field("@@udf1", "userDefined1")        @dtw_assign(Err_LTUDF1, fieldValue)
+                          @DecatErr_Field("@@udf2", "userDefined2")        @dtw_assign(Err_LTUDF2, fieldValue)
+                          @DecatErr_Field("@@udf3", "userDefined3")        @dtw_assign(Err_LTUDF3, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@item")   @dtw_assign(V_LTITEM, fieldValue)
+                      @Decat_Field("@@wh@@")   @dtw_assign(V_LTWH,   fieldValue)
+                      @Decat_Field("@@lt#@")   @dtw_assign(V_LTLT#,  fieldValue)
+                      @Decat_Field("@@dtex")   @dtw_assign(V_LTDTEX, fieldValue)
+                      @Decat_Field("@@vend")   @dtw_assign(V_LTVEND, fieldValue)
+                      @Decat_Field("@@vlot")   @dtw_assign(V_LTVLOT, fieldValue)
+                      @Decat_Field("@@po#@")   @dtw_assign(V_LTPO#,  fieldValue)
+                      @Decat_Field("@@line")   @dtw_assign(V_LTLINE, fieldValue)
+                      @Decat_Field("@@imcs")   @dtw_assign(V_LTIMCS, fieldValue)
+                      @Decat_Field("@@ltcm")   @dtw_assign(V_LTLTCM, fieldValue)
+                      @Decat_Field("@@tsdt")   @dtw_assign(V_LTTSDT, fieldValue)
+                      @Decat_Field("@@ecn@")   @dtw_assign(V_LTECN,  fieldValue)
+                      @Decat_Field("@@udf1")   @dtw_assign(V_LTUDF1, fieldValue)
+                      @Decat_Field("@@udf2")   @dtw_assign(V_LTUDF2, fieldValue)
+                      @Decat_Field("@@udf3")   @dtw_assign(V_LTUDF3, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(V_LTWH, "000")
+                          @dtw_assign(focusField, "itemNumber")
+                     %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elif (maintenanceCode == "Z")
+                      @dtw_assign(V_LTITEM,  "")
+                      @dtw_assign(V_LTWH, "")
+                      @dtw_assign(V_LTLT#, "")
+                      @DateInputFromCYMD(V_LTDTEX)
+                      @DateInputFromCYMD(V_LTTSDT)
+                      @dtw_assign(focusField, "itemNumber")
+                  %elif (maintenanceCode != "A")
+                      @DateInputFromCYMD(V_LTDTEX)
+                      @DateInputFromCYMD(V_LTTSDT)
+                      @dtw_assign(focusField, "expirationDate")
+                  %endif
+
+                  @RtvFldDesc("IMITEM='$(V_LTITEM)'", "HDIMST", "IMIMDS", itemDesc)
+                  @Format_Code(V_LTITEM, F_LTITEM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Item Number</span></td>
+                      <td class="inputalph"><input name="itemNumber" type="hidden" value="$(V_LTITEM)" size="15" maxlength="15">$(itemDesc) $(F_LTITEM)</td>
+                  </tr>
+
+                  @RtvFldDesc("WHWHS=$(V_LTWH)", "HDWHSM", "WHWHNM", whsName)
+                  @Format_Code(V_LTWH, F_LTWH)
+                  <tr><td class="dsphdr"><span $(textOvr)>Warehouse Number</span></td>
+                      <td class="inputnmbr"><input name="warehouseNumber" type="hidden" value="$(V_LTWH)" size="3" maxlength="3">$(whsName) $(F_LTWH)</td>
+                  </tr>
+
+	                  <tr><td class="dsphdr"><span $(textOvr)>Lot Number</span></td>
+                      <td class="inputalph"><input name="lotNumber" type="hidden" value="@dtw_rstrip($(V_LTLT#))" size="15" maxlength="15">$(V_LTLT#)</td>
+                  </tr>
+	   		
+                  @SetTextOvr(Err_LTDTEX)
+	                 <tr><td class="dsphdr"><span $(textOvr)>Expiration Date</span></td>
+                      <td class="inputnmbr"><input type="text" name="expirationDate" value="$(V_LTDTEX)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('expirationDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_LTDTEX)
+
+                  @RtvFldDesc("VMVEND=$(V_LTVEND)", "HDVEND", "VMVNA1", vendorName)
+                  @SetTextOvr(Err_LTVEND)
+                  <tr><td class="dsphdr"><span $(textOvr)>Vendor Number</span></td>
+                      <td class="inputalph"><input name="vendorNumber" type="text" value="$(V_LTVEND)" size="7" maxlength="7"><a href="$(homeURL)$(phpPath)VendorSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=vendorNumber&amp;fldDesc=vendorName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="vendorName" value="$(vendorName)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_LTVEND)
+
+                  @SetTextOvr(Err_LTVLOT)
+	           <tr><td class="dsphdr"><span $(textOvr)>Vendor Lot Number</span></td>
+                      <td class="inputalph"><input name="vendorLotNumber" type="text" value="$(V_LTVLOT)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_LTVLOT)
+
+                  @SetTextOvr(Err_LTPO#)
+	           <tr><td class="dsphdr"><span $(textOvr)>Purchase Order Number</span></td>
+                      <td class="inputnmbr"><input name="documentNumber" type="text" value="$(V_LTPO#)" size="8" maxlength="8"></td>
+                  </tr>
+                  @DspErrMsg(Err_LTPO#)
+
+                  @SetTextOvr(Err_LTLINE)
+	           <tr><td class="dsphdr"><span $(textOvr)>Purchase Order Line Number</span></td>
+                      <td class="inputnmbr"><input name="documentLineNumber" type="text" value="$(V_LTLINE)" size="3" maxlength="3"></td>
+                  </tr>
+                  @DspErrMsg(Err_LTLINE)
+
+                  @SetTextOvr(Err_LTIMCS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Cost</span></td>
+                      <td class="inputnmbr"><input type="text" name="Cost" value="$(V_LTIMCS)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_LTIMCS)
+
+                  @SetTextOvr(Err_LTLTCM)
+	           <tr><td class="dsphdr"><span $(textOvr)>Comment</span></td>
+                      <td class="inputalph"><input name="Comment" type="text" value="$(V_LTLTCM)" size="20" maxlength="20"></td>
+                  </tr>
+                  @DspErrMsg(Err_LTLTCM)
+	   		
+                  @SetTextOvr(Err_LTTSDT)
+	           <tr><td class="dsphdr"><span $(textOvr)>Requested Ship Date</span></td>
+                      <td class="inputnmbr"><input type="text" name="requestedShipDate" value="$(V_LTTSDT)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('requestedShipDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_LTTSDT)
+
+                  %if (V_HDPDRL>"0")
+                      @SetTextOvr(Err_LTECN)
+    	               <tr><td class="dsphdr"><span $(textOvr)>Engineering Change Notice</span></td>
+                          <td class="inputalph"><input name="ECN" type="text" value="$(V_LTECN)" size="5" maxlength="5"></td>
+                      </tr>
+                      @DspErrMsg(Err_LTECN)
+                  %endif
+
+                  %if (V_CILUS1 != "")
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CILUS1)</span></td>
+                          <td class="inputalph"><input name="userDefined1" type="text" value="$(V_LTUDF1)" size="15" maxlength="15"</td>
+                      </tr>
+                  %endif
+
+                  %if (V_CILUS2 != "")
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CILUS2)</span></td>
+                          <td class="inputalph"><input name="userDefined2" type="text" value="$(V_LTUDF2)" size="15" maxlength="15"</td>
+                      </tr>
+                  %endif
+
+                  %if (V_CILUS3 != "")
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CILUS3)</span></td>
+                          <td class="inputalph"><input name="userDefined3" type="text" value="$(V_LTUDF3)" size="15" maxlength="15"</td>
+                      </tr>
+                  %endif
+
+              %}
+          </table>
+	
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HIVLNM_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(itemNumber)
+  @dtw_mUPPERCASE(lotNumber)
+  @dtw_assign(warehouseNumber,@dtw_rstrip(warehouseNumber))
+  @dtw_assign(expirationDate,@dtw_rstrip(expirationDate))
+  @dtw_assign(requestedShipDate,@dtw_rstrip(requestedShipDate))
+  @dtw_assign(vendorNumber,@dtw_rstrip(vendorNumber))
+  @dtw_assign(documentNumber,@dtw_rstrip(documentNumber))
+  @dtw_assign(documentLineNumber,@dtw_rstrip(documentLineNumber))
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@item", itemNumber)
+  @Concat_Field("@@wh@@", warehouseNumber)
+  @Concat_Field("@@lt#@", lotNumber)
+  @Concat_Field("@@dtex", expirationDate)
+  @Concat_Field("@@vend", vendorNumber)
+  @Concat_Field("@@vlot", vendorLotNumber)
+  @Concat_Field("@@po#@", documentNumber)
+  @Concat_Field("@@line", documentLineNumber)
+  @Concat_Field("@@imcs", Cost)
+  @Concat_Field("@@ltcm", Comment)
+  @Concat_Field("@@tsdt", requestedShipDate)
+  @Concat_Field("@@ecn@", ECN)
+  @Concat_Field("@@udf1", userDefined1)
+  @Concat_Field("@@udf2", userDefined2)
+  @Concat_Field("@@udf3", userDefined3)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "" || maintenanceCode == "D")
+      %if (errFound == "")
+          @Format_ConfMsg_Desc(maintenanceCode, "Lot Number", $(lotNumber), "For Item Number", "$(itemNumber)", "In Whs", "$(warehouseNumber)", confMessage)
+      %else
+          @DecatErr_Field("@@dtex", "expirationDate")
+          @Format_ConfMsg_Desc("", "Lot Number", $(lotNumber), "<br>$(fieldValue)", "", "", "", confMessage)
+      %endif
+      %if (fromSel == "Y" && maintenanceCode != "D")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)LotSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;lotNumber=@dtw_rurlescseq(@dtw_rstrip(lotNumber))&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+          %if (backURL == "")
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=183&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %endif
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;lotNumber=@dtw_rurlescseq(@dtw_rstrip(lotNumber))&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

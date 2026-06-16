@@ -1,0 +1,32 @@
+<?php
+
+$sessionDateFormat=SessionDate($profileHandle, $dataBaseID);
+
+print "<h1>Welcome, $profileName, to the $title</h1>";
+$expDays  = $checkExp['expDays'];
+$expMsgID = $checkExp['msgID'];
+
+if ($expMsgID != ""){print "<h2>User Profile Error ($expMsgID) - Contact your System Administrator</h2>";}
+elseif ($expDays > 0){print "<h2>(Password expires in $expDays days)</h2>";}
+
+print   $hrTagAttr;
+print "<div style=\"padding: 1ex 1ex 1ex 1ex;\">";
+print  " Today is <span style=\"font-weight: bold;\"><font color='#6600FF'>$sessionDateFormat </span>   </div>";
+
+print "<div style=\"padding: 1ex 1ex 1ex 1ex;\">";
+print " <font color='#000000'> Welcome to your personalized information portal! <br>
+    This portal is your gateway to information in our HarrisData system. <br>
+    On the left, you'll find links to information you are authorized to access throughout the system. <br>
+    Just point, click & explore! <br>
+  </div>";
+
+echo "<img src='HarrisData\EIP\IMAGES\welcome\happy-friday.jpg' >";   
+
+print "<div style=\"padding: 1ex 1ex 1ex 1ex;\">";
+print " <span style=\"font-weight: bold;\">Today's Machine Backlog for Screen Graphics can be found here  
+        <a href=\"http://www.harrisdata.com/cusHotline.htm\" title=\"Display Promise Dates\">Backlog</a>  <br>
+  </div>";
+
+print  $hrTagAttr;
+require_once 'Copyright.php';
+?>

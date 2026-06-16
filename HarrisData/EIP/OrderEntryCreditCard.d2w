@@ -1,0 +1,344 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Order Entry - Credit Card                                   *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OEControl$(dataBaseID).icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Order Entry - Credit Card"
+  d2wName                 = "OrderEntryCreditCard.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;paySeq=@dtw_rurlescseq(paySeq)&amp;ccType=@dtw_rurlescseq(ccType)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  V_CECCP                 = ""
+  tabID                   = "CREDITCARD"
+  dataType                = "CCNO"
+  modeD                   = "D"
+  modeI                   = "I"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@orderControlNumber", "@dtw_rurlescseq(orderControlNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "OrderEntryConfirm.icl"
+              function validate(chgForm) {
+                  if (document.Chg.creditCardEntry.value =="" ||
+                      document.Chg.creditCardExpMonth.value =="" ||
+                      document.Chg.creditCardExpYear.value =="" ||
+                      document.Chg.creditCardName.value ==""
+                      %if (V_CECCP == "N")
+                          || document.Chg.creditCardAuth.value ==""
+                      %endif
+                      )
+                      {alert("$(reqFieldError)"); return false;}
+                  if (editNum(document.Chg.creditCardAmount, 9, 2) &&
+                      editNum(document.Chg.creditCardExpMonth, 2, 0) &&
+                      editNum(document.Chg.creditCardExpYear, 2, 0))
+                      return true;
+              }
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ORDERCREDITCARD")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %if (paySeq == "0")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, "Select * From OEPAYW Where WPOCTL=$(orderControlNumber) and WPPSEQ=$(paySeq)", stmtSQL)
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Order_CreditCard_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Order_CreditCard_Query (IN CHAR(64)    profileHandle,
+                                              CHAR(2)     dataBaseID,
+                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "OrderEntryProgOpt.icl"
+      %INCLUDE "OrderEntryTabs.icl"
+      <div class="quickLinksTop">
+          <a href="javascript:check(document.Chg)">$(acceptImageLrg)</a>
+          <a href="$(homeURL)$(cGIPath)OrderEntryPayment.d2w/MAINTAIN$(d2wVarBase)">$(cancelImageLrg)</a>
+      </div>
+
+      %ROW {
+          %INCLUDE "OrderEntryRetInfo.icl"
+
+      @RtvFldDesc("WPOCTL=$(orderControlNumber)", "OEPAYW", "char(sum(WPPAYA))", paymentTotal)
+      %if (paymentTotal == "")
+          @dtw_assign(paymentTotal, "0")
+      %endif
+      @dtw_subtract(orderTotal, paymentTotal, variance)
+
+      <table $(contentTable)>
+	     <colgroup>
+	         <col width="15%">
+	         <col width="15%">
+	         <col width="65%">
+          <tr><td class="dsphdr">Order Total</td>
+   	       <td class="colnmbr">$(orderTotal)</td>
+   	       <td class="colnmbr">&nbsp;</td>
+          </tr>
+          <tr><td class="dsphdr">Payment Total</td>
+   	       <td class="colnmbr">$(paymentTotal)</td>
+   	       <td class="colnmbr">&nbsp;</td>
+          </tr>
+          <tr><td class="dsphdr">Variance</td>
+   	       <td class="coltotal">$(variance)</td>
+   	       <td class="colnmbr">&nbsp;</td>
+          </tr>
+      </table>
+
+          <form class="formClass" METHOD=POST name="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;subTotal=@dtw_rurlescseq(subTotal)&amp;maintCode=@dtw_rurlescseq(V_H1MNCD)">
+              <table $(contentTable)>
+                  %if (errFound != "")
+                      @dtw_assign(focusField, "")
+                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                      @ErrVarErr(profileHandle, typeError, errVar)
+                      @DecatErr_Field("@@ccam", "creditCardAmount")   @dtw_assign(Err_WPPAYA, fieldValue)
+                      @DecatErr_Field("@@cctp", "creditCardType")     @dtw_assign(Err_WPCCTP, fieldValue)
+                      @DecatErr_Field("@@ccno", "creditCardNumber")   @dtw_assign(Err_WPCCNO, fieldValue)
+                      @DecatErr_Field("@@ccnv", "creditCardVerif")    @dtw_assign(Err_WPCCNV, fieldValue)
+                      @DecatErr_Field("@@ccmm", "creditCardExpMonth") @dtw_assign(Err_WPCCED, fieldValue)
+                      @DecatErr_Field("@@ccnm", "creditCardName")     @dtw_assign(Err_WPNOCC, fieldValue)
+                      @DecatErr_Field("@@ccad", "creditCardAddr")     @dtw_assign(Err_WPADCC, fieldValue)
+                      @DecatErr_Field("@@cczp", "creditCardZip")      @dtw_assign(Err_WPZPCC, fieldValue)
+                      @DecatErr_Field("@@ccac", "creditCardAuth")     @dtw_assign(Err_WPCCAC, fieldValue)
+                      @DecatErr_Field("@@ccck", "creditCardCheck")    @dtw_assign(Err_WPCHK, fieldValue)
+                      @DecatErr_Field("@@ccmo", "creditCardMemo")     @dtw_assign(Err_WPMEMO, fieldValue)
+
+                      @Decat_Field("@@ccam")   @dtw_assign(V_WPPAYA, fieldValue)
+                      @Decat_Field("@@chga")   @dtw_assign(V_H1CHGA, fieldValue)
+                      @Decat_Field("@@cctp")   @dtw_assign(V_WPCCTP, fieldValue)
+                      @Decat_Field("@@ccno")   @dtw_assign(V_WPCCNO, fieldValue)
+                      @dtw_assign(V_H1CCEN, V_WPCCNO)
+                      @Decat_Field("@@ccnv")   @dtw_assign(V_WPCCNV, fieldValue)
+                      @Decat_Field("@@cced")   @dtw_assign(V_WPCCED, fieldValue)
+                      @Decat_Field("@@ccmm")   @dtw_assign(V_H1CCMM, fieldValue)
+                      @Decat_Field("@@ccyy")   @dtw_assign(V_H1CCYY, fieldValue)
+                      @Decat_Field("@@ccnm")   @dtw_assign(V_WPNOCC, fieldValue)
+                      @Decat_Field("@@ccad")   @dtw_assign(V_WPADCC, fieldValue)
+                      @Decat_Field("@@cczp")   @dtw_assign(V_WPZPCC, fieldValue)
+                      @Decat_Field("@@ccac")   @dtw_assign(V_WPCCAC, fieldValue)
+                      @Decat_Field("@@ccck")   @dtw_assign(V_WPCHK, fieldValue)
+                      @Decat_Field("@@ccmo")   @dtw_assign(V_WPMEMO, fieldValue)
+                  %else
+                      %if (V_WPCCNO != "")
+                          @dtw_assign(V_H1CCEN, V_WPCCNO)
+                          @Convert_Data(dataType, modeI, V_H1CCEN)
+                          @Convert_Data(dataType, modeD, V_WPCCNO)
+                      %else
+                          @dtw_assign(V_WPPAYA, variance)
+                      %endif
+                      %if (paySeq == "0")
+                          @dtw_assign(V_WPCCTP, "$(ccType)")
+                      %endif
+                      @dtw_assign(V_WPNOCC, "$(billToName)")
+                      @dtw_assign(V_WPADCC, "$(billToAdrOne)")
+                      @dtw_assign(V_WPZPCC, "$(billToZip)")
+                      @dtw_assign(focusField, "creditCardAmount")
+                  %endif
+
+                  <tr><td>%INCLUDE "RequiredField.icl"</td></tr>
+
+                  @SetTextOvr(Err_WPPAYA)
+    	           <tr><td class="dsphdr"><span $(textOvr)>Credit Card Amount</span></td>
+    	               <td class="inputnmbr"><input name="creditCardAmount" type="text" value="$(V_WPPAYA)" size="13" maxlength="13"></td>
+                  </tr>
+                  @DspErrMsg(Err_WPPAYA)
+
+                  @RtvFldDesc("OECCTP='$(V_WPCCTP)'", "OECCTM", "OECCDS", fieldDesc)
+                  @SetTextOvr(Err_WPCCTP)
+    	           <tr><td class="dsphdr"><span $(textOvr)>Credit Card Type</span></td>
+                      <td class="inputalph"><input name="creditCardType" type="text" value="$(V_WPCCTP)" size="2" maxlength="2"><a href="$(homeURL)$(phpPath)CreditCardTypeSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=creditCardType&amp;fldDesc=creditCardTypeDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="creditCardTypeDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_WPCCTP)
+    	   	
+	           @RtvFldDesc("CCCUST=$(H1BLTO)", "HDCCCM", "char(count(*))", ccCount)
+                  @SetTextOvr(Err_WPCCNO)
+    	           <tr><td class="dsphdr"><span $(textOvr)>Credit Card Number</span></td>
+    	               <td class="inputalph">
+                          %if (ccCount > "0")
+                              <input name="creditCardEntry" type="text" value="$(V_H1CCEN)" size="18" maxlength="16"><a href="$(homeURL)$(phpPath)CustomerCreditCardSearch.php$(altVarBase)&amp;customerNumber=@dtw_rurlescseq(H1BLTO)&amp;docName=Chg&amp;fldCCTP=creditCardType&amp;fldCCDS=creditCardTypeDesc&amp;fldCCNO=creditCardNumber&amp;fldCCEN=creditCardEntry&amp;fldCCNM=creditCardName&amp;fldEXMM=creditCardExpMonth&amp;fldEXYY=creditCardExpYear" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a>
+                          %else
+                              <input name="creditCardEntry" type="text" value="$(V_H1CCEN)" size="18" maxlength="16"> $(reqFieldChar)
+                          %endif
+                          <input name="creditCardNumber" type="hidden" value="$(V_WPCCNO)">
+                      </td>
+                  </tr>
+                  @DspErrMsg(Err_WPCCNO)
+
+                  @SetTextOvr(Err_WPCCNV)
+    	           <tr><td class="dsphdr"><span $(textOvr)>Card Verification Number</span></td>
+                      <td class="inputalph"><input name="creditCardVerif" type="text" value="$(V_WPCCNV)" size="2" maxlength="4"></td>
+                  </tr>
+                  @DspErrMsg(Err_WPCCNV)
+    	   	
+                  %if (V_WPCCED > "0")
+                      @dtw_assign(ccmm, @dtw_rsubstr(V_WPCCED, "4", "2"))
+                      @dtw_assign(ccyy, @dtw_rsubstr(V_WPCCED, "2", "2"))
+                  %else
+                      @dtw_assign(ccmm, "")
+                      @dtw_assign(ccyy, "")
+                  %endif
+                  @SetTextOvr(Err_WPCCED)
+                  <tr><td class="dsphdr"><span $(textOvr)>Expiration Month/Year</span></td>
+    	               <td class="inputnmbr"><input name="creditCardExpMonth" type="text" value="$(ccmm)" size="2" maxlength="2"> / <input name="creditCardExpYear" type="text" value="$(ccyy)" size="2" maxlength="2"> $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_WPCCED)
+    	   		
+                  @SetTextOvr(Err_WPNOCC)
+    	           <tr><td class="dsphdr"><span $(textOvr)>Name On Credit Card</span></td>
+    	               <td class="inputalph"><input name="creditCardName" type="text" value="$(V_WPNOCC)" size="30" maxlength="30"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_WPNOCC)
+    	   		
+                  @SetTextOvr(Err_WPADCC)
+    	           <tr><td class="dsphdr"><span $(textOvr)>Address</span></td>
+    	               <td class="inputalph"><input name="creditCardAddr" type="text" value="$(V_WPADCC)" size="30" maxlength="20"></td>
+                  </tr>
+                  @DspErrMsg(Err_WPADCC)
+    	   		
+                  @SetTextOvr(Err_WPZPCC)
+    	           <tr><td class="dsphdr"><span $(textOvr)>Zip</span></td>
+    	               <td class="inputalph"><input name="creditCardZip" type="text" value="$(V_WPZPCC)" size="15" maxlength="9"></td>
+                  </tr>
+                  @DspErrMsg(Err_WPZPCC)
+    	   		
+                  %if (V_CECCP == "N")
+                      @dtw_assign(authReq,  "$(reqFieldChar)")
+                  %else
+                      @dtw_assign(authReq,  "")
+                  %endif
+                  @SetTextOvr(Err_WPCCAC)
+    	           <tr><td class="dsphdr"><span $(textOvr)>Authorization Code</span></td>
+    	               <td class="inputalph"><input name="creditCardAuth" type="text" value="$(V_WPCCAC)" size="15" maxlength="8">$(authReq)</td>
+                  </tr>
+                  @DspErrMsg(Err_WPCCAC)
+    	   		
+                  @SetTextOvr(Err_WPCHK)
+    	           <tr><td class="dsphdr"><span $(textOvr)>Document</span></td>
+    	               <td class="inputalph"><input name="creditCardCheck" type="text" value="$(V_WPCHK)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_WPCHK)
+    	   		
+                  @SetTextOvr(Err_WPMEMO)
+    	           <tr><td class="dsphdr"><span $(textOvr)>Memo</span></td>
+    	               <td class="inputalph"><input name="creditCardMemo" type="text" value="$(V_WPMEMO)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_WPMEMO)
+              </table>
+          </form>
+      %}
+      %INCLUDE "EndTabs.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+%FUNCTION(DTW_directcall) Validate_Data (INOUT CHAR(64)    profileHandle,
+				      		CHAR(2)     dataBaseID,
+                                               CHAR(1)     errFound,
+                                               CHAR(32000) edtVar,                             	
+                                               CHAR(32000) errVar)
+						
+{%EXEC {HOEUCC_W.PGM %}
+%}
+
+%HTML(PAYMENT) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(updateTotal, "C")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(creditCardType)
+  @dtw_mUPPERCASE(creditCardAuth)
+  @dtw_assign(creditCardAmount,@dtw_rstrip(creditCardAmount))
+  @dtw_assign(creditCardExpMonth,@dtw_rstrip(creditCardExpMonth))
+  @dtw_assign(creditCardExpYear,@dtw_rstrip(creditCardExpYear))
+  %while(@dtw_rlength(creditCardExpMonth) != "2") {@dtw_insert("0", creditCardExpMonth, creditCardExpMonth)%}
+  %while(@dtw_rlength(creditCardExpYear) != "2")  {@dtw_insert("0", creditCardExpYear, creditCardExpYear)%}
+
+  @dtw_pos("*", "$(creditCardEntry)", posEntry)
+  %if (posEntry <= "0")
+      @dtw_assign(creditCardNumber, creditCardEntry)
+  %endif
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@pseq", paySeq)
+  @Concat_Field("@@ccam", creditCardAmount)
+  @Concat_Field("@@cctp", creditCardType)
+  @Concat_Field("@@ccno", creditCardNumber)
+  @Concat_Field("@@ccnv", creditCardVerif)
+  @Concat_Field("@@cced", "1$(creditCardExpYear)$(creditCardExpMonth)")
+  @Concat_Field("@@ccmm", creditCardExpMonth)
+  @Concat_Field("@@ccyy", creditCardExpYear)
+  @Concat_Field("@@ccnm", creditCardName)
+  @Concat_Field("@@ccad", creditCardAddr)
+  @Concat_Field("@@cczp", creditCardZip)
+  @Concat_Field("@@ccac", creditCardAuth)
+  @Concat_Field("@@ccck", creditCardCheck)
+  @Concat_Field("@@ccmo", creditCardMemo)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      %if (maintCode == "S")
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderShippingReview.d2w/DISPLAY$(d2wVarBase)">
+      %else		
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryPayment.d2w/MAINTAIN$(d2wVarBase)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/PAYMENT$(d2wVarBase)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

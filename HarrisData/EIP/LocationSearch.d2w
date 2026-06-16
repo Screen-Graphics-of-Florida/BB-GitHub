@@ -1,0 +1,519 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Location Search                                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Location Search"
+  d2wName                 = "LocationSearch.d2w"
+  d2wVarBase              = "$(genericVarBase))&amp;docName=@dtw_rurlescseq(docName)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  novcf                   = ""
+  docName                 = ""
+  fldName                 = ""
+  fldDesc                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  function selectLocation(location, desc){
+                      window.opener.document.$(docName).$(fldName).value = location;
+                      window.opener.document.$(docName).$(fldDesc).value = desc;
+                      window.opener.document.$(docName).$(fldName).focus();
+                      window.close();
+                  }
+	           %INCLUDE "NumEdit.icl"
+                  %INCLUDE "CheckEnterSearch.icl"
+                  function validate(searchForm) {
+                  if (editNum(document.Search.srchLoc, 3, 0))
+                      return true;
+                  }
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "$(searchBanner)"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      <td class="content">
+                          @dtw_assign(uv_BillingLocationName, "LOLOC#")
+                          %INCLUDE "userview.icl"
+
+                          %INCLUDE "stmtSQLClear.icl"
+                          %if (moreInfo == "Y")
+                              @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                          %else
+                              @dtw_concat(stmtSQL, " Select LOLOC#, LOLNA1, LOLNA2, LOLCTY, LOST, LOZIP, LOPHON,", stmtSQL)
+                              @dtw_concat(stmtSQL, " upper(LOLNA1) as LOLNA1U, upper(LOLNA2) as LOLNA2U, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " upper(LOLNA3) as LOLNA3U, upper(LOLNA4) as LOLNA4U, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " upper(LOLCTY) as LOLCTYU", stmtSQL)
+                          %endif
+                          @dtw_concat(fileSQL, " HDLCTN ", fileSQL)
+                          %if (moreInfo == "Y")
+                              @dtw_concat(selectSQL, "LOLOC#=$(locationNumber)", selectSQL)
+                          %elseif (wildCardSearch!="" || uv_Sql!="")
+                              @dtw_concat(selectSQL, " LOLOC#>0 ", selectSQL)
+                          %endif
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @Location_Search(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "$(searchTrailer)"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+%FUNCTION(dtw_sql) Location_Search (IN CHAR(64)    profileHandle,
+     	                                CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Name</th>
+                      <th class="colhdr">Number</th>
+                  </tr>
+                  <tr>
+                      <td class="inputalph">
+                          <input type="text" name="srchName" size="30" maxlength="30">
+                          <input type="hidden" name="operName" value="LIKE">
+                      </td>
+                      <td class="inputnmbr">
+                          <input type="text" name="srchLoc" size="3" maxlength="3">
+                          <input type="hidden" name="operLoc" value="=">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchName.focus();
+              </script>
+          </form>
+	
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("LOLOC#", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Number" title="Sequence By Number">  Number</a></th>
+                  @OrderBy_Sort("LOLNA1U", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Name" title="Sequence By Name">  Name</a></th>
+                  @OrderBy_Sort("LOLNA2U", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Address" title="Sequence By Address, City, Number">  Address</a></th>
+                  @OrderBy_Sort("LOLCTYU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=City" title="Sequence By City, Name">  City</a></th>
+                  @OrderBy_Sort("LOST", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=State" title="Sequence By State, Name">  State</a></th>
+                  @OrderBy_Sort("LOZIP", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Zip" title="Sequence By Zip, Name">  Zip</a></th>
+                  @OrderBy_Sort("LOPHON", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Phone" title="Sequence By Phone Number">  Phone Number</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table b$(contentTable)>
+      %endif		
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  @EditPhoneNumber(V_LOPHON)
+                  @Format_Quote(V_LOLNA1, F_LOLNA1)
+
+    	     %if (moreInfo != "Y")	
+                      <tr class="$(rowClass)">
+                          <td class="colnmbr"> $(V_LOLOC#)</td>                                      	
+                          <td class="colalph"><a href="javascript:selectLocation($(V_LOLOC#),'$(F_LOLNA1)')" title="Select Location">$(V_LOLNA1)</a></td>
+                          <td class="colalph">$(V_LOLNA2)</td>
+                          <td class="colalph">$(V_LOLCTY)</td>
+                          <td class="colcode">$(V_LOST)</td>
+                          <td class="colalph">$(V_LOZIP)</td>
+                          <td class="colnmbr">$(V_LOPHON)</td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;locationNumber=@dtw_rurlescseq(V_LOLOC#)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      %{ More Information Screen %}
+
+                      <tr><td><a href="javascript:selectLocation($(V_LOLOC#),'$(F_LOLNA1)')" title="Select Location">$(selectImageLrg)</a>
+                          </td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Location Number</td>
+                          <td class="dspalph">$(V_LOLOC#)</td>
+                      </tr>
+    	   		
+                      <tr><td class="dsphdr">Location Name</td>
+                          <td class="dspalph">$(V_LOLNA1)</td>
+                      </tr>
+
+                      %if (V_LOLNA2!="")		
+                          <tr><td class="dsphdr">Address Line One</td>
+                              <td class="dspalph">$(V_LOLNA2)</td></tr>
+                      %endif
+
+                      %if (V_LOLNA3!="")		
+                          <tr><td class="dsphdr">Address Line Two</td>
+                              <td class="dspalph">$(V_LOLNA3)</td></tr>
+                      %endif
+    	   			
+                      %if (V_LOLCTY!="")		
+                          <tr><td class="dsphdr">City</td>
+                              <td class="dspalph">$(V_LOLCTY)</td></tr>
+                      %endif
+
+                      %if (V_LOST!="")		
+                          @RtvFldDesc("STID='$(V_LOST)'", "HDSTID", "STDESC", fieldDesc)
+                          <tr><td class="dsphdr">State</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+
+                      %if (V_LOZIP!="")		
+                          <tr><td class="dsphdr">Zip</td>
+                              <td class="dspalph">$(V_LOZIP)</td></tr>
+                      %endif
+
+                      %if (V_LOCTRY!="")
+                          @RtvFldDesc("CNCTCD='$(V_LOCTRY)'", "HDCTRY", "CNCDES", fieldDesc)
+                          <tr><td class="dsphdr">Country</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>			
+                      %endif
+
+                      %if (V_LOPHON!="")
+                          <tr><td class="dsphdr">Phone Number</td>
+                              <td class="dspalph">$(V_LOPHON)</td>
+                          </tr>
+                      %endif
+
+                      %if (V_LOCO#>"0")
+                          @RtvFldDesc("CFCO#=$(V_LOCO#) and CFFAC#=$(V_LOFAC#)", "HDCFAC", "CFCFNM", fieldDesc)
+                          <tr><td class="dsphdr">Company/Facility</td>
+                              <td class="dspalph">$(fieldDesc)</td>
+                          </tr>
+                      %endif
+
+                      %if (V_LOPLOD!="")
+                          @RtvYNDesc($(V_LOPLOD), fieldDesc)
+                          <tr><td class="dsphdr">Print Loc On Document</td>
+                              <td class="dspalph">$(fieldDesc)</td>
+                          </tr>
+                      %endif
+
+                      %if (V_LOPSEG!="")
+                          <tr><td class="dsphdr">Page Segment Name</td>
+                              <td class="dspalph">$(V_LOPSEG)</td>
+                          </tr>
+                      %endif
+
+                      %if (V_LOMSG1!="")
+                          <tr><td class="dsphdr">Invoice Message 1</td>
+                              <td class="dspalph">$(V_LOMSG1)</td>
+                          </tr>
+                      %endif
+
+                      %if (V_LOMSG2!="")
+                          <tr><td class="dsphdr">Invoice Message 2</td>
+                              <td class="dspalph">$(V_LOMSG2)</td>
+                          </tr>
+                      %endif
+
+                      %if (V_LOMSG3!="")
+                          <tr><td class="dsphdr">Statement Message</td>
+                              <td class="dspalph">$(V_LOMSG3)</td>
+                          </tr>
+                      %endif
+
+                      %if (V_LOFACT!="")
+                          @RtvYNDesc($(V_LOFACT), fieldDesc)
+                          <tr><td class="dsphdr">Factoring Location</td>
+                              <td class="dspalph">$(fieldDesc)</td>
+                          </tr>
+                      %endif
+    	      		
+                      %if (V_LOFARA>"0")
+                          @Default_Zero(V_LOFARA)
+                          @Default_Zero(V_LOFARS)
+                          @Format_Acct("$(V_LOFARA)", "$(V_LOFARS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Factoring A/R Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td>
+                          </tr>
+                      %endif
+    	      		
+                      %if (V_LOFLIA>"0")
+                          @Default_Zero(V_LOFLIA)
+                          @Default_Zero(V_LOFLIS)
+                          @Format_Acct("$(V_LOFLIA)", "$(V_LOFLIS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Factoring Liability Account</td>
+                              <td class="dspnmbr">$(F_AcctSub)</td>
+                          </tr>
+                      %endif
+    	      		
+                      %if (V_LOCLI#>"0")
+                          <tr><td class="dsphdr">Factoring Client Number</td>
+                              <td class="dspalph">$(V_LOCLI#)</td>
+                          </tr>
+                      %endif
+
+                  %endif
+              %}
+          </table>
+	   %if (moreInfo != "Y")	
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+	   %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "LOLNA1U,LOLOC#")
+      @DTW_ASSIGN(orderByDisplay, "Name, Number")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(orderBy, "LOLOC#")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Number")
+      %if (orderBy == "LOLOC#")
+          @DTW_ASSIGN(orderBy, "LOLOC# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "LOLOC#")
+          @DTW_ASSIGN(orderByDisplay, "Number")
+      %endif
+  %elseif (sequence == "Name")
+      %if (orderBy == "LOLNA1U")
+          @DTW_ASSIGN(orderBy, "LOLNA1U DESC")
+          @DTW_ASSIGN(orderByDisplay, "Name (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "LOLNA1U")
+          @DTW_ASSIGN(orderByDisplay, "Name")
+      %endif
+  %elseif (sequence == "Address")
+      %if (orderBy == "LOLNA2U,LOLNA3U,LOLNA4U,LOLCTYU,LOLOC#")
+          @DTW_ASSIGN(orderBy, "LOLNA2U DESC,LOLNA3U,LOLNA4U,LOLCTYU,LOLOC#")
+          @DTW_ASSIGN(orderByDisplay, "Address (descending), City, Number")
+      %else
+          @DTW_ASSIGN(orderBy, "LOLNA2U,LOLNA3U,LOLNA4U,LOLCTYU,LOLOC#")
+          @DTW_ASSIGN(orderByDisplay, "Address, City, Number")
+      %endif
+  %elseif (sequence == "City")
+      %if (orderBy == "LOLCTYU,LOLNA1U")
+          @DTW_ASSIGN(orderBy, "LOLCTYU DESC,LOLNA1U")
+          @DTW_ASSIGN(orderByDisplay, "City (descending), Name")
+      %else
+          @DTW_ASSIGN(orderBy, "LOLCTYU,LOLNA1U")
+          @DTW_ASSIGN(orderByDisplay, "City, Name")
+      %endif
+  %elseif (sequence == "State")
+      %if (orderBy == "LOST,LOLNA1U")
+          @DTW_ASSIGN(orderBy, "LOST DESC,LOLNA1U")
+          @DTW_ASSIGN(orderByDisplay, "State (descending), Name")
+      %else
+          @DTW_ASSIGN(orderBy, "LOST,LOLNA1U")
+          @DTW_ASSIGN(orderByDisplay, "State, Name")
+      %endif
+  %elseif (sequence == "Zip")
+      %if (orderBy == "LOZIP,LOLNA1U")
+          @DTW_ASSIGN(orderBy, "LOZIP DESC,LOLNA1U")
+          @DTW_ASSIGN(orderByDisplay, "Zip (descending), Name")
+      %else
+          @DTW_ASSIGN(orderBy, "LOZIP,LOLNA1U")
+          @DTW_ASSIGN(orderByDisplay, "Zip, Name")
+      %endif
+  %elseif (sequence == "Phone")
+      %if (orderBy == "LOPHON")
+          @DTW_ASSIGN(orderBy, "LOPHON DESC")
+          @DTW_ASSIGN(orderByDisplay, "Phone Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "LOPHON")
+          @DTW_ASSIGN(orderByDisplay, "Phone Number")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchLoc, 3, 0) &&
+                      editNum(document.Search.srchPhone, 11, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Number</td>
+                              @dtw_assign(operNbr, "operLoc")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchLoc" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Name</td>
+                              @dtw_assign(operNbr, "operName")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchName" size="26" maxlength="26"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Address</td>
+                              <td>&nbsp;</td>
+                              <td class="inputalph"><input type="text" name="srchAddress" size="26" maxlength="26"></td>	
+                          </tr>
+
+                          <tr><td class="dsphdr">State</td>
+                              @dtw_assign(operNbr, "operState")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchState" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Zip</td>
+                              @dtw_assign(operNbr, "operZip")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchZip" size="14" maxlength="14"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Phone Number</td>
+                              <td>&nbsp;</td>
+                              <td class="inputnmbr"><input type="text" name="srchPhone" size="11" maxlength="11"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchLoc.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("LOLOC#", "Number", $(srchLoc), "", operLoc, "N")
+  @Build_WildCard ("upper(LOLNA1)", "Name", $(srchName), "U", operName, "A")
+
+  @dtw_assign(srchAddress,@dtw_rstrip(srchAddress))
+  %if (srchAddress != "")
+      @Build_WildCard ("LOLNA2", "Address", $(srchAddress), "U", "LIKE", "V")
+      @dtw_mUPPERCASE(srchAddress)
+      @dtw_replace(srchAddress, "?", "_", "1", "a", srchAddress)
+      @dtw_replace(srchAddress, "*", "%", "1", "a", srchAddress)
+      @dtw_concat(wildCardTemp, " (trim(upper(LOLNA2)) LIKE '$(srchAddress)'", wildCardTemp)
+      @dtw_concat(wildCardTemp, " OR   trim(upper(LOLNA3)) LIKE '$(srchAddress)'", wildCardTemp)
+      @dtw_concat(wildCardTemp, " OR   trim(upper(LOLNA4)) LIKE '$(srchAddress)'", wildCardTemp)
+      @dtw_concat(wildCardTemp, " OR   trim(upper(LOLCTY)) LIKE '$(srchAddress)')", wildCardTemp)
+  %endif
+		
+  @Build_WildCard ("LOST", "State", $(srchState), "U", operState, "A")
+  @Build_WildCard ("LOZIP", "Zip", $(srchZip), "U", operZip, "A")
+  @Build_WildCard ("LOPHON", "Phone Number", $(srchPhone), "", "", "P")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

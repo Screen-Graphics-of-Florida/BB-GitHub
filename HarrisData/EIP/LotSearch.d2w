@@ -1,0 +1,554 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Lot Search                                                  *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Lot Search"
+  d2wName                 = "LotSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;fldLot=@dtw_rurlescseq(fldLot)&amp;fldItem=@dtw_rurlescseq(fldItem)&amp;fldWhs=@dtw_rurlescseq(fldWhs)&amp;touchScreen=@dtw_rurlescseq(touchScreen)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  novcf                   = ""
+  docName                 = ""
+  fldLot                  = ""
+  fldItem                 = ""
+  fldWhs                  = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectLot(lot, item, whs){
+                  window.opener.document.$(docName).$(fldLot).value = lot;
+                  window.opener.document.$(docName).$(fldItem).value = item;
+                  window.opener.document.$(docName).$(fldWhs).value = whs;
+                  %if (touchScreen != "Y")
+                      window.opener.document.$(docName).$(fldLot).focus();
+                  %endif
+                  window.close();
+              }
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+              %if (touchScreen == "Y")
+                  %INCLUDE "KeyboardFunctionsTS.icl"
+              %endif
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDLOT ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, " LTLT#='$(lotNumber)' and LTITEM='$(itemNumber)'", selectSQL)
+                      %elif (wildCardSearch!="")
+                          @dtw_concat(selectSQL, "LTLT#<>' ' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Lot_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Lot_Search (IN  CHAR(64)    profileHandle,
+				     CHAR(2)     dataBaseID,
+                                    CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (touchScreen == "Y")
+          @dtw_assign(displayCloseIcon, "Y")
+      %endif
+      %INCLUDE "PageTitle.icl"
+
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr"> Lot <br> Number</th>
+                      <th class="colhdr"> Whs</th>
+                      <th class="colhdr"> Item <br> Number</th>
+                  </tr>
+                  <tr>
+                      <td class="inputalph">
+                          %if (touchScreen == "Y")
+                              <input class="input" id="srchLot" onfocus="kbActive(this, 'keyboard');" name="srchLot" type="text" size="20" maxlength="15">
+                              <input type="hidden" id="submitSearch">
+                          %else
+                              <input type="text" name="srchLot" size="20" maxlength="15">
+                          %endif
+                          <input type="hidden" name="operLot" value="LIKE">
+                      </td>
+                      <td class="inputnmbr">
+                          %if (touchScreen == "Y")
+                              <input class="input" id="srchWhs" onfocus="kbActive(this, 'numericKeyboard');" name="srchWhs" type="text" size="3" maxlength="3">
+                          %else
+                              <input type="text" name="srchWhs" size="3" maxlength="3">
+                          %endif
+                          <input type="hidden" name="operWhs" value="=">
+                      </td>
+                      <td class="inputalph">
+                          %if (touchScreen == "Y")
+                              <input class="input" id="srchItem" onfocus="kbActive(this, 'keyboard');" name="srchItem" type="text" size="20" maxlength="15">
+                              <input type="hidden" id="submitSearch">
+                          %else
+                              <input type="text" name="srchItem" size="20" maxlength="15">
+                          %endif
+                          <input type="hidden" name="operItem" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              %if (touchScreen != "Y")
+                  <script TYPE="text/javascript">
+                      document.Search.srchLot.focus();
+                  </script>
+              %endif
+          </form>
+          
+          %if (touchScreen == "Y")
+             @dtw_assign(pageSelectList, "N")
+             @dtw_assign(wildCardDefault, "N")
+             @dtw_assign(advanceSearch, "N")
+          %endif
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @OrderBy_Sort("LTLT#", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=lotNumber" title="Sequence By Lot Number"> Lot Number</a></th>
+                  @OrderBy_Sort("LTWH", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=whsNumber" title="Sequence By Warehouse Number, Item Number"> Whs</a></th>
+                  @OrderBy_Sort("LTITEM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemNumber" title="Sequence By Item Number"> Item Number</a></th>
+                  @OrderBy_Sort("LTDTEX", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=expirationDate" title="Sequence By Expiration Date"> Expiration Date</a></th>
+                  <th class="colhdr"> Comment</th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+	     %endif		
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+               @Format_Quote(V_LTITEM, F_LTITEM)
+               @Format_Quote(V_LTLT#, F_LTLT#)
+
+              %if (moreInfo != "Y")	
+                  <tr class="$(rowClass)">
+                      <td class="colalph"><a href="javascript:selectLot('$(F_LTLT#)','$(F_LTITEM)','$(V_LTWH)')" title="Select Lot">$(V_LTLT#)</a></td>
+
+                      <td class="colcode"> $(V_LTWH)</td>
+                      <td class="colcode"> $(V_LTITEM)</td>
+                      @Format_Date(V_LTDTEX, "D", F_LTDTEX)
+                      <td class="colcode"> $(F_LTDTEX)</td>
+                      <td class="colcode"> $(V_LTLTCM)</td>
+                      <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;lotNumber=@dtw_rurlescseq(V_LTLT#)&amp;itemNumber=@dtw_rurlescseq(V_LTITEM)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                  </tr>
+
+              %else
+
+                  <tr><td><a href="javascript:selectLot('$(F_LTLT#)','$(F_LTITEM)','$(V_LTWH)' )" title="Select Lot">$(selectImageLrg)</a>
+                      </td>
+                  </tr>
+
+                  @RtvFldDesc("IMITEM='$(V_LTITEM)'", "HDIMST", "IMIMDS", itemDescription)
+                  <tr><td class="dsphdr">Item Number</td>
+                      <td class="dspalph">$(V_LTITEM) $(itemDescription)</td>
+                  </tr>
+
+                  %if (V_HDPDRL > "0")
+                  @RtvFldDesc("PLPLNT=$(V_LTPLT)", "HDPLNT", "PLNAME", plantName)
+                      <tr><td class="dsphdr">Plant Number</td>
+                          <td class="dspnmbr">$(V_LTPLT) $(plantName)</td>
+                      </tr>
+                  %endif
+
+                  @RtvFldDesc("WHWHS=$(V_LTWH)", "HDWHSM", "WHWHNM", warehouseName)
+                  <tr><td class="dsphdr">Warehouse Number</td>
+                      <td class="dspnmbr">$(V_LTWH) $(warehouseName)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Lot Number</td>
+                      <td class="dspalph">$(V_LTLT#)</td>
+                  </tr>
+
+                  @RtvFldDesc("VMVEND=$(V_LTVEND)", "HDVEND", "VMVNA1", vendorName)
+                  <tr><td class="dsphdr">Vendor Number</td>
+                      <td class="dspnmbr">$(V_LTVEND) $(vendorName)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Vendor Lot Number</td>
+                      <td class="dspalph">$(V_LTVLOT)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Purchase Order Number</td>
+                      <td class="dspnmbr">$(V_LTPO#)</td>
+                  </tr>
+
+                  %if (V_HDPDRL > "0")
+                      <tr><td class="dsphdr">Manufacturing Order</td>
+                          <td class="dspalph">$(V_LTMORD)</td>
+                      </tr>
+                  %endif
+
+                  <tr><td class="dsphdr">Comment</td>
+                      <td class="dspalph">$(V_LTLTCM)</td>
+                  </tr>
+
+          </table>
+
+          <fieldset class="legendBody">
+              <legend class="legendTitle">Current Quantities</legend>
+              <table $(contentTable)>
+
+                  @Format_Nbr(V_LTQOH, F_LTQOH, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">On Hand</td>
+                      <td class="dspnmbr">$(F_LTQOH)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTQAL, F_LTQAL, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Reserved</td>
+                      <td class="dspnmbr">$(F_LTQAL)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTQRC, F_LTQRC, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Received</td>
+                      <td class="dspnmbr">$(F_LTQRC)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTQSL, F_LTQSL, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Sold</td>
+                      <td class="dspnmbr">$(F_LTQSL)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTQIS, F_LTQIS, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Issued</td>
+                      <td class="dspnmbr">$(F_LTQIS)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTQAD, F_LTQAD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Adjusted</td>
+                      <td class="dspnmbr">$(F_LTQAD)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTQTR, F_LTQTR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Transferred</td>
+                      <td class="dspnmbr">$(F_LTQTR)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTQKI, F_LTQKI, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Kit Issued</td>
+                      <td class="dspnmbr">$(F_LTQKI)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTQRVT, F_LTQRVT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Returned To Vendor</td>
+                      <td class="dspnmbr">$(F_LTQRVT)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTLRCP, F_LTLRCP, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">On Hand In Receiving</td>
+                      <td class="dspnmbr">$(F_LTLRCP)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTLQHR, F_LTLQHR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Held In Receiving</td>
+                      <td class="dspnmbr">$(F_LTLQHR)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTQHSR, F_LTQHSR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Held In Stock</td>
+                      <td class="dspnmbr">$(F_LTQHSR)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTLSCR, F_LTLSCR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Scrapped In Receiving</td>
+                      <td class="dspnmbr">$(F_LTLSCR)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTLSCS, F_LTLSCS, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Scrapped In Stock</td>
+                      <td class="dspnmbr">$(F_LTLSCS)</td>
+                  </tr>
+
+                  @Format_Nbr(V_LTLSCW, F_LTLSCW, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Scrapped In WIP</td>
+                      <td class="dspnmbr">$(F_LTLSCW)</td>
+                  </tr>
+
+              </table>
+          </fieldset>
+
+          <fieldset class="legendBody">
+              <legend class="legendTitle">Current Dates</legend>
+              <table $(contentTable)>
+
+              @Format_Date(V_LTTSDT, "H", F_LTTSDT)
+                  <tr><td class="dsphdr">Requested Ship Date</td>
+                      <td class="dspdate">$(F_LTTSDT)</td>
+                  </tr>
+
+              @Format_Date(V_LTDTRC, "H", F_LTDTRC)
+                  <tr><td class="dsphdr">Date Received</td>
+                      <td class="dspdate">$(F_LTDTRC)</td>
+                  </tr>
+
+              @Format_Date(V_LTDTLP, "H", F_LTDTLP)
+                  <tr><td class="dsphdr">Last Physical Inventory</td>
+                      <td class="dspdate">$(F_LTDTLP)</td>
+                  </tr>
+
+              @Format_Date(V_LTDTEX, "H", F_LTDTEX)
+                  <tr><td class="dsphdr">Expiration Date</td>
+                      <td class="dspdate">$(F_LTDTEX)</td>
+                  </tr>
+
+              @Format_Date(V_LTLLDT, "H", F_LTLLDT)
+                  <tr><td class="dsphdr">Last Transaction</td>
+                      <td class="dspdate">$(F_LTLLDT)</td>
+                  </tr>
+
+              @Format_Date(V_LTLFDS, "H", F_LTLFDS)
+                  <tr><td class="dsphdr">First Date To Stockroom</td>
+                      <td class="dspdate">$(F_LTLFDS)</td>
+                  </tr>
+
+              @Format_Date(V_LTLLDS, "H", F_LTLLDS)
+                  <tr><td class="dsphdr">Last Date To Stockroom</td>
+                      <td class="dspdate">$(F_LTLLDS)</td>
+                  </tr>
+
+              </table>
+          </fieldset>
+
+          <fieldset class="legendBody">
+              <legend class="legendTitle">User Defined</legend>
+              <table $(contentTable)>
+
+                  <tr><td class="dsphdr">$(V_CILUS1)</td>
+                      <td class="dspalph">$(V_LTUDF1)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">$(V_CILUS2)</td>
+                      <td class="dspalph">$(V_LTUDF2)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">$(V_CILUS3)</td>
+                      <td class="dspalph">$(V_LTUDF3)</td>
+                  </tr>
+
+              </table>
+          </fieldset>
+	   		
+              %endif
+          %}
+      </table>
+      %if (moreInfo != "Y")	
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+      %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+      %if (touchScreen == "Y")
+         %INCLUDE "KeyboardTS.icl"
+      %endif
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "LTWH,LTITEM")
+      @DTW_ASSIGN(orderByDisplay, "Warehouse, Item Number")
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "lotNumber")
+      %if (orderBy == "LTLT#")
+          @DTW_ASSIGN(orderBy, "LTLT# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Lot Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "LTLT#")
+          @DTW_ASSIGN(orderByDisplay, "Lot Number")
+      %endif
+  %elif (sequence == "whsNumber")
+      %if (orderBy == "LTWH,LTITEM")
+          @DTW_ASSIGN(orderBy, "LTWH DESC,LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "LTWH,LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse, Item Number")
+      %endif
+  %elif (sequence == "itemNumber")
+      %if (orderBy == "LTITEM")
+          @DTW_ASSIGN(orderBy, "LTITEM DESC")
+          @DTW_ASSIGN(orderByDisplay, "Item Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "LTITEM")
+          @DTW_ASSIGN(orderByDisplay, "Item Number")
+      %endif
+  %elif (sequence == "expirationDate")
+      %if (orderBy == "LTDTEX")
+          @DTW_ASSIGN(orderBy, "LTDTEX DESC")
+          @DTW_ASSIGN(orderByDisplay, "Expiration Date (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "LTDTEX")
+          @DTW_ASSIGN(orderByDisplay, "Expiration Date")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	             %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchVendor, 7, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "LOTSEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Vendor Number</td>
+                              @dtw_assign(operNbr, "operVendor")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchVendor" type="text" size="7" maxlength="7"></td>
+        		       </tr>    	
+
+                          <tr><td class="dsphdr">Vendor Lot Number</td>
+                              @dtw_assign(operNbr, "operVendorLot")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchVendorLot" type="text" size="20" maxlength="15"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchVendor.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("LTLT#", "Lot Number", $(srchLot), "U", operLot, "A")
+  @Build_WildCard ("LTWH", "Whs", $(srchWhs), "", operWhs, "N")
+  @Build_WildCard ("LTITEM", "Item Number", $(srchItem), "U", operItem, "A")
+
+  @Build_WildCard ("LTVEND", "Vendor Number", $(srchVendor), "", operVendor, "N")
+  @Build_WildCard ("LTVLOT",  "Vendor Lot Number", $(srchVendorLot), "U", operVendorLot, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

@@ -1,0 +1,843 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Item Group Maintain                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "$(groupTypeDesc) Maintenance"
+  d2wName                 = "ItemGroupMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;groupType=@dtw_rurlescseq(groupType)&amp;groupTypeDesc=@dtw_rurlescseq(groupTypeDesc)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;forGroup=@dtw_rurlescseq(forGroup)&amp;forPlant=@dtw_rurlescseq(forPlant)&amp;forDesc=@dtw_rurlescseq(forDesc)&amp;backHome=@dtw_rurlescseq(backHome)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "LOAD$(d2wVarBase)"
+  programName             = "HHDIGM_W"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  advanceSearch           = "N"
+  backURL                 = ""
+  helpExt                 = ""
+%}
+
+%MACRO_FUNCTION Accept_Update (IN CHAR(1) maintenanceCode)
+{
+  %if (maintenanceCode == "A" || maintenanceCode == "Z")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Insert Into HDIGPD ", stmtSQL)
+      @dtw_concat(stmtSQL, " Select '$(groupType)','$(forGroup)',$(forPlant),WGITEM,CURRENT TIMESTAMP,'$(userProfile)','Y' ", stmtSQL)
+      @dtw_concat(stmtSQL, " From HDIGPW Where WGXHND='$(profileHandle)' ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Insert Into HDIGPH ", stmtSQL)
+      @dtw_concat(stmtSQL, " VALUES ('$(groupType)','$(forGroup)',$(forPlant),'$(forDesc)',UPPER('$(forDesc)'),CURRENT TIMESTAMP,'$(userProfile)','Y')", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %elif (maintenanceCode == "C")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From HDIGPD Where DGTYPE='$(groupType)' and DGIGRP='$(forGroup)' and DGPLT=$(forPlant) @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Insert Into HDIGPD ", stmtSQL)
+      @dtw_concat(stmtSQL, " Select '$(groupType)','$(forGroup)',$(forPlant),WGITEM,CURRENT TIMESTAMP,'$(userProfile)','Y' ", stmtSQL)
+      @dtw_concat(stmtSQL, " From HDIGPW Where WGXHND='$(profileHandle)' ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Update HDIGPH ", stmtSQL)
+      @dtw_concat(stmtSQL, " Set IGDESC='$(forDesc)',IGDESCU=UPPER('$(forDesc)'),IGTSTP=CURRENT TIMESTAMP,IGTSUS='$(userProfile)',IGTSPT='Y' ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where IGTYPE='$(groupType)' and IGIGRP='$(forGroup)' and IGPLT=$(forPlant) ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %else
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From HDIGPD Where DGTYPE='$(groupType)' and DGIGRP='$(forGroup)' and DGPLT=$(forPlant) @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From HDIGPH Where IGTYPE='$(groupType)' and IGIGRP='$(forGroup)' and IGPLT=$(forPlant) @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %endif
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %if (groupType == "F")
+      @dtw_assign(helpExt, " (Feature Family)")
+  %else
+      @dtw_assign(helpExt, "")
+  %endif
+
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "Menu.js"
+              %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ITEMGROUPMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(RPT_MAX_ROWS, "9999")
+                      @dtw_assign(svSTART_ROW_NUM, START_ROW_NUM)
+                      @dtw_assign(START_ROW_NUM, "1")
+                      @dtw_assign(appendWildCard, "N")
+                      %INCLUDE "stmtSQLClear.icl"
+                      %if (groupType == "G")
+                          @dtw_assign(withSQL, " With Temp_HDMFOP as ")
+                          @dtw_concat(withSQL, " (Select a.FOFEAT as IMITEM, a.FOFDSC as IMIMDS, upper(a.FOFDSC) as IMIMDSU ", withSQL)
+                          @dtw_concat(withSQL, "  From HDMFOP a left exception join HDMFOP b on a.FOPLT=b.FOPLT and a.FOFEAT=b.FOOPTN and 'Y'=b.FOBLOP ", withSQL)
+                          @dtw_concat(withSQL, "  Where a.FOPLT=$(forPlant) ", withSQL)
+                          @dtw_concat(withSQL, "  Group by a.FOFEAT,a.FOFDSC) ", withSQL)
+                          @dtw_concat(stmtSQL, withSQL, stmtSQL)
+                          @dtw_concat(stmtSQL, " Select WGITEM, IMIMDS, IMIMDSU ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDIGPW ", fileSQL)
+                          @dtw_concat(fileSQL, " left join Temp_HDMFOP on WGITEM=IMITEM ", fileSQL)
+                      %else
+                          @dtw_concat(stmtSQL, " Select WGIGRP, WGPLT, WGDESC, WGITEM, IMIMDS, IMPCLS, IMLOT, IMPTYP, IMIMDSU ", stmtSQL)
+                          @dtw_concat(stmtSQL, " PCPCDS, a.FLDESC as partTypeFLDESC  ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDIGPW ", fileSQL)
+                          @dtw_concat(fileSQL, " left join HDIMST on WGITEM=IMITEM ", fileSQL)
+                          @dtw_concat(fileSQL, " left join HDPCLS on PCPCLS=IMPCLS ", fileSQL)
+                          @dtw_concat(fileSQL, " left join SYFLAG a on a.FLTYPE='PARTTYPE' and a.FLVALU=IMPTYP ", fileSQL)
+                      %endif
+                      @dtw_concat(selectSQL, "WGXHND='$(profileHandle)' and WGTYPE='$(groupType)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @RtvFldDescWith("$(withSQL)", "$(selectSQL)", "$(fileSQL)", "char(count(*))", sql_Record_Count)
+                      @dtw_concat(stmtSQL, " Order By IMIMDSU,WGITEM ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+
+                      @dtw_assign(RPT_MAX_ROWS, "$(dspMaxRowsDft)")
+                      @dtw_assign(START_ROW_NUM, svSTART_ROW_NUM)
+                      @dtw_assign(appendWildCard, "")
+                      %INCLUDE "stmtSQLClear.icl"
+                      %if (groupType == "G")
+                          @dtw_concat(distinctSQL, "a.FOFEAT, a.FOFDSC", distinctSQL)
+                          @dtw_concat(stmtSQL, " Select a.FOFEAT as IMITEM, a.FOFDSC as IMIMDS, upper(a.FOFDSC) as IMIMDSU, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(DGIGRP,' ') as DGIGRP  ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDMFOP a left exception join HDMFOP b on a.FOPLT=b.FOPLT and a.FOFEAT=b.FOOPTN and 'Y'=b.FOBLOP ", fileSQL)
+                          @dtw_concat(fileSQL, " left join HDIGPD on DGTYPE='$(groupType)' and DGPLT=$(forPlant) and DGITEM=a.FOFEAT ", fileSQL)
+                          @dtw_concat(selectSQL, " a.FOPLT=$(forPlant) ", selectSQL)
+                          @dtw_concat(selectSQL, " and not exists (Select * From HDIGPW Where ", selectSQL)
+                          @dtw_concat(selectSQL, " WGXHND='$(profileHandle)' and WGTYPE='$(groupType)' and ", selectSQL)
+                          @dtw_concat(selectSQL, " WGIGRP='$(forGroup)' and WGITEM=a.FOFEAT)", selectSQL)
+                      %else
+                          @dtw_concat(stmtSQL, " Select IMITEM, IMIMDS, IMPCLS, IMLOT, IMPTYP, IMIMDSU ", stmtSQL)
+                          @dtw_concat(stmtSQL, " PCPCDS, a.FLDESC as partTypeFLDESC, coalesce(DGIGRP,' ') as DGIGRP  ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDIMST ", fileSQL)
+                          %if (groupType == "F")
+                              @dtw_concat(fileSQL, " left join HDIPLT on IMITEM=IPITEM ", fileSQL)
+                          %endif
+                          @dtw_concat(fileSQL, " left join HDPCLS on PCPCLS=IMPCLS ", fileSQL)
+                          @dtw_concat(fileSQL, " left join SYFLAG a on a.FLTYPE='PARTTYPE' and a.FLVALU=IMPTYP ", fileSQL)
+                          @dtw_concat(fileSQL, " left join HDIGPD on DGTYPE='$(groupType)' and DGITEM=IMITEM ", fileSQL)
+                          %if (groupType == "F")
+                              @dtw_concat(fileSQL, " and DGPLT=IPPLT", fileSQL)
+                          %endif
+                          @dtw_concat(selectSQL, " IMITEM>' ' ", selectSQL)
+                          %if (groupType == "F")
+                              @dtw_concat(selectSQL, " and IMKIT='F' and IPPLT=$(forPlant) ", selectSQL)
+                          %endif
+                          %if (groupType == "S")
+                              @dtw_concat(selectSQL, " and IMKIT=' ' ", selectSQL)
+                          %endif
+                          @dtw_concat(selectSQL, " and not exists (Select * From HDIGPW Where ", selectSQL)
+                          @dtw_concat(selectSQL, " WGXHND='$(profileHandle)' and WGTYPE='$(groupType)' and ", selectSQL)
+                          @dtw_concat(selectSQL, " WGIGRP='$(forGroup)' and WGITEM=IMITEM)", selectSQL)
+                          %if (V_CIUSMP == "Y")
+                              @dtw_concat(selectSQL, " and not exists (Select * From HDSPRT Where SMCITM=IMITEM) ", selectSQL)
+                          %endif
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      %if (groupType == "G")
+                          @dtw_concat(stmtSQL, " Group by a.FOFEAT,a.FOFDSC,DGIGRP ", stmtSQL)
+                      %endif
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Available_Items_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          %if (groupType == "S")
+              @dtw_assign(tableID, "208")
+          %else
+              @dtw_assign(tableID, "209")
+          %endif
+          @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=@dtw_rurlescseq(tableID)&amp;confMessage=@dtw_rurlescseq(confMessage)")
+      %else
+           @dtw_assign(backURL, "$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)")
+      %endif
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              <td class="toolbar">
+                  <a href="javascript:document.Chg.acceptUpdate.value='Y';check(document.Chg)">$(acceptImageMed)</a>
+                  <a href="$(backURL)">$(cancelImageMed)</a>
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+
+      $(hrTagAttr)
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)">
+          <table $(contentTable)>
+              @Format_Header("$(groupTypeDesc)", $(forGroup), "")
+              %if (groupType == "F" || groupType == "G")
+                  @RtvFldDesc("PLPLNT=$(forPlant)", "HDPLNT", "PLNAME", plantName)
+                  @Format_Header("Plant", $(plantName), $(forPlant))
+              %endif
+              @Format_Header("Description", $(forDesc), "")
+              <tr><td class="inputalph"><input name="acceptUpdate" type="hidden" value="N" size="1"></td></tr>
+          </table>
+      </form>
+
+      <fieldset class="legendBody">
+          %if (groupType == "G")
+              <legend class="legendTitle">Selected Features</legend>
+          %else
+              <legend class="legendTitle">Selected Items</legend>
+          %endif
+          <table $(contentTable)>
+              <tr>
+                  %if (groupType == "G")
+                      <th class="colhdr">Feature</th>
+                  %else
+                      <th class="colhdr">Item Number</th>
+                  %endif
+                  <th class="colhdr">Description</th>
+                  %if (groupType == "F" || groupType == "S")
+                      <th class="colhdr">Product<br>Class</th>
+                      %if (V_CILTUS == "Y")
+                          <th class="colhdr">Lot</th>
+                      %endif
+                      %if (V_HDPDRL > "0")
+                          <th class="colhdr">Part<br>Type</th>
+                      %endif
+                  %endif
+              </tr>
+
+              %INCLUDE "NoRecordsFound.icl"
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Confirm_Desc($(V_IMIMDS), $(V_WGITEM), "", "", "", "", confirmDesc)
+                  %if (groupType == "G")
+                      @dtw_assign(removeLinkTitle, "Click here to remove feature")
+                  %else
+                      @dtw_assign(removeLinkTitle, "Click here to remove item")
+                  %endif
+
+                  <tr class="$(rowClass)">
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)$(d2wName)/Update_Workfile$(d2wVarBase)$(wildCardVarBase)&amp;itemNumber=@dtw_rurlescseq(V_WGITEM)$(orderByVarBase)" title="$(removeLinkTitle)">$(V_WGITEM)</a></td>
+                      <td class="colalph">$(V_IMIMDS)</td>
+                      %if (groupType == "F" || groupType == "S")
+                          <td class="colalph" $(helpCursor)><span title="$(V_PCPCDS)">$(V_IMPCLS)</span></td>
+                          %if (V_CILTUS == "Y")
+                              @RtvFldDesc("FLTYPE='LOT' and FLVALU='$(V_IMLOT)'", "SYFLAG", "FLDESC", lotCtrlDesc)
+                              <td class="colcode" $(helpCursor)><span title="$(lotCtrlDesc)">$(V_IMLOT)</span></td>
+                          %endif
+                          %if (V_HDPDRL > "0")
+                              <td class="colcode" $(helpCursor)><span title="$(V_partTypeFLDESC)">$(V_IMPTYP)</span></td>
+                          %endif
+                      %endif
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Available_Items_Query (IN CHAR(64)    profileHandle,
+                                             CHAR(2)     dataBaseID,
+                                             CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <fieldset class="legendBody">
+      <legend class="legendTitle">
+      %if (groupType == "G")
+          Available Features
+      %else
+          Available Items
+      %endif
+      </legend>
+      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+          <table $(quickSearchTable)>
+              <tr>
+                  %if (groupType == "G")
+                      <th class="colhdr">Feature</th>
+                  %else
+                      <th class="colhdr">Item Number</th>
+                  %endif
+                  <th class="colhdr">Description</th>
+                  %if (groupType == "F" || groupType == "S")
+                      <th class="colhdr">Product Class</th>
+                  %endif
+              </tr>
+              <tr><td><input type="text" class="inputalph" name="srchItem" size="10" maxlength="15">
+                      <input type="hidden" name="operItem" value="LIKE">
+                  </td>
+                  <td><input type="text" class="inputalph" name="srchDesc" size="10" maxlength="30">
+                      <input type="hidden" name="operDesc" value="LIKE">
+                  </td>
+                  %if (groupType == "F" || groupType == "S")
+                      <td><input type="text" class="inputalph" name="srchClass" size="7" maxlength="4">
+                          <input type="hidden" name="operClass" value="LIKE">
+                      </td>
+                  %endif
+                  <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+              </tr>
+          </table>
+          <script TYPE="text/javascript">
+              document.Search.srchItem.focus();
+          </script>
+      </form>
+
+      %INCLUDE "WildCardPage.icl"
+
+      <table $(contentTable)>
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              %if (groupType == "G")
+                  @OrderBy_Sort("a.FOFEAT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Item" title="Sequence By Feature">Feature</a></th>
+              %else
+                  @OrderBy_Sort("IMITEM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Item" title="Sequence By Item Number">Item Number</a></th>
+              %endif
+              %if (groupType == "G")
+                  @OrderBy_Sort("upper(a.FOFDSC)", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Desc" title="Sequence By Description, Feature">Description</a></th>
+              %else
+                  @OrderBy_Sort("IMIMDSU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Desc" title="Sequence By Description, Item Number">Description</a></th>
+              %endif
+              %if (groupType == "F" || groupType == "S")
+                  @OrderBy_Sort("IMPCLS", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ProdClass" title="Sequence By Product Class, Item Number">Product<br>Class</a></th>
+                  %if (V_CILTUS == "Y")
+                      @OrderBy_Sort("IMLOT", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Lot" title="Sequence By Lot, Item Number">Lot</a></th>
+                  %endif
+                  %if (V_HDPDRL > "0")
+                      @OrderBy_Sort("IMPTYP", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PartType" title="Sequence By Part Type, Item Number">Part<br>Type</a></th>
+                  %endif
+              %endif
+              @OrderBy_Sort("DGIGRP", sortVar)
+              %if (groupType == "G")
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Group" title="Sequence By $(groupTypeDesc), Feature">$(groupTypeDesc)</a></th>
+              %else
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Group" title="Sequence By $(groupTypeDesc), Item Number">$(groupTypeDesc)</a></th>
+              %endif
+          </tr>
+
+          %INCLUDE "NoRecordsFound.icl"
+
+          %if (groupType == "G")
+              @dtw_assign(selectLinkTitle, "Click here to select feature")
+          %else
+              @dtw_assign(selectLinkTitle, "Click here to select item")
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+
+              <tr class="$(rowClass)">
+                  <td class="colalph">
+                      %if (V_DGIGRP == "")
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)&amp;START_ROW_NUM=$(START_ROW_NUM)&amp;itemNumber=@dtw_rurlescseq(V_IMITEM)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)" title="$(selectLinkTitle)">$(V_IMITEM)</a>
+                      %else
+                          $(V_IMITEM)
+                      %endif
+                  </td>
+                  <td class="colalph">$(V_IMIMDS)</td>
+                  %if (groupType == "F" || groupType == "S")
+                      <td class="colalph" $(helpCursor)><span title="$(V_PCPCDS)">$(V_IMPCLS)</span></td>
+                      %if (V_CILTUS == "Y")
+                          @RtvFldDesc("FLTYPE='LOT' and FLVALU='$(V_IMLOT)'", "SYFLAG", "FLDESC", lotCtrlDesc)
+                          <td class="colcode" $(helpCursor)><span title="$(lotCtrlDesc)">$(V_IMLOT)</span></td>
+                      %endif
+                      %if (V_HDPDRL > "0")
+                          <td class="colcode" $(helpCursor)><span title="$(V_partTypeFLDESC)">$(V_IMPTYP)</span></td>
+                      %endif
+                  %endif
+                  %if (V_DGIGRP != "")
+                      @RtvFldDesc("IGTYPE='$(groupType)' and IGPLT=$(forPlant) and IGIGRP='$(V_DGIGRP)'", "HDIGPH", "IGDESC", itemGroupDesc)
+                      <td class="colalph" $(helpCursor)><span title="$(itemGroupDesc)">$(V_DGIGRP)</span></td>
+                  %else
+                      <td class="colalph">$(V_DGIGRP)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      </fieldset>
+      <a href="javascript:document.Chg.acceptUpdate.value='Y';check(document.Chg)">$(acceptImageMed)</a>
+      <a href="$(backURL)">$(cancelImageMed)</a>
+      @dtw_assign(medIcon, "Y")
+      %INCLUDE "HelpPage.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %if (groupType == "F")
+      @dtw_assign(helpExt, " (Feature Family)")
+  %else
+      @dtw_assign(helpExt, "")
+  %endif
+  @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+  %if (backURL == "")
+      %if (groupType == "S")
+          @dtw_assign(tableID, "208")
+      %else
+          @dtw_assign(tableID, "209")
+      %endif
+      @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=@dtw_rurlescseq(tableID)&amp;confMessage=@dtw_rurlescseq(confMessage)")
+  %else
+       @dtw_assign(backURL, "$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)")
+  %endif
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  @dtw_assign(sec_03, "N")
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+	          %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              function validate(chgForm) {
+                  if (editNum(document.Chg.plantNumber, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ITEMGROUPMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "MaintainTop.icl"
+                      $(hrTagAttr)
+                      %INCLUDE "RequiredField.icl"
+                      %INCLUDE "ErrorDisplay.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Group$(d2wVarBase)&amp;loadWork=@dtw_rurlescseq(loadWork)">
+                          <table $(contentTable)>
+                              %if (errFound != "" || maintenanceCode == "A")
+                                  %if (errFound == "" && maintenanceCode == "A")
+                                      @dtw_assign(edtVar, "")
+                                      @dtw_assign(focusField, "itemGroup")
+                                  %else
+                                      @dtw_assign(focusField, "")
+                                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                                      @ErrVarErr(profileHandle, typeError, errVar)
+                                      @DecatErr_Field("@@igrp", "itemGroup")   @dtw_assign(Err_WGIGRP, fieldValue)
+                                      @DecatErr_Field("@@plt@", "plantNumber") @dtw_assign(Err_WGPLT,  fieldValue)
+                                      @DecatErr_Field("@@desc", "groupDesc")   @dtw_assign(Err_WGDESC, fieldValue)
+                                      %if (focusField == "")
+                                          @dtw_assign(focusField, "groupDesc")
+                                      %endif
+                                  %endif
+
+                                  @Decat_Field("@@igrp")   @dtw_assign(V_WGIGRP, fieldValue)
+                                  @Decat_Field("@@plt@")   @dtw_assign(V_WGPLT,  fieldValue)
+                                  @Decat_Field("@@desc")   @dtw_assign(V_WGDESC, fieldValue)
+                                  %if (errFound == "" && maintenanceCode == "A" && (groupType == "F" || groupType == "G"))
+                                      @RtvDftPlant(V_WGPLT, plantName)
+                                  %endif
+
+                                  @dtw_assign(errFound, "")
+
+                              %elif (maintenanceCode == "Z")
+                                  @dtw_assign(V_WGIGRP, "")
+                                  @dtw_assign(V_WGPLT, "0")
+                                  @dtw_assign(V_WGDESC, "")
+                                  @dtw_assign(focusField, "itemGroup")
+                              %else
+                                  @dtw_assign(V_WGIGRP, $(itemGroup))
+                                  @dtw_assign(V_WGPLT, $(plantNumber))
+                                  @dtw_assign(V_WGDESC, $(groupDesc))
+                                  @dtw_assign(focusField, "groupDesc")
+                              %endif
+
+                              @SetTextOvr(Err_WGIGRP)
+                              <tr><td class="dsphdr"><span $(textOvr)>$(groupTypeDesc)</span></td>
+                                  %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                                      <td class="inputalph"><input name="itemGroup" type="text" value="$(V_WGIGRP)" size="15" maxlength="15"> $(reqFieldChar) </td>
+                                  %else
+                                      <td class="inputalph"><input name="itemGroup" type="hidden" value="$(V_WGIGRP)" size="15">$(V_WGIGRP)</td>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_WGIGRP)
+
+                              %if (groupType == "F" || groupType == "G")
+                                  @Default_Zero(V_WGPLT)
+                                  @RtvFldDesc("PLPLNT=$(V_WGPLT)", "HDPLNT", "PLNAME", plantName)
+                                  @SetTextOvr(Err_WGPLT)
+                                  <tr><td class="dsphdr"><span $(textOvr)>Plant Number</span></td>
+                                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                                          <td class="inputnmbr"><input name="plantNumber" type="text" value="$(V_WGPLT)" size="5" maxlength="3"><a href="$(homeURL)$(phpPath)PlantSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=plantNumber&amp;fldDesc=plantName" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a> <input disabled name="plantName" value="$(plantName)" type="text" size="35"></td>
+                                      %else
+                                          @Format_Code(V_WGPLT, F_WGPLT)
+                                          <td class="inputnmbr"><input name="plantNumber" type="hidden" value="$(V_WGPLT)">$(plantName) $(F_WGPLT)</td>
+                                      %endif
+                                  </tr>
+                                  @DspErrMsg(Err_WGPLT)
+                              %else
+                                  <input name="plantNumber" type="hidden" value="0">
+                              %endif
+
+                              @SetTextOvr(Err_WGDESC)
+                              <tr><td class="dsphdr"><span $(textOvr)>Description</span></td>
+                                  <td class="inputalph"><input name="groupDesc" type="text" value="$(V_WGDESC)" size="40" maxlength="30"> $(reqFieldChar) </td>
+                              </tr>
+                              @DspErrMsg(Err_WGDESC)
+                          </table>
+                      </form>
+                      <script TYPE="text/javascript">
+                          document.Chg.$(focusField).focus();
+                      </script>
+
+                      %INCLUDE "MaintainBottom.icl"
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HHDIGM_W.PGM %}
+%}
+
+%HTML(Edit_Group) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(groupType)
+  @dtw_mUPPERCASE(itemGroup)
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@type", groupType)
+  @Concat_Field("@@igrp", itemGroup)
+  @Concat_Field("@@plt@", plantNumber)
+  @Concat_Field("@@desc", groupDesc)
+  @Concat_Field("@@item", itemNumber)
+  @Concat_Field("@@user", userProfile)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From HDIGPW Where WGXHND='$(profileHandle)' @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/LOAD$(genericVarBase)&amp;groupType=@dtw_rurlescseq(groupType)&amp;groupTypeDesc=@dtw_rurlescseq(groupTypeDesc)&amp;forGroup=@dtw_rurlescseq(itemGroup)&amp;forPlant=@dtw_rurlescseq(plantNumber)&amp;forDesc=@dtw_rurlescseq(groupDesc)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;loadWork=@dtw_rurlescseq(loadWork)&amp;backHome=@dtw_rurlescseq(backHome)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(genericVarBase)&amp;groupType=@dtw_rurlescseq(groupType)&amp;groupTypeDesc=@dtw_rurlescseq(groupTypeDesc)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;loadWork=@dtw_rurlescseq(loadWork)&amp;errFound=@dtw_rurlescseq(errFound)&amp;backHome=@dtw_rurlescseq(backHome)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(groupType)
+  @dtw_mUPPERCASE(itemGroup)
+  @dtw_mUPPERCASE(itemNumber)
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+  %if (groupType == "S")
+      @dtw_assign(forPlant, "000")
+  %endif
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@type", groupType)
+  @Concat_Field("@@igrp", forGroup)
+  @Concat_Field("@@plt@", forPlant)
+  @Concat_Field("@@desc", forDesc)
+  @Concat_Field("@@item", itemNumber)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "" && (acceptUpdate == "Y" || maintenanceCode == "D"))
+      %if (errFound == "")
+          @Accept_Update(maintenanceCode)
+          @Format_ConfMsg_Desc(maintenanceCode, $(forDesc), $(forGroup), "", "", "", "", confMessage)
+      %else
+          @DecatErr_Field("@@desc", "groupDesc")
+          @Format_ConfMsg_Desc("", $(forDesc), $(forGroup), "<br>$(fieldValue)", "", "", "", confMessage)
+      %endif
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          %if (groupType == "S")
+              @dtw_assign(tableID, "208")
+          %else
+              @dtw_assign(tableID, "209")
+          %endif
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=@dtw_rurlescseq(tableID)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      %if (errFound == "")
+          @dtw_assign(errVar, "")
+          @dtw_concat(errVar, "{Reset}", errVar)
+      %endif
+      @ErrVarErr(profileHandle, typeError, errVar)
+      @dtw_assign(errFound, "Y")
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Update_Workfile) {
+  %INCLUDE "setLibraryList.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From HDIGPW Where WGXHND='$(profileHandle)' and WGTYPE='$(groupType)' and WGIGRP='$(forGroup)' and WGITEM='$(itemNumber)' ", stmtSQL)
+  %if (groupType == "F" || groupType == "G")
+      @dtw_concat(stmtSQL, " and WGPLT=$(forPlant) ", stmtSQL)
+  %endif
+  @dtw_concat(stmtSQL, " @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  @dtw_assign(errFound, "Y")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(LOAD) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (groupType == "G" && (orderBy == "" || @dtw_rpos("IMITEM", orderBy) != "0"))
+      @DTW_ASSIGN(orderBy, "a.FOFEAT")
+      @DTW_ASSIGN(orderByDisplay, "Feature")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  %if ((groupType == "F" || groupType == "S") && (orderBy == "" || @dtw_rpos("FOFEAT", orderBy) != "0"))
+      @DTW_ASSIGN(orderBy, "IMITEM")
+      @DTW_ASSIGN(orderByDisplay, "Item Number")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+
+  %if (loadWork == "Y")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From HDIGPW Where WGXHND='$(profileHandle)' @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %if (maintenanceCode != "A" && maintenanceCode != "Z")
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into HDIGPW (WGXHND,WGTYPE,WGIGRP,WGPLT,WGDESC,WGITEM) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Select '$(profileHandle)', IGTYPE,IGIGRP,IGPLT,'$(forDesc)',DGITEM ", stmtSQL)
+          @dtw_concat(stmtSQL, " From HDIGPH join HDIGPD on IGTYPE=DGTYPE and IGIGRP=DGIGRP ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where IGTYPE='$(groupType)' and IGIGRP='$(forGroup)' ", stmtSQL)
+          @dtw_concat(stmtSQL, " and IGPLT=$(forPlant) ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+  %endif
+
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Item")
+      %if (groupType == "G")
+          %if (orderBy == "a.FOFEAT")
+              @DTW_ASSIGN(orderBy, "a.FOFEAT DESC")
+              @DTW_ASSIGN(orderByDisplay, "Feature (descending)")
+          %else
+              @DTW_ASSIGN(orderBy, "a.FOFEAT")
+              @DTW_ASSIGN(orderByDisplay, "Feature")
+          %endif
+      %else
+          %if (orderBy == "IMITEM")
+              @DTW_ASSIGN(orderBy, "IMITEM DESC")
+              @DTW_ASSIGN(orderByDisplay, "Item Number (descending)")
+          %else
+              @DTW_ASSIGN(orderBy, "IMITEM")
+              @DTW_ASSIGN(orderByDisplay, "Item Number")
+          %endif
+      %endif
+  %elif (sequence == "Desc")
+      %if (groupType == "G")
+          %if (orderBy == "upper(a.FOFDSC),a.FOFEAT")
+              @DTW_ASSIGN(orderBy, "upper(a.FOFDSC) DESC,a.FOFEAT")
+              @DTW_ASSIGN(orderByDisplay, "Description (descending), Feature")
+          %else
+              @DTW_ASSIGN(orderBy, "upper(a.FOFDSC),a.FOFEAT")
+              @DTW_ASSIGN(orderByDisplay, "Description, Feature")
+          %endif
+      %else
+          %if (orderBy == "IMIMDSU,IMITEM")
+              @DTW_ASSIGN(orderBy, "IMIMDSU DESC,IMITEM")
+              @DTW_ASSIGN(orderByDisplay, "Description (descending), Item Number")
+          %else
+              @DTW_ASSIGN(orderBy, "IMIMDSU,IMITEM")
+              @DTW_ASSIGN(orderByDisplay, "Description, Item Number")
+          %endif
+      %endif
+  %elif (sequence == "ProdClass")
+      %if (orderBy == "IMPCLS,IMITEM")
+          @DTW_ASSIGN(orderBy, "IMPCLS DESC,IMITEM")
+          @DTW_ASSIGN(orderByDisplay, "Product Class (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IMPCLS,IMITEM")
+          @DTW_ASSIGN(orderByDisplay, "Product Class, Item Number")
+      %endif
+  %elif (sequence == "Lot")
+      %if (orderBy == "IMLOT,IMITEM")
+          @DTW_ASSIGN(orderBy, "IMLOT DESC,IMITEM")
+          @DTW_ASSIGN(orderByDisplay, "Lot (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IMLOT,IMITEM")
+          @DTW_ASSIGN(orderByDisplay, "Lot, Item Number")
+      %endif
+  %elif (sequence == "PartType")
+      %if (orderBy == "IMPTYP,IMITEM")
+          @DTW_ASSIGN(orderBy, "IMPTYP DESC,IMITEM")
+          @DTW_ASSIGN(orderByDisplay, "Part Type (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IMPTYP,IMITEM")
+          @DTW_ASSIGN(orderByDisplay, "Part Type, Item Number")
+      %endif
+  %elif (sequence == "Group")
+      %if (groupType == "G")
+          %if (orderBy == "DGIGRP,a.FOFEAT")
+              @DTW_ASSIGN(orderBy, "DGIGRP DESC,a.FOFEAT")
+              @DTW_ASSIGN(orderByDisplay, "$(groupTypeDesc) (descending), Feature")
+          %else
+              @DTW_ASSIGN(orderBy, "DGIGRP,a.FOFEAT")
+              @DTW_ASSIGN(orderByDisplay, "$(groupTypeDesc), Feature")
+          %endif
+      %else
+          %if (orderBy == "DGIGRP,IMITEM")
+              @DTW_ASSIGN(orderBy, "DGIGRP DESC,IMITEM")
+              @DTW_ASSIGN(orderByDisplay, "$(groupTypeDesc) (descending), Item Number")
+          %else
+              @DTW_ASSIGN(orderBy, "DGIGRP,IMITEM")
+              @DTW_ASSIGN(orderByDisplay, "$(groupTypeDesc), Item Number")
+          %endif
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  %if (groupType == "G")
+      @Build_WildCard ("a.FOFEAT", "Feature", $(srchItem), "U", operItem, "A")
+      @Build_WildCard ("upper(a.FOFDSC)", "Description", $(srchDesc), "U", operDesc, "A")
+  %else
+      @Build_WildCard ("IMITEM", "Item Number", $(srchItem), "U", operItem, "A")
+      @Build_WildCard ("IMIMDSU", "Description", $(srchDesc), "U", operDesc, "A")
+      @Build_WildCard ("IMPCLS", "Product Class", $(srchClass), "U", operClass, "A")
+  %endif
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+
+  %INCLUDE "WildCardUpdate.icl"
+%}

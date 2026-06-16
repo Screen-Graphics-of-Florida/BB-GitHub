@@ -1,0 +1,939 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Item Transaction History                                    *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Item Transaction History"
+  d2wName                 = "ItemTransactionHistory.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;forItem=@dtw_rurlescseq(forItem)&amp;forPlant=@dtw_rurlescseq(forPlant)&amp;forWhs=@dtw_rurlescseq(forWhs)&amp;inclNonInv=@dtw_rurlescseq(inclNonInv)&amp;inclMRPNet=@dtw_rurlescseq(inclMRPNet)"
+  currentURL              = "$(d2wName)/REPORT$(d2wVarBase)"
+  nextPrevVar             = "$(d2wVarBase)&amp;save_Record_Count=@dtw_rurlescseq(save_Record_Count)&amp;reload=N"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  DTW_PAD_PGM_PARMS       = "YES"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+  savVar                  = ""	
+  onHandQty               = ""	
+  save_Record_Count       = ""
+  inclNonInv              = ""
+  inclMRPNet              = ""
+%}
+
+%MACRO_FUNCTION Update_Work_File (INOUT stmtSQL) {
+  %INCLUDE "setLibraryList.icl"
+  %if (reload != "N")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From IVITWK Where IWXHND='$(profileHandle)' @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %endif
+  %if (errFound == "")
+      @RtvFldDesc("IWXHND='$(profileHandle)' and IWROW=$(START_ROW_NUM)", "IVITWK", "IWDATA", IWDATA)
+      %if (IWDATA == "")
+          %if (START_ROW_NUM > "1")
+              @dtw_subtract(START_ROW_NUM, "1", PREV_ROW_NUM)
+              @RtvFldDesc("IWXHND='$(profileHandle)' and IWROW=$(PREV_ROW_NUM)", "IVITWK", "IWDATA", edtVar)
+              @Decat_Field("@@bqty")   @dtw_assign(onHandQty, fieldValue)
+          %endif
+
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Select * From ( ", stmtSQL)
+          @dtw_concat(stmtSQL, " Select HDDTRN.*, ifnull(TTOHFG,' ') as TTOHFG, ifnull(TTFLFG,' ') as TTFLFG, ", stmtSQL)
+          @dtw_concat(stmtSQL, " case when DTIVTT='SR' then coalesce(PHDSHP,0) when DTIVTT='SLOE' then coalesce(DHPO#,0) else 0 end as DROPSHIP ", stmtSQL)
+          %if (V_HDPDRL > "0" && inclMRPNet == "Y")
+              @dtw_concat(stmtSQL, " ,ifnull(WHMRPN,'N') as WHMRPN", stmtSQL)
+          %endif
+          @dtw_concat(fileSQL, " HDDTRN  left join HDTTYP on DTIVTT=TTTYPE", fileSQL)
+          @dtw_concat(fileSQL, "         left join POPOHH on DTDOC#=PHPO and PHSEQ#=1 and DTIVTT='SR' ", fileSQL)
+          @dtw_concat(fileSQL, "         left join OEORDH on DTDOC#=DHORD# and DTDCL#=DHORL# and DHSEQ#>0 and DHDSHP='Y' and DTIVTT='SLOE' ", fileSQL)
+          %if (V_HDPDRL > "0" && inclMRPNet == "Y")
+              @dtw_concat(fileSQL, " left join HDWHSM on WHWHS=DTWHS", fileSQL)
+          %endif
+          @dtw_concat(selectSQL, " DTITEM='$(forItem)' and DTQTY<>0 ", selectSQL)
+          @dtw_assign(countSQL, selectSQL)
+          %if (inclNonInv == "")
+             @dtw_concat(selectSQL, " and DTENCD='S' and (TTOHFG='D' or TTOHFG='I') and DROPSHIP=0 ", selectSQL)
+             @dtw_concat(countSQL, " and DTENCD='S' and (TTOHFG='D' or TTOHFG='I') ", countSQL)
+          %endif
+          %if (V_HDPDRL > "0")
+              %if (forPlant > "0")
+                  @dtw_concat(selectSQL, " and DTPLT=$(forPlant)", selectSQL)
+                  @dtw_concat(countSQL, " and DTPLT=$(forPlant) ", countSQL)
+              %endif
+          %else
+              %if (forWhs > "0")
+                  @dtw_concat(selectSQL, " and DTWHS=$(forWhs)", selectSQL)
+                  @dtw_concat(countSQL, " and DTWHS=$(forWhs) ", countSQL)
+              %endif
+          %endif
+          @dtw_concat(stmtSQL, " From $(fileSQL) ", stmtSQL)
+          @dtw_concat(stmtSQL, " ) TRANS ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where $(selectSQL) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Order By DTTRDT desc, DTOSEQ desc, DTIVTT ", stmtSQL)
+          %INCLUDE "stmtSQLEnd.icl"
+          @dtw_assign(selectSQL, countSQL)
+          %INCLUDE "stmtSQLTotalRows.icl"
+          @dtw_assign(save_Record_Count, sql_Record_Count)
+		  $(stmtSQL)
+          @Item_Trans_Update(profileHandle, dataBaseID, stmtSQL)
+      %endif
+  %endif
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "AJAXRequest.icl"
+                  %INCLUDE "SaveCurrentURL.icl"
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NoFormValidate.icl"
+              </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                       @dtw_assign(pageID, "TRANSHISTORY")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+
+                  @EdtVarErr(profileHandle, typeValue, edtVar)
+                  @Decat_Negative("@@ohqt")   @dtw_assign(onHandQty, fieldValue)
+                  @Decat_Negative("@@qtrs")   @dtw_assign(inTransit, fieldValue)
+                  @dtw_add(onHandQty, inTransit, onHandQty)
+                  @dtw_assign(savVar, edtVar)
+                  @Update_Work_File(stmtSQL)
+
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " IVITWK", fileSQL)
+                      @dtw_concat(selectSQL, "IWXHND='$(profileHandle)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By IWROW", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @dtw_assign(sql_Record_Count, save_Record_Count)
+                      @Item_Trans_History(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Item_Trans_History (IN CHAR(64)    profileHandle,
+				           CHAR(2)     dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y" && rtvSelection != "Y")
+                  <td class="toolbar">
+                      <a href="javascript:check(document.Chg)">$(selectAcceptImage)</a>
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;formatToPrint=Y" target="_blank">$(formatPrintMed)</a>
+                      @dtw_assign(medIcon, "Y")
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+	
+      <form class="formClass" METHOD=POST name=Chg ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Plant$(d2wVarBase)">
+          <table $(contentTable)>
+              %if (errFound != "" || maintenanceCode == "A")
+                  %if (errFound == "" && maintenanceCode == "A")
+                      @dtw_assign(edtVar, "")
+                  %else
+                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                      @dtw_assign(focusField, "")
+                      @ErrVarErr(profileHandle, typeError, errVar)
+                      %if (V_HDPDRL > "0")
+                          @DecatErr_Field("@@plt@", "plantNumber")  @dtw_assign(Err_IPPLT,  fieldValue)
+                      %else
+                          @DecatErr_Field("@@whs@", "warehouseNumber")  @dtw_assign(Err_IWWHS,  fieldValue)
+                      %endif
+                      @DecatErr_Field("@@item", "itemNumber")   @dtw_assign(Err_IPITEM,  fieldValue)
+                  %endif
+
+                  %if (V_HDPDRL > "0")
+                      @Decat_Field("@@plt@")   @dtw_assign(V_IPPLT,  fieldValue)
+                  %else
+                      @Decat_Field("@@whs@")   @dtw_assign(V_IWWHS,  fieldValue)
+                  %endif
+                  @Decat_Field("@@item")   @dtw_assign(V_IPITEM,  fieldValue)
+
+                  @dtw_assign(errFound, "")
+              %else
+                  %if (V_HDPDRL > "0")
+                      %if (forPlant == "")
+                          @RtvDftPlant(forPlant, plantName)
+                          %if (forPlant <= "0")
+                              @RtvFldDesc("IPITEM='$(itemNumber)'", "HDIPLT", "char(IPPLT)", forPlant)
+                          %endif
+                      %endif
+                      @dtw_assign(V_IPPLT,  forPlant)
+                  %else
+                      %if (forWhs == "")
+                          @RtvFldDesc("IWITEM='$(itemNumber)'", "HDIWHS", "char(IWWHS)", forWhs)
+                      %endif
+                      @dtw_assign(V_IWWHS,  forWhs)
+                  %endif
+                  @dtw_assign(V_IPITEM, forItem)
+              %endif
+
+              @dtw_assign(fieldDesc, "")
+              %if (V_HDPDRL > "0")
+                  %if (V_IPPLT == "*ALL")
+                      @dtw_assign(fieldDesc, "All Plants")
+                  %elif (V_IPPLT > "0")
+                      @RtvFldDesc("PLPLNT=$(V_IPPLT)", "HDPLNT", "PLNAME", fieldDesc)
+                  %endif
+                  @SetTextOvr(Err_IPPLT)
+                  <tr>
+                      %if (formatToPrint == "Y")
+                          <td class="dsphdr">Plant</td>
+                          @Format_Code(V_IPPLT, F_IPPLT)
+                          <td class="dspalph">$(fieldDesc)</td>
+                          <td class="dspnmbr">$(F_IPPLT)</td>
+                      %else
+                          <td class="dsphdr"><span $(textOvr)>Plant Number</span></td>
+                          <td class="inputnmbr"><input name="plantNumber" value="$(V_IPPLT)" type="text" size="15" maxlength="4"><a href="$(homeURL)$(phpPath)PlantSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=plantNumber&amp;fldDesc=plantName" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="plantName" value="$(fieldDesc)" type="text" size="35" readonly></td>
+                          %if (V_IPPLT != "*ALL" && formatToPrint == "")
+                              <td class="dspalph"><a href="$(homeURL)$(cGIPath)ItemTransactionHistory.d2w/Edit_Plant$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_IPITEM)&amp;plantNumber=*ALL&amp;warehouseNumber=&amp;inclNonInv=@dtw_rurlescseq(inclNonInv)&amp;inclMRPNet=@dtw_rurlescseq(inclMRPNet)"> &nbsp; (Click here for All Plants)</a></td>
+                          %endif
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_IPPLT)
+              %else
+                  %if (V_IWWHS == "*ALL")
+                      @dtw_assign(fieldDesc, "All Warehouses")
+                  %elif (V_IWWHS > "0")
+                      @RtvFldDesc("WHWHS=$(V_IWWHS)", "HDWHSM", "WHWHNM", fieldDesc)
+                  %endif
+                  @SetTextOvr(Err_IWWHS)
+                  <tr>
+                      %if (formatToPrint == "Y")
+                          <td class="dsphdr">Warehouse</td>
+                          @Format_Code(V_IWWHS, F_IWWHS)
+                          <td class="dspalph">$(fieldDesc)</td>
+                          <td class="dspnmbr">$(F_IWWHS)</td>
+                      %else
+                          <td class="dsphdr"><span $(textOvr)>Warehouse Number</span></td>
+                          <td class="inputnmbr"><input name="warehouseNumber" value="$(V_IWWHS)" type="text" size="15" maxlength="4"><a href="$(homeURL)$(phpPath)WarehouseSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=warehouseNumber&amp;fldDesc=warehouseName" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="warehouseName" value="$(fieldDesc)" type="text" size="35" readonly></td>
+                          %if (V_IWWHS != "*ALL" && formatToPrint == "")
+                              <td class="dspalph"><a href="$(homeURL)$(cGIPath)ItemTransactionHistory.d2w/Edit_Plant$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_IPITEM)&amp;plantNumber=&amp;warehouseNumber=*ALL&amp;inclNonInv=@dtw_rurlescseq(inclNonInv)&amp;inclMRPNet=@dtw_rurlescseq(inclMRPNet)"> &nbsp; (Click here for All Warehouses)</a></td>
+                          %endif
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_IWWHS)
+              %endif
+
+              @RtvFldDesc("IMITEM='$(V_IPITEM)'", "HDIMST", "IMIMDS", itemDesc)
+              @SetTextOvr(Err_IPITEM)
+	       <tr>
+                  %if (formatToPrint == "Y")
+                      <td class="dsphdr">Item</td>
+                      @Format_Code(V_IPITEM, F_IPITEM)
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_IPITEM)</td>
+                  %else
+                      <td class="dsphdr"><span $(textOvr)>Item Number</span></td>
+                      <td class="inputalph"><input name="itemNumber" value="$(V_IPITEM)" type="text" size="15" maxlength="15"><a href="$(homeURL)$(phpPath)ItemSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=itemNumber&amp;fldDesc=itemDescription" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="itemDescription" value="$(itemDesc)" type="text" size="35" readonly></td>
+                  %endif
+              </tr>
+              @DspErrMsg(Err_IPITEM)
+          </table>
+
+          %if (formatToPrint != "Y")
+              <script TYPE="text/javascript">
+                  %if (V_HDPDRL > "0")
+                      document.Chg.plantNumber.focus();
+                  %else
+                      document.Chg.warehouseNumber.focus();
+                  %endif
+              </script>
+          %endif
+
+      </form>
+
+      %if (forItem != "" && Err_IPPLT == "" && Err_IWWHS == "" && Err_IPITEM == "")
+      @dtw_assign(edtVar, savVar)
+      %if ((V_HDPDRL > "0" && V_IMQUAL != "Y") || V_HDPDRL <= "0")
+          @dtw_assign(includeOnHandRecv, "Y")
+      %else
+          @dtw_assign(includeOnHandRecv, "")
+      %endif
+
+      @Decat_Negative("@@ohqt")   @dtw_assign(V_SQOHQT, fieldValue)
+      @Decat_Negative("@@ohrc")   @dtw_assign(V_SQOHRC, fieldValue)
+      @Decat_Negative("@@qoo@")   @dtw_assign(V_SQQOO,  fieldValue)
+      @Decat_Negative("@@qhsr")   @dtw_assign(V_SQQHSR, fieldValue)
+      @Decat_Negative("@@resq")   @dtw_assign(V_SQRESQ, fieldValue)
+      @Decat_Negative("@@aval")   @dtw_assign(V_SQAVAL, fieldValue)
+      @Decat_Negative("@@quns")   @dtw_assign(V_SQQUNS, fieldValue)
+      @Decat_Negative("@@qsyt")   @dtw_assign(V_SQQSYT, fieldValue)
+      @Decat_Negative("@@qryt")   @dtw_assign(V_SQQRYT, fieldValue)
+      @Decat_Negative("@@qiyt")   @dtw_assign(V_SQQIYT, fieldValue)
+      @Decat_Negative("@@qayt")   @dtw_assign(V_SQQAYT, fieldValue)
+      @Decat_Negative("@@qtrs")   @dtw_assign(V_SQQTRS, fieldValue)
+      @Decat_Negative("@@dsqo")   @dtw_assign(V_SQDSQO, fieldValue)
+
+      @dtw_assign(begQty, @dtw_radd(V_SQOHQT,V_SQQTRS))
+      @Format_Nbr(V_SQOHQT, F_SQOHQT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQOHRC, F_SQOHRC, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQQOO,  F_SQQOO,  $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQQHSR, F_SQQHSR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQRESQ, F_SQRESQ, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQAVAL, F_SQAVAL, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQQUNS, F_SQQUNS, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQQSYT, F_SQQSYT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQQRYT, F_SQQRYT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQQAYT, F_SQQAYT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQQTRS, F_SQQTRS, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      @Format_Nbr(V_SQDSQO, F_SQDSQO, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+
+      %if (V_HDPDRL > "0")
+          @Decat_Negative("@@ohfs")   @dtw_assign(V_IPOHFS, fieldValue)
+          @Decat_Negative("@@cmto")   @dtw_assign(V_IPCMTO, fieldValue)
+          @Decat_Negative("@@qmrl")   @dtw_assign(V_IPQMRL, fieldValue)
+          @Decat_Negative("@@fpoq")   @dtw_assign(V_IPFPOQ, fieldValue)
+          @Decat_Negative("@@ytdl")   @dtw_assign(V_IPYTDL, fieldValue)
+          @Decat_Negative("@@aau@")   @dtw_assign(V_IPAAU,  fieldValue)
+          @Decat_Negative("@@qmfg")   @dtw_assign(V_IPQMFG, fieldValue)
+          @Decat_Negative("@@ytdu")   @dtw_assign(V_IPYTDU, fieldValue)
+          @Decat_Negative("@@scrp")   @dtw_assign(V_IPSCRP, fieldValue)
+          @Format_Nbr(V_IPOHFS, F_IPOHFS, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPCMTO, F_IPCMTO, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPQMRL, F_IPQMRL, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPFPOQ, F_IPFPOQ, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPYTDL, F_IPYTDL, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPAAU,  F_IPAAU,  $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPQMFG, F_IPQMFG, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @dtw_add(V_IPYTDU, V_SQQIYT, V_usage)
+          @Format_Nbr(V_usage, F_usage, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPSCRP, F_IPSCRP, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      %else
+          @Decat_Negative("@@qtyb")   @dtw_assign(V_SQQTYB, fieldValue)
+          @Decat_Negative("@@qopk")   @dtw_assign(V_SQQOPK, fieldValue)
+          @Format_Nbr(V_SQQTYB, F_SQQTYB, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQQOPK, F_SQQOPK, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQQIYT, F_SQQIYT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+      %endif
+
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Current Quantities</legend>
+          <table $(contentTable)>
+              <tr>
+                  <td>
+                      <table $(contentTable)>
+                          <tr valign="top">
+                              <td>
+                                  <table $(contentTable)>
+                                      <tr>
+                                          <td class="dsphdr">On Hand</td>
+                                          <td class="dspcode">&nbsp;</td>
+                                          <td class="dspqty">$(F_SQOHQT)</td>
+                                      </tr>
+                                      %if (includeOnHandRecv == "Y")
+                                          <tr>
+                                              <td class="dsphdr">On Hand Receiving</td>
+                                              <td class="dspcode">+</td>
+                                              <td class="dspqty">$(F_SQOHRC)</td>
+                                          </tr>
+                                      %endif
+                                      %if (V_CIOOIA == "Y")
+                                          <tr>
+                                              <td class="dsphdr">On Order</td>
+                                              <td class="dspcode">+</td>
+                                              <td class="dspqty">$(F_SQQOO)</td>
+                                          </tr>
+                                          %if (V_HDPDRL <= "0")
+                                              <tr>
+                                                  <td class="dsphdr">Drop Shipped</td>
+                                                  <td class="dspcode">+</td>
+                                                  <td class="dspqty">$(F_SQDSQO)</td>
+                                              </tr>
+                                          %endif
+                                      %endif
+                                      %if (V_HDPDRL > "0")
+                                          <tr>
+                                              <td class="dsphdr">On Hand Floorstock</td>
+                                              <td class="dspcode">+</td>
+                                              <td class="dspqty">$(F_IPOHFS)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">Committed To Mfg</td>
+                                              <td class="dspcode">-</td>
+                                              <td class="dspqty">$(F_IPCMTO)</td>
+                                          </tr>
+                                      %endif
+                                      <tr>
+                                          <td class="dsphdr">Held In Stock</td>
+                                          <td class="dspcode">-</td>
+                                          <td class="dspqty">$(F_SQQHSR)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Reserved</td>
+                                          <td class="dspcode">-</td>
+                                          <td class="dspqty">$(F_SQRESQ)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Available</td>
+                                          <td class="dspcode">&nbsp;</td>
+                                          <td class="dsptotal">$(F_SQAVAL)</td>
+                                      </tr>
+                                  </table>
+                              </td>
+                              <td>&nbsp;</td>
+                              <td>
+                                  <table $(contentTable)>
+                                      <tr>
+                                          <td class="dsphdr">In Transit</td>
+                                          <td class="dspqty">
+                                          %if (V_SQQTRS > "0")
+                                                <a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=184&amp;fKey1=ODITEM&amp;fVal1=@dtw_rurlescseq(V_IPITEM)&amp;fDsc1=@dtw_rurlescseq(itemDesc)&amp;tag=QSEARCH" title="View Open Items for $(V_IPITEM)">$(F_SQQTRS)</a>
+                                          %else
+                                                $(F_SQQTRS)
+                                          %endif
+                                          </td>
+                                      </tr>
+                                      %if (includeOnHandRecv != "Y")
+                                          <tr>
+                                              <td class="dsphdr">On Hand Receiving</td>
+                                              <td class="dspqty">$(F_SQOHRC)</td>
+                                          </tr>
+                                      %endif
+                                      %if (V_CIOOIA != "Y")
+                                          <tr>
+                                              <td class="dsphdr">On Order</td>
+                                              <td class="dspqty">$(F_SQQOO)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">Drop Shipped</td>
+                                              <td class="dspqty">$(F_SQDSQO)</td>
+                                          </tr>
+                                      %endif
+                                      %if (V_HDPDRL <= "0")
+                                          <tr>
+                                              <td class="dsphdr">On Backorder</td>
+                                              <td class="dspqty">$(F_SQQTYB)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">On Pick Tickets</td>
+                                              <td class="dspqty">$(F_SQQOPK)</td>
+                                          </tr>
+                                      %endif
+                                      <tr>
+                                          <td class="dsphdr">On Order Unscheduled</td>
+                                          <td class="dspqty">$(F_SQQUNS)</td>
+                                      </tr>
+                                      %if (V_HDPDRL > "0")
+                                          <tr>
+                                              <td class="dsphdr">Released</td>
+                                              <td class="dspqty">$(F_IPQMRL)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">Firm Planned</td>
+                                              <td class="dspqty">$(F_IPFPOQ)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">Prior Year Usage</td>
+                                              <td class="dspqty">$(F_IPYTDL)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">Anticipated Annual Usage</td>
+                                              <td class="dspqty">$(F_IPAAU)</td>
+                                          </tr>
+                                      %endif
+                                  </table>
+                              </td>
+                              <td>&nbsp;</td>
+                              <td>
+                                  <fieldset class="legendBody">
+                                  <legend class="legendTitle">Year To Date</legend>
+                                      <table $(contentTable)>
+                                          <tr>
+                                              <td class="dsphdr">Billed</td>
+                                              <td class="dspqty">$(F_SQQSYT)</td>
+                                          </tr>
+                                          %if (V_HDPDRL > "0")
+                                              <tr>
+                                                  <td class="dsphdr">Manufactured</td>
+                                                  <td class="dspqty">$(F_IPQMFG)</td>
+                                              </tr>
+                                          %endif
+                                          <tr>
+                                              <td class="dsphdr">Received</td>
+                                              <td class="dspqty">$(F_SQQRYT)</td>
+                                          </tr>
+                                          <tr>
+                                              %if (V_HDPDRL > "0")
+                                                  <td class="dsphdr">Usage</td>
+                                                  <td class="dspqty">$(F_usage)</td>
+                                              %else
+                                                  <td class="dsphdr">Issued</td>
+                                                  <td class="dspqty">$(F_SQQIYT)</td>
+                                              %endif
+                                          </tr>
+                                          %if (V_HDPDRL > "0")
+                                              <tr>
+                                                  <td class="dsphdr">Scrapped</td>
+                                                  <td class="dspqty">$(F_IPSCRP)</td>
+                                              </tr>
+                                          %endif
+                                          <tr>
+                                              <td class="dsphdr">Adjusted</td>
+                                              <td class="dspqty">$(F_SQQAYT)</td>
+                                          </tr>
+                                      </table>
+                                  </fieldset>
+                              </td>
+                          </tr>
+                      </table>
+                  </td>
+              </tr>
+          </table>
+      </fieldset>
+      <br>
+
+      %if (formatToPrint == "")
+      %if (sql_Record_Count > RPT_MAX_ROWS)  %{Assign Paging Values %}
+          @DTW_ASSIGN(totalPages, @DTW_RINTDIV(sql_Record_Count, RPT_MAX_ROWS))
+          %if (@DTW_RDIVREM(sql_Record_Count, RPT_MAX_ROWS) > "0")
+              @DTW_ADD(totalPages, "1", totalPages)
+          %endif
+      %else
+          @DTW_ASSIGN(totalPages, "1")
+      %endif
+
+      @dtw_assign(page, @dtw_radd(@dtw_rdivide(@dtw_rsubtract(START_ROW_NUM, "1"), RPT_MAX_ROWS), "1"))
+      @dtw_add(START_ROW_NUM, RPT_MAX_ROWS, rowIndexNext)
+
+      <div class="page">Page: $(page) of $(totalPages)
+          %if (nextPrevPos != "2" && nextPrevVar != "")
+              %if (START_ROW_NUM > RPT_MAX_ROWS)
+                  <a href="input$(nextPrevVar)&amp;START_ROW_NUM=@DTW_RSUBTRACT(START_ROW_NUM, RPT_MAX_ROWS)&amp;RPT_MAX_ROWS=$(RPT_MAX_ROWS)">$(previousImage)</a>
+              %else
+                  %if (sql_Record_Count > RPT_MAX_ROWS)
+                      $(nextPrevBlank)
+                  %endif
+              %endif
+
+              %if (sql_Record_Count >= rowIndexNext)
+                  <a href="input$(nextPrevVar)&amp;START_ROW_NUM=$(rowIndexNext)&amp;RPT_MAX_ROWS=$(RPT_MAX_ROWS)">$(nextImage)</a>
+              %else
+                  %if (sql_Record_Count > RPT_MAX_ROWS)
+                      $(nextPrevBlank)
+                  %endif
+              %endif
+          %endif
+          %if (inclNonInv == "Y")
+              @dtw_assign(nonInvChecked, "CHECKED")
+          %else
+              @dtw_assign(nonInvChecked, "")
+          %endif
+          %if (inclMRPNet != "Y")
+              @dtw_assign(mrpNetChecked, "CHECKED")
+          %else
+              @dtw_assign(mrpNetChecked, "")
+          %endif
+          &nbsp; &nbsp; &nbsp; Include: <input type="checkbox" name="nonInv" $(nonInvChecked) onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;chgNonInv=Y'">Non-Inventory
+          %if (V_HDPDRL > "0")
+              <input type="checkbox" name="mrpNet" $(mrpNetChecked) onClick="window.location.href='$(homeURL)$(cGIPath)$(d2wName)/Edit_Plant$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(forItem)&amp;plantNumber=@dtw_rurlescseq(forPlant)&amp;warehouseNumber=@dtw_rurlescseq(forWhs)&amp;inclNonInv=@dtw_rurlescseq(inclNonInv)&amp;inclMRPNet=@dtw_rurlescseq(inclMRPNet)&amp;chgMRPNet=Y'">Non-MRP Netable In Totals
+          %endif
+      </div>
+      %endif
+      <table $(contentTable)>
+          <tr>
+              <th class="colhdrsort">Trans<br>Date</th>
+              <th class="colhdr">Trans<br>Type</th>
+              <th class="colhdr">Description</th>
+              <th class="colhdr">Begin<br>Quantity</th>
+              <th class="colhdr">Trans<br>Quantity</th>
+              <th class="colhdr">End<br>Quantity</th>
+              %if (V_CISTKL == "Y")
+                  <th class="colhdr" colspan="3">Stock Location</th>
+              %endif
+              %if (V_CILTUS == "Y")
+                  @RtvFldDesc("IMITEM='$(forItem)'", "HDIMST", "IMLOT", V_IMLOT)
+                  %if (V_IMLOT != "N")
+                      <th class="colhdr">Lot<br>Number</th>
+                  %endif
+              %endif
+              <th class="colhdr">Order<br>Number</th>
+              %if (V_HDPDRL>"0")
+                  <th class="colhdr">Mfg<br>Order</th>
+              %endif
+              %if (forWhs == "*ALL" || V_HDPDRL > "0")
+                  <th class="colhdr">Whs</th>
+              %endif
+              %if (V_HDPDRL > "0" && forPlant == "*ALL")
+                  <th class="colhdr">Plt</th>
+              %endif
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif
+	
+          %ROW{
+              @dtw_assign(edtVar, V_IWDATA)
+              @Decat_Field("@@whs@")  @dtw_assign(V_DTPLT, fieldValue)
+              @Decat_Field("@@plt@")  @dtw_assign(V_DTWHS, fieldValue)
+              @Decat_Field("@@trdt")  @dtw_assign(V_DTTRDT, fieldValue)
+              @Decat_Field("@@ivtt")  @dtw_assign(V_DTIVTT, fieldValue)
+              @Decat_Field("@@bqty")  @dtw_assign(begQty, fieldValue)
+              @Decat_Field("@@eqty")  @dtw_assign(endQty, fieldValue)
+              @Decat_Field("@@aqty")  @dtw_assign(affectQty, fieldValue)
+              @Decat_Field("@@tqty")  @dtw_assign(V_DTQTY, fieldValue)
+              @Decat_Field("@@stkr")  @dtw_assign(V_DTSTKR, fieldValue)
+              @Decat_Field("@@aile")  @dtw_assign(V_DTAILE, fieldValue)
+              @Decat_Field("@@sloc")  @dtw_assign(V_DTSLOC, fieldValue)
+              @Decat_Field("@@lot#")  @dtw_assign(V_DTLOT#, fieldValue)
+              @Decat_Field("@@tqty")  @dtw_assign(V_DTQTY, fieldValue)
+              @Decat_Field("@@doc#")  @dtw_assign(V_DTDOC#, fieldValue)
+              @Decat_Field("@@vend")  @dtw_assign(V_DTVEND, fieldValue)
+              @Decat_Field("@@stcs")  @dtw_assign(V_DTSTCS, fieldValue)
+              @Decat_Field("@@mord")  @dtw_assign(V_DTMORD, fieldValue)
+              @Decat_Field("@@dseq")  @dtw_assign(V_DTDSEQ, fieldValue)
+              @Decat_Field("@@oseq")  @dtw_assign(V_DTOSEQ, fieldValue)
+
+              %INCLUDE "SetRowClass.icl"
+              @Format_Date(V_DTTRDT, "D", F_DTTRDT)
+              @Format_Nbr(endQty, F_endQty, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(begQty, F_begQty, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_DTQTY, F_DTQTY, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+
+              @RtvFldDesc("TTTYPE='$(V_DTIVTT)'", "HDTTYP", "TTDESC", tranTypeDesc)
+
+              <tr class="$(rowClass)">
+                  <td class="coldate">$(F_DTTRDT)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)TransactionHistoryInquiry.d2w/DISPLAY$(d2wVarBase)&amp;origTransSequence=@dtw_rurlescseq($(V_DTOSEQ))&amp;transSequence=@dtw_rurlescseq($(V_DTDSEQ))&amp;linkOrig=N" onclick="$(inquiryWinVar)" title="$(tranTypeDesc) Transaction Quickview">$(V_DTIVTT)</a></td>
+                  <td class="colalph">$(tranTypeDesc)</td>
+                  <td class="colnmbr">
+                      %if (affectQty == "Y")
+                          $(F_begQty)
+                      %else
+                          &nbsp;
+                      %endif
+                  </td>
+                  <td class="colnmbr">$(F_DTQTY)</td>
+                  <td class="colnmbr">
+                      %if (affectQty == "Y")
+                          $(F_endQty)
+                      %else
+                          &nbsp;
+                      %endif
+                  </td>
+                  %if (V_CISTKL == "Y")
+                      <td class="colalph">$(V_DTSTKR)</td>
+                      <td class="colalph">$(V_DTAILE)</td>
+                      <td class="colalph">$(V_DTSLOC)</td>
+                  %endif
+                  %if (V_CILTUS == "Y" && V_IMLOT != "N")
+                      @RtvFldDesc("LTITEM='$(forItem)' and LTWH=$(V_DTWHS) and trim(LTLT#)=trim('$(V_DTLOT#)')", "HDLOT", "char(count(*))", lotCnt)
+                      <td class="colnmbr">
+                          %if (lotCnt > "0")
+                              <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)LotSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(forItem)&amp;warehouseNumber=@dtw_rurlescseq(V_DTWHS)&amp;lotNumber=@dtw_rurlescseq(V_DTLOT#)" title="View Lot">$(V_DTLOT#)</a>
+                          %else
+                              $(V_DTLOT#)
+                          %endif
+                      </td>
+                  %endif
+
+                  @dtw_assign(orderHistCnt, "0")
+                  @dtw_assign(orderOpenCnt, "0")
+                  @dtw_assign(poOpenCnt, "0")
+                  @dtw_assign(poHistSeq, "0")
+                  %if (V_DTDOC# > "0" && V_DTSTCS > "0")
+                      @RtvFldDesc("HHORD#=$(V_DTDOC#) and HHSEQ#=0", "OEORHH", "char(count(*))", orderHistCnt)
+                      %if (orderHistCnt == "0")
+                         @RtvFldDesc("OEORD#=$(V_DTDOC#)", "OEORHD", "char(count(*))", orderOpenCnt)
+                      %endif
+                  %elif (V_DTDOC# > "0" && V_DTVEND > "0")
+                      @RtvFldDesc("POPO=$(V_DTDOC#)", "POPOMS", "char(count(*))", poOpenCnt)
+                  %elif (V_DTDOC# > "0" && V_DTVEND > "0")
+                      @RtvFldDesc("PIPO=$(V_DTDOC#) and PIQTOR=$(V_DTQTY) and PIDLRC=$(V_DTTRDT) and PITRXN='$(V_DTIVTT)'", "POPOHD", "char(max(PISEQ#))", poHistSeq)
+                  %endif
+                  <td class="colnmbr">
+                      %if (orderHistCnt > "0")
+                          @RtvFldDesc("CMCUST=$(V_DTSTCS)", "HDCUST", "CMCNA1", CMCNA1)
+                          <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrderHistory.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_DTDOC#)&amp;orderSequence=0&amp;customerNumber=@dtw_rurlescseq(V_DTSTCS)&amp;customerName=@dtw_rurlescseq(CMCNA1)" title="View Order History">$(V_DTDOC#)</a>
+                      %elif (orderOpenCnt > "0")
+                          @RtvFldDesc("CMCUST=$(V_DTSTCS)", "HDCUST", "CMCNA1", CMCNA1)
+                          <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrder.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_DTDOC#)&amp;orderSequence=0&amp;customerNumber=@dtw_rurlescseq(V_DTSTCS)&amp;customerName=@dtw_rurlescseq(CMCNA1)" title="View Order History">$(V_DTDOC#)</a>
+                      %elif (poOpenCnt > "0")
+                          @RtvFldDesc("VMVEND=$(V_DTVEND)", "HDVEND", "VMVNA1", VMVNA1)
+                          <a href="$(homeURL)$(phpPath)SelectPO.php$(altVarBase)&amp;vendorNumber=@dtw_rurlescseq(V_DTVEND)&amp;vendorName=@dtw_rurlescseq(VMVNA1)&amp;purchaseOrderNumber=@dtw_rurlescseq(V_DTDOC#)" title="View Purchase Order">$(V_DTDOC#)</a>
+                      %elif (poHistSeq > "0")
+                          @RtvFldDesc("VMVEND=$(V_DTVEND)", "HDVEND", "VMVNA1", VMVNA1)
+                          <a href="$(homeURL)$(phpPath)SelectPO.php$(altVarBase)&amp;tabID=RECEIPTS&amp;vendorNumber=@dtw_rurlescseq(V_DTVEND)&amp;vendorName=@dtw_rurlescseq(VMVNA1)&amp;purchaseOrderNumber=@dtw_rurlescseq(V_DTDOC#)&amp;orderSequence=@dtw_rurlescseq(poHistSeq)" title="View Purchase Order History">$(V_DTDOC#)</a>
+                      %else
+                          $(V_DTDOC#)
+                      %endif
+                  </td>
+
+                  %if (V_HDPDRL>"0")
+                      %if (V_DTMORD != "")
+                          @RtvFldDesc("OHPLT=$(V_DTPLT) and OHORD='$(V_DTMORD)'", "HDMOHM", "CHAR(COUNT(OHORD))", mfgOrderCnt)
+                      %else
+                          @dtw_assign(mfgOrderCnt, "0")
+                      %endif
+                      %if (mfgOrderCnt > "0")
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq($(V_DTPLT))&amp;mfgOrder=@dtw_rurlescseq($(V_DTMORD))" onclick="$(inquiryWinVar)" title="View Mfg Order">$(V_DTMORD)</a></td>
+                      %else
+                          <td class="colalph">$(V_DTMORD)</td>
+                      %endif
+                  %endif
+                  %if (forWhs == "*ALL" || V_HDPDRL > "0")
+                      <td class="colnmbr">
+                          %if (V_DTWHS > "0")
+                              <a href="$(homeURL)$(cGIPath)ItemWarehouseSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(forItem)&amp;warehouseNumber=@dtw_rurlescseq(V_DTWHS)" title="View Item/Warehouse"> $(V_DTWHS)</a>
+                          %else
+                              $(V_DTWHS)
+                          %endif
+                      </td>
+                  %endif
+                  %if (V_HDPDRL > "0" && forPlant == "*ALL")
+                      <td class="colnmbr">
+                          %if (V_DTPLT > "0")
+                              <a href="$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(V_DTPLT)" title="View Plant"> $(V_DTPLT)</a></td>
+                          %else
+                              $(V_DTPLT)
+                          %endif
+                      </td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+
+%FUNCTION(dtw_sql) Item_Trans_Update (IN CHAR(64)    profileHandle,
+				          CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{@dtw_assign(begQty, onHandQty)
+
+          %ROW{
+              @dtw_assign(endQty, begQty)
+              @Format_Nbr(endQty, F_endQty, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %if (V_TTOHFG == "D" || V_TTFLFG == "D")
+                  @dtw_multiply(V_DTQTY, "-1", V_DTQTY)
+              %endif
+              @dtw_assign(affectQty, "")
+              %if (V_DTENCD == "S" && V_DROPSHIP == "0" && (V_TTOHFG == "D" || V_TTOHFG == "I"))
+                  %if (inclMRPNet != "Y" || V_HDPDRL == "0" || (inclMRPNet == "Y" && V_WHMRPN == "Y"))
+                      @dtw_assign(affectQty, "Y")
+                      @dtw_subtract(begQty, V_DTQTY, begQty)
+                  %endif
+              %endif
+              @dtw_assign(edtVar, "")
+              @Concat_Field("@@whs@", V_DTPLT)
+              @Concat_Field("@@plt@", V_DTWHS)
+              @Concat_Field("@@trdt", V_DTTRDT)
+              @Concat_Field("@@ivtt", V_DTIVTT)
+              @Concat_Field("@@bqty", begQty)
+              @Concat_Field("@@eqty", endQty)
+              @Concat_Field("@@aqty", affectQty)
+              @Concat_Field("@@tqty", V_DTQTY)
+              @Concat_Field("@@stkr", V_DTSTKR)
+              @Concat_Field("@@aile", V_DTAILE)
+              @Concat_Field("@@sloc", V_DTSLOC)
+              @Concat_Field("@@lot#", V_DTLOT#)
+              @Concat_Field("@@tqty", V_DTQTY)
+              @Concat_Field("@@doc#", V_DTDOC#)
+              @Concat_Field("@@vend", V_DTVEND)
+              @Concat_Field("@@stcs", V_DTSTCS)
+              @Concat_Field("@@mord", V_DTMORD)
+              @Concat_Field("@@dseq", V_DTDSEQ)
+              @Concat_Field("@@oseq", V_DTOSEQ)
+              @dtw_concat(edtVar, "}{", edtVar)
+
+              %if (START_ROW_NUM == "1")
+                  @dtw_assign(NEW_ROW, ROW_NUM)
+              %else
+                  @dtw_assign(NEW_ROW, @dtw_radd(ROW_NUM, @dtw_rsubtract(START_ROW_NUM, "1")))
+              %endif
+              %INCLUDE "stmtSQLClear.icl"
+              @dtw_concat(stmtSQL, " Insert Into IVITWK (IWXHND,IWROW,IWDATA) ", stmtSQL)
+              @dtw_concat(stmtSQL, " Values ('$(profileHandle)',$(NEW_ROW),'$(edtVar)') @@endsql", stmtSQL)
+              @SQL_Update(stmtSQL, status)
+          %}
+  %}
+%}
+
+%HTML(Edit_Plant) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(itemNumber)
+  @dtw_mUPPERCASE(plantNumber)
+  @dtw_mUPPERCASE(warehouseNumber)
+  @dtw_assign(itemCount, "1")
+  @dtw_assign(plantCount, "1")
+  @dtw_assign(whsCount, "1")
+  @dtw_assign(itemPlantCount, "1")
+  @dtw_assign(itemWhsCount, "1")
+
+  @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "char(count(*))", itemCount)
+  %if (V_HDPDRL > "0")
+      %if (plantNumber =="*ALL")
+          @dtw_assign(plantCount, "1")
+      %elif (plantNumber > "0")
+          @dtw_assign(plantNumber,@dtw_rstrip(plantNumber))
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "char(count(*))", plantCount)
+          %if (plantCount > "0")
+              @RtvFldDesc("IPITEM='$(itemNumber)' and IPPLT=$(plantNumber)", "HDIPLT", "char(count(*))", itemPlantCount)
+          %endif
+      %else
+          @dtw_assign(plantCount, "0")
+      %endif
+  %else
+      %if (warehouseNumber =="*ALL")
+      %elif (warehouseNumber > "0")
+          @dtw_assign(warehouseNumber,@dtw_rstrip(warehouseNumber))
+          @RtvFldDesc("WHWHS=$(warehouseNumber)", "HDWHSM", "char(count(*))", whsCount)
+          %if (whsCount > "0")
+              @RtvFldDesc("IWITEM='$(itemNumber)' and IWWHS=$(warehouseNumber)", "HDIWHS", "char(count(*))", itemWhsCount)
+          %endif
+      %else
+          @dtw_assign(whsCount, "0")
+      %endif
+  %endif
+
+  %if (itemCount == "0" || plantCount == "0" || itemPlantCount == "0" || whsCount == "0" || itemWhsCount == "0")
+      @dtw_assign(errFound, "Y")
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@plt@", plantNumber)
+      @Concat_Field("@@whs@", warehouseNumber)
+      @Concat_Field("@@item", itemNumber)
+      @dtw_concat(edtVar, "}{", edtVar)
+
+      @dtw_assign(errVar, "")
+      %if (plantCount == "0")
+          @Concat_Error("@@plt@", "INVALID PLANT NUMBER")
+      %endif
+      %if (whsCount == "0")
+          @Concat_Error("@@whs@", "INVALID WAREHOUSE NUMBER")
+      %endif
+      %if (itemCount == "0")
+          @Concat_Error("@@item", "INVALID ITEM NUMBER")
+      %endif
+      %if (itemPlantCount == "0")
+          @Concat_Error("@@item", "ITEM NUMBER NOT FOUND IN SELECTED PLANT")
+      %endif
+      %if (itemWhsCount == "0")
+          @Concat_Error("@@item", "ITEM NUMBER NOT FOUND IN SELECTED WAREHOUSE")
+      %endif
+      @dtw_concat(errVar, "}{", errVar)
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %else
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@pdrl", V_HDPDRL)
+      @Concat_Field("@@item", itemNumber)
+      %if (V_HDPDRL > "0")
+          @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMQUAL", V_IMQUAL)
+          %if (plantNumber == "*ALL")
+              @Concat_Field("@@plt@", "0")
+          %else
+              @Concat_Field("@@plt@", plantNumber)
+          %endif
+          %if (chgMRPNet == "Y" && inclMRPNet == "Y")
+              @dtw_assign(inclMRPNet, "N")
+          %elif (chgMRPNet == "Y")
+              @dtw_assign(inclMRPNet, "Y")
+          %endif
+          %if (inclMRPNet == "")
+             @dtw_assign(inclMRPNet, "Y")
+          %endif
+          @Concat_Field("@@mrpn", inclMRPNet)
+      %else
+          %if (warehouseNumber == "*ALL")
+              @Concat_Field("@@whs@", "0")
+          %else
+              @Concat_Field("@@whs@", warehouseNumber)
+          %endif
+      %endif
+      @dtw_concat(edtVar, "}{", edtVar)
+      @Get_Qty_ItemPlt(edtVar)
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(genericVarBase)&amp;forItem=@dtw_rurlescseq(itemNumber)&amp;forPlant=@dtw_rurlescseq(plantNumber)&amp;forWhs=@dtw_rurlescseq(warehouseNumber)&amp;inclNonInv=@dtw_rurlescseq(inclNonInv)&amp;inclMRPNet=@dtw_rurlescseq(inclMRPNet)">
+  %endif
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %if (chgNonInv == "Y" && inclNonInv == "Y")
+          @dtw_assign(inclNonInv, "")
+      %elif (chgNonInv == "Y")
+          @dtw_assign(inclNonInv, "Y")
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %if (inclNonInv == "" && chgNonInv != "Y")
+      @dtw_assign(inclNonInv, "")
+  %endif
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {	
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}

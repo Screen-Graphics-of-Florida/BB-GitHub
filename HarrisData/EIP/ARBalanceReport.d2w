@@ -1,0 +1,213 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: A/R Balance Report                                          *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SubmitScheduleVar.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "A/R Balance Report"
+  d2wName                 = "ARBalanceReport.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;reportSelType=@dtw_rurlescseq(reportSelType)&amp;backHome=@dtw_rurlescseq(backHome)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  V_CRPRMC                = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL () {
+  %INCLUDE "$(docType)"	
+  %if (V_HDMCRL > "0")
+      @RtvFldDesc("CRPRMC>' '", "ARCTRL", "CRPRMC", V_CRPRMC)
+  %endif
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "Calendar.icl"
+              %INCLUDE "DateEdit.icl"
+              %INCLUDE "EditFromToAll.icl"
+              %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterChg.icl"
+
+              function validate(chgForm) {
+                     if  (editNum(document.Chg.fromLocationNumber, 3, 0) &&
+                      editNum(document.Chg.toLocationNumber, 3, 0) &&
+                      editFromToAll(document.Chg.fromLocationNumber, document.Chg.toLocationNumber, document.Chg.allLocationNumber, 3))
+                      return true;
+              }
+
+              function returndate9() {
+                       document.Chg.schDate.value = '' + padout(month - 0 + 1) + padout(day) + yr2(year);
+                       date9win.close();
+               }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "Banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ARBALANCEREPORT")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SubmitScheduleTop.icl"
+                      %INCLUDE "ConfMessageDisplayNoTable.icl"
+                      $(hrTagAttr)
+      			
+                      <form class="formClass" METHOD=POST NAME="Chg"  onSubmit="return validate(document.Chg)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)">
+                          <table $(contentTable)>
+                              @dtw_assign(focusField, "fromLocationNumber")
+                              %if (errFound != "" || scheduleJobSwitch == "Y")
+                                  @dtw_assign(scheduleJobSwitch, "")
+                                  @EdtVarErr(profileHandle, typeValue, edtVar)
+                                  @dtw_assign(focusField, "")
+                                  @ErrVarErr(profileHandle, typeError, errVar)
+                                  @Decat_Field("@@sbjb")   @dtw_assign(submitSchedule,  fieldValue)
+                                  @DecatErr_Field("@@sel@", "printTotalPageOnly") @dtw_assign(Err_N1SEL,  fieldValue)
+                                  @DecatErr_Field("@@floc", "fromLocationNumber") @dtw_assign(Err_N2FLOC,  fieldValue)
+                                  @DecatErr_Field("@@tloc", "toLocationNumber") @dtw_assign(Err_N2TLOC,  fieldValue)
+                                  @DecatErr_Field("@@aloc", "allLocationNumber") @dtw_assign(Err_N2ALOC,  fieldValue)
+
+                                  %INCLUDE "ScheduleJobErr.icl"    %{ Schedule Entries Errors %}
+                                  @Decat_Field("@@sel")  @dtw_assign(V_N1SEL,  fieldValue)
+                                  @Decat_Field("@@floc")  @dtw_assign(V_N2FLOC,  fieldValue)
+                                  @Decat_Field("@@tloc")  @dtw_assign(V_N2TLOC,  fieldValue)
+                                  @Decat_Field("@@aloc")  @dtw_assign(V_N2ALOC,  fieldValue)
+                                  %INCLUDE "ScheduleJobValue.icl"    %{ Schedule Entries Values %}
+                                  %if (V_N1SEL == "02")
+                                      @dtw_assign(no, "")
+                                      @dtw_assign(yes, "CHECKED")
+                                  %else
+                                      @dtw_assign(no, "CHECKED")
+                                      @dtw_assign(yes, "")
+                                  %endif
+                                  %if (V_N2ALOC == "ALL")
+                                      @dtw_assign(checkedAllLocationNumber, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllLocationNumber, "")
+                                  %endif
+                              %else
+                                  @dtw_assign(no, "CHECKED")
+                                  @dtw_assign(yes, "")
+                                  @dtw_assign(checkedAllLocationNumber, "CHECKED")
+                              %endif
+
+                              @SetTextOvr(Err_N1SEL)
+                              <tr><td class="dsphdr"><span $(textOvr)>Print Total Page Only</span></td>
+                                  <td class="inputnmbr"><input name="printTotalPageOnly" type="radio" VALUE='01' $(no)>No</td>
+                              </tr>
+                              @DspErrMsg(Err_N1SEL)
+
+                              <tr><td>&nbsp;</td>
+                                  <td class="inputnmbr"><input name="printTotalPageOnly" type="radio" VALUE='02' $(yes)>Yes</td>
+                              </tr>
+                          </table>
+
+                          <table $(contentTable)>
+                              <tr><td><input type="hidden" name="multiCurrency" value="$(V_CRPRMC)"></td></tr>
+                              <tr><td>&nbsp;</td>
+                                  <td class="colhdr">From</td>
+                                  <td class="colhdr">To</td>
+                                  <td class="colhdr">All</td>
+                              </tr>
+
+                              @SetTextOvr(Err_N2FLOC)
+                              %if (textOvr == "") @SetTextOvr(Err_N2TLOC) %endif
+                              %if (textOvr == "") @SetTextOvr(Err_N2ALOC) %endif
+                              <tr><td class="dsphdr"><span $(textOvr)>Location Number</span></td>
+                                  <td class="inputnmbr"><input name="fromLocationNumber" value="$(V_N2FLOC)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(cGIPath)LocationSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=fromLocationNumber&amp;fldDesc=flocDesc" onclick="$(searchWinVar)">$(searchImage) </a> <input name="flocDesc" type="hidden"></td>
+                                  <td class="inputnmbr"><input name="toLocationNumber" value="$(V_N2TLOC)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(cGIPath)LocationSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=toLocationNumber&amp;fldDesc=tlocDesc" onclick="$(searchWinVar)">$(searchImage) </a> <input name="tlocDesc" type="hidden"></td>
+                                  <td class="inputalph"><input name="allLocationNumber" value='ALL' $(checkedAllLocationNumber) type="checkbox" onClick="if (this.checked) this.form.fromLocationNumber.value='', this.form.toLocationNumber.value='';"></td>
+                              </tr>
+                              @DspErrMsg(Err_N2FLOC)
+                              @DspErrMsg(Err_N2TLOC)
+                              @DspErrMsg(Err_N2ALOC)
+
+                          </table>
+                          %if (V_CRPRMC == "Y")
+                              @dtw_assign(envProgram, "HHDBLM")
+                              @dtw_assign(envPrinter, "HHDBLMPF")
+                          %else
+                              @dtw_assign(envProgram, "HHDBAL")
+                              @dtw_assign(envPrinter, "HHDBALPF")
+                          %endif
+                          %INCLUDE "ScheduleJob.icl"
+                          %INCLUDE "SubmitScheduleBottom.icl"
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                          %if (focusField != "")
+                              <script TYPE="text/javascript">
+                                  document.Chg.$(focusField).focus();
+                              </script>
+                          %endif
+                      </form>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "Trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     submitSchedule,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,            	
+                                        INOUT CHAR(32000) errVar)
+  {%EXEC {HARBLS_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "SetLibraryList.icl"
+  @Set_SQL()
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "SetLibraryList.icl"
+  @dtw_mUPPERCASE(allLocationNumber)
+
+  @dtw_assign(fromLocationNumber,@dtw_rstrip(fromLocationNumber))
+  @dtw_assign(toLocationNumber,@dtw_rstrip(toLocationNumber))
+
+  %if (allLocationNumber != "ALL")
+      @dtw_assign(allLocationNumber, "")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@mult", multiCurrency)
+  @Concat_Field("@@sel@", printTotalPageOnly)
+  @Concat_Field("@@floc", fromLocationNumber)
+  @Concat_Field("@@tloc", toLocationNumber)
+  @Concat_Field("@@aloc", allLocationNumber)
+
+
+  %INCLUDE "ScheduleJobConcat.icl"    %{ Schedule Entries Values %}
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, submitSchedule, errFound, edtVar, errVar)
+
+  %INCLUDE "SubmitScheduleUpdate.icl"
+%}

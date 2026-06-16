@@ -1,0 +1,2444 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Item/Plant Select                                           *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "CostErrorMsg.icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "QuickLink.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Item/Plant Select"
+  d2wName                 = "ItemPlantSelect.d2w"
+  attachFolder            = "ItemPlant"
+  d2wVarBase              = "$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;plantNumber=@dtw_rurlescseq(plantNumber)"
+  currentURL              = "$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)"
+  programName             = "HHDIPU"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+  plantName               = ""
+  itemDescription         = ""
+  headerTable             = %table
+  haveHeader              = ""
+  lotControlActive        = ""
+  routingBOMInterface     = ""
+  totalQuantity           = "0"
+  attachVarKey            = ""
+  quickLinkByUser         = "Y"
+  salesTotal              = ""
+  purchasesTotal          = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@itemNumber", "@dtw_rurlescseq(itemNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@plantNumber", "@dtw_rurlescseq(plantNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @ItemPlantUserView(profileHandle, dataBaseID, userPass, plantNumber, itemNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "AJAXRequest.icl"
+                  %INCLUDE "SaveCurrentURL.icl"
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NewWindowOpen.icl"
+                  function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                           @dtw_assign(pageID, "ITEMPLANTSELECT")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+
+%{ lotControlActive %}
+                          %if (V_CILTUS=="Y")		
+                              @dtw_assign(lotControlActive, "Y")
+                          %endif
+
+%{ ProductStructure/Routing Interface %}
+                          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLRSF", routingBOMInterface)
+
+%{ QuickLink Table %}     %INCLUDE "QuickLinkTable.icl"
+
+%{ QuickLink By User %}   %INCLUDE "QuickLinkByUser.icl"
+
+%{ Item Plant Heading %}
+                          @dtw_assign(RPT_MAX_ROWS, "99")
+                          @dtw_assign(dspMaxRows, "10")
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select IPPLT, IPITEM, IPBAC, IPPTYP, IPABCC, IPCMTO, IPOHFS, IPKDFC, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " IMIMDS, IMLOT ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDIPLT ", fileSQL)
+                          @dtw_concat(fileSQL, " inner join HDIMST on IMITEM=IPITEM ", fileSQL)
+                          @dtw_concat(selectSQL, "IPPLT=$(plantNumber) and IPITEM='$(itemNumber)' ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @ItemPlant_Select_Header(profileHandle, dataBaseID, stmtSQL)
+
+%{ Quicklink Begin %}     %INCLUDE "QuickLinkBegLoop.icl"
+
+        %{ Demographics %}
+                              %if (quicklinkRef == "demographics")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDIPLT ", fileSQL)
+                                  @dtw_concat(selectSQL, "IPPLT=$(plantNumber) and IPITEM='$(itemNumber)' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  @ItemPlant_Select_Demographics(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Cost Summary %}
+                              %elif (quicklinkRef == "costsummary")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDMCMM a left join SCMSTM b on CMCSET=STCSET  ", fileSQL)
+                                  @dtw_concat(selectSQL, "CMCSET>0 and CMPLT=$(plantNumber) and CMPN='$(itemNumber)' ", selectSQL)
+                                  @Retrieve_WebReg(userProfile, "", "CostSummary.d2w", wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "CMCSET")
+                                      @dtw_assign(orderByDisplay, "Cost Set")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Cost_Summary(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Routing %}
+                              %elif (quicklinkRef == "routing")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDMRTM ", fileSQL)
+                                  @dtw_concat(selectSQL, "RTPLT=$(plantNumber) and RTPN='$(itemNumber)' ", selectSQL)
+                                  @Retrieve_WebReg(userProfile, "", "Routings.d2w", wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "RTSEQN")
+                                      @dtw_assign(orderByDisplay, "Rtg Seq")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Routing(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Product Structure %}
+                              %elif (quicklinkRef == "productstructure")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select PSPPLT, PSPPN, PSSEQN, PSCPN, PSREFN,  PSQPER, PSFSTK, PSSCPP, PSSTDT, PSDSDT,  ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " IMIMDS, IMIMDSU, IPECDP ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDMPSM Left Outer Join (HDIPLT Join HDIMST on IPITEM=IMITEM) On PSPPLT=IPPLT and PSCPN=IPITEM", fileSQL)
+                                  @dtw_concat(selectSQL, "PSPPLT=$(plantNumber) and PSPPN='$(itemNumber)' ", selectSQL)
+                                  @Retrieve_WebReg(userProfile, "", "ProductStructure.d2w", wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      %if (routingBOMInterface == "Y")
+                                          @dtw_assign(orderBy, "PSSEQN, PSCPN")
+                                          @dtw_assign(orderByDisplay, "Rtg Seq, Component Item")
+                                      %else
+                                          @dtw_assign(orderBy, "PSCPN")
+                                          @dtw_assign(orderByDisplay, "Component Item")
+                                      %endif
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Product_Structure(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Available to Promise %}
+                              %elif (quicklinkRef == "availabletopromise")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @Fill_ATP_Work_File(profileHandle,dataBaseID,plantNumber,itemNumber)
+                                  @MS230A_Query(profileHandle, dataBaseID, plantNumber, itemNumber, headerTable)
+                                  %if (@DTW_TB_rROWS(headerTable)>"0")
+                                      @dtw_assign(haveHeader, "Y")
+                                  %else
+                                      @dtw_assign(haveHeader, "")
+                                  %endif
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " MS230W ", fileSQL)
+                                  @dtw_concat(selectSQL, "E_PLNT=$(plantNumber) and E_ITEM='$(itemNumber)' and E_XHND='$(profileHandle)' ", selectSQL)
+                                  @Retrieve_WebReg(userProfile, "", "AvailableToPromise.d2w", wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "E_DATE")
+                                      @dtw_assign(orderByDisplay, "Date")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_AvailableToPromise(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Item Demand %}
+                              %elif (quicklinkRef == "demand")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @RtvFldDesc("ODITEM='$(itemNumber)' and ODPLT=$(plantNumber) and ODORST='O' and ODBLKT<>'Y' and OEORTY<>'Q' and OEORTY<>'X'", "OEORDT inner join OEORHD on OEORD#=ODORD#", "char(Sum(ODQORD-ODQSTD-ODQSTC))", totalQuantity)
+
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select ODITEM,ODPLT,ODBLKT,ODORD#,ODORL#,ODRQDT,ODMORD,ODQOPK,ODQSTC, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " ODWH, ODOREC, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " ODQORD,ODQSTD,ODQORD-ODQSTD-ODQSTC as ODQTY, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " OEORTY,OESHTO, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " CMCNA1,CMCNA1U, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " WHWHNM ", stmtSQL)
+                                  @dtw_concat(fileSQL, " OEORDT ", fileSQL)
+                                  @dtw_concat(fileSQL, " inner join OEORHD on OEORD#=ODORD# ", fileSQL)
+                                  @dtw_concat(fileSQL, " inner join HDCUST on CMCUST=OESHTO ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join HDWHSM on WHWHS=ODWH ", fileSQL)
+                                  @dtw_concat(selectSQL, "ODITEM='$(itemNumber)' and ODPLT=$(plantNumber) ", selectSQL)
+                                  @dtw_concat(selectSQL, "and ODORST='O' and ODBLKT<>'Y' and OEORTY<>'Q' and OEORTY<>'X' and (ODQORD-ODQSTD-ODQSTC)>0  ", selectSQL)
+                                  @Retrieve_WebReg(userProfile, "", "ItemDemand.d2w", wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "ODRQDT")
+                                      @dtw_assign(orderByDisplay, "Required Date")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Demand(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Warehouses %}
+                              %elif (quicklinkRef == "warehouses")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @RtvFldDesc("WSTYPE='P' and WSPLWH=$(plantNumber) and IWITEM='$(itemNumber)'", "HDWSPM inner join HDIWHS on IWWHS=WSWH", "char(Sum(IWOHQT))", totalQuantity)
+
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select IWWHS, IWITEM, IWOHQT, IWLIST, IWIWAC, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " coalesce(WHWHNM,' ') as WHWHNM, upper(coalesce(WHWHNM,' ')) as WHWHNMU ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDWSPM ", fileSQL)
+                                  @dtw_concat(fileSQL, " inner join HDIWHS on IWWHS=WSWH ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join HDWHSM on WHWHS =WSWH ", fileSQL)
+                                  @dtw_concat(selectSQL, "WSTYPE='P' and WSPLWH=$(plantNumber) and IWITEM='$(itemNumber)' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "IWOHQT Desc")
+                                  @dtw_assign(orderByDisplay, "Quantity On Hand (descending)")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Warehouses(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Configuration Header  %}
+                              %elif (quicklinkRef == "configurationheader")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, "Select CHPLT, CHITEM, CHCFGT, CHCFGI, CHCDSC, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "CHDATI, CHDATO, CHECN, CHDSGP, CHREL, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "upper(CHCDSC) as CHCDSCU " , stmtSQL)
+                                  @dtw_concat(fileSQL, " HDCFGH ", fileSQL)
+                                  @dtw_concat(selectSQL, "CHPLT=$(plantNumber) and CHITEM='$(itemNumber)' ", selectSQL)
+                                  @Retrieve_WebReg(userProfile, "", "ConfigurationHeader.d2w", wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "CHCFGT, CHCFGI")
+                                      @dtw_assign(orderByDisplay, "Configuration Type, ID")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_ConfigurationHeader(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Manufacturing Orders %}
+                              %elif (quicklinkRef == "manufacturingorders")
+                                  %INCLUDE "QuickLinkClear.icl"
+
+                                  @RtvFldDesc("(OHSTC='A' or OHSTC='P') and OHPLT=$(plantNumber) and OHPN='$(itemNumber)'", "HDMOHM", "char(Sum(OHCQTY))", totalQuantity)
+
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, "Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDMOHM ", fileSQL)
+                                  @dtw_concat(selectSQL, "(OHSTC='A' or OHSTC='P') and OHPLT=$(plantNumber) and OHPN='$(itemNumber)' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "OHCDDT")
+                                  @dtw_assign(orderByDisplay, "Due Date")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_ManufacturingOrders(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Current Quantities %}
+                              %elif (quicklinkRef == "currentquantities")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDIPLT ", fileSQL)
+                                  @dtw_concat(selectSQL, "IPITEM='$(itemNumber)' and IPPLT=$(plantNumber) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  @ItemPlant_Select_Current_Quantities(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Usage By Period %}
+                              %elif (quicklinkRef == "usagebyperiod")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, "Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDIPLH ", fileSQL)
+                                  @dtw_concat(selectSQL, "PHPLT=$(plantNumber) and PHITEM='$(itemNumber)' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "PHPERD Desc")
+                                  @dtw_assign(orderByDisplay, "Transaction Period (descending)")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Usage_ByPeriod(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Usage By Year %}
+                              %elif (quicklinkRef == "usagebyyear")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select sum(PHYTDU) as S_YTDU, sum(PHSCRP) as S_SCRP, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "        sum(PHYADJ) as S_YADJ, sum(PHYRCV) as S_YRCV, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "        sum(PHYFSS) as S_YFSS, sum(PHQMFG) as S_QMFG, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "        sum(PHREWK) as S_REWK, PHCYR ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDIPLH ", fileSQL)
+                                  @dtw_concat(selectSQL, "PHITEM='$(itemNumber)' and PHPLT=$(plantNumber) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "PHCYR Desc")
+                                      @dtw_assign(orderByDisplay, "Transaction Year (descending)")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Group By PHCYR ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Usage_ByYear(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Whs Usage By Period %}
+                              %elif (quicklinkRef == "whsusagebyperiod")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDISLH inner join HDWSPM on WSTYPE='P' and WSPLWH=$(plantNumber) and WSSORD='S' and WSWH=IHWHS", fileSQL)
+                                  @dtw_concat(selectSQL, "IHITEM='$(itemNumber)' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "IHPERD Desc")
+                                      @dtw_assign(orderByDisplay, "Transaction Period (descending)")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Whs_Usage_ByPeriod(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Whs Usage By Year %}
+                              %elif (quicklinkRef == "whsusagebyyear")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select sum(IHDLRS) as S_DLRS, sum(IHQSLD) as S_QSLD, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "        sum(IHQREC) as S_QREC, sum(IHQAMT) as S_QAMT, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "        sum(IHQTRF) as S_QTRF, sum(IHQTYI) as S_QTYI, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "        sum(IHQKTI) as S_QKTI, sum(IHQRTV) as S_QRTV, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "        sum(IHQSCR) as S_QSCR, sum(IHQDSH) as S_QDSH, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "        sum(IHSTOT) as S_STOT, IHCYR ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDISLH inner join HDWSPM on WSTYPE='P' and WSPLWH=$(plantNumber) and WSSORD='S' and WSWH=IHWHS", fileSQL)
+                                  @dtw_concat(selectSQL, "IHITEM='$(itemNumber)' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "IHCYR Desc")
+                                      @dtw_assign(orderByDisplay, "Transaction Year (descending)")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Group By IHCYR ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Whs_Usage_ByYear(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Vendor Open Orders %}
+                              %elif (quicklinkRef == "vendoropenorders")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_WarehouseName, "POWHS")
+                                  @dtw_assign(uv_VendorName, "POVEND")
+                                  @dtw_assign(uv_BuyerName, "POBUYR")
+                                  %INCLUDE "userview.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, "SELECT POVEND, POBUYR, PDVDSN, PDPO, PDPOL#, PDRORD, PDRQDT, PDOVWH, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " PDQTOR, PDQHRT, PDQRFT, PDQRRT, PDQRST, PDQRVT, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " PDBUOM, PDDSCC, PDPLT, PDPORL, PDPCPB, POTYPE, coalesce(BMBNA1,' ') as BMBNA1 ", stmtSQL)
+                                  @dtw_concat(fileSQL, " POPOMS inner join POPOMD on POPO=PDPO inner join HDWSPM on WSTYPE='P' and WSPLWH=$(plantNumber) and WSSORD='S' and WSWH=PDOVWH", fileSQL)
+                				  @dtw_concat(fileSQL, "        left join HDBUYR on POBUYR=BMBUYR ", fileSQL)
+                                  @dtw_concat(selectSQL, "PDITEM='$(itemNumber)' and PDSTAT='O'", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "PDRQDT, PDPO")
+                                  @dtw_assign(orderByDisplay, "Required Date, Purchase Order")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Vendor_Open_Orders(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Vendor Order History %}
+                              %elif (quicklinkRef == "vendororderhistory")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_WarehouseName, "PHWHS")
+                                  @dtw_assign(uv_VendorName, "PHVEND")
+                                  @dtw_assign(uv_BuyerName, "PHBUYR")
+                                  %INCLUDE "userview.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, "SELECT PHVEND, PHSEQ#, PHBUYR, PHSTAT, PHPORF, PHDSHP, PHRQDT, PHTYPE,", stmtSQL)
+                                  @dtw_concat(stmtSQL, " PHLRDT, PHSVDS, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " PIOVWH, PIRQDT, PITRQT, PIDSCC, PIPCPB, PIPO, PIPOL#, PIPORL, PIQTOR, PIPCPB, PIBUOM, coalesce(BMBNA1,' ') as BMBNA1 ", stmtSQL)
+                                  @dtw_concat(fileSQL, " POPOHH inner join POPOHD on PHPO=PIPO and PHSEQ#=PISEQ#  inner join HDWSPM on WSTYPE='P' and WSPLWH=$(plantNumber) and WSSORD='S' and WSWH=PIOVWH", fileSQL)
+                				  @dtw_concat(fileSQL, "        left join HDBUYR on PHBUYR=BMBUYR ", fileSQL)
+                				  @dtw_concat(selectSQL, "PIITEM='$(itemNumber)' and PISEQ#>0", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "PHLRDT Desc, PHPO")
+                                  @dtw_assign(orderByDisplay, "Date Of Last Receipt (descending), Purchase Order")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Vendor_Order_History(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Lot Tracking %}
+                              %elif (quicklinkRef == "lottracking")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select LTWH, LTPLT, PLNAME, LTLT#, LTDTEX, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " LTQOH, (LTQOH - LTQAL - LTQHSR + LTLRCP) as QTYAVAIL ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDLOT, HDPLNT ", fileSQL)
+                                  @dtw_concat(selectSQL, "LTITEM='$(itemNumber)' and LTPLT=$(plantNumber) and LTPLT=PLPLNT ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "LTLT#, LTWH")
+                                  @dtw_assign(orderByDisplay, "Lot Number, Warehouse Number")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Lot_Tracking(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Kanban Triggers %}
+                              %elif (quicklinkRef == "kanbantriggers")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select  KBTURN, KBSTAT, KBDEPT, KBWC, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "  Coalesce(KBFWHS,0) as KBFWHS, KBFSTK, KBFAIL, KBFSLC, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "  Coalesce(KBTTRN,0) as KBTTRN, Coalesce(KBLLSZ,0) as KBLLSZ, Coalesce(KBVEND,0) as KBVEND, Coalesce(KBVNDT,0) as KBVNDT ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDKBMS ", fileSQL)
+                                  @dtw_concat(selectSQL, "KBITEM='$(itemNumber)' and KBPLT=$(plantNumber) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "KBTURN")
+                                  @dtw_assign(orderByDisplay, "Turnaround Number")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Kanban_Triggers(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Customer Order History (SelectOrderHistory.d2w) %}
+                              %elif (quicklinkRef == "customerorderhistory")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_BillingLocationName, "HHLOC#")
+                                  @dtw_assign(uv_CustomerName, "HHBLTO")
+                                  @dtw_assign(uv_SalesmanName, "HHSLSM")
+                                  @dtw_assign(uv_OEOrderTypeName, "HHORTY")
+                                  %INCLUDE "userview.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select DHORD#, DHRQDT, DHSEQ#,", stmtSQL)
+                                  @dtw_concat(stmtSQL, " HHSHTO, HHSLSM, HHLOC#, HHORTY, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " DHRQDT, DHQSTD, DHQSTC, DHSLPR, DHORUF, DHQORD, DHORD#, DHORL#, DHBLN#", stmtSQL)
+                                  @dtw_concat(fileSQL, " OEORHH inner join OEORDH on HHORD#=DHORD# and HHSEQ#=DHSEQ# ", fileSQL)
+                                  @dtw_concat(fileSQL, "        inner join HDWSPM on WSTYPE='P' and WSPLWH=$(plantNumber) and WSSORD='S' and WSWH=DHWH", fileSQL)
+                                  @dtw_concat(selectSQL, "DHITEM = '$(itemNumber)' and DHSEQ#>0 ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "DHRQDT Desc, HHSHTO, DHORD#, DHORL#, DHBLN# ")
+                                  @dtw_assign(orderByDisplay, "Required Date (descending), Customer Number, Order Number, Line, Rel")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Customer_Order_History(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Top Customers %}
+                              %elif (quicklinkRef == "lastyeartopcustomers" || quicklinkRef == "ytdtopcustomers")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_date("S", sysDateYYYYMMDD)
+                                  @dtw_substr(sysDateYYYYMMDD,"3","2",sysYearYY)
+                                  %if (quicklinkRef == "lastyeartopcustomers")
+                                      @dtw_subtract(sysYearYY,"1",yearYY)
+                                  %else
+                                      @dtw_assign(yearYY, sysYearYY)
+                                  %endif
+                                  @Build_Date_Range(yearYY, startCMD, endCMD)
+                                  @RtvFldDesc("DHSEQ#>0 and DHITEM='$(itemNumber)' and DHDTLI>=$(startCMD) and DHDTLI<=$(endCMD)", "OEORDH inner join HDWSPM on WSTYPE='P' and WSPLWH=$(plantNumber) and WSSORD='S' and WSWH=DHWH", "char(SUM((DHQSTC*DHSLPR)/DHORUF))", salesTotal)
+
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(distinctSQL, "DHSHTO ", distinctSQL)
+                                  @dtw_concat(stmtSQL, " Select DHSHTO, SUM((DHQSTC*DHSLPR)/DHORUF) as SALES, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " SUM(DHQSTC) as QTYSHIPPED ", stmtSQL)
+                                  @dtw_concat(fileSQL, " OEORDH inner join HDWSPM on WSTYPE='P' and WSPLWH=$(plantNumber) and WSSORD='S' and WSWH=DHWH", fileSQL)
+                                  @dtw_concat(selectSQL, "DHITEM='$(itemNumber)' and DHSEQ#>0 ", selectSQL)
+                                  @dtw_concat(selectSQL, "and (DHDTLI >= $(startCMD) and DHDTLI <= $(endCMD)) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_concat(stmtSQL, " GROUP BY DHSHTO", stmtSQL)
+                                  @dtw_assign(orderBy, "SALES Desc")
+                                  @dtw_assign(orderByDisplay, "Sales (descending)")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Top_Customers(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Top Vendors %}
+                              %elif (quicklinkRef == "lastyeartopvendors" || quicklinkRef == "ytdtopvendors")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_date("S", sysDateYYYYMMDD)
+                                  @dtw_substr(sysDateYYYYMMDD,"3","2",sysYearYY)
+                                  %if (quicklinkRef == "lastyeartopvendors")
+                                      @dtw_subtract(sysYearYY,"1",yearYY)
+                                  %else
+                                      @dtw_assign(yearYY, sysYearYY)
+                                  %endif
+                                  @Build_Date_Range(yearYY, startCMD, endCMD)
+                                  @RtvFldDesc("PIITEM='$(itemNumber)' and PHLRDT>=$(startCMD) and PHLRDT<=$(endCMD)", "POPOHH inner join POPOHD on PHPO=PIPO and PHSEQ#=PISEQ# inner join HDWSPM on WSTYPE='P' and WSPLWH=$(plantNumber) and WSSORD='S' and WSWH=PHWHS", "char(SUM((PIDSCC*PITRQT)/PIPCPB))", purchasesTotal)
+
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(distinctSQL, "PHVEND ", distinctSQL)
+                                  @dtw_concat(stmtSQL, " Select PHVEND, SUM((PIDSCC*PITRQT)/PIPCPB) as PURCHASES, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " SUM(PITRQT) as RECEIVED ", stmtSQL)
+                                  @dtw_concat(fileSQL, " POPOHH inner join POPOHD on PHPO=PIPO and PHSEQ#=PISEQ# ", fileSQL)
+                                  @dtw_concat(fileSQL, "        inner join HDWSPM on WSTYPE='P' and WSPLWH=$(plantNumber) and WSSORD='S' and WSWH=PHWHS", fileSQL)
+                                  @dtw_concat(selectSQL, "PIITEM='$(itemNumber)' and PHLRDT>=$(startCMD) and PHLRDT<=$(endCMD) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_concat(stmtSQL, " GROUP BY PHVEND", stmtSQL)
+                                  @dtw_assign(orderBy, "PURCHASES Desc")
+                                  @dtw_assign(orderByDisplay, "Purchases (descending)")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @ItemPlant_Select_Top_Vendors(profileHandle, dataBaseID, stmtSQL)
+                              %endif
+
+        %{ Attachments %}     %INCLUDE "AttachmentSQL.icl"
+
+%{ Quicklink End %}       %INCLUDE "QuickLinkEndLoop.icl"
+
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Header (IN CHAR(64)    profileHandle,
+			                        CHAR(2)     dataBaseID,
+                                               CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              @dtw_assign(attachPlantKey, plantNumber)
+              %while(@dtw_rlength(attachPlantKey) != "3") {@dtw_insert("0", attachPlantKey, attachPlantKey) %}
+              @dtw_assign(attachVarKey, "$(attachPlantKey)$(itemNumber)")
+              @dtw_assign(attachForDesc, "$(plantName)/$(itemDescription)")
+              @dtw_assign(attachPrg1, "HDIPLT Where IPPLT=$(plantNumber) and IPITEM='$(itemNumber)'")
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td>&nbsp;</td>
+                  <td class="toolbar">
+                      %INCLUDE "Attachment.icl"
+                      <a href="$(homeURL)$(cGIPath)ProductStructureWhereUsedInquiry.d2w/DISPLAY$(d2wVarBase)" onclick="$(inquiryWinVar)">$(singleLvlWUImageLrg)</a>
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)ItemPlantMaintain.d2w/ADD$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;fromSel=Y&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %if (sec_02 == "Y" || sec_03 == "Y")
+                          <a href="$(homeURL)$(cGIPath)ItemPlantMaintain.d2w/MAINTAIN$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;fromItemNumber=@dtw_rurlescseq(itemNumber)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;fromPlant=@dtw_rurlescseq(plantNumber)&amp;fromSel=Y&amp;maintenanceCode=C">$(changeImageLrg)</a>
+                      %endif
+                      %if (sec_01=="Y" && sec_04=="Y")
+                          <a href="$(homeURL)$(cGIPath)ItemPlantMaintain.d2w/ADD$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;fromItemNumber=@dtw_rurlescseq(itemNumber)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;fromPlant=@dtw_rurlescseq(plantNumber)&amp;fKey1=IPITEM&amp;fVal1=@dtw_rurlescseq(itemNumber)&amp;fromSel=Y&amp;maintenanceCode=Z">$(copyImageLrg)</a>
+                      %endif
+                      %if (sec_03 == "Y")
+                          @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+                          @Format_Confirm_Desc($(itemDescription), $(itemNumber), $(plantName), $(plantNumber), "", "", confirmDesc)
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)itemplantmaintain.d2w/Edit_Data$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;fromSel=Y&amp;maintenanceCode=D">$(deleteImageLrg)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      <table $(contentTable)>
+          %ROW {
+              @dtw_assign(itemDescription, V_IMIMDS)  %{ Save for future use. %}
+              @Format_Header_URL("Plant", $(plantName), $(plantNumber), "$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(d2wVarBase)&amp;plantName=@dtw_rurlescseq(plantName)")
+              @Format_Header_URL("Item", $(itemDescription), $(itemNumber), "$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(d2wVarBase)&amp;itemDescription=@dtw_rurlescseq(itemDescription)")
+              @RtvFldDesc("FLTYPE='PARTTYPE' and FLVALU='$(V_IPPTYP)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Header_URL("Part Type", $(fieldDesc), $(V_IPPTYP), "")
+
+              %if (V_IPKDFC!="K")
+                  @Remove_Quick_Link("kanbantriggers")
+              %endif
+              %if (lotControlActive!="Y" || V_IMLOT=="N")
+                  @Remove_Quick_Link("lottracking")
+              %endif
+              %if (V_IPPTYP=="P")
+                  @Remove_Quick_Link("configurationheader")
+                  @Remove_Quick_Link("manufacturingorders")
+                  @Remove_Quick_Link("productstructure")
+                  @Remove_Quick_Link("routing")
+              %endif
+          %}
+      </table>
+
+      $(hrTagAttr)
+
+      %INCLUDE "QuickLinkDisplay.icl"
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Demographics (IN  CHAR(64)    profileHandle,
+				                       CHAR(2)     dataBaseID,
+                                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="demographics"></a>
+      @dtw_assign(displayMaxRowsMsg, "N")
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %ROW{
+
+              <tr><td class="dsphdr">Part Type</td>
+              @RtvFldDesc("FLTYPE='PARTTYPE' and FLVALU='$(V_IPPTYP)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPPTYP, F_IPPTYP)
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPPTYP)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='BACKFLUSH' and FLVALU='$(V_IPSTWC)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPSTWC, F_IPSTWC)
+              <tr><td class="dsphdr">Backflush Code</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPSTWC)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='KANBANFLOW' and FLVALU='$(V_IPKDFC)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPKDFC, F_IPKDFC)
+              <tr><td class="dsphdr">Kanban/Demand Flow Code</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPKDFC)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Material Code</td>
+                  <td class="dspalph">$(V_IPMATC)</td>
+              </tr>
+
+              @RtvFldDesc("ICCLAS='$(V_IPCLAS)'", "HDMICM", "ICDESC", fieldDesc)
+              @Format_Code(V_IPCLAS, F_IPCLAS)
+              <tr><td class="dsphdr">Part Class Code</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPCLAS)</td>
+              </tr>
+
+              @RtvFldDesc("ITITC='$(V_IPITC)'", "HDITYP", "ITDESC", fieldDesc)
+              @Format_Code(V_IPITC, F_IPITC)
+              <tr><td class="dsphdr">Inventory Type</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPITC)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='LEADTIME' and FLVALU='$(V_IPLTC)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPLTC, F_IPLTC)
+              <tr><td class="dsphdr">Lead Time Code</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPLTC)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Safety Lead Time</td>
+                 <td class="dspnmbr">$(V_IPSLT)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Fixed Lead Time</td>
+                 <td class="dspnmbr">$(V_IPTLT)</td>
+              </tr>
+
+              @Format_Nbr($(V_IPSSQ), F_IPSSQ, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              <tr><td class="dsphdr">Safety Stock Quantity</td>
+                  <td class="dspnmbr">$(V_IPSSQ)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Accounting Lot Size</td>
+                  <td class="dspnmbr">$(V_IPALTS)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Feature/Option Factor Rate</td>
+                  <td class="dspnmbr">$(V_IPFORT)</td>
+              </tr>
+
+              @RtvFldDesc("BMBUYR=$(V_IPBAC)", "HDBUYR", "BMBNA1", fieldDesc)
+              @Format_Code(V_IPBAC, F_IPBAC)
+              <tr><td class="dsphdr">Analyst</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspnmbr">$(F_IPBAC)</td>
+              </tr>
+
+              @RtvYNDesc($(V_IPAVLC), fieldDesc)
+              <tr><td class="dsphdr">Check Component Availability</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='ORDERPOLCY' and FLVALU='$(V_IPOPC)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPOPC, F_IPOPC)
+              <tr><td class="dsphdr">Order Policy Code</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPOPC)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='MRPCALCCDE' and FLVALU='$(V_IPCALC)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPCALC, F_IPCALC)
+              <tr><td class="dsphdr">MRP Calculation Code</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPCALC)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='SCHDFORCST' and FLVALU='$(V_IPMSFF)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPMSFF, F_IPMSFF)
+              <tr><td class="dsphdr">Master Schedule/Forecast Flag</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPMSFF)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Fixed Time Periods</td>
+                  <td class="dspnmbr">$(V_IPFIXP)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Order Shrinkage Percent</td>
+                  <td class="dspnmbr">@dtw_rformat(@dtw_rMultiply(V_IPSHRP, "100"),"","0")</td>
+              </tr>
+
+              @Format_Nbr($(V_IPFOQ), F_IPFOQ, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              <tr><td class="dsphdr">Fixed Order Quantity</td>
+                  <td class="dspnmbr">$(F_IPFOQ)</td>
+              </tr>
+
+              @Format_Nbr($(V_IPMNQ), F_IPMNQ, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              <tr><td class="dsphdr">Minimum Order Quantity</td>
+                  <td class="dspnmbr">$(F_IPMNQ)</td>
+              </tr>
+
+              @Format_Nbr($(V_IPMXQ), F_IPMXQ, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              <tr><td class="dsphdr">Maximum Order Quantity</td>
+                  <td class="dspnmbr">$(F_IPMXQ)</td>
+              </tr>
+
+              @Format_Nbr($(V_IPMUQ), F_IPMUQ, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              <tr><td class="dsphdr">Multiple Order Quantity</td>
+                  <td class="dspnmbr">$(F_IPMUQ)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='FORECASTDF' AND FLVALU='$(V_IPFDTF)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPFDTF, F_IPFDTF)
+              <tr><td class="dsphdr">Forecast Date Format</td>
+                  <td class="dspalph">$(fieldDesc)</td> 		
+                  <td class="dspalph">$(F_IPFDTF)</td> 		
+              </tr>
+
+              @RtvFldDesc("FLTYPE='FORECASTSP' AND FLVALU='$(V_IPFSPR)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPFSPR, F_IPFSPR)
+              <tr><td class="dsphdr">Forecast Spreaders</td>
+                  <td class="dspalph">$(fieldDesc)</td> 		
+                  <td class="dspalph">$(F_IPFSPR)</td> 		
+              </tr>
+
+              @RtvFldDesc("TFDEF='$(V_IPTFND)'", "HDMTFM", "TFDESC", fieldDesc)
+              @Format_Code(V_IPTFND, F_IPTFND)
+              <tr><td class="dsphdr">Time Fence Definition</td>
+                  <td class="dspalph">$(fieldDesc)</td> 		
+                  <td class="dspalph">$(F_IPTFND)</td> 		
+              </tr>
+
+              <tr><td class="dsphdr">Periods To Retain Forecast</td>
+                  <td class="dspnmbr">$(V_IPPFCT)</td> 		
+              </tr>
+
+              <tr><td class="dsphdr">Periods To Consume Forecast</td>
+                  <td class="dspnmbr">$(V_IPCFCT)</td> 		
+              </tr>
+
+              @RtvFldDesc("IMITEM='$(V_IPRRTG)'", "HDIMST", "IMIMDS", fieldDesc)
+              @Format_Code(V_IPRRTG, F_IPRRTG)
+              <tr><td class="dsphdr">Resource Routing Definition</td>
+                  <td class="dspalph">$(fieldDesc)</td> 		
+                  <td class="dspalph">$(F_IPRRTG)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Drawing Size</td>
+                 <td class="dspalph">$(V_IPDWGS)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Drawing Revision Letter</td>
+                 <td class="dspalph">$(V_IPDWGR)</td>
+              </tr>
+
+              @Format_Date_ISO(V_IPDWGD, "H", F_IPDWGD)
+              <tr><td class="dsphdr">Drawing Date</td>
+                  <td class="dspnmbr">$(F_IPDWGD)</td> 		
+              </tr>
+
+              <tr><td class="dsphdr">Drawing Number</td>
+                  <td class="dspalph">$(V_IPDWGN)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Engineering Change Notice</td>
+                  <td class="dspalph">$(V_IPECN)</td>
+              </tr>
+
+              @Format_Date_ISO(V_IPEFTD, "H", F_IPEFTD)
+              <tr><td class="dsphdr">ECN Effectivity Date</td>
+                 <td class="dspnmbr">$(F_IPEFTD)</td> 		
+              </tr>
+
+              @RtvFldDesc("FLTYPE='ECNCOMPONT' and FLVALU='$(V_IPECDP)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPECDP, F_IPECDP)
+              <tr><td class="dsphdr">ECN Component Disposition</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPECDP)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Engineering Status Code</td>
+                  <td class="dspalph">$(V_IPESTC)</td>
+              </tr>
+
+              @RtvFldDesc("VMVEND=$(V_IPVEND)", "HDVEND", "VMVNA1", fieldDesc)
+              @Format_Code(V_IPVEND, F_IPVEND)
+              <tr><td class="dsphdr">Primary Vendor</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspnmbr">$(F_IPVEND)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Purchased Material Cost:</td></tr>
+
+              <tr><td class="dsphdr">Standard</td>
+                  <td class="dspnmbr">$(V_IPPSUM)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Current</td>
+                  <td class="dspnmbr">$(V_IPPCUM)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Future</td>
+                  <td class="dspnmbr">$(V_IPNYPS)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='ABCCLASS' and FLVALU='$(V_IPABCC)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPABCC, F_IPABCC)
+              <tr><td class="dsphdr">ABC Class Code</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPABCC)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='ABCOVERRID' and FLVALU='$(V_IPABCO)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_IPABCO, F_IPABCO)
+              <tr><td class="dsphdr">ABC Class Code Override</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_IPABCO)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Override Cycle Days</td>
+                  <td class="dspnmbr">$(V_IPONC)</td>
+              </tr>
+
+              @Format_Nbr($(V_IPAAU), F_IPAAU, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              <tr><td class="dsphdr">Anticipated Annual Usage</td>
+                  <td class="dspnmbr">$(F_IPAAU)</td>
+              </tr>
+
+              @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLPAS1", screenAlpha1)
+              @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLPAS2", screenAlpha2)
+              @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLPAS3", screenAlpha3)
+              @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLPNS1", screenNumeric1)
+              @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLPNS2", screenNumeric2)
+              @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLPNS3", screenNumeric3)
+
+              %if (screenAlpha1 != "" && V_IPUDA1 != "" )		
+                 <tr><td class="dsphdr">$(screenAlpha1)</td>
+                     <td class="dspalph">$(V_IPUDA1)</td>
+                 </tr>
+              %endif
+
+              %if (screenAlpha2 != "" && V_IPUDA2 != "" )			
+                 <tr><td class="dsphdr">$(screenAlpha2)</td>
+                     <td class="dspalph">$(V_IPUDA2)</td>
+                 </tr>
+              %endif
+
+              %if (screenAlpha3 != "" && V_IPUDA3 != "" )			
+                 <tr><td class="dsphdr">$(screenAlpha3)</td>
+                     <td class="dspalph">$(V_IPUDA3)</td>
+                 </tr>
+              %endif
+
+              %if (screenNumeric1 != "" && V_IPUDN1 != ".00000" )			
+                 <tr><td class="dsphdr">$(screenNumeric1)</td>
+                     <td class="dspnmbr">$(V_IPUDN1)</td>
+                 </tr>
+              %endif
+
+              %if (screenNumeric2 != "" && V_IPUDN2 != ".00000" )		
+                 <tr><td class="dsphdr">$(screenNumeric2)</td>
+                     <td class="dspnmbr">$(V_IPUDN2)</td>
+                 </tr>
+              %endif
+
+              %if (screenNumeric3 != "" && V_IPUDN3 != ".00000" )		
+                 <tr><td class="dsphdr">$(screenNumeric3)</td>
+                     <td class="dspnmbr">$(V_IPUDN3)</td>
+                 </tr>
+              %endif
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_AvailableToPromise (IN  CHAR(64)    profileHandle,
+				                             CHAR(2)     dataBaseID,
+                                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="availabletopromise"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)AvailableToPromise.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      %if (haveHeader=="Y")
+          <table $(contentTable)>
+              <tr><td class="colhdr">Lead<br>Time</td>
+                  <td class="colhdr">Part<br>Type</td>
+                  <td class="colhdr">UM</td>
+                  <td class="colhdr">On Hand</td>
+                  <td class="colhdr">Released</td>
+                  <td class="colhdr">Firm</td>
+                  <td class="colhdr">Demand</td>
+                  <td class="colhdr">Sold MTD</td>
+                  <td class="colhdr">Analyst<br>Number</td>
+                  <td class="colhdr">ABC</td>
+                  <td class="colhdr">MPS</td>
+                  <td class="colhdr">Demand</td>
+              </tr>
+
+              @dtw_tb_getv(headerTable, "1", "7", partType)
+              @RtvFldDesc("FLTYPE='PARTTYPE' and FLVALU='$(partType)'", "SYFLAG", "FLDESC", partTypeDesc)
+              @dtw_tb_getv(headerTable, "1", "8", uom)
+              @RtvFldDesc("UMUOM='$(uom)'", "HDUOM", "UMUMLD", uomDesc)
+              @dtw_tb_getv(headerTable, "1", "14", analyst)
+              @RtvFldDesc("BMBUYR=$(analyst)", "HDBUYR", "BMBNA1", analystName)
+              @dtw_tb_getv(headerTable, "1", "17", demandCode)
+              @RtvFldDesc("FLTYPE='SCHDDEMAND' and FLVALU='$(demandCode)'", "SYFLAG", "FLDESC", demandCodeDesc)
+
+              @Format_Nbr("@dtw_tb_rgetv(headerTable, "1", "9")", onHand, "0", $(qtyEditCode), "", "", "")
+              @Format_Nbr("@dtw_tb_rgetv(headerTable, "1", "10")", released, "0", $(qtyEditCode), "", "", "")
+              @Format_Nbr("@dtw_tb_rgetv(headerTable, "1", "11")", firm, "0", $(qtyEditCode), "", "", "")
+              @Format_Nbr("@dtw_tb_rgetv(headerTable, "1", "12")", demand, "0", $(qtyEditCode), "", "", "")
+              @Format_Nbr("@dtw_tb_rgetv(headerTable, "1", "13")", soldMTD, "0", $(qtyEditCode), "", "", "")
+              <tr><td class="colnmbr">@dtw_tb_rgetv(headerTable, "1", "6")</td>
+                  <td class="colcode" $(helpCursor)><span title="$(partTypeDesc)">$(partType)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(uomDesc)">$(uom)</span></td>
+                  <td class="colnmbr">$(onHand)</td>
+                  <td class="colnmbr">$(released)</td>
+                  <td class="colnmbr">$(firm)</td>
+                  <td class="colnmbr">$(demand)</td>
+                  <td class="colnmbr">$(soldMTD)</td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(analystName)">$(analyst)</span></td>
+                  <td class="colcode">@dtw_tb_rgetv(headerTable, "1", "15")</td>
+                  <td class="colcode">@dtw_tb_rgetv(headerTable, "1", "16")</td>
+                  <td class="colcode" $(helpCursor)><span title="$(demandCodeDesc)">$(demandCode)</span></td>
+              </tr>
+          </table>
+      %endif
+	   <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("E_DATE", "Date")
+                  @Format_Column_Header("E_FOR", "Sales<br>Forecast")
+                  @Format_Column_Header("E_COR", "Customer<br>Demand")
+                  @Format_Column_Header("E_PEG", "Pegged<br>Requirements")
+                  @Format_Column_Header("E_AVL", "Available<br>To<br>Promise")
+                  @Format_Column_Header("E_REC", "Released/<br>Firm")
+                  @Format_Column_Header("E_PLN", "Planned<br>Orders")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (V_E_PAST == "Y")
+                  @dtw_assign(F_E_DATE, "Past Due")
+                  @dtw_assign(once, "Y")
+              %elif (V_E_DATE == "9999999")
+                  @dtw_assign(F_E_DATE, "Future")
+              %else
+                  @Format_Date(V_E_DATE, "D", F_E_DATE)
+              %endif
+              @Format_Nbr(V_E_FOR, F_E_FOR, "0", $(qtyEditCode), "", "", "")
+              @Format_Nbr(V_E_COR, F_E_COR, "0", $(qtyEditCode), "", "", "")
+              @Format_Nbr(V_E_PEG, F_E_PEG, "0", $(qtyEditCode), "", "", "")
+              @Format_Nbr(V_E_AVL, F_E_AVL, "0", $(qtyEditCode), "", "", "")
+              @Format_Nbr(V_E_REC, F_E_REC, "0", $(qtyEditCode), "", "", "")
+              @Format_Nbr(V_E_PLN, F_E_PLN, "0", $(qtyEditCode), "", "", "")
+
+              <tr class="$(rowClass)">
+                  <td class="coldate">$(F_E_DATE)</td>
+                  <td class="colnmbr">$(F_E_FOR)</td>
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=184&amp;fKey1=ODITEM&amp;fVal1=@dtw_rurlescseq(itemNumber)&amp;fDsc1=@dtw_rurlescseq(itemDescription)" title="All Open Items"> $(F_E_COR)</a></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=522&amp;fKey1=PGCPN&amp;fVal1=@dtw_rurlescseq(itemNumber)&amp;fDsc1=@dtw_rurlescseq(itemDescription)&amp;fKey2=PGPPLT&amp;fVal2=@dtw_rurlescseq(plantNumber)&amp;fDsc2=@dtw_rurlescseq(plantName)" title="Pegged Requirements"> $(F_E_PEG)</a></td>
+                  <td class="colnmbr">$(F_E_AVL)</td>
+                  %if (partType == "M")
+                      <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=445&amp;fKey1=OHPN&amp;fVal1=@dtw_rurlescseq(itemNumber)&amp;fDsc1=@dtw_rurlescseq(itemDescription)&amp;fKey2=OHPLT&amp;fVal2=@dtw_rurlescseq(plantNumber)&amp;fDsc2=@dtw_rurlescseq(plantName)" title="Mfg Orders"> $(F_E_REC)</a></td>
+                  %else
+                      <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=186&amp;fKey1=PDITEM&amp;fVal1=@dtw_rurlescseq(itemNumber)&amp;fDsc1=@dtw_rurlescseq(itemDescription)" title="All Open Items"> $(F_E_REC)</a></td>
+                  %endif
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=460&amp;fKey1=PLPN&amp;fVal1=@dtw_rurlescseq(itemNumber)&amp;fDsc1=@dtw_rurlescseq(itemDescription)&amp;fKey2=PLPLT&amp;fVal2=@dtw_rurlescseq(plantNumber)&amp;fDsc2=@dtw_rurlescseq(plantName)" title="MRP Planned Orders"> $(F_E_PLN)</a></td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Demand (IN  CHAR(64)    profileHandle,
+				                 CHAR(2)     dataBaseID,
+                                                CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="demand"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)ItemDemand.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+          %if (sql_Record_Count == "0")
+              <table $(contentTable)>
+                  %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              @Format_Nbr(totalQuantity, F_totalQuantity, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              <div class="page">
+                   Total Quantity Open: $(F_totalQuantity)
+              </div>
+
+              <table $(contentTable)>
+                  <tr>
+                      @Format_Column_Header("ODORD#", "Order<br>Number")
+                      @Format_Column_Header("ODORL#", "Line")
+                      @Format_Column_Header("ODWH", "Whs")
+                      @Format_Column_Header("OESHTO", "Ship<br>To")
+                      @Format_Column_Header("CMCNA1U", "Customer<br>Name")
+                      @Format_Column_Header("ODRQDT", "Required<br>Date")
+                      @Format_Column_Header("ODQORD", "Quantity<br>Ordered")
+                      @Format_Column_Header("ODQTY", "Quantity<br>Open")
+                      @Format_Column_Header("ODQOPK", "Quantity<br>Picked")
+                      @Format_Column_Header("ODQSTC", "Quantity<br>Shipped")
+                      @Format_Column_Header("ODMORD", "Mfg Order")
+                  </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Nbr(V_ODQORD, F_ODQORD, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr("@DTW_rSUBTRACT($(V_ODQORD),@DTW_rADD($(V_ODQSTD),$(V_ODQSTC)))", qtyOpen, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_ODQOPK, F_ODQOPK, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr(V_ODQSTC, F_ODQSTC, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Date(V_ODRQDT, "D", F_ODRQDT)
+              %if (V_ODMORD != "")
+                  @RtvFldDesc("OHPLT=$(plantNumber) and OHORD='$(V_ODMORD)'", "HDMOHM", "CHAR(COUNT(OHORD))", mfgOrderCnt)
+              %else
+                  @dtw_assign(mfgOrderCnt, "0")
+              %endif
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrder.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_ODORD#)" title="View Order Detail">$(V_ODORD#)</a></td>
+                  <td class="colnmbr">$(V_ODORL#)</td>
+                  <td class="colnmbr">$(V_ODWH)</td>
+                  <td class="colnmbr">$(V_OESHTO)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_OESHTO)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(V_CMCNA1)</a></td>
+                  <td class="coldate">$(F_ODRQDT)</td>
+                  <td class="colnmbr">$(F_ODQORD)</td>
+                  <td class="colnmbr">$(qtyOpen)</td>
+                  <td class="colnmbr">$(F_ODQOPK)</td>
+                  <td class="colnmbr">$(F_ODQSTC)</td>
+                  %if (mfgOrderCnt > "0")
+                      <td class="colcode"><a href="$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;plantName=@dtw_rurlescseq(plantName)&amp;mfgOrder=@dtw_rurlescseq(V_ODMORD)" onclick="$(inquiryWinVar)" title="View Manufacturing Order">$(V_ODMORD)</a></td>
+                  %else
+                      <td class="colcode">$(V_ODMORD)</td>
+                  %endif
+              </tr>
+	   %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Routing (IN CHAR(64)    profileHandle,
+	 			                 CHAR(2)     dataBaseID,
+                                                CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      <a name="routing"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)Routings.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("RTSEQN", "Rtg<br>Seq")
+                  @Format_Column_Header("RTDEPT", "Dept")
+                  @Format_Column_Header("RTWC", "Work<br>Center")
+                  @Format_Column_Header("xxx", "Work Center<br>Description")
+                  @Format_Column_Header("RTRTYP", "Rtg<br>Type")
+                  @Format_Column_Header("RTALTC", "Alt<br>Oper")
+                  @Format_Column_Header("xxx", "Pieces<br>Per Hour")
+
+                  @OrderBy_Sort("RTMHRS", sortVar)
+                  @dtw_assign(columnHdr, "Measured<br>Hours")
+                  %if (sortVar == "sort")
+                     <th class="colhdr$(sortVar)" colspan="2" $(helpCursor)><span title="$(orderByDisplay)">$(columnHdr)</span></th>
+                  %else
+                     <th class="colhdr" colspan="2">$(columnHdr)</th>
+                  %endif
+
+                  @Format_Column_Header("RTMPON", "Crew<br>Size")
+
+                  @OrderBy_Sort("RTSUHR", sortVar)
+                  @dtw_assign(columnHdr, "Setup<br>Hours")
+                  %if (sortVar == "sort")
+                     <th class="colhdr$(sortVar)" colspan="2" $(helpCursor)><span title="$(orderByDisplay)">$(columnHdr)</span></th>
+                  %else
+                     <th class="colhdr" colspan="2">$(columnHdr)</th>
+                  %endif
+
+                  @Format_Column_Header("RTMACH", "Mach#")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("WCPLT=$(V_RTPLT) and WCDEPT='$(V_RTDEPT)' and WCWC='$(V_RTWC)'", "HDMWCM", "WCDESC", workCenterDesc)
+              @RtvFldDesc("FLTYPE='RTGTYPE' and FLVALU='$(V_RTRTYP)'", "SYFLAG", "FLDESC", routingTypeDesc)
+              @RtvFldDesc("FLTYPE='ALTOPER' and FLVALU='$(V_RTALTC)'", "SYFLAG", "FLDESC", altOperDesc)
+              @RtvFldDesc("FLTYPE='RTMHRC' and FLVALU='$(V_RTMHRC)'", "SYFLAG", "FLDESC", measHrsDesc)
+              @RtvFldDesc("FLTYPE='RTSURC' and FLVALU='$(V_RTSURC)'", "SYFLAG", "FLDESC", setupHrsDesc)
+              @Format_Nbr($(V_RTMHRS), F_RTMHRS, "4", $(hrsEditCode), "", "", "")
+              @Format_Nbr($(V_RTMPON), F_RTMPON, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_RTSUHR), F_RTSUHR, "2", $(hrsEditCode), "", "", "")
+              @dtw_assign(piecesPerHour, "")
+     	       <tr class="$(rowClass)">
+                  %if (V_RTMHRS != "0")
+                      %if (V_RTMHRC== "P")
+                          @dtw_divide("1", V_RTMHRS, piecesPerHour)
+                      %endif
+                      %if (V_RTMHRC== "H")
+                          @dtw_divide("100", V_RTMHRS, piecesPerHour)
+                      %endif
+                      %if (V_RTMHRC== "M")
+                          @dtw_divide("1000", V_RTMHRS, piecesPerHour)
+                      %endif
+                      @dtw_format(piecesPerHour, "", "5", piecesPerHour)
+                  %endif
+                  <td class="colnmbr">$(V_RTSEQN)</td>
+                  <td class="colalph">$(V_RTDEPT)</td>
+                  <td class="colalph">$(V_RTWC)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)WorkCenterSelect.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;department=@dtw_rurlescseq(V_RTDEPT)&amp;workCenter=@dtw_rurlescseq(V_RTWC)&amp;description=@dtw_rurlescseq(workCenterDesc)" title="View Work Center">$(workCenterDesc)</a></td>
+                  <td class="colcode" $(helpCursor)><span title="$(routingTypeDesc)">$(V_RTRTYP)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(altOperDesc)">$(V_RTALTC)</span></td>
+                  <td class="colnmbr">$(piecesPerHour)</td>
+                  <td class="colnmbr">$(F_RTMHRS)</td>
+                  <td class="colcode" $(helpCursor)><span title="$(measHrsDesc)">$(V_RTMHRC)</span></td>
+                  <td class="colnmbr">$(F_RTMPON)</td>
+                  <td class="colnmbr">$(F_RTSUHR)</td>
+                  <td class="colcode" $(helpCursor)><span title="$(setupHrsDesc)">$(V_RTSURC)</span></td>
+                  <td class="colalph">$(V_RTMACH)</td>
+                  %if (V_RTNTCD != "" && formatToPrint != "Y")
+                      <td class="colicon"><a href="$(homeURL)$(cGIPath)RoutingNotesInquiry.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)&amp;sequenceNumber=@dtw_rurlescseq(V_RTSEQN)" onclick="$(commentWinVar)">$(commentExistImage )</a></td>
+                  %else
+                      <td class="colicon">&nbsp;</td>
+                  %endif
+
+                  %if (V_RTCCCD != "" && formatToPrint != "Y" && V_HDSCRL != "")
+                      <td class="colicon"><a href="$(homeURL)$(cGIPath)RoutingCostCatInquiry.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)&amp;sequenceNumber=@dtw_rurlescseq(V_RTSEQN)" onclick="$(commentWinVar)">$(costCategorySml)</a></td>
+                  %else
+                      <td class="colicon">&nbsp;</td>
+                  %endif
+	       </tr>
+	   %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Product_Structure (IN CHAR(64)    profileHandle,
+				                           CHAR(2)     dataBaseID,
+                                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      <a name="productstructure"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)ProductStructure.d2w/REPORT$(d2wVarBase)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  %if (routingBOMInterface == "Y")
+                      @Format_Column_Header("PSSEQN", "Rtg<br>Seq")
+                  %endif
+
+                  @Format_Column_Header("PSCPN", "Component<br>Item")
+                  @Format_Column_Header("IMIMDS", "Component<br>Description")
+                  @Format_Column_Header("PSREFN", "Engineering<br>Reference")
+                  @Format_Column_Header("PSQPER", "Quantity<br>Per")
+                  @Format_Column_Header("PSFSTK", "Backflush<br>Code")
+                  @Format_Column_Header("PSSCPP", "Scrap<br>%")
+                  @Format_Column_Header("PSSTDT", "Effectivity<br>Start Date")
+                  @Format_Column_Header("PSDSDT", "Effectivity<br>Stop Date")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("FLTYPE='BACKFLUSH' and FLVALU='$(V_PSFSTK)'", "SYFLAG", "FLDESC", backFlushDesc)
+              @Format_Nbr($(V_PSQPER), F_PSQPER, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr("@dtw_rMultiply(V_PSSCPP, "100")", F_PSSCPP, "1", $(pctEditCode), "Y", "", "")
+              @Format_Date(V_PSSTDT, "D", F_PSSTDT)
+              @Format_Date(V_PSDSDT, "D", F_PSDSDT)
+	       <tr class="$(rowClass)">
+                  %if (routingBOMInterface == "Y")
+                      <td class="colnmbr">$(V_PSSEQN)</td>
+                  %endif
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_PSCPN))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_PSCPN)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_PSCPN)&amp;itemDescription=@dtw_rurlescseq(V_IMIMDS)" title="View Item">$(V_IMIMDS)</a></td>
+                  <td class="colalph">$(V_PSREFN)</td>
+                  <td class="colnmbr">$(F_PSQPER)</td>
+                  <td class="colcode" $(helpCursor)><span title="$(backFlushDesc)">$(V_PSFSTK)</span></td>
+                  <td class="colnmbr">$(F_PSSCPP)</td>
+                  <td class="colnmbr">$(F_PSSTDT)</td>
+                  <td class="colnmbr">$(F_PSDSDT)</td>
+                  %if (V_IPECDP == "I" )
+                      <td class="colicon">$(compDispImageSml)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Cost_Summary (IN CHAR(64)    profileHandle,
+				                      CHAR(2)     dataBaseID,
+                                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      <a name="costsummary"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)CostSummary.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLCC1D", Cat1Desc)
+                  @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLCC2D", Cat2Desc)
+                  @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLCC3D", Cat3Desc)
+                  @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLCC4D", Cat4Desc)
+                  @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLCC5D", Cat5Desc)
+
+                  @Format_Column_Header("CMCSET", "Cost<br>Set")
+                  @Format_Column_Header("STCSLD", "Description")
+                  @Format_Column_Header("xxx", "$(Cat1Desc)")
+                  @Format_Column_Header("xxx", "$(Cat2Desc)")
+                  @Format_Column_Header("xxx", "$(Cat3Desc)")
+                  @Format_Column_Header("xxx", "$(Cat4Desc)")
+                  @Format_Column_Header("xxx", "$(Cat5Desc)")
+                  @Format_Column_Header("xxx", "Total Cost")
+                  @Format_Column_Header("CMDTMT", "Last<br>Maint")
+                  @Format_Column_Header("CMRUDT", "Last Cost<br>Roll")
+                  @Format_Column_Header("CMCEFL", "C<br>E")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Date(V_CMDTMT, "D", F_CMDTMT)
+              @Format_Date(V_CMRUDT, "D", F_CMRUDT)
+              @DTW_ASSIGN(costTotal, @dtw_radd(V_CMUCC1, @dtw_radd(V_CMUCC2, @dtw_radd(V_CMUCC3, @dtw_radd(V_CMUCC4, V_CMUCC5)))))
+	       <tr class="$(rowClass)">
+                  <td class="colnmbr">$(V_CMCSET)</td>
+                  <td class="colalph">$(V_STCSLD)</td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CostSummaryDetCostInquiry.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)&amp;costSet=@dtw_rurlescseq(V_CMCSET)&amp;costCategory=1&amp;totalCost=@dtw_rurlescseq(V_CMUCC1)" onclick="$(inquiryWinVar)" title="Detail Cost Quickview">$(V_CMUCC1)</a></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CostSummaryDetCostInquiry.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)&amp;costSet=@dtw_rurlescseq(V_CMCSET)&amp;costCategory=2&amp;totalCost=@dtw_rurlescseq(V_CMUCC2)" onclick="$(inquiryWinVar)" title="Detail Cost Quickview">$(V_CMUCC2)</a></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CostSummaryDetCostInquiry.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)&amp;costSet=@dtw_rurlescseq(V_CMCSET)&amp;costCategory=3&amp;totalCost=@dtw_rurlescseq(V_CMUCC3)" onclick="$(inquiryWinVar)" title="Detail Cost Quickview">$(V_CMUCC3)</a></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CostSummaryDetCostInquiry.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)&amp;costSet=@dtw_rurlescseq(V_CMCSET)&amp;costCategory=4&amp;totalCost=@dtw_rurlescseq(V_CMUCC4)" onclick="$(inquiryWinVar)" title="Detail Cost Quickview">$(V_CMUCC4)</a></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CostSummaryDetCostInquiry.d2w/REPORT$(d2wVarBase)&amp;$(plantURL)&amp;costSet=@dtw_rurlescseq(V_CMCSET)&amp;costCategory=5&amp;totalCost=@dtw_rurlescseq(V_CMUCC5)" onclick="$(inquiryWinVar)" title="Detail Cost Quickview">$(V_CMUCC5)</a></td>
+                  <td class="colnmbr">$(costTotal)</td>
+                  <td class="coldate">$(F_CMDTMT)</td>
+                  <td class="coldate">$(F_CMRUDT)</td>
+                  <td class="colalph">$(V_CMCEFL)</td>
+              </tr>
+              %if ($(V_CMCEFL) != "")
+                  @Retrieve_Cost_Error(V_CMCEFL, errMsg)
+                  <tr class="$(rowClass)">
+                      <td>&nbsp;</td>
+                      <td>&nbsp;</td>
+                      <td class="colalph" colspan="9">$(errMsg)</td>
+                  </tr>
+              %endif
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Warehouses (IN CHAR(64)    profileHandle,
+				                    CHAR(2)     dataBaseID,
+                                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="warehouses"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=225&amp;fKey1=IMITEM&amp;fVal1=@dtw_rurlescseq(itemNumber)&amp;tag=QSEARCH")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+          %if (sql_Record_Count == "0")
+              <table $(contentTable)>
+                  %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              @Format_Nbr(totalQuantity, F_totalQuantity, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              <div class="page">
+                   Total Quantity: $(F_totalQuantity)
+              </div>
+
+              <table $(contentTable)>
+                  <tr>
+                      @Format_Column_Header("IWWHS", "Whs")
+                      @Format_Column_Header("WHWHNMU", "Warehouse Name")
+                      @Format_Column_Header("IWOHQT", "Quantity<br>On Hand")
+                      @Format_Column_Header("IWLIST", "List<br>Price")
+                  </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(maintainVar, "$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_IWITEM)&amp;fromItemNumber=@dtw_rurlescseq(V_IWITEM)&amp;fromWarehouse=@dtw_rurlescseq(V_IWWHS)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+              @Format_Nbr(V_IWLIST, F_IWLIST, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+              @Format_Nbr(V_IWOHQT, F_IWOHQT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)WarehouseSelect.d2w/REPORT$(maintainVar)&amp;warehouseNumber=@dtw_rurlescseq(V_IWWHS)&amp;warehouseName=@dtw_rurlescseq(V_WHWHNM)" title="View Warehouse"> $(V_IWWHS)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemWarehouseSelect.d2w/REPORT$(maintainVar)&amp;warehouseNumber=@dtw_rurlescseq(V_IWWHS)" title="View Item/Warehouse"> $(V_WHWHNM)</a></td>
+                  <td class="colnmbr">$(F_IWOHQT)</td>
+                  <td class="colnmbr">$(F_IWLIST)</td>
+
+                  %if (V_IWIWAC == "I")
+                      <td class="colcode">$(inactiveImageSml)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_ConfigurationHeader (IN CHAR(64)    profileHandle,
+				                             CHAR(2)     dataBaseID,
+                                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      <a name="configurationheader"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)ConfigurationHeader.d2w/REPORT$(d2wVarBase)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("CHCFGT", "Type")
+                  @Format_Column_Header("CHCFGI", "ID")
+                  @Format_Column_Header("CHCDSCU", "Type Description")
+                  @Format_Column_Header("CHECN", "ECN")
+                  @Format_Column_Header("CHDSGP", "Design<br>Phase")
+                  @Format_Column_Header("CHREL", "Release To<br>Production")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_CHCFGT)</td>
+                  <td class="colalph">$(V_CHCFGI)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ConfigurationHeaderSelect.d2w/REPORT$(d2wVarBase)&amp;configurationType=@dtw_rurlescseq(V_CHCFGT)&amp;configurationID=@dtw_rurlescseq(V_CHCFGI)" title="View Configuration Header">$(V_CHCDSC)</a></td>
+                  <td class="colalph">$(V_CHECN)</td>
+                  <td class="colcode">$(V_CHDSGP)</td>
+                  <td class="colcode">$(V_CHREL)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_ManufacturingOrders (IN  CHAR(64)    profileHandle,
+				                              CHAR(2)     dataBaseID,
+                                                             CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="manufacturingorders"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=445&amp;fKey1=OHPLT&amp;fVal1=@dtw_rurlescseq(plantNumber)&amp;fKey2=OHPN&amp;fVal2=@dtw_rurlescseq(itemNumber)&amp;tag=QSEARCH")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+          %if (sql_Record_Count == "0")
+              <table $(contentTable)>
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              @Format_Nbr(totalQuantity, F_totalQuantity, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              <div class="page">
+                   Total Quantity All Mfg Orders: $(F_totalQuantity)
+              </div>
+
+              <table $(contentTable)>
+                  <tr>
+                      @Format_Column_Header("OHORD", "Order<br>Number")
+                      @Format_Column_Header("OHCQTY", "Quantity")
+                      @Format_Column_Header("OHCSDT", "Start Date")
+                      @Format_Column_Header("OHCDDT", "Due Date")
+                      @Format_Column_Header("OHOTYP", "Order<br>Type")
+                      @Format_Column_Header("OHSTC", "Status")
+                      @Format_Column_Header("OHPAPS", "Print<br>Switch")
+                      @Format_Column_Header("OHRORD", "Reference Number")
+                  </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("IMITEM='$(V_OHPN)'", "HDIMST", "IMIMDS", itemDesc)
+              @RtvFldDesc("FLTYPE='MFGORDTYPE' and FLVALU='$(V_OHOTYP)'", "SYFLAG", "FLDESC", orderTypeDesc)
+              @RtvFldDesc("FLTYPE='MFGORDSTAT' and FLVALU='$(V_OHSTC)'", "SYFLAG", "FLDESC", statusDesc)
+              @RtvFldDesc("FLTYPE='PAPERSW' and FLVALU='$(V_OHPAPS)'", "SYFLAG", "FLDESC", paperSwitchDesc)
+              @Format_Nbr($(V_OHCQTY), F_OHCQTY, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Date_ISO(V_OHCSDT, "D", F_OHCSDT)
+              @Format_Date_ISO(V_OHCDDT, "D", F_OHCDDT)
+	       <tr class="$(rowClass)">
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(d2wVarBase)&amp;mfgOrder=@dtw_rurlescseq(V_OHORD)" onclick="$(inquiryWinVar)" title="View Mfg Order">$(V_OHORD)</a></td>
+                  <td class="colnmbr">$(F_OHCQTY)</td>
+                  <td class="colnmbr">$(F_OHCSDT)</td>
+                  <td class="colnmbr">$(F_OHCDDT)</td>
+                  <td class="colcode" $(helpCursor)><span title="$(orderTypeDesc)">$(V_OHOTYP)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(statusDesc)">$(V_OHSTC)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(paperSwitchDesc)">$(V_OHPAPS)</span></td>
+                  <td class="colalph">$(V_OHRORD)</td>
+	       </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+%FUNCTION(dtw_sql) ItemPlant_Select_Current_Quantities (IN CHAR(64)    profileHandle,
+				                            CHAR(2)     dataBaseID,
+                                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="currentquantities"></a>
+      @dtw_assign(displayMaxRowsMsg, "N")
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      %ROW{
+          @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMQUAL", V_IMQUAL)
+          @dtw_assign(edtVar, "")
+          @Concat_Field("@@pdrl", V_HDPDRL)
+          @Concat_Field("@@item", itemNumber)
+          @Concat_Field("@@plt@", plantNumber)
+          @dtw_concat(edtVar, "}{", edtVar)
+          @Get_Qty_ItemPlt(edtVar)
+
+          @Decat_Negative("@@aval")   @dtw_assign(V_SQAVAL, fieldValue)
+          @Decat_Negative("@@ohqt")   @dtw_assign(V_SQOHQT, fieldValue)
+          @Decat_Negative("@@ohrc")   @dtw_assign(V_SQOHRC, fieldValue)
+          @Decat_Negative("@@qhsr")   @dtw_assign(V_SQQHSR, fieldValue)
+          @Decat_Negative("@@qoo@")   @dtw_assign(V_SQQOO,  fieldValue)
+          @Decat_Negative("@@qiyt")   @dtw_assign(V_SQQIYT, fieldValue)
+          @Decat_Negative("@@qsyt")   @dtw_assign(V_SQQSYT, fieldValue)
+          @Decat_Negative("@@quns")   @dtw_assign(V_SQQUNS, fieldValue)
+          @Decat_Negative("@@qryt")   @dtw_assign(V_SQQRYT, fieldValue)
+          @Decat_Negative("@@qayt")   @dtw_assign(V_SQQAYT, fieldValue)
+          @Decat_Negative("@@resq")   @dtw_assign(V_SQRESQ, fieldValue)
+
+          @Format_Nbr(V_SQAVAL, F_SQAVAL, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQOHQT, F_SQOHQT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQOHRC, F_SQOHRC, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQQHSR, F_SQQHSR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQQOO,  F_SQQOO,  $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQQSYT, F_SQQSYT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQQUNS, F_SQQUNS, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQQRYT, F_SQQRYT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQQAYT, F_SQQAYT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_SQRESQ, F_SQRESQ, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPFOQ,  F_IPFOQ,  "0", $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPMNQ,  F_IPMNQ,  "0", $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPMXQ,  F_IPMXQ,  "0", $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPMUQ,  F_IPMUQ,  "0", $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPSSQ,  F_IPSSQ,  "0", $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPOHFS, F_IPOHFS, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPCMTO, F_IPCMTO, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPQMRL, F_IPQMRL, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPFPOQ, F_IPFPOQ, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPQMFG, F_IPQMFG, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @dtw_add(V_IPYTDU, V_SQQIYT, V_usage)
+          @Format_Nbr(V_usage, F_usage, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPSCRP, F_IPSCRP, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPYTDL, F_IPYTDL, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_IPAAU,  F_IPAAU,  $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+
+          <table $(contentTable)>
+              <tr valign=top>
+                  <td>
+                      <table $(contentTable)>
+                          <tr valign="top">
+                              <td>
+                                  <table $(contentTable)>
+                                      <tr>
+                                          <td class="dsphdr">On Hand</td>
+                                          <td class="dspcode">&nbsp;</td>
+                                          <td class="dspqty">$(F_SQOHQT)</td>
+                                      </tr>
+                                      %if (V_CIOOIA == "Y")
+                                          <tr>
+                                              <td class="dsphdr">On Order</td>
+                                              <td class="dspcode">+</td>
+                                              <td class="dspqty">$(F_SQQOO)</td>
+                                          </tr>
+                                      %endif
+                                      %if (V_IMQUAL != "Y")
+                                          <tr>
+                                              <td class="dsphdr">On Hand Receiving</td>
+                                              <td class="dspcode">+</td>
+                                              <td class="dspqty">$(F_SQOHRC)</td>
+                                          </tr>
+                                      %endif
+                                      <tr>
+                                          <td class="dsphdr">On Hand Floorstock</td>
+                                          <td class="dspcode">+</td>
+                                          <td class="dspqty">$(F_IPOHFS)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Committed To Mfg</td>
+                                          <td class="dspcode">-</td>
+                                          <td class="dspqty">$(F_IPCMTO)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Held In Stock</td>
+                                          <td class="dspcode">-</td>
+                                          <td class="dspqty">$(F_SQQHSR)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Reserved</td>
+                                          <td class="dspcode">-</td>
+                                          <td class="dspqty">$(F_SQRESQ)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Available</td>
+                                          <td class="dspcode">&nbsp;</td>
+                                          <td class="dsptotal">$(F_SQAVAL)</td>
+                                      </tr>
+                                  </table>
+                              </td>
+                              <td>&nbsp;</td>
+                              <td>
+                                  <table $(contentTable)>
+                                      %if (V_IMQUAL == "Y")
+                                          <tr>
+                                              <td class="dsphdr">On Hand Receiving</td>
+                                              <td class="dspqty">$(F_SQOHRC)</td>
+                                          </tr>
+                                      %endif
+                                      %if (V_CIOOIA != "Y")
+                                          <tr>
+                                              <td class="dsphdr">On Order</td>
+                                              <td class="dspqty">$(F_SQQOO)</td>
+                                          </tr>
+                                      %endif
+                                      <tr>
+                                          <td class="dsphdr">On Order Unscheduled</td>
+                                          <td class="dspqty">$(F_SQQUNS)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Released</td>
+                                          <td class="dspqty">$(F_IPQMRL)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Firm Planned</td>
+                                          <td class="dspqty">$(F_IPFPOQ)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Prior Year Usage</td>
+                                          <td class="dspqty">$(F_IPYTDL)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Anticipated Annual Usage</td>
+                                          <td class="dspqty">$(F_IPAAU)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Fixed Order</td>
+                                          <td class="dspqty">$(F_IPFOQ)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Minimum Order</td>
+                                          <td class="dspqty">$(F_IPMNQ)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Maxmimum Order</td>
+                                          <td class="dspqty">$(F_IPMXQ)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Multiple Order</td>
+                                          <td class="dspqty">$(F_IPMUQ)</td>
+                                      </tr>
+                                      <tr>
+                                          <td class="dsphdr">Safety Stock</td>
+                                          <td class="dspqty">$(F_IPSSQ)</td>
+                                      </tr>
+                                  </table>
+                              </td>
+                              <td>&nbsp;</td>
+                              <td>
+                                  <fieldset class="legendBody">
+                                  <legend class="legendTitle">Year To Date</legend>
+                                      <table $(contentTable)>
+                                          <tr>
+                                              <td class="dsphdr">Billed</td>
+                                              <td class="dspqty">$(F_SQQSYT)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">Manufactured</td>
+                                              <td class="dspqty">$(F_IPQMFG)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">Received</td>
+                                              <td class="dspqty">$(F_SQQRYT)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">Usage</td>
+                                              <td class="dspqty">$(F_usage)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">Scrapped</td>
+                                              <td class="dspqty">$(F_IPSCRP)</td>
+                                          </tr>
+                                          <tr>
+                                              <td class="dsphdr">Adjusted</td>
+                                              <td class="dspqty">$(F_SQQAYT)</td>
+                                          </tr>
+                                      </table>
+                                  </fieldset>
+                              </td>
+                          </tr>
+                      </table>
+                  </td>
+              </tr>
+          </table>
+      %}
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Usage_ByPeriod (IN CHAR(64)    profileHandle,
+				                        CHAR(2)     dataBaseID,
+                                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{ 
+
+      <a name="usagebyperiod"></a>
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("PHPERD", "Transaction<br>Period")
+                  @Format_Column_Header("PHYTDU", "Usage")
+                  @Format_Column_Header("PHSCRP", "Scrapped<br>From WIP")
+                  @Format_Column_Header("PHYADJ", "Adjustments")
+                  @Format_Column_Header("PHYRCV", "Received")
+                  @Format_Column_Header("PHYFSS", "Scrapped<br>From Floorstock")
+                  @Format_Column_Header("PHQMFG", "Manufactured")
+                  @Format_Column_Header("PHREWK", "Reported<br>To Rework")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+	       <tr class="$(rowClass)">
+                  @PeriodFromCYP(V_PHPERD)
+                  @Format_Nbr($(V_PHYTDU), F_PHYTDU, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  @Format_Nbr($(V_PHSCRP), F_PHSCRP, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  @Format_Nbr($(V_PHYADJ), F_PHYADJ, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  @Format_Nbr($(V_PHYRCV), F_PHYRCV, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  @Format_Nbr($(V_PHYFSS), F_PHYFSS, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  @Format_Nbr($(V_PHQMFG), F_PHQMFG, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  @Format_Nbr($(V_PHREWK), F_PHREWK, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+
+                  <td class="colcode">$(V_PHPERD)</td>
+                  <td class="colnmbr">$(F_PHYTDU)</td>
+                  <td class="colnmbr">$(F_PHSCRP)</td>
+                  <td class="colnmbr">$(F_PHYADJ)</td>
+                  <td class="colnmbr">$(F_PHYRCV)</td>
+                  <td class="colnmbr">$(F_PHYFSS)</td>
+                  <td class="colnmbr">$(F_PHQMFG)</td>
+                  <td class="colnmbr">$(F_PHREWK)</td>
+	       </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Usage_ByYear (IN CHAR(64)    profileHandle,
+				                      CHAR(2)     dataBaseID,
+                                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="usagebyyear"></a>
+      @dtw_assign(displayMaxRowsMsg, "N")
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("PHCYR", "Transaction<br>Year")
+                  @Format_Column_Header("PHYTDU", "Usage")
+                  @Format_Column_Header("PHSCRP", "Scrapped<br>From WIP")
+                  @Format_Column_Header("PHYADJ", "Adjustments")
+                  @Format_Column_Header("PHYRCV", "Received")
+                  @Format_Column_Header("PHYFSS", "Scrapped<br>From Floorstock")
+                  @Format_Column_Header("PHQMFG", "Manufactured")
+                  @Format_Column_Header("PHREWK", "Reported<br>To Rework")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (V_PHCYR > "99")
+                  @dtw_assign(transYear, "20@dtw_rsubstr(V_PHCYR, "2", "2")")
+              %else
+                  @dtw_assign(transYear, "19@dtw_rsubstr(V_PHCYR, "1", "2")")
+              %endif
+
+              @Format_Nbr(V_S_YTDU, F_YTDU, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_SCRP, F_SCRP, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_YADJ, F_YADJ, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_YRCV, F_YRCV, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_YFSS, F_YFSS, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_QMFG, F_QMFG, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_REWK, F_REWK, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+
+              <tr class="$(rowClass)">
+                  <td class="colcode">$(transYear)</td>
+                  <td class="colnmbr">$(F_YTDU)</td>
+                  <td class="colnmbr">$(F_SCRP)</td>
+                  <td class="colnmbr">$(F_YADJ)</td>
+                  <td class="colnmbr">$(F_YRCV)</td>
+                  <td class="colnmbr">$(F_YFSS)</td>
+                  <td class="colnmbr">$(F_QMFG)</td>
+                  <td class="colnmbr">$(F_REWK)</td>
+              </tr>
+	   %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Whs_Usage_ByPeriod (IN CHAR(64)    profileHandle,
+				                                           CHAR(2)     dataBaseID,
+                                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="whsusagebyperiod"></a>
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMKIT", kitIssued)
+
+              <tr>
+                  @Format_Column_Header("IHPERD", "Transaction<br>Period")
+                  @Format_Column_Header("IHDLRS", "Sales<br>Amount")
+                  @Format_Column_Header("IHQSLD", "Quantity<br>Sold")
+                  @Format_Column_Header("IHQREC", "Quantity<br>Received")
+                  @Format_Column_Header("IHQAMT", "Quantity<br>Adjusted")
+                  @Format_Column_Header("IHQTRF", "Quantity<br>Transferred")
+                  @Format_Column_Header("IHQTYI", "Quantity<br>Issued")
+                  %if (kitIssued == "K")
+                      @Format_Column_Header("IHQKTI", "Quantity<br>Kit Issued")
+                  %endif
+                  @Format_Column_Header("IHQRTV", "Quantity<br>Returned<br>To Vendor")
+                  @Format_Column_Header("IHQSCR", "Quantity<br>Scrapped")
+                  @Format_Column_Header("IHQDSH", "Quantity<br>Drop Shipped")
+                  @Format_Column_Header("IHSTOT", "Number Of<br>Stockouts")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @PeriodFromCYP(V_IHPERD)
+              @Format_Nbr(V_IHQREC, F_IHQREC, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_IHQAMT, F_IHQAMT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_IHQTRF, F_IHQTRF, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_IHQTYI, F_IHQTYI, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_IHQRTV, F_IHQRTV, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_IHQSCR, F_IHQSCR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_IHQSLD, F_IHQSLD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_IHQDSH, F_IHQDSH, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_IHDLRS, F_IHDLRS, "2", $(amtEditCode), "Y", "", "")
+
+              <tr class="$(rowClass)">
+                  <td class="colcode">$(V_IHPERD)</td>
+                  <td class="colnmbr">$(F_IHDLRS)</td>
+                  <td class="colnmbr">$(F_IHQSLD)</td>
+                  <td class="colnmbr">$(F_IHQREC)</td>
+                  <td class="colnmbr">$(F_IHQAMT)</td>
+                  <td class="colnmbr">$(F_IHQTRF)</td>
+                  <td class="colnmbr">$(F_IHQTYI)</td>
+                  %if (kitIssued == "K")
+                      @Format_Nbr(V_IHQKTI, F_IHQKTI, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                      <td class="colnmbr">$(F_IHQKTI)</td>
+                  %endif
+                  <td class="colnmbr">$(F_IHQRTV)</td>
+                  <td class="colnmbr">$(F_IHQSCR)</td>
+                  <td class="colnmbr">$(F_IHQDSH)</td>
+                  <td class="colnmbr">$(V_IHSTOT)</td>
+              </tr>
+	   %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Whs_Usage_ByYear (IN CHAR(64)    profileHandle,
+				                                         CHAR(2)     dataBaseID,
+                                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="whsusagebyyear"></a>
+      @dtw_assign(displayMaxRowsMsg, "N")
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMKIT", kitIssued)
+
+              <tr>
+                  @Format_Column_Header("IHCYR", "Transaction<br>Year")
+                  @Format_Column_Header("IHDLRS", "Sales<br>Amount")
+                  @Format_Column_Header("IHQSLD", "Quantity<br>Sold")
+                  @Format_Column_Header("IHQREC", "Quantity<br>Received")
+                  @Format_Column_Header("IHQAMT", "Quantity<br>Adjusted")
+                  @Format_Column_Header("IHQTRF", "Quantity<br>Transferred")
+                  @Format_Column_Header("IHQTYI", "Quantity<br>Issued")
+                  %if (kitIssued == "K")
+                      @Format_Column_Header("IHQKTI", "Quantity<br>Kit Issued")
+                  %endif
+                  @Format_Column_Header("IHQRTV", "Quantity<br>Returned<br>To Vendor")
+                  @Format_Column_Header("IHQSCR", "Quantity<br>Scrapped")
+                  @Format_Column_Header("IHQDSH", "Quantity<br>Drop Shipped")
+                  @Format_Column_Header("IHSTOT", "Number Of<br>Stockouts")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (V_IHCYR > "99")
+                  @dtw_assign(transYear, "20@dtw_rsubstr(V_IHCYR, "2", "2")")
+              %else
+                  @dtw_assign(transYear, "19@dtw_rsubstr(V_IHCYR, "1", "2")")
+              %endif
+
+              @Format_Nbr(V_S_QREC, F_QREC, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_QAMT, F_QAMT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_QTRF, F_QTRF, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_QTYI, F_QTYI, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_QRTV, F_QRTV, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_QSCR, F_QSCR, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_QSLD, F_QSLD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_QDSH, F_QDSH, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_S_DLRS, F_DLRS, "2", $(amtEditCode), "Y", "", "")
+
+              <tr class="$(rowClass)">
+                  <td class="colcode">$(transYear)</td>
+                  <td class="colnmbr">$(F_DLRS)</td>
+                  <td class="colnmbr">$(F_QSLD)</td>
+                  <td class="colnmbr">$(F_QREC)</td>
+                  <td class="colnmbr">$(F_QAMT)</td>
+                  <td class="colnmbr">$(F_QTRF)</td>
+                  <td class="colnmbr">$(F_QTYI)</td>
+                  %if (kitIssued == "K")
+                      @Format_Nbr(S_QKTI, F_QKTI, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                      <td class="colnmbr">$(F_QKTI)</td>
+                  %endif
+                  <td class="colnmbr">$(F_QRTV)</td>
+                  <td class="colnmbr">$(F_QSCR)</td>
+                  <td class="colnmbr">$(F_QDSH)</td>
+                  <td class="colnmbr">$(V_S_STOT)</td>
+              </tr>
+	   %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Vendor_Open_Orders (IN  CHAR(64)    profileHandle,
+				                                            CHAR(2)     dataBaseID,
+                                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="vendoropenorders"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=186&amp;fKey1=PDITEM&amp;fVal1=@dtw_rurlescseq(itemNumber)&amp;fDsc1=@dtw_rurlescseq(itemDescription)&amp;tag=QSEARCH")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("POVEND", "Vendor")
+                  @Format_Column_Header("xxx", "Vendor Name")
+                  @Format_Column_Header("PDVDSN", "Vendor Item")
+                  @Format_Column_Header("POBUYR", "Buyer")
+                  @Format_Column_Header("POTYPE", "Order<br>Type")
+                  @Format_Column_Header("PDOVWH", "Whs")
+                  @Format_Column_Header("PDPO", "Purchase<br>Order")
+                  @Format_Column_Header("PDPOL#", "Line")
+                  @Format_Column_Header("PDPORL", "Rel")
+                  @Format_Column_Header("PDRORD", "Reference")
+                  @Format_Column_Header("PDRQDT", "Required<br>Date")
+                  @Format_Column_Header("xxx", "Quantity<br>Ordered")
+                  @Format_Column_Header("PDQHRT", "Quantity<br>Held In Receiving")
+                  @Format_Column_Header("xxx", "Quantity<br>Received To Date")
+                  @Format_Column_Header("PDDSCC", "Cost")
+                  @Format_Column_Header("xxx", "Extended<br>Cost")
+              </tr>
+          %endif
+   			
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("VMVEND=$(V_POVEND)", "HDVEND", "VMVNA1", vendorName)
+              %if (V_PDPORL == "0")
+                  @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(V_PDQTOR, V_PDDSCC), V_PDPCPB)", extendedPrice, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr(V_PDDSCC, F_PDDSCC, $(prcNbrDec), $(amtEditCode), "", "", "")
+              %endif
+              @Format_Nbr("@dtw_rdivide(V_PDQTOR, V_PDPCPB)", qtyOrdered, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_PDQHRT, F_PDQHRT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr("@dtw_rdivide(@dtw_radd(V_PDQRST, @dtw_radd(V_PDQRRT, V_PDQRFT)), V_PDPCPB)", qtyRecv, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_PDDSCC, F_PDDSCC, $(prcNbrDec), $(amtEditCode), "", "", "")
+              @Format_Date(V_PDRQDT, "D", F_PDRQDT)
+              @RtvFldDesc("OTAPID='PO' and OTOTCD='$(V_POTYPE)'", "HDOTYP", "OTDESC", orderTypeDesc)
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)VendorDashboard.php$(altVarBase)&amp;vendorNumber=$(V_POVEND)&amp;fromItem=@dtw_rurlescseq($(itemNumber))" title="View Vendor Dashboard">$(V_POVEND)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)VendorSelect.d2w/REPORT$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(V_POVEND)&amp;vendorName=@dtw_rurlescseq(vendorName)" title="View Vendor">$(vendorName)</a></td>
+                  <td class="colalph">$(V_PDVDSN)</td>
+                  <td class="colalph"><a href="$(homeURL)$(phpPath)BuyerSelect.php$(altVarBase)&amp;buyer=@dtw_rurlescseq(V_POBUYR)" title="View Buyer">$(V_BMBNA1)</a></td>
+                  <td class="colcode" $(helpCursor)><span title="$(orderTypeDesc)">$(V_POTYPE)</span></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)ItemWarehouseSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(itemNumber))&amp;warehouseNumber=@dtw_rurlescseq(V_PDOVWH)" title="View Item/Warehouse"> $(V_PDOVWH)</a></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)SelectPO.php$(altVarBase)&amp;vendorNumber=@dtw_rurlescseq(V_POVEND)&amp;vendorName=@dtw_rurlescseq(vendorName)&amp;purchaseOrderNumber=@dtw_rurlescseq(V_PDPO)" title="View Purchase Order">$(V_PDPO)</a></td>
+                  <td class="colnmbr">$(V_PDPOL#)</td>
+                  <td class="colnmbr">$(V_PDPORL)</td>
+                  <td class="colalph">$(V_PDRORD)</td>
+                  <td class="coldate">$(F_PDRQDT)</td>
+                  <td class="colnmbr">$(qtyOrdered)</td>
+                  <td class="colcode">$(F_PDQHRT)</td>
+                  <td class="colnmbr">$(qtyRecv)</td>
+                  %if (V_PDPORL == "0")
+                      <td class="colnmbr">$(F_PDDSCC)</td>
+                      <td class="colnmbr">$(extendedPrice)</td>
+                  %else
+                      <td class="colcode">&nbsp;</td>
+                      <td class="colcode">&nbsp;</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Vendor_Order_History (IN  CHAR(64)    profileHandle,
+				                                              CHAR(2)     dataBaseID,
+                                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="vendororderhistory"></a>
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("PHVEND", "Vendor")
+                  @Format_Column_Header("xxx", "Vendor Name")
+                  @Format_Column_Header("PIVDSN", "Vendor Item")
+                  @Format_Column_Header("PHBUYR", "Buyer")
+                  @Format_Column_Header("PHTYPE", "Order<br>Type")
+                  @Format_Column_Header("PIOVWH", "Whs")
+                  @Format_Column_Header("PIPO", "Purchase<br>Order")
+                  @Format_Column_Header("PHSEQ#", "Seq")
+                  @Format_Column_Header("PIPOL#", "Line")
+                  @Format_Column_Header("PIPORL", "Rel")
+                  @Format_Column_Header("PIPORF", "Reference")
+                  @Format_Column_Header("PHLRDT", "Date Last<br>Received")
+                  @Format_Column_Header("xxx", "Quantity<br>Ordered")
+                  @Format_Column_Header("PIBUOM", "U/M")
+                  @Format_Column_Header("xxx", "Quantity<br>Received<br>To Date")
+                  @Format_Column_Header("PIDSCC", "Cost")
+                  @Format_Column_Header("xxx", "Extended<br>Cost")
+              </tr>
+          %endif
+   			
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("VMVEND=$(V_PHVEND)", "HDVEND", "VMVNA1", vendorName)
+              @RtvFldDesc("OTAPID='PO' and OTOTCD='$(V_PHTYPE)'", "HDOTYP", "OTDESC", orderTypeDesc)
+              @RtvFldDesc("UMUOM='$(V_PIBUOM)'", "HDUOM", "UMUMLD", uomDesc)
+              @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(V_PITRQT, V_PIDSCC), V_PIPCPB)", extendedPrice, "2", $(amtEditCode), "Y", "", "")
+              @Format_Nbr(V_PIDSCC, F_PIDSCC, $(prcNbrDec), $(amtEditCode), "", "", "")
+              @Format_Nbr("@dtw_rdivide(V_PIQTOR, V_PIPCPB)", qtyOrdered, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr("@dtw_rdivide(V_PITRQT, V_PIPCPB)", qtyRecv, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Date(V_PHLRDT, "D", F_PHLRDT)
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)VendorDashboard.php$(altVarBase)&amp;vendorNumber=$(V_PHVEND)&amp;fromItem=@dtw_rurlescseq($(itemNumber))" title="View Vendor Dashboard">$(V_PHVEND)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)VendorSelect.d2w/REPORT$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(V_PHVEND)&amp;vendorName=@dtw_rurlescseq(vendorName)" title="View Vendor">$(vendorName)</a></td>
+                  <td class="colalph">$(V_PIVDSN)</td>
+                  <td class="colalph"><a href="$(homeURL)$(phpPath)BuyerSelect.php$(altVarBase)&amp;buyer=@dtw_rurlescseq(V_PHBUYR)" title="View Buyer">$(V_BMBNA1)</a></td>
+                  <td class="colcode" $(helpCursor)><span title="$(orderTypeDesc)">$(V_PHTYPE)</span></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)ItemWarehouseSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(itemNumber))&amp;warehouseNumber=@dtw_rurlescseq(V_PIOVWH)" title="View Item/Warehouse"> $(V_PIOVWH)</a></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)SelectPO.php$(altVarBase)&amp;tabID=RECEIPTS&amp;vendorNumber=@dtw_rurlescseq(V_PHVEND)&amp;vendorName=@dtw_rurlescseq(vendorName)&amp;purchaseOrderNumber=@dtw_rurlescseq(V_PIPO)&amp;orderSequence=@dtw_rurlescseq(V_PHSEQ#)" title="View Purchase Order">$(V_PIPO)</a></td>
+                  <td class="colnmbr">$(V_PHSEQ#)</td>
+                  <td class="colnmbr">$(V_PIPOL#)</td>
+                  <td class="colnmbr">$(V_PIPORL)</td>
+                  <td class="colalph">$(V_PHPORF)</td>
+                  <td class="coldate">$(F_PHLRDT)</td>
+                  <td class="colnmbr">$(qtyOrdered)</td>
+                  <td class="colcode" $(helpCursor)><span title="$(uomDesc)">$(V_PIBUOM)</span></td>
+                  <td class="colnmbr">$(qtyRecv)</td>
+                  <td class="colnmbr">$(F_PIDSCC)</td>
+                  <td class="colnmbr">$(extendedPrice)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Lot_Tracking (IN  CHAR(64)    profileHandle,
+				                       CHAR(2)     dataBaseID,
+                                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="lottracking"></a>
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("LTLT#", "Lot<br>Number")
+                  @Format_Column_Header("LTQOH", "Quantity On Hand")
+                  @Format_Column_Header("QTYAVAIL", "Quantity Available")
+                  @Format_Column_Header("LTDTEX", "Expiration Date")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  @Format_Date(V_LTDTEX, "D", F_LTDTEX)
+                  @Format_Nbr(V_LTQOH, F_LTQOH, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  @Format_Nbr(V_QTYAVAIL, F_QTYAVAIL, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)LotSelect.d2w/REPORT$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(V_LTPLT)&amp;warehouseNumber=@dtw_rurlescseq(V_LTWH)&amp;lotNumber=@dtw_rurlescseq(V_LTLT#)" title="View Lot">$(V_LTLT#)</a></td>
+                  <td class="colnmbr">$(F_LTQOH)</td>
+                  <td class="colnmbr">$(F_QTYAVAIL)</td>
+                  <td class="colalph">$(F_LTDTEX)</td>
+              </tr>
+	   %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Kanban_Triggers (IN  CHAR(64)    profileHandle,
+				                          CHAR(2)     dataBaseID,
+                                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="kanbantriggers"></a>
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPPTYP", partType)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPKBPC", policyCode)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPCQTY)", numberContainer)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPCTID", containerID)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPCADJ)", containerAdjustment)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPCQTS)", containerInUse)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPFOQ)", orderQuantity)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPODPT)", orderPoint)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPVEND)", vendorNumber)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPBAC)", analystNumber)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPKBDD", documentDefinition)
+      %if (documentDefinition == "")
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLKBDD", documentDefinition)
+      %endif
+      @RtvFldDesc("FLTYPE='PARTTYPE' AND FLVALU='$(partType)'", "SYFLAG", "FLDESC", partTypeDesc)
+      @RtvFldDesc("FLTYPE='KANBANPLCY' AND FLVALU='$(policyCode)'", "SYFLAG", "FLDESC", policyDesc)
+      @RtvFldDesc("CTCTID='$(containerID)'", "HDCNTM", "CTDESC", containerDesc)
+      @RtvFldDesc("VMVEND=$(vendorNumber)", "HDVEND", "VMVNA1", vendorName)
+      @RtvFldDesc("BMBUYR=$(analystNumber)", "HDBUYR", "BMBNA1", analystName)
+      @RtvFldDesc("FLTYPE='KANBANDOC' AND FLVALU='$(documentDefinition)'", "SYFLAG", "FLDESC", documentDesc)
+      %INCLUDE "KanbanMaintain.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("KBTURN", "Kanban<br>Turnaround")
+                  @Format_Column_Header("KBSTAT", "Status")
+                  @Format_Column_Header("KBDEPT", "Dept")
+                  @Format_Column_Header("KBWC",   "Work<br>Center")
+                  @Format_Column_Header("KBFWHS", "Whs")
+                  @OrderBy_Sort("KBFSTK", sortVar)
+                  @dtw_assign(columnHdr, "Stock Location")
+                  %if (sortVar == "sort")
+                     <th class="colhdr$(sortVar)" colspan="3" $(helpCursor)><span title="$(orderByDisplay)">$(columnHdr)</span></th>
+                  %else
+                     <th class="colhdr" colspan="3">$(columnHdr)</th>
+                  %endif
+                  @Format_Column_Header("KBTTRN", "Traveler Turnaround")
+                  @Format_Column_Header("KBLLSZ", "Last Order Quantity")
+                  @Format_Column_Header("KBVEND", "Vendor Number")
+                  @Format_Column_Header("KBVNDT", "Date Vendor Notified")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colnmbr">$(V_KBTURN)</td>
+                  @RtvFldDesc("FLTYPE='KANBANSTAT' AND FLVALU='$(V_KBSTAT)'", "SYFLAG", "FLDESC", fieldDesc)
+                  <td class="colcode" $(helpCursor)><span title="$(fieldDesc)">$(V_KBSTAT)</span></td>
+                  <td class="colalph">$(V_KBDEPT)</td>
+                  <td class="colalph">$(V_KBWC)</td>
+                  @Format_Nbr($(V_KBFWHS), F_KBFWHS, "0", "Z", "", "", "")
+                  <td class="colnmbr">$(F_KBFWHS)</td>
+                  <td class="colalph">$(V_KBFSTK)</td>
+                  <td class="colalph">$(V_KBFAIL)</td>
+                  <td class="colalph">$(V_KBFSLC)</td>
+                  @Format_Nbr($(V_KBTTRN), F_KBTTRN, "0", "Z", "", "", "")
+                  <td class="colnmbr">$(F_KBTTRN)</td>
+                  @Format_Nbr($(V_KBLLSZ), F_KBLLSZ, "0", "Z", "", "", "")
+                  <td class="colnmbr">$(F_KBLLSZ)</td>
+                  @Format_Nbr($(V_KBVEND), F_KBVEND, "0", "Z", "", "", "")
+                  <td class="colnmbr">$(F_KBVEND)</td>
+                  @Format_Date(V_KBVNDT, "D", F_KBVNDT)
+                  <td class="coldate">$(F_KBVNDT)</td>
+              </tr>
+	   %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Customer_Order_History (IN CHAR(64)    profileHandle,
+				                                               CHAR(2)     dataBaseID,
+                                                               CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="customerorderhistory"></a>
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("OESHTO", "Customer<br>Number")
+                  @Format_Column_Header("xxx", "Customer Name")
+                  @Format_Column_Header("HHORTY", "Order<br>Type")
+                  @Format_Column_Header("DHORD#", "Order<br>Number")
+                  @Format_Column_Header("DHORL#", "Line")
+                  @Format_Column_Header("DHBLN#", "Rel")
+                  @Format_Column_Header("DHRQDT", "Required<br>Date")
+                  @Format_Column_Header("DHQORD", "Quantity<br>Ordered")
+                  @Format_Column_Header("DHQSTD", "Quantity<br>Shipped")
+                  @Format_Column_Header("DHSLPR", "Price")
+                  @Format_Column_Header("xxx", "Extended<br>Price")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Date(V_DHRQDT, "D", F_DHRQDT)
+              %if (V_DHBLKT != "Y")
+                  %if (V_DHSEQ# == "0")
+                      @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(V_DHQSTD, V_DHSLPR), V_DHORUF)", extendedPrice, "2", $(amtEditCode), "Y", "", "")
+                  %else
+                      @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(V_DHQSTC, V_DHSLPR), V_DHORUF)", extendedPrice, "2", $(amtEditCode), "Y", "", "")
+                  %endif
+              %endif
+              @Format_Nbr(V_DHQORD, F_DHQORD, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr(V_DHQSTD, F_DHQSTD, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr(V_DHQSTC, F_DHQSTC, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr(V_DHSLPR, F_DHSLPR, $(prcNbrDec), $(amtEditCode), "", "", "")
+
+              @dtw_assign(customerNumber, V_HHSHTO)
+              @RtvFldDesc("CMCUST=$(customerNumber)", "HDCUST", "CMCNA1", customerName)
+              @RtvFldDesc("SMSLSM=$(V_HHSLSM)", "HDSLSM", "SMSNA1", salesmanName)
+              @RtvFldDesc("OTAPID='OE' and OTOTCD='$(V_HHORTY)'", "HDOTYP", "OTDESC", orderTypeDesc)
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(customerNumber)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)" title="View Customer">$(customerName)</a></td>
+                  <td class="colcode" $(helpCursor)><span title="$(orderTypeDesc)">$(V_HHORTY)</span></td>
+                  <td class="colnmbr"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrderHistory.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_DHORD#)&amp;orderSequence=@dtw_rurlescseq(V_DHSEQ#)&amp;noMenu=@dtw_rurlescseq(noMenu)" title="View Shipment Summary">$(V_DHORD#)</a></td>
+                  <td class="colcode">$(V_DHORL#)</td>
+                  <td class="colcode">$(V_DHBLN#)</td>
+                  <td class="coldate">$(F_DHRQDT)</td>
+                  <td class="colnmbr">$(F_DHQORD)</td>
+                  %if (orderSequence == "000")
+                      <td class="colnmbr">$(F_DHQSTD)</td>
+                  %else
+                      <td class="colnmbr">$(F_DHQSTC)</td>
+                  %endif
+                  %if (V_DHBLKT != "Y")
+                      <td class="colnmbr">$(F_DHSLPR)</td>
+                      <td class="colnmbr">$(extendedPrice)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Top_Customers (IN CHAR(64)    profileHandle,
+				                                      CHAR(2)     dataBaseID,
+                                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (quicklinkRef == "ytdtopcustomers" )
+          <a name="ytdtopcustomers"></a>
+      %else
+          <a name="lastyeartopcustomers"></a>
+      %endif
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+          %if (sql_Record_Count == "0")
+              <table $(contentTable)>
+                  %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              @Format_Nbr(salesTotal, F_salesTotal, "2", $(amtEditCode), "", "$", "")
+              <div class="page">
+                   Total Sales: $(F_salesTotal)
+              </div>
+
+              <table $(contentTable)>
+                  <tr>
+                      @Format_Column_Header("DHSHTO", "Customer<br>Number")
+                      @Format_Column_Header("xxx", "Customer Name")
+                      @Format_Column_Header("SALES", "Sales")
+                      @Format_Column_Header("xxx", "Percent<br>of Total")
+                      @Format_Column_Header("QTYSHIPPED", "Quantity")
+                  </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (salesTotal > "0")
+                  @dtw_multiply(V_SALES, "100", percentOfTotal)
+                  @dtw_divide(percentOfTotal, salesTotal, percentOfTotal)
+                  @Format_Nbr($(percentOfTotal), F_percentOfTotal, "2", $(pctEditCode), "Y", "", "%")
+              %else
+                  @dtw_assign(F_percentOfTotal, "")
+              %endif
+              @Format_Nbr(V_QTYSHIPPED, F_QTYSHIPPED, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr($(V_SALES), F_SALES, "2", $(amtEditCode), "", "", "")
+              @dtw_assign(customerNumber, V_DHSHTO)
+              @RtvFldDesc("CMCUST=$(customerNumber)", "HDCUST", "CMCNA1", customerName)
+
+              <tr class="$(rowClass)">
+                  %if (customerName>"")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(customerNumber)</a></td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)" title="View Customer">$(customerName)</a></td>
+                  %else
+                      <td class="colnmbr">$(customerNumber)</td>
+                      <td class="colalph">$(customerName)</td>
+                  %endif
+                  <td class="colnmbr">$(F_SALES)</td>
+                  <td class="colnmbr">$(F_percentOfTotal)</td>
+                  <td class="colnmbr">$(F_QTYSHIPPED)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) ItemPlant_Select_Top_Vendors (IN CHAR(64)    profileHandle,
+				                                    CHAR(2)     dataBaseID,
+                                                    CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (quicklinkRef == "ytdtopvendors" )
+          <a name="ytdtopvendors"></a>
+      %else
+          <a name="lastyeartopvendors"></a>
+      %endif
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+          %if (sql_Record_Count == "0")
+              <table $(contentTable)>
+                  %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              @Format_Nbr(purchasesTotal, F_purchasesTotal, "2", $(amtEditCode), "", "$", "")
+              <div class="page">
+                   Total Purchases: $(F_purchasesTotal)
+              </div>
+
+              <table $(contentTable)>
+                  <tr>
+                      @Format_Column_Header("PHVEND", "Vendor<br>Number")
+                      @Format_Column_Header("xxx", "Vendor Name")
+                      @Format_Column_Header("PURCHASES", "Purchases")
+                      @Format_Column_Header("xxx", "Percent<br>of Total")
+                      @Format_Column_Header("RECEIVED", "Quantity")
+                  </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (purchasesTotal > "0")
+                  @dtw_multiply(V_PURCHASES, "100", percentOfTotal)
+                  @dtw_divide(percentOfTotal, purchasesTotal, percentOfTotal)
+                  @Format_Nbr($(percentOfTotal), F_percentOfTotal, "2", $(pctEditCode), "Y", "", "%")
+              %else
+                  @dtw_assign(F_percentOfTotal, "")
+              %endif
+              @Format_Nbr(V_RECEIVED, F_RECEIVED, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr($(V_PURCHASES), F_PURCHASES, "2", $(amtEditCode), "", "", "")
+              @RtvFldDesc("VMVEND=$(V_PHVEND)", "HDVEND", "VMVNA1", vendorName)
+              <tr class="$(rowClass)">
+                  %if (vendorName>"")
+                  	  <td class="colnmbr"><a href="$(homeURL)$(phpPath)VendorDashboard.php$(altVarBase)&amp;vendorNumber=$(V_PHVEND)&amp;fromItem=@dtw_rurlescseq($(itemNumber))" title="View Vendor Dashboard">$(V_PHVEND)</a></td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)VendorSelect.d2w/REPORT$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(V_PHVEND)&amp;vendorName=@dtw_rurlescseq(vendorName)" title="View Vendor">$(vendorName)</a></td>
+                  %else
+                      <td class="colnmbr">$(V_PHVEND)</td>
+                      <td class="colalph">$(vendorName)</td>
+                  %endif
+                  <td class="colnmbr">$(F_PURCHASES)</td>
+                  <td class="colnmbr">$(F_percentOfTotal)</td>
+                  <td class="colnmbr">$(F_RECEIVED)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%INCLUDE "AttachmentSelect.icl"
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+  @Set_SQL(stmtSQL)
+%}

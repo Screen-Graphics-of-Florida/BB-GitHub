@@ -1,0 +1,516 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Payroll Voluntary Deductions                                *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Voluntary Deductions"
+  d2wName                 = "PayrollDeductions.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;backHome=@dtw_rurlescseq(backHome)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HPRVDM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchNumber, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "VOLDEDUCTION")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, "SELECT HVDDNO, HVDDNM, HVPRTY, HVCYCL, HVACUM, HVFAO, HVTOSC, HVGLAC, HVGLSB, HVMTHD, HVLDSC, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " upper(HVDDNM) as HVDDNMU,", stmtSQL)
+                      @dtw_concat(stmtSQL, " upper(HVLDSC) as HVLDSCU", stmtSQL)
+                      @dtw_concat(fileSQL, " HRDEDM ", fileSQL)
+                      %if (wildCardSearch!="" || uv_Sql!="")
+                          @dtw_concat(selectSQL, "HVDDNO<>0 ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Deduction_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, "SELECT HVDDNO, HVDDNM, HVPRTY, HVCYCL, HVACUM, HVFAO, HVTOSC, HVGLAC, HVGLSB, HVMTHD, HVLDSC, ", stmtSQL)
+  @dtw_concat(stmtSQL, " upper(HVDDNM) as HVDDNMU,", stmtSQL)
+  @dtw_concat(stmtSQL, " upper(HVLDSC) as HVLDSCU", stmtSQL)
+  @dtw_concat(fileSQL, " HRDEDM ", fileSQL)
+  %if (wildCardSearch!="" || uv_Sql!="")
+      @dtw_concat(selectSQL, "HVDDNO<>0 ", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @Deduction_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) Deduction_Query (IN  CHAR(64) profileHandle,
+                                        CHAR(2)   dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count != "1")
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="80%">
+                  <col width="15%">
+              <tr><td><h1> $(page_title)</h1></td>
+                  %if (formatToPrint != "Y")
+                      <td class="toolbar">
+                          %if ((backHome != "$(d2wName)/report") && (backHome != ""))
+                              <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Bach Home">$(portalHome)</a>
+                          %endif
+                          %INCLUDE "XMLFormat.icl"
+                          %INCLUDE "FormatToPrint.icl"
+                          %INCLUDE "HelpPage.icl"
+                      </td>
+                  %endif
+              </tr>
+          </table>
+          %INCLUDE "ConfMessageDisplay.icl"
+
+          $(hrTagAttr)
+
+          %if (formatToPrint != "Y")
+              <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+                  <table $(quickSearchTable)>
+                      <tr><th class="colhdr">Deduction<br>Name</th>
+                          <th class="colhdr">Deduction<br>Number</th></tr>
+                      <tr><td><input type="text" class="inputalph" name="srchName" size="10" maxlength="10">
+                              <input type="hidden" name="operName" value="LIKE">
+                          </td>
+                          <td><input type="text" class="inputnmbr" name="srchNumber" size="6" maxlength="3">
+                              <input type="hidden" name="operNumber" value="=">
+                          </td>
+                          <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                      </tr>
+                  </table>
+                  <script TYPE="text/javascript">
+                      document.Search.srchName.focus();
+                  </script>
+              </form>
+
+          %INCLUDE "WildCardPage.icl"
+          %endif
+
+          <table $(contentTable)>
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("HVDDNO", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DedNumber" title="Sequence By Deduction Number">Deduction<br>Number</a></th>
+                  @OrderBy_Sort("HVDDNMU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DedName" title="Sequence By Deduction Name">Deduction<br>Name</a></th>
+                  @OrderBy_Sort("HVPRTY", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Priority" title="Sequence By Priority, Deduction Name">Priority</a></th>
+                  @OrderBy_Sort("HVCYCL", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Cycle" title="Sequence By Cycle, Deduction Name">Cycle</a></th>
+                  @OrderBy_Sort("HVACUM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Accumulate" title="Sequence By Accumulate, Deduction Name">Accumulate</a></th>
+                  @OrderBy_Sort("HVFAO", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=FullAmount" title="Sequence By Full Amount Only, Deduction Name">Full Amount<br>Only</a></th>
+                  @OrderBy_Sort("HVTOSC", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=SepCheck" title="Sequence By Take On Separate Check, Deduction Name">Take On<br>Separate Check</a></th>
+                  @OrderBy_Sort("HVGLAC", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=AcctNumber" title="Sequence By Account Number, Deduction Name">Account<br>Number</a></th>
+                  @OrderBy_Sort("HVMTHD", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CalcMethod" title="Sequence By Calculation Method, Deduction Name">Calculation<br>Method</a></th>
+                  @OrderBy_Sort("HVLDSCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=LongDesc" title="Sequence By Long Description">Long<br>Description</a></th>
+              </tr>
+          %INCLUDE "NoRecordsFound.icl"
+      %endif
+
+          %ROW{
+              %if (sql_Record_Count == "1")
+                  @Save_WebReg(webRegCurFile, profileHandle, d2wName, "", orderBy, orderByDisplay, "")
+                  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)PayrollDeductionSelect.d2w/REPORT$(d2wVarBase)&amp;deductionNumber=@dtw_rurlescseq(V_HVDDNO)">
+              %else
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colcode">$(V_HVDDNO)</td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)PayrollDeductionSelect.d2w/REPORT$(d2wVarBase)&amp;deductionNumber=@dtw_rurlescseq(V_HVDDNO)" title="View Voluntary Deduction">$(V_HVDDNM)</a></td>
+                      <td class="colcode">$(V_HVPRTY)</td>
+                      <td class="colcode">$(V_HVCYCL)</td>
+                      @RtvYNDesc($(V_HVACUM), syFlagDesc)
+                      <td class="colcode">$(syFlagDesc)</td>
+                      @RtvYNDesc($(V_HVFAO), syFlagDesc)
+                      <td class="colcode">$(syFlagDesc)</td>
+                      @RtvYNDesc($(V_HVTOSC), syFlagDesc)
+                      <td class="colcode">$(syFlagDesc)</td>
+                      @Format_Acct("$(V_HVGLAC)", "$(V_HVGLSB)", "", F_AcctSub)
+                      <td class="colalph">$(F_AcctSub)</td>
+                      <td class="colcode">$(V_HVMTHD)</td>
+                      <td class="colalph">$(V_HVLDSC)</td>
+                  </tr>
+              %endif
+          %}
+          </table>
+          %if (sql_Record_Count != "1")
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+              $(hrTagAttr)
+              %INCLUDE "Copyright.icl"
+          %endif
+  %}
+%}
+
+%FUNCTION(dtw_sql) Deduction_XMLQuery (IN CHAR(64) profileHandle,
+				           CHAR(2)   dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+           @XMLBeginTag("DeductionList")
+               %ROW{
+
+                   @XMLIDTag(V_HVDDNO, "PayrollDeduction ID")
+                       @XMLTag(V_HVDDNO, "DeductionNumber")
+                       @XMLTag(V_HVDDNM, "DeductionName")
+                       @XMLTag(V_HVPRTY, "Priority")
+                       @XMLTag(V_HVCYCL, "Cycle")
+                       @XMLTag(V_HVACUM, "Accumulate")
+                       @XMLTag(V_HVFAO, "FullAmountOnly")
+                       @XMLTag(V_HVTOSC, "TakeOnSeparateCheck")
+                       @XMLTag(V_HVGLAC, "GlAccountNumber")
+                       @XMLTag(V_HVGLSB, "GlSubaccountNumber")
+                       @XMLTag(V_HVMTHD, "CalculationMethod")
+                       @XMLTag(V_HVLDSC, "Longdescription")
+                   @XMLEndTag("PayrollDeduction")
+		%}
+           @XMLEndTag("DeductionList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if (sec_05 == "N")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)progOptSecError.d2w/DISPLAY$(genericVarBase)&amp;page_title=@dtw_rurlescseq(page_title)">
+  %else
+      %INCLUDE "WebReg.icl"
+      %if (formatToPrint != "")
+          @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+      %else
+          %if (orderBy == "")
+              @DTW_ASSIGN(orderBy, "HVDDNO")
+              @DTW_ASSIGN(orderByDisplay, "Deduction Number")
+              @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+          %endif
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %endif
+      %INCLUDE "SearchReturn.icl"
+  %endif
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+
+  %if (sequence == "DedNumber")
+      %if (orderBy == "HVDDNO")
+          @DTW_ASSIGN(orderBy, "HVDDNO DESC")
+          @DTW_ASSIGN(orderByDisplay, "Deduction Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "HVDDNO")
+          @DTW_ASSIGN(orderByDisplay, "Deduction Number")
+      %endif
+  %elseif (sequence == "DedName")
+      %if (orderBy == "HVDDNMU")
+          @DTW_ASSIGN(orderBy, "HVDDNMU DESC")
+          @DTW_ASSIGN(orderByDisplay, "Deduction Name (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Deduction Name")
+      %endif
+  %elseif (sequence == "Priority")
+      %if (orderBy == "HVPRTY,HVDDNMU")
+          @DTW_ASSIGN(orderBy, "HVPRTY DESC,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Priority (descending), Deduction Name")
+      %else
+          @DTW_ASSIGN(orderBy, "HVPRTY,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Priority, Deduction Name")
+      %endif
+  %elseif (sequence == "Cycle")
+      %if (orderBy == "HVCYCL,HVDDNMU")
+          @DTW_ASSIGN(orderBy, "HVCYCL DESC,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Cycle (descending), Deduction Name")
+      %else
+          @DTW_ASSIGN(orderBy, "HVCYCL,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Cycle, Deduction Name")
+      %endif
+  %elseif (sequence == "Accumulate")
+      %if (orderBy == "HVACUM,HVDDNMU")
+          @DTW_ASSIGN(orderBy, "HVACUM DESC,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Accumulate (descending), Deduction Name")
+      %else
+          @DTW_ASSIGN(orderBy, "HVACUM,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Accumulate, Deduction Name")
+      %endif
+  %elseif (sequence == "FullAmount")
+      %if (orderBy == "HVFAO,HVDDNMU")
+          @DTW_ASSIGN(orderBy, "HVFAO DESC,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Full Amount Only (descending), Deduction Name")
+      %else
+          @DTW_ASSIGN(orderBy, "HVFAO,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Full Amount Only, Deduction Name")
+      %endif
+  %elseif (sequence == "SepCheck")
+      %if (orderBy == "HVTOSC,HVDDNMU")
+          @DTW_ASSIGN(orderBy, "HVTOSC DESC,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Take On Separate Check (descending), Deduction Name")
+      %else
+          @DTW_ASSIGN(orderBy, "HVTOSC,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Take On Separate Check, Deduction Name")
+      %endif
+  %elseif (sequence == "AcctNumber")
+      %if (orderBy == "HVGLAC,HVGLSB,HVDDNMU")
+          @DTW_ASSIGN(orderBy, "HVGLAC DESC,HVGLSB,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Account Number (descending), Deduction Name")
+      %else
+          @DTW_ASSIGN(orderBy, "HVGLAC,HVGLSB,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Account Number, Deduction Name")
+      %endif
+  %elseif (sequence == "CalcMethod")
+      %if (orderBy == "HVMTHD,HVDDNMU")
+          @DTW_ASSIGN(orderBy, "HVMTHD DESC,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Calculation Method (descending), Deduction Name")
+      %else
+          @DTW_ASSIGN(orderBy, "HVMTHD,HVDDNMU")
+          @DTW_ASSIGN(orderByDisplay, "Calculation Method, Deduction Name")
+      %endif
+  %elseif (sequence == "LongDesc")
+      %if (orderBy == "HVLDSCU")
+          @DTW_ASSIGN(orderBy, "HVLDSCU DESC")
+          @DTW_ASSIGN(orderByDisplay, "Long Description (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "HVLDSCU")
+          @DTW_ASSIGN(orderByDisplay, "Long Description")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchNumber, 3, 0) &&
+                      editNum(document.Search.srchPriority, 3, 0) &&
+                      editNum(document.Search.srchCycle, 1, 0) &&
+                      editNum(document.Search.srchAcct, 4, 0) &&
+                      editNum(document.Search.srchSub, 4, 0) &&
+                      editNum(document.Search.srchMethod, 2, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "VOLDEDSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Deduction Number</td>
+                              @dtw_assign(operNbr, "operNumber")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchNumber" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Deduction Name</td>
+                              @dtw_assign(operNbr, "operName")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchName" size="10" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Priority</td>
+                              @dtw_assign(operNbr, "operPriority")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchPriority" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Cycle</td>
+                              @dtw_assign(operNbr, "operCycle")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchCycle" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Accumulate</td>
+                              @dtw_assign(operNbr, "operAccum")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchAccum" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Full Amount Only</td>
+                              @dtw_assign(operNbr, "operFullAmt")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchFullAmount" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Take On Separate Check</td>
+                              @dtw_assign(operNbr, "operSepChk")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchSepCheck" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Account</td>
+                              @dtw_assign(operNbr, "operAcct")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchAcct" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Subaccount</td>
+                              @dtw_assign(operNbr, "operSub")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchSub" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Calculation Method</td>
+                              @dtw_assign(operNbr, "operCalc")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchMethod" size="2" maxlength="1"><a href="$(homeURL)$(cGIPath)FlagSearch.d2w/REPORT$(genericVarBase)&amp;flagType=DEDCALCMTH&amp;flagSrchHdr=@dtw_rurlescseq("Deduction Calculation Method")&amp;docName=Search&amp;fldName=srchMethod&amp;fldDesc=srchCalcDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchCalcDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Long Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchLongDesc" size="30" maxlength="30"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchNumber.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("HVDDNO", "Deduction Number", $(srchNumber), "", operNumber, "N")
+  @Build_WildCard ("upper(HVDDNM)", "Name", $(srchName), "U", operName, "A")
+  @Build_WildCard ("HVPRTY", "Priority", $(srchPriority), "", operPriority, "N")
+  @Build_WildCard ("HVCYCL", "Cycle", $(srchCycle), "", operCycle, "N")
+  @Build_WildCard ("HVACUM", "Accumulate", $(srchAccum), "U", operAccum, "A")
+  @Build_WildCard ("HVFAO", "Full Amount Only", $(srchFullAmount), "U", operFullAmt, "A")
+  @Build_WildCard ("HVTOSC", "Take On Separate Check", $(srchSepCheck), "U", operSepChk, "A")
+  @Build_WildCard ("HVGLAC", "Account", $(srchAcct), "", operAcct, "N")
+  @Build_WildCard ("HVGLSB", "Subaccount", $(srchSub), "", operSub, "N")
+  @Build_WildCard ("HVMTHD", "Calculation Method", $(srchMethod), "", operCalc, "N")
+  @Build_WildCard ("upper(HVLDSC)", "Long Description", $(srchLongDesc), "U", operDesc, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

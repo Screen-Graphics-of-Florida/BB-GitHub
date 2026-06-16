@@ -1,0 +1,367 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  			                             *
+*  Job: Component Material Requisition Entry                        *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Component Material Requisition"
+  d2wName                 = "ComponentMaterialRequisitionEntry.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;mfgOrder=@dtw_rurlescseq(mfgOrder)&amp;parentItem=@dtw_rurlescseq(parentItem)&amp;transType=@dtw_rurlescseq(transType)&amp;compItem=@dtw_rurlescseq(compItem)&amp;routingSeq=@dtw_rurlescseq(routingSeq)&amp;touchScreen=Y"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  lotControlled           = "N"
+  returnSla               = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          %if (V_CILTUS == "Y" && V_CILTRL == "M")
+              @RtvFldDesc("IMITEM='$(compItem)'", "HDIMST", "IMLOT", lotControlled)
+          %endif
+          @dtw_assign(formName, "Chg")	
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              function validate(chgForm) {
+                  if (document.Chg.transQty.value ==""
+                      %if (transType == "IS" || transType == "SC")
+                          || document.Chg.transDate.value ==""
+                      %endif
+                      %if (transType == "IS" || transType == "SC")
+                          || document.Chg.whsNumber.value ==""
+                      %endif
+                      %if ((transType == "IS" || transType == "SC") && lotControlled != "N")
+                          || document.Chg.lotNumber.value ==""
+                      %endif
+                     )
+                     {alert("$(reqFieldError)"); return false;}
+                  var ok = true;   
+                  document.Chg.transQty.value = numberWithoutCommas(document.Chg.transQty.value);
+                  ok = (editNum(document.Chg.transQty, 9, 4));
+                  document.Chg.transQty.value = numberWithCommas(document.Chg.transQty.value);
+                  if (!ok) {return false;}
+                  
+                  %if (transType == "IS" || transType == "SC")
+                      if (editNum(document.Chg.transDate, 6, 0) &&
+                          editdate(document.Chg.transDate) &&
+                          editNum(document.Chg.whsNumber, 3, 0))
+                          return true;
+                  %endif
+                  return true;
+              }
+              %INCLUDE "DateEdit.icl"
+              %INCLUDE "NumEdit.icl"
+              %INCLUDE "KeyboardFunctionsTS.icl"
+              %INCLUDE "ShowHideSelCriteria.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDMOHM ", fileSQL)
+                      @dtw_concat(selectSQL, " OHPLT=$(plantNumber) and OHORD='$(mfgOrder)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Comp_Material_Req_Entry(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+                  <td>
+                      <ul class="toolbarTS">
+                          <li class="optionTS"><a href="$(homeURL)$(cGIPath)ComponentMaterialRequisition.d2w/REPORT$(d2wVarBase)&amp;confMessage=Confirm No Update">&nbsp;<br>Back</a></li>                      
+                          <li class="optionTS"><a href="javascript:check(document.Chg)">&nbsp;<br>Accept</a></li>
+                          %if (transType == "IS" && V_CISTKL == "Y" && returnSla == "Y")
+                              <li class="optionTS"><a href="$(homeURL)$(cGIPath)StockLocations.d2w/ENTRY$(genericVarBase)&amp;touchScreen=Y&amp;docName=Chg&amp;forItemNumber=@dtw_rurlescseq(compItem)&amp;fldStkr=stockRoom&amp;fldAisle=stockAile&amp;fldLoc=stockLoc&amp;fldStkID=stockLocId&amp;fldLotNumber=lotNumber&amp;fldLotControlled=@dtw_rurlescseq(lotControlled)" onclick="$(searchWinVar)">&nbsp;<br>Stock Locations</a></li>
+                          %endif
+                      </ul>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Comp_Material_Req_Entry (IN CHAR(64)    profileHandle,
+                                               CHAR(2)     dataBaseID,
+                                               CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (transType == "FI")
+        @dtw_assign(transDesc, "Fill")
+      %elif (transType == "IS")
+        @dtw_assign(transDesc, "Issue")
+      %elif (transType == "SC")
+        @dtw_assign(transDesc, "Scrap")
+      %elif (transType == "SH")
+        @dtw_assign(transDesc, "Short")
+      %endif
+      <table $(contentTable)>
+          <tr><td><h1>$(page_title) - $(transDesc)</h1></td></tr>
+      </table>
+
+      %ROW {
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="20%">
+                  <col width="60%">
+                  <col width="15%">
+              @Format_Header("Order Number", $(mfgOrder), "")
+              @RtvFldDesc("IMITEM='$(parentItem)'", "HDIMST", "IMIMDS", itemDescription)
+              @Format_Header("Item Number", $(itemDescription), $(parentItem))
+              %if (transType != "FI")
+                  @Format_Nbr($(V_OHCQTY), F_OHCQTY, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  @Format_Header("Order Quantity", $(F_OHCQTY), "")
+                  @RtvFldDesc("IMITEM='$(compItem)'", "HDIMST", "IMIMDS", compDescription)
+                  @Format_Header("Component Item", $(compDescription), $(compItem))
+              %endif
+              <tr>
+                  %if (transType == "FI")
+                      <td>&nbsp;</td>
+                      <td>&nbsp;</td>
+                  %else
+                      <td class="hdrtitl">Routing Sequence:</td>
+                      <td class="hdrdata">$(routingSeq)</td>
+                  %endif
+                  <td><a href="javascript:void+0" onClick="showSel('selData')" onBlur="hideSel('selData')">$(smMoreInfoImage)</a></td>
+              </tr>
+          </table>
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+          @Format_Code($(plantNumber), F_plantNumber)
+
+          @dtw_assign(moreInfo, "")
+          @Build_More_Info("Plant", plantName, F_plantNumber, moreInfo)
+          @Build_More_Info("Reference Number", V_OHRORD, "", moreInfo)
+          %INCLUDE "MoreInfo.icl"
+
+          $(hrTagAttr)
+
+          %INCLUDE "ErrorDisplay.icl"
+			
+          <form class="formClass" method="post" name="Chg" onsubmit="return validate(document.Chg)" action="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;transDesc=@dtw_rurlescseq(transDesc)">
+              %if (V_CISTKL == "Y")
+                  @RetDefStkLoc(profileHandle, dataBaseID, "RetDefStkLoc", plantNumber, compItem, returnWhs, returnSla, returnStkr, returnAile, returnSloc, returnStid)
+              %endif
+              %INCLUDE "RequiredFieldTS.icl"
+              <table $(contentTable)>
+                  %if (errFound != "")
+                      @dtw_assign(focusField, "")
+                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                      @ErrVarErr(profileHandle, typeError, errVar)
+                      @DecatErr_Field("@@seqn", "seqNumber")      @dtw_assign(Err_SEQN, fieldValue)
+                      @DecatErr_Field("@@date", "transDate")      @dtw_assign(Err_DATE, fieldValue)
+                      @DecatErr_Field("@@qtyc", "transQty")       @dtw_assign(Err_QTYC, fieldValue)
+                      @DecatErr_Field("@@whs@", "whsNumber")      @dtw_assign(Err_WHS,  fieldValue)
+                      @DecatErr_Field("@@stkr", "stockRoom")      @dtw_assign(Err_STKR, fieldValue)
+                      @DecatErr_Field("@@lotn", "lotNumber")      @dtw_assign(Err_LOTN, fieldValue)
+
+                      @Decat_Field("@@seqn")   @dtw_assign(F_SEQN, fieldValue)
+                      @Decat_Field("@@date")   @dtw_assign(F_DATE, fieldValue)
+                      @Decat_Field("@@qtyc")   @dtw_assign(F_QTYC, fieldValue)
+                      @Decat_Field("@@whs@")   @dtw_assign(F_WHS,  fieldValue)
+                      @Decat_Field("@@stkr")   @dtw_assign(F_STKR, fieldValue)
+                      @Decat_Field("@@aile")   @dtw_assign(F_AILE, fieldValue)
+                      @Decat_Field("@@sloc")   @dtw_assign(F_SLOC, fieldValue)
+                      @Decat_Field("@@lotn")   @dtw_assign(F_LOTN, fieldValue)
+
+                      @dtw_assign(errFound, "")
+                  %else
+                      @dtw_assign(F_QTYC, "")
+                      @DateTodayCYMD(F_DATE)
+                      @DateInputFromCYMD(F_DATE)
+
+                  	  %if (returnSla == "Y")
+                          @dtw_assign(F_WHS, "$(returnWhs)")
+                          @dtw_assign(F_STKR, "$(returnStkr)")
+                          @dtw_assign(F_AILE, "$(returnAile)")
+                          @dtw_assign(F_SLOC, "$(returnSloc)")
+                      %else
+                          @RetWhsNbr(profileHandle, dataBaseID, "RetWhsNbr", plantNumber, compItem, returnWarehouse)
+                          @dtw_assign(F_WHS, "$(returnWarehouse)")
+                      %endif
+
+                      @dtw_assign(focusField, "transQty")
+                  %endif
+
+                  %if (focusField == "")
+                      @dtw_assign(focusField, "transQty")
+                  %endif
+
+                  %if (transType == "FI")
+                      @SetTextOvr(Err_SEQN)
+                      <tr><td class="dsphdr"><span $(textOvr)>Routing Sequence</span></td>
+                          <td class="input"><input class="input" id="seqNumber" onfocus="kbActive(this, 'numericKeyboard');" name="seqNumber" type="text" value="$(F_SEQN)" size="3" maxlength="3"></td>
+                      </tr>
+                      @DspErrMsg(Err_SEQN)
+                  %endif
+
+                  %if (transType == "IS" || transType == "SC")
+                      @SetTextOvr(Err_DATE)
+                      <tr><td class="dsphdr"><span $(textOvr)>Date</span></td>
+                          <td class="input"><input class="input" id="transDate" onfocus="kbActive(this, 'dtpDiv');" name="transDate" type="text" value="$(F_DATE)" size="6" maxlength="6"> $(reqFieldChar)</td>
+                      </tr>
+                      @DspErrMsg(Err_DATE)
+                  %endif
+
+                  @dtw_assign(creditCodeOvr, "N")
+                  @Format_Nbr($(F_QTYC), F_QTYC, "4", "K", "", "", "")
+                  %if (@dtw_rpos("-", F_QTYC) > "0")
+                      @dtw_concat("-", @dtw_rreplace("$(F_QTYC)", "-", ""), F_QTYC)
+                  %endif
+                  @SetTextOvr(Err_QTYC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Quantity</span></td>
+                      <td class="input"><input class="input" id="transQty" onfocus="kbActive(this, 'numericKeyboard', true);" onkeyup="formatInput(this.id);" name="transQty" type="text" value="$(F_QTYC)" size="14" maxlength="17"> $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_QTYC)
+
+                  %if (transType == "IS" || transType == "SC")
+                      @RtvFldDesc("WHWHS=$(F_WHS)", "HDWHSM", "WHWHNM", warehouseName)
+                      @SetTextOvr(Err_WHS)
+                      <tr><td class="dsphdr"><span $(textOvr)>Warehouse</span></td>
+                          <td class="input">
+                              <input class="input" id="whsNumber" onfocus="kbActive(this, 'numericKeyboard');" name="whsNumber" type="text" value="$(F_WHS)" size="3" maxlength="3">
+                              <a href="$(homeURL)$(phpPath)WarehouseSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=whsNumber&amp;fldDesc=warehouseName&amp;touchScreen=Y" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchDesc) </a> 
+                              <input class="input" name="warehouseName" value="$(warehouseName)" type="text" size="30" maxlength="30" disabled>
+                          </td>
+                      </tr>
+                      @DspErrMsg(Err_WHS)
+
+                      %if (transType == "IS" && V_CISTKL == "Y" && returnSla == "Y")
+                      	  @SetTextOvr(Err_STKR)
+                          <tr><td class="dsphdr"><span $(textOvr)>Stock Location</span></td>
+                              <td class="input">
+                                  <input class="input" id="stockRoom" onfocus="kbActive(this, 'keyboard');" name="stockRoom" type="text" value="$(F_STKR)" size="3" maxlength="3"> - <input class="input" id="stockAile" onfocus="kbActive(this, 'keyboard');" name="stockAile" type="text" value="$(F_AILE)" size="4" maxlength="4"> - <input class="input" id="stockLoc" onfocus="kbActive(this, 'keyboard');" name="stockLoc" type="text" value="$(F_SLOC)" size="8" maxlength="8">
+                                  <a href="$(homeURL)$(phpPath)StockLocSearch.php$(altVarBase)&amp;docName=Chg&amp;forWhs=@dtw_rurlescseq(whsNumber)&amp;fldStkr=stockRoom&amp;fldAisle=stockAile&amp;fldLoc=stockLoc&amp;fldStkID=stockLocId&amp;touchScreen=Y" onclick="$(searchWinVar)"> $(searchDesc)</a>
+                                  <input name="stockLocId" type="hidden" size="9" maxlength="9">
+                              </td>
+                          </tr>
+                          @DspErrMsg(Err_STKR)
+                      %endif
+
+                      %if (lotControlled != "N")
+                          @SetTextOvr(Err_LOTN)
+                          <tr><td class="dsphdr"><span $(textOvr)>Lot Number</span></td>
+                              <td class="input">
+                                  <input class="input" id="lotNumber" onfocus="kbActive(this, 'keyboard');" name="lotNumber" type="text" value="$(F_LOTN)" size="15" maxlength="15">
+                                  <a href="$(homeURL)$(cGIPath)LotSearch.d2w/ENTRY$(genericVarBase)&amp;touchScreen=Y&amp;docName=Chg&amp;fldLot=lotNumber&amp;fldItem=compItemHidden&amp;fldWhs=whsNumber" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchDesc) </a>
+                                  <input name="compItemHidden" type="hidden">
+                              </td>
+                          </tr>
+                          @DspErrMsg(Err_LOTN)
+                      %endif
+                  %endif
+              %}	
+          </table>
+          %INCLUDE "KeyboardTS.icl"
+          
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HSI221_W.PGM %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(stockRoom)
+  @dtw_mUPPERCASE(stockAile)
+  @dtw_mUPPERCASE(stockLoc)
+  @dtw_mUPPERCASE(lotNumber)
+
+  %if (transType == "SH")
+      @DateTodayCYMD(transDate)
+      @DateInputFromCYMD(transDate)
+  %endif
+  @dtw_assign(transDate, @dtw_rstrip(transDate))
+  @dtw_assign(transQty,  @dtw_rstrip(transQty))
+  @dtw_assign(whsNumber, @dtw_rstrip(whsNumber))
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@user", userProfile)
+  @Concat_Field("@@plt@", plantNumber)
+  @Concat_Field("@@mord", mfgOrder)
+  @Concat_Field("@@prnt", parentItem)
+  @Concat_Field("@@comp", compItem)
+  @Concat_Field("@@code", transType)
+  %if (transType == "FI")
+      @Concat_Field("@@seqn", seqNumber)
+  %else
+      @Concat_Field("@@seqn", routingSeq)
+  %endif
+  @Concat_Field("@@date", transDate)
+  @dtw_replace("$(transQty)", ",", "", transQty)
+  @Concat_Field("@@qtyc", transQty)
+  @Concat_Field("@@whs@", whsNumber)
+  @Concat_Field("@@stkr", stockRoom)
+  @Concat_Field("@@aile", stockAile)
+  @Concat_Field("@@sloc", stockLoc)
+  @Concat_Field("@@lotn", lotNumber)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      @dtw_assign(confMessage, "Confirm ")
+      %if (transType == "FI")
+        @dtw_concat(confMessage, "Fill ", confMessage)
+      %elif (transType == "IS")
+        @dtw_concat(confMessage, "Issue for Component Item $(compItem) ", confMessage)
+      %elif (transType == "SC")
+        @dtw_concat(confMessage, "Scrap for Component Item $(compItem) ", confMessage)
+      %elif (transType == "SH")
+        @dtw_concat(confMessage, "Short for Component Item $(compItem) ", confMessage)
+      %endif
+      @DecatErr_Field("@@cmsg", "confMessage")
+      %if (fieldValue != "")
+          @dtw_concat(confMessage, @dtw_rconcat(" - ", fieldValue), confMessage)
+      %endif
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)ComponentMaterialRequisition.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;mfgOrder=@dtw_rurlescseq(mfgOrder)&amp;parentItem=@dtw_rurlescseq(parentItem)&amp;touchScreen=Y&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/ENTRY$(d2wVarBase)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

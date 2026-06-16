@@ -1,0 +1,638 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Customer Pricing Detail                                     *
+*********************************************************************
+%}
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "PricingDetailFunctions.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Customer Pricing Detail"
+  d2wName                 = "PricingDetail.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;pricingLevel=@dtw_rurlescseq(pricingLevel)&amp;levelDesc=@dtw_rurlescseq(levelDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HOEPLM_E"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  advanceSearch           = "N"
+  wildCardDefault         = "N"
+  nothing                 = "&nbsp;"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+
+  @dtw_assign(editVariables, "")
+  @dtw_assign(i, "1")
+  %while (i <= @dtw_Tb_rRows(mdCol)) {
+      @dtw_assign(curdType, @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWDTYP")))
+      @dtw_assign(curfType, @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWFTYP")))
+      @dtw_assign(curName,  @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCOLN")))
+      @dtw_assign(curSize,  @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWFLEN")))
+      @dtw_assign(curDecm,  @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWFDEC")))
+
+      @dtw_replace(curName, "#", "_", curName)
+      %if (curdType == "NUMERIC" || curdType == "DECIMAL" || curdType == "DATE")
+          %if (editVariables != "")
+              @dtw_concat(editVariables, " &&", editVariables)
+          %endif
+          %if (curfType == "CYMD" || curfType == "ISO")
+              @dtw_concat(editVariables, " editdate(document.Search.srch$(curName)) ", editVariables)
+          %else
+              @dtw_concat(editVariables, " editNum(document.Search.", editVariables)
+              @dtw_concat(editVariables, "srch$(curName),$(curSize),$(curDecm)) ", editVariables)
+          %endif
+      %endif
+      @dtw_add(i, "1", i)
+  %}
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %if (editVariables == "")
+                  %INCLUDE "NoFormValidate.icl"
+              %else
+                  function validate(searchForm) {
+                      if ($(editVariables))
+                      return true;
+                  }
+              %endif
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "PRICINGDETAIL")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDPRCD ", fileSQL)
+                      @dtw_concat(selectSQL, "PMPMLV=$(pricingLevel) ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @PricingDetail_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) PricingDetail_Query (IN CHAR(64) profileHandle,
+                                           CHAR(2)   dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      <a href="$(homeURL)$(cGIPath)PricingLevel.d2w/REPORT$(genericVarBase)" title="Back Home">$(portalHome)</a>
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)PricingDetailMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      <table $(contentTable)>
+          @Format_Header_URL("Pricing Level", $(levelDesc), $(pricingLevel), "")
+
+          %if (listLess == "Y")
+              @dtw_assign(structureDefn, "List Less")
+          %endif
+          %if (costPlus == "Y")
+              @dtw_assign(structureDefn, "Cost Plus")
+          %endif
+          %if (dollarAmt == "Y")
+              @dtw_assign(structureDefn, "Dollar")
+          %endif
+          %if (usePercent == "Y")
+              @dtw_concat(structureDefn, " Percentage", structureDefn)
+          %else
+              @dtw_concat(structureDefn, " Amount", structureDefn)
+          %endif
+          <tr><td class="hdrtitl">Definition:</td>
+              %if (contract == "Y")
+                  <td class="hdrdata">Contract</td></tr>
+                  <tr><td>&nbsp;</td><td class="hdrdata">$(structureDefn)</td>
+              %else
+                  <td class="hdrdata">$(structureDefn)</td>
+              %endif
+          </tr>
+
+          %if (bracketQty == "Y")
+              <tr><td>&nbsp;</td><td class="hdrdata">Bracket By Quantity</td></tr>
+          %elif (bracketAmt == "Y")
+              <tr><td>&nbsp;</td><td class="hdrdata">Bracket By Amount</td></tr>
+          %endif
+
+          %if (commission != "")
+              <tr><td>&nbsp;</td><td class="hdrdata">
+                  %if (commission == "Y")
+                      Commissionable
+                  %elif (commission == "N")
+                      Non-Commissionable
+                  %elif (commission == "L")
+                      Limited Commission
+                  %endif
+              </td></tr>
+          %endif
+      </table>
+
+      %INCLUDE "ConfMessageDisplay.icl"
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)"
+            ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr>
+                      @dtw_assign(i, "1")
+                      %while (i <= @dtw_Tb_rRows(mdCol)) {
+                          @dtw_assign(curHeading, @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCHDG")))
+                          <th class="colhdr">$(curHeading)</th>
+                          @dtw_add(i, "1", i)
+                      %}
+                      <th> &nbsp; </th>
+                  </tr>
+                  <tr>
+                      @dtw_assign(srchName, "")
+                      @dtw_assign(i, "1")
+                      %while (i <= @dtw_Tb_rRows(mdCol)) {
+                          @dtw_assign(curName,    @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCOLN")))
+                          @dtw_assign(curdType,   @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWDTYP")))
+                          @dtw_assign(maxWidth,   @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWFLEN")))
+                          @dtw_replace(curName, "#", "_", curName)
+                          %if (srchName == "")
+                              @dtw_assign(srchName, "srch$(curName)")
+                          %endif
+                          %if (maxWidth > "12")
+                              @dtw_assign(curWidth, "12")
+                          %else
+                              @dtw_assign(curWidth, maxWidth)
+                          %endif
+                          %if (curdType == "CHAR")
+                              @dtw_assign(cssClass, "inputalph")
+                              @dtw_assign(operValue, "LIKE")
+                          %elif (curdType == "NUMERIC" || type == "DECIMAL" || type == "DATE")
+                              @dtw_assign(cssClass, "inputnmbr")
+                              @dtw_assign(operValue, "=")
+                          %else
+                              @dtw_assign(cssClass, "inputalph")
+                              @dtw_assign(operValue, "LIKE")
+                          %endif
+                          <td>
+                              <input type="text" class="$(cssClass)" name="srch$(curName)" size="$(curWidth)" maxlength="$(maxWidth)">%if (curfType == "CYMD" || curfType == "ISO") <a href="javascript:calWindow('srch$(curName)');">$(calendarImage)</a> %endif
+                              <input type="hidden" name="oper$(curName)" value="$(operValue)">
+                          </td>
+                          @dtw_add(i, "1", i)
+                      %}
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.$(srchName).focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y"))
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+
+              @dtw_assign(saveItem, "")
+              @dtw_assign(saveWhs, "")
+              @dtw_assign(i, "1")
+              %while (i <= @dtw_Tb_rRows(mdCol)) {
+                  @dtw_assign(curName,     @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCOLN")))
+                  @dtw_assign(curHeading,  @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCHDG")))
+                  @dtw_assign(curText,     @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCTXT")))
+                  %if (curName == "PMITEM")
+                      @dtw_assign(saveItem, "Y")
+                  %elif (curName == "PMWHS")
+                      @dtw_assign(saveWhs, "Y")
+                  %endif
+
+                  @dtw_assign(sortFld, curName)
+
+                  @OrderBy_Sort(sortFld, sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=$(i)" title="Sequence By $(curText)">$(curHeading)</a></th>
+                  %if (curName == "PMCUST" || curName == "PMWHS")
+                      <th class="colhdr">Name</th>
+                  %else
+                      <th class="colhdr">Description</th>
+                  %endif
+                  @dtw_add(i, "1", i)
+              %}
+
+              %if ((saveItem == "Y" && saveWhs == "Y") && (listLess == "Y" || costPlus == "Y"))
+                  %if (listLess == "Y")
+                      <th class="colhdr">List Price</th>
+                  %else
+                      <th class="colhdr">Cost</th>
+                  %endif
+              %endif
+
+              %if (bracketQty != "Y" && bracketAmt != "Y")
+                  <th class="colhdr">$(structureDefn)</th>
+                  %if ((saveItem == "Y" && saveWhs == "Y") && (listLess == "Y" || costPlus == "Y"))
+                      <th class="colhdr">Selling Price</th>
+                  %endif
+                  %if (commission == "Y" || commission == "L")
+                      <th class="colhdr">Commission<br>Percent</th>
+                  %endif
+              %endif
+
+              %if (contract == "Y")
+                  @OrderBy_Sort("PMSTDT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=dateStart" title="Sequence By Contract Start Date">Contract<br>Start Date</a></th>
+                  @OrderBy_Sort("PMEXDT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=dateExpire" title="Sequence By Contract Expiration Date">Contract<br>Expiration Date</a></th>
+              %endif
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;detailKey=@dtw_rurlescseq(V_PMPMKY)&amp;contractStart=@dtw_rurlescseq(V_PMSTDT)")
+              %INCLUDE "SetRowClass.icl"
+              @Format_Confirm_Desc("", $(V_PMPMKY), "", "", "", "", confirmDesc)
+
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y"))
+                      <td class="opticon">
+                          %if (sec_02 == "Y" || sec_03 == "Y")
+                              <a href="$(homeURL)$(cGIPath)PricingDetailMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          %endif
+                          %if (sec_01=="Y" && sec_04=="Y")
+                              <a href="$(homeURL)$(cGIPath)PricingDetailMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                          %endif
+                          %if (sec_03 == "Y")
+                              <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)PricingDetailMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                          %endif
+                      </td>
+                  %endif
+
+                  @dtw_assign(saveItem, "")
+                  @dtw_assign(saveWhs, "")
+                  @dtw_assign(i, "1")
+                  %while (i <= @dtw_Tb_rRows(mdCol)) {
+                    @dtw_assign(curSeq, @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWDPOS")))
+                    %if (curSeq > "0")
+                        @dtw_assign(curName,    @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCOLN")))
+                        @dtw_assign(curLength,  @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWFLEN")))
+                        @dtw_assign(curdType,   @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWDTYP")))
+                        @dtw_assign(curfType,   @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWFTYP")))
+                        @dtw_assign(curHeading, @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCTXT")))
+                        @dtw_assign(curData,    @dtw_rStrip("$(V_$(curName))"))
+                        @dtw_assign(fmtValue, curData)
+                        %if (curName == "PMITEM")
+                            @dtw_assign(saveItem, curData)
+                        %elif (curName == "PMWHS")
+                            @dtw_assign(saveWhs, curData)
+                        %endif
+                        %if (curdType == "CHAR")
+                            %if (curfType == "CODE")
+                                @dtw_assign(cssClass, "colcode")
+                            %else
+                                @dtw_assign(cssClass, "colalph")
+                            %endif
+                            @dtw_QHtmlEncode(fmtValue, fmtValue)
+                        %elif (curdType == "NUMERIC" || curdType == "DECIMAL" || curdType == "DATE")
+                            @dtw_assign(cssClass, "colnmbr")
+                            %if (curfType == "ISO")
+                                @Format_Date_ISO(curData, "D", fmtValue)
+                                @dtw_assign(cssClass, "coldate")
+                            %elif (curfType == "CYMD")
+                                @Format_Date(curData, "D", fmtValue)
+                                @dtw_assign(cssClass, "coldate")
+                            %elif (curfType == "QUANTITY")
+                                @Format_Nbr(fmtValue, fmtValue, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                            %elif (curfType == "AMOUNT")
+                                @Format_Nbr(fmtValue, fmtValue, "2", $(amtEditCode), "", "", "")
+                            %elif (curfType == "PRICE")
+                                @Format_Nbr(fmtValue, fmtValue, $(prcNbrDec), $(amtEditCode), "", "", "")
+                            %elif (curfType == "COST")
+                                @Format_Nbr(fmtValue, fmtValue, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+                            %elif (curfType == "ZEROS")
+                                %while(@dtw_rlength(fmtValue) != curLength) {@dtw_insert("0", fmtValue, fmtValue)%}
+                            %endif
+                        %endif
+                        %if (fmtValue == "")
+                            @dtw_assign(fmtValue, nothing)
+                        %endif
+                        <td class="$(cssClass)">
+                            %if (curName == "PMCUST")
+                                <a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(curData)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(fmtValue)</a>
+                            %elif (curName == "PMITEM")
+                                <a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(curData)" onclick="$(inquiryWinVar)" title="Item Quickview">$(fmtValue)</a>
+                            %else
+                                $(fmtValue)
+                            %endif
+                        </td>
+                        <td class="colAlph">
+                            @dtw_assign(curNameDesc, "")
+                            %if (curName == "PMCUST")
+                                @RtvFldDesc("CMCUST=$(curData)", "HDCUST", "CMCNA1", curNameDesc)
+                            %elif (curName == "PMITEM")
+                                @RtvFldDesc("IMITEM='$(curData)'", "HDIMST", "IMIMDS", curNameDesc)
+                            %elif (curName == "PMWHS")
+                                @RtvFldDesc("WHWHS=$(curData)", "HDWHSM", "WHWHNM", curNameDesc)
+                            %elif (curName == "PMCRGN")
+                                @RtvFldDesc("RGCRGN='$(curData)'", "HDCRGN", "RGCRDS", curNameDesc)
+                            %elif (curName == "PMPGRP")
+                                @RtvFldDesc("PGPGRP='$(curData)'", "HDPRGM", "PGDESC", curNameDesc)
+                            %elif (curName == "PMCCLS")
+                                @RtvFldDesc("CCCCLS='$(curData)'", "HDCCLS", "CCCCDS", curNameDesc)
+                            %elif (curName == "PMPCLS")
+                                @RtvFldDesc("PCPCLS='$(curData)'", "HDPCLS", "PCPCDS", curNameDesc)
+                            %endif
+                            $(curNameDesc)
+                        </td>
+                    %endif
+                    @dtw_add(i, "1", i)
+                  %}
+
+                  %if ((saveItem != "" && saveWhs != "") && (listLess == "Y" || costPlus == "Y"))
+                      %if (listLess == "Y")
+                          @RtvFldDesc("IWITEM='$(saveItem)' and IWWHS=$(saveWhs)", "HDIWHS", "IWLIST", listCost)
+                          @Format_Nbr(listCost, F_listCost, $(prcNbrDec), $(amtEditCode), "", "", "")
+                      %else
+                          @Rtv_Unit_Cost(plant, saveItem, saveWhs, lot, listCost, cat1Cost, cat2Cost, cat3Cost, cat4Cost, cat5Cost)
+                          @Format_Nbr(listCost, F_listCost, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+                      %endif
+                      <td class="colnmbr">$(F_listCost)</td>
+                  %endif
+
+                  %if (bracketQty != "Y" && bracketAmt != "Y")
+                      %if (usePercent == "Y")
+                          @Format_Nbr(@dtw_rmultiply(V_PMLCPC, "100"), F_PMLCPC, "4", $(pctEditCode), "", "", "")
+                          <td class="colnmbr">$(F_PMLCPC)</td>
+                      %else
+                          @Format_Nbr($(V_PMLCAM), F_PMLCAM, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                          <td class="colnmbr">$(F_PMLCAM)</td>
+                      %endif
+                      %if ((saveItem != "" && saveWhs != "") && (listLess == "Y" || costPlus == "Y"))
+                          %if (listLess == "Y")
+                              %if (usePercent == "Y")
+                                  @dtw_subtract(listCost, @dtw_rmultiply(listCost, V_PMLCPC), listCost)
+                              %else
+                                  @dtw_subtract(listCost, V_PMLCAM, listCost)
+                              %endif
+                          %elif (costPlus == "Y")
+                              %if (usePercent == "Y")
+                                  @dtw_add(listCost, @dtw_rmultiply(listCost, V_PMLCPC), listCost)
+                              %else
+                                  @dtw_add(listCost, V_PMLCAM, listCost)
+                              %endif
+                          %endif
+                          @Format_Nbr(listCost, F_listCost, $(prcNbrDec), $(amtEditCode), "", "", "")
+                          <td class="colnmbr">$(F_listCost)</td>
+                      %endif
+                      %if (commission == "Y" || commission == "L")
+                          @Format_Nbr(@dtw_rmultiply(V_PMCMPC, "100"), F_PMCMPC, "4", $(pctEditCode), "", "", "")
+                          <td class="colnmbr">$(F_PMCMPC)</td>
+                      %endif
+                  %endif
+
+                  %if (contract == "Y")
+                      @Format_Date(V_PMSTDT, "D", F_PMSTDT)
+                      @Format_Date(V_PMEXDT, "D", F_PMEXDT)
+                      <td class="coldate">$(F_PMSTDT)</td>
+                      <td class="coldate">$(F_PMEXDT)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+  @dtw_concat(fileSQL, " HDPRCD ", fileSQL)
+  @dtw_concat(selectSQL, "PMPMLV=$(pricingLevel) ", selectSQL)
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @PricingDetail_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) PricingDetail_XMLQuery (IN CHAR(64)    profileHandle,
+                                             CHAR(2)     dataBaseID,
+                                             CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @XMLBeginTag("PricingDetailList")
+          %ROW{
+	       @XMLIDTag(V_PVPMLV, "PricingDetail ID")
+                  @XMLTag(V_PVPMLV, "PricingLevel")
+                  @XMLTag(V_PVLVDS, "Description")
+                  @XMLTag(V_PVWHSQ, "WarehouseSeq")
+                  @XMLTag(V_PVITSQ, "ItemNumberSeq")
+                  @XMLTag(V_PVCSSQ, "CustomerNumberSeq")
+                  @XMLTag(V_PVCCSQ, "CustomerClassSeq")
+                  @XMLTag(V_PVPCSQ, "ProductClassSeq")
+                  @XMLTag(V_PVRGSQ, "RegionSeq")
+                  @XMLTag(V_PVPGSQ, "ProductGroupSeq")
+                  @XMLTag(V_PVCN, "ContractPricing")
+                  @XMLTag(V_PVLL, "ListLessAmount")
+                  @XMLTag(V_PVCP, "CostPlusAmount")
+                  @XMLTag(V_PVDL, "DollarAmount")
+                  @XMLTag(V_PVUP, "UsePercentages")
+                  @XMLTag(V_PVBP, "BracketByQty")
+                  @XMLTag(V_PVBA, "BracketByAmt")
+              @XMLEndTag("PricingDetail")
+          %}
+      @XMLEndTag("PricingDetailList")
+  %}
+%}
+
+%HTML(LOAD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(stmtSQL, " Delete From HDPRCW Where PWXHND='$(profileHandle)' @@endsql ")
+  @SQL_Update(stmtSQL, status)
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@fx@@", "LOAD")
+  @Concat_Field("@@pmlv", pricingLevel)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Rtv_Pricing_Definition(profileHandle, edtVar)
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)">
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "PricingDetail.icl"
+
+  %if (formatToPrint != "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+      @dtw_assign(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (defaultSet == "Y")
+          @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+          @Save_WebReg(userProfile, "", d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+      %elif (defaultView == "Y")
+          @Delete_WebReg(webRegCurFile, profileHandle, d2wName)
+          @Retrieve_WebReg(userProfile, "", d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+          @Save_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+      %else
+          @dtw_assign(wildCardSearch, "")
+          @dtw_assign(wildCardDisplay, "")
+          @dtw_assign(orderBy, @dtw_Tb_rGetV(mdCol, "1", @dtw_Tb_rQueryColNOnJ(mdCol, "PWCOLN")))
+          @dtw_assign(orderByDisplay, @dtw_Tb_rGetV(mdCol, "1", @dtw_Tb_rQueryColNOnJ(mdCol, "PWCTXT")))
+          @Save_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+      %endif
+      @dtw_assign(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @dtw_assign(RPT_MAX_ROWS, prtMaxRows)
+  %INCLUDE "PricingDetail.icl"
+
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @dtw_assign(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "PricingDetail.icl"
+
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "PricingDetail.icl"
+
+  %if (sequence == "dateStart")
+      %if (orderBy == "PMSTDT")
+          @dtw_assign(orderBy, "PMSTDT DESC")
+          @dtw_assign(orderByDisplay, "Contract Start Date (descending)")
+      %else
+          @dtw_assign(orderBy, "PMSTDT")
+          @dtw_assign(orderByDisplay, "Contract Start Date")
+      %endif
+  %elif (sequence == "dateExpire")
+      %if (orderBy == "PMEXDT")
+          @dtw_assign(orderBy, "PMEXDT DESC")
+          @dtw_assign(orderByDisplay, "Contract Expiration Date (descending)")
+      %else
+          @dtw_assign(orderBy, "PMEXDT")
+          @dtw_assign(orderByDisplay, "Contract Expiration Date")
+      %endif
+  %else
+      @dtw_assign(curName,    @dtw_Tb_rGetV(mdCol, sequence, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCOLN")))
+      @dtw_assign(curHeading, @dtw_Tb_rGetV(mdCol, sequence, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCTXT")))
+      %if (orderBy == curName)
+          @dtw_assign(orderBy, "$(curName) DESC")
+          @dtw_assign(orderByDisplay, "$(curHeading) (descending)")
+      %else
+          @dtw_assign(orderBy, "$(curName)")
+          @dtw_assign(orderByDisplay, "$(curHeading)")
+      %endif
+  %endif
+
+  @dtw_assign(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+  %INCLUDE "PricingDetail.icl"
+
+  @dtw_assign(i, "1")
+  %while (i <= @dtw_Tb_rRows(mdCol)) {
+      @dtw_assign(curHeading,  @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCTXT")))
+      @dtw_assign(curName,     @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWCOLN")))
+      @dtw_assign(curdType,    @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWDTYP")))
+      @dtw_assign(curfType,    @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWFTYP")))
+      @dtw_assign(curWidth,    @dtw_Tb_rGetV(mdCol, i, @dtw_Tb_rQueryColNOnJ(mdCol, "PWFLEN")))
+      @dtw_assign(selName, curName)
+      @dtw_replace(curName, "#", "_", curName)
+      %if (curfType == "PHONE")
+          @Build_WildCard ($(selName), $(curHeading), $(srch$(curName)), "", "", "P")
+      %elif (curfType == "ISO")
+          @Build_WildCard ($(selName), $(curHeading), $(srch$(curName)), "", $(oper$(curName)), "I")
+      %elif (curfType == "CYMD")
+          @Build_WildCard ($(selName), $(curHeading), $(srch$(curName)), "", $(oper$(curName)), "D")
+      %elif (curdType == "NUMERIC" || curdType == "DECIMAL")
+          @Build_WildCard ($(selName), $(curHeading), $(srch$(curName)), "", $(oper$(curName)), "N")
+      %else
+          @Build_WildCard ($(selName), $(curHeading), $(srch$(curName)), "U", $(oper$(curName)), "A")
+      %endif
+      @dtw_add(i, "1", i)
+  %}
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

@@ -1,0 +1,419 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Transfer Ticket                                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "ItemMaintain.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {	
+  page_title              = "Transfer Ticket"
+  d2wName                 = "TransferTicket.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;warehouseName=@dtw_rurlescseq(warehouseName)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  programName             = "TRANSFER"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@warehouseNumber", "@dtw_rurlescseq(warehouseNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@warehouseName", "@dtw_rurlescseq(warehouseName)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "Menu.js"
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchTicket, 7, 0) &&
+                      editNum(document.Search.srchToWhs, 3, 0) &&
+                      editdate(document.Search.srchGenDate) &&
+                      editdate(document.Search.srchTrfDate)
+                     )
+                     return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "TRANSFERTICKET")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select *  ", stmtSQL)
+                      @dtw_concat(fileSQL, " IVTRTK ", fileSQL)
+                      @dtw_concat(selectSQL, "(TTFWHS=$(warehouseNumber) or TTTWHS=$(warehouseNumber)) ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Transfer_Ticket(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Transfer_Ticket (IN CHAR(64)    profileHandle,
+                                       CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+
+                  <td class="toolbar">
+                      %if (warehouseNumber == V_CICWHS)
+                          @RtvFldDesc("PTTRST='R' or (PTTRST='S' and PTTNBR=0)", "POSGPT", "char(count(*))", reqCount)
+                          %if (reqCount > "0")
+                              @DTW_REPLACE(pageSelect, "Click here to change the page layout", "Click here to Generate Transfer Tickets", pageSelect)
+                              <a href="$(homeURL)$(cGIPath)SubmitJob.d2w/REPORT$(genericVarBase)&amp;submitPageTitle=Generate Transfer Tickets&amp;submitCallProgram=CIVTRG&amp;submitEnvProgram=HIVTRG&amp;submitEnvPrinter=">$(pageSelect)</a>
+                          %endif
+                      %endif
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)TransferUpdate.d2w/ADD$(genericVarBase)&amp;fromWhs=@dtw_rurlescseq(warehouseNumber)&amp;fromWhsName=@dtw_rurlescseq(warehouseName)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          @Format_Header_URL("Warehouse", $(warehouseName), $(warehouseNumber), "$(homeURL)$(cGIPath)WarehouseSelect.d2w/REPORT$(genericVarBase)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;warehouseName=@dtw_rurlescseq(warehouseName)")
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+			
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Ticket<br>Number</th>
+                      <th class="colhdr">To<br>Whs</th>
+                      <th class="colhdr">Generation<br>Date</th>
+                      <th class="colhdr">Transfer<br>Date</th>
+                  </tr>
+                  <tr>
+                      <td class="inputnmbr">
+                          <input type="text" name="srchTicket" size="8" maxlength="8">
+                          <input type="hidden" name="operTicket" value="=">
+                      </td>
+                      <td class="inputnmbr">
+                          <input type="text" name="srchToWhs" size="3" maxlength="3">
+                          <input type="hidden" name="operToWhs" value="=">
+                      </td>
+                      <td class="inputnmbr"><input type="text" name="srchGenDate" size="6" maxlength="6"><a href="javascript:calWindow('srchGenDate');">$(calendarImage)</a>
+                          <input type="hidden" name="operGenDate" value="=">
+                      </td>
+                      <td class="inputnmbr"><input type="text" name="srchTrfDate" size="6" maxlength="6"><a href="javascript:calWindow('srchTrfDate');">$(calendarImage)</a>
+                          <input type="hidden" name="operTrfDate" value="=">
+                      </td>
+
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchTicket.focus();
+              </script>
+          </form>
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("TTTNBR", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Ticket" title="Sequence By Ticket Number">Ticket<br>Number</a></th>
+              @OrderBy_Sort("TTTWHS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ToWhs" title="Sequence By To Warehouse, Ticket Number">To<br>Whs</a></th>
+              <th class="colhdr">Name</th>
+              @OrderBy_Sort("date(TTTSTG)", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=GenDate" title="Sequence By Generation Date, Ticket Number">Generation<br>Date</a></th>
+              @OrderBy_Sort("time(TTTSTG)", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=GenTime" title="Sequence By Generation Time, Ticket Number">Generation<br>Time</a></th>
+              @OrderBy_Sort("date(TTTSTT)", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TrfDate" title="Sequence By Transfer Date, Ticket Number">Transfer<br>Date</a></th>
+              @OrderBy_Sort("time(TTTSTT)", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TrfTime" title="Sequence By Transfer Time, Ticket Number">Transfer<br>Time</a></th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Confirm_Desc($(V_IMIMDS), $(V_IMITEM), "", "", "", "", confirmDesc)
+
+              @TimeStamp_CYMD(V_TTTSTG, genDate)
+              @Format_Date(genDate, "D", F_genDate)
+              @dtw_assign(genTime, @dtw_rsubstr(V_TTTSTG, "12", "8"))
+              @TimeStamp_CYMD(V_TTTSTT, transferDate)
+              @dtw_assign(F_transferDate, "")
+              @dtw_assign(transferTime, "")
+              %if (transferDate != "")
+                  @Format_Date(transferDate, "D", F_transferDate)
+                  @dtw_assign(transferTime, @dtw_rsubstr(V_TTTSTT, "12", "8"))
+              %endif
+
+              %if (V_TTTWHS == warehouseNumber)
+                  @dtw_assign(fromTo, "T")
+                  @dtw_assign(toName, warehouseName)
+                  @RtvFldDesc("WHWHS=$(V_TTFWHS)", "HDWHSM", "WHWHNM", fromName)
+              %else
+                  @dtw_assign(fromTo, "F")
+                  @dtw_assign(fromName, warehouseName)
+                  @RtvFldDesc("WHWHS=$(V_TTTWHS)", "HDWHSM", "WHWHNM", toName)
+              %endif
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)TransferUpdate.d2w/REPORT$(genericVarBase)&amp;transferTicket=@dtw_rurlescseq(V_TTTNBR)&amp;fromTo=@dtw_rurlescseq(fromTo)&amp;transferTime=@dtw_rurlescseq(transferTime)&amp;fromWhs=@dtw_rurlescseq(V_TTFWHS)&amp;fromWhsName=@dtw_rurlescseq(fromName)&amp;toWhs=@dtw_rurlescseq(V_TTTWHS)&amp;toWhsName=@dtw_rurlescseq(toName)" title="Click here to update ticket"> $(V_TTTNBR)</a></td>
+                  <td class="colnmbr">$(V_TTTWHS)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)WarehouseSelect.d2w/REPORT$(genericVarBase)&amp;warehouseNumber=@dtw_rurlescseq(V_TTTWHS)&amp;warehouseName=@dtw_rurlescseq(toName)&amp;fromD2w=@dtw_rurlescseq(d2wName)" title="View Warehouse">$(toName)</a></td>
+                  <td class="coldate">$(F_genDate)</td>
+                  <td class="colalph">$(genTime)</td>
+                  <td class="coldate">$(F_transferDate)</td>
+                  <td class="colalph">$(transferTime)</td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "TTTNBR DESC")
+          @DTW_ASSIGN(orderByDisplay, "Ticket Number (descending)")
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Ticket")
+      %if (orderBy == "TTTNBR")
+          @DTW_ASSIGN(orderBy, "TTTNBR DESC")
+          @DTW_ASSIGN(orderByDisplay, "Ticket Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "Ticket Number")
+      %endif
+  %elif (sequence == "ToWhs")
+      %if (orderBy == "TTTWHS,TTTNBR")
+          @DTW_ASSIGN(orderBy, "TTTWHS DESC,TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "To Warehouse (descending), Ticket Number")
+      %else
+          @DTW_ASSIGN(orderBy, "TTTWHS,TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "To Warehouse, Ticket Number")
+      %endif
+  %elif (sequence == "GenDate")
+      %if (orderBy == "date(TTTSTG),TTTNBR")
+          @DTW_ASSIGN(orderBy, "date(TTTSTG) DESC,TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "Generation Date (descending), Ticket Number")
+      %else
+          @DTW_ASSIGN(orderBy, "date(TTTSTG),TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "Generation Date, Ticket Number")
+      %endif
+  %elif (sequence == "GenTime")
+      %if (orderBy == "time(TTTSTG),TTTNBR")
+          @DTW_ASSIGN(orderBy, "time(TTTSTG) DESC,TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "Generation Time (descending), Ticket Number")
+      %else
+          @DTW_ASSIGN(orderBy, "time(TTTSTG),TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "Generation Time, Ticket Number")
+      %endif
+  %elif (sequence == "TrfDate")
+      %if (orderBy == "date(TTTSTT),TTTNBR")
+          @DTW_ASSIGN(orderBy, "date(TTTSTT) DESC,TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "Transfer Date (descending), Ticket Number")
+      %else
+          @DTW_ASSIGN(orderBy, "date(TTTSTT),TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "Transfer Date, Ticket Number")
+      %endif
+  %elif (sequence == "TrfTime")
+      %if (orderBy == "time(TTTSTT),TTTNBR")
+          @DTW_ASSIGN(orderBy, "time(TTTSTT) DESC,TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "Transfer Time (descending), Ticket Number")
+      %else
+          @DTW_ASSIGN(orderBy, "time(TTTSTT),TTTNBR")
+          @DTW_ASSIGN(orderByDisplay, "Transfer Time, Ticket Number")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchTicket, 7, 0) &&
+                      editNum(document.Search.srchToWhs, 3, 0) &&
+                      editdate(document.Search.srchGenDate) &&
+                      editdate(document.Search.srchTrfDate)
+                     )
+                  return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "TRANSFERTICKET")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Ticket Number</td>
+                              @dtw_assign(operNbr, "operTicket")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchTicket" type="text" size="8" maxlength="8"></td>
+                          </tr>
+        			
+                          <tr><td class="dsphdr">To Warehouse</td>
+                              @dtw_assign(operNbr, "operToWhs")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchToWhs" type="text" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Generation Date</td>
+                              @dtw_assign(operNbr, "operGenDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchGenDate" size="6" maxlength="6"> 		
+                                  <a href="javascript:calWindow('srchGenDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Transfer Date</td>
+                              @dtw_assign(operNbr, "operTrfDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchTrfDate" size="6" maxlength="6"> 		
+                                  <a href="javascript:calWindow('srchTrfDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchTicket.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("TTTNBR", "Ticket Number", $(srchTicket), "", operTicket, "N")
+  @Build_WildCard ("TTTWHS", "To Warehouse", $(srchToWhs), "", operToWhs, "N")
+  @Build_WildCard ("date(TTTSTG)", "Generation Date", $(srchGenDate), "", operGenDate, "I")
+  @Build_WildCard ("date(TTTSTT)", "Transfer Date", $(srchTrfDate), "", operTrfDate, "I")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

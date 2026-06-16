@@ -1,0 +1,120 @@
+<?php
+require_once 'GetURLParm.php';
+require_once 'SetLibraryList.php';
+require_once 'EditRoutines.php';
+require_once 'GenericDirectCallVariables.php';
+require_once 'VarBase.php';
+
+$backURL = "{$homeURL}{$phpPath}hdList.php{$genericVarBase}&amp;tblID=481";
+$fromACA1094CID = $_GET ['fromACA1094CID'];
+
+$stmtSQL = "Select * from new table (
+             Insert Into HRACC4 (C4CORCID,C4TXYR,C4RCPTID,C4SUBMID,C4CORR,C4CSUBID,C4BNAM1,C4BNAM2,C4PYTIN,C4BNAMC,C4TINRT,C4ADDR1,C4ADDR2,C4CITY,C4STATE,C4PSTCD,C4CFNAM,
+					     C4CMNAM,C4CLNAM,C4CSUFF,C4CPHON,C4ATCNT,C4ATRAN,C4MBCNT,C4AAGRP,C4QOFFM,C4QOFFTR,C44980TR,C4OFFM98,C4JSPIN,C4CTITL,C4SIGDT,C4MC12M,C4QCOV01,
+					     C4QCOV02,C4QCOV03,C4QCOV04,C4QCOV05,C4QCOV06,C4QCOV07,C4QCOV08,C4QCOV09,C4QCOV10,C4QCOV11,C4QCOV12,C4FACT01,C4FACT02,C4FACT03,C4FACT04,C4FACT05,
+					     C4FACT06,C4FACT07,C4FACT08,C4FACT09,C4FACT10,C4FACT11,C4FACT12,C4EACTA,C4EACT01,C4EACT02,C4EACT03,C4EACT04,C4EACT05,C4EACT06,C4EACT07,C4EACT08,
+					     C4EACT09,C4EACT10,C4EACT11,C4EACT12,C4AGRPA,C4AGRP01,C4AGRP02,C4AGRP03,C4AGRP04,C4AGRP05,C4AGRP06,C4AGRP07,C4AGRP08,C4AGRP09,C4AGRP10,C4AGRP11,
+					     C4AGRP12,C44980TA,C44980T01,C44980T02,C44980T03,C44980T04,C44980T05,C44980T06,C44980T07,C44980T08,C44980T09,C44980T10,C44980T11,C44980T12)
+		     Select              C4CORCID,C4TXYR,'',0,'R',trim(C4RCPTID) || '|' || trim(C4SUBMID),C4BNAM1,C4BNAM2,C4PYTIN,C4BNAMC,C4TINRT,C4ADDR1,C4ADDR2,C4CITY,C4STATE,C4PSTCD,C4CFNAM,
+			 		     C4CMNAM,C4CLNAM,C4CSUFF,C4CPHON,C4ATCNT,C4ATRAN,C4MBCNT,C4AAGRP,C4QOFFM,C4QOFFTR,C44980TR,C4OFFM98,C4JSPIN,C4CTITL,C4SIGDT,C4MC12M,C4QCOV01,
+					     C4QCOV02,C4QCOV03,C4QCOV04,C4QCOV05,C4QCOV06,C4QCOV07,C4QCOV08,C4QCOV09,C4QCOV10,C4QCOV11,C4QCOV12,C4FACT01,C4FACT02,C4FACT03,C4FACT04,C4FACT05,
+					     C4FACT06,C4FACT07,C4FACT08,C4FACT09,C4FACT10,C4FACT11,C4FACT12,C4EACTA,C4EACT01,C4EACT02,C4EACT03,C4EACT04,C4EACT05,C4EACT06,C4EACT07,C4EACT08,
+					     C4EACT09,C4EACT10,C4EACT11,C4EACT12,C4AGRPA,C4AGRP01,C4AGRP02,C4AGRP03,C4AGRP04,C4AGRP05,C4AGRP06,C4AGRP07,C4AGRP08,C4AGRP09,C4AGRP10,C4AGRP11,
+					     C4AGRP12,C44980TA,C44980T01,C44980T02,C44980T03,C44980T04,C44980T05,C44980T06,C44980T07,C44980T08,C44980T09,C44980T10,C44980T11,C44980T12
+		     From HRACC4 a Where a.C4CACHID={$fromACA1094CID})";
+
+$sqlResult = db2_exec ( $i5Connect->getConnection (), $stmtSQL );
+
+// If row not added, set identity column and try again
+if (! $sqlResult) {
+	$sqlResult = Check_Identity ( 'HRACC4', 'C4CACHID', $stmtSQL );
+}
+$row4 = db2_fetch_assoc ( $sqlResult );
+
+// Copy Other Members
+$stmtSQL = " Insert Into HRACC3 (C3CAID94,C3BNAM1,C3BNAM2,C3PYTIN,C3BNAMC,C3TINRT)
+             Select {$row4 ['C4CACHID']},C3BNAM1,C3BNAM2,C3PYTIN,C3BNAMC,C3TINRT
+             From HRACC3 a Where a.C3CAID94={$fromACA1094CID}";
+$sqlResult = db2_exec ( $i5Connect->getConnection (), $stmtSQL );
+
+// If row not added, set identity column and try again
+if (! $sqlResult) {
+	$sqlResult = Check_Identity ( 'HRACC3', 'C3CACHID', $stmtSQL );
+}
+
+// Get ID of Affordable Care Act 1095C Cache
+$stmtSQL = " Select C5CACHID From HRACC5 Where C5CAID94={$fromACA1094CID} ";
+$sqlResult = db2_exec ( $i5Connect->getConnection (), $stmtSQL, array ('cursor' => DB2_SCROLLABLE ) );
+
+while ( $row = db2_fetch_assoc ( $sqlResult, $startRow ) ) {
+	$startRow ++;
+	$stmtSQL = "Select * from new table (
+	             Insert Into HRACC5
+						    (C5CAID94,C5CORCID,C5RECID,C5CURID,C5EFNAM,C5EMNAM,C5ELNAM,
+						     C5TINRT,C5ESSOC,C5ADDR1,C5ADDR2,C5CITY,C5STATE,C5PSTCD,C5EEAGE,C5PSMO,
+					         C5CVCDA,C5CVCD01,C5CVCD02,C5CVCD03,C5CVCD04,C5CVCD05,C5CVCD06,
+					         C5CVCD07,C5CVCD08,C5CVCD09,C5CVCD10,C5CVCD11,C5CVCD12,
+					         C5EMSHA,C5EMSH01,C5EMSH02,C5EMSH03,C5EMSH04,C5EMSH05,C5EMSH06,
+					         C5EMSH07,C5EMSH08,C5EMSH09,C5EMSH10,C5EMSH11,C5EMSH12,
+					     	C5SHBRA,C5SHBR01,C5SHBR02,C5SHBR03,C5SHBR04,C5SHBR05,C5SHBR06,
+					     	C5SHBR07,C5SHBR08,C5SHBR09,C5SHBR10,C5SHBR11,C5SHBR12,
+					     	C5ZIPA,C5ZIP01,C5ZIP02,C5ZIP03,C5ZIP04,C5ZIP05,C5ZIP06,
+					     	C5ZIP07,C5ZIP08,C5ZIP09,C5ZIP10,C5ZIP11,C5ZIP12,C5CVIND) 
+				     Select  
+				             {$row4 ['C4CACHID']},C5CORCID,C5RECID,C5CURID,C5EFNAM,C5EMNAM,C5ELNAM,
+                             C5TINRT,C5ESSOC,C5ADDR1,C5ADDR2,C5CITY,C5STATE,C5PSTCD,C5EEAGE,C5PSMO,
+                         	C5CVCDA,C5CVCD01,C5CVCD02,C5CVCD03,C5CVCD04,C5CVCD05,C5CVCD06,
+                         	C5CVCD07,C5CVCD08,C5CVCD09,C5CVCD10,C5CVCD11,C5CVCD12,
+                         	C5EMSHA,C5EMSH01,C5EMSH02,C5EMSH03,C5EMSH04,C5EMSH05,C5EMSH06,
+                         	C5EMSH07,C5EMSH08,C5EMSH09,C5EMSH10,C5EMSH11,C5EMSH12,
+                         	C5SHBRA,C5SHBR01,C5SHBR02,C5SHBR03,C5SHBR04,C5SHBR05,C5SHBR06,
+                         	C5SHBR07,C5SHBR08,C5SHBR09,C5SHBR10,C5SHBR11,C5SHBR12,
+					    	 C5ZIPA,C5ZIP01,C5ZIP02,C5ZIP03,C5ZIP04,C5ZIP05,C5ZIP06,
+					     	C5ZIP07,C5ZIP08,C5ZIP09,C5ZIP10,C5ZIP11,C5ZIP12,C5CVIND
+				     From HRACC5 a Where a.C5CACHID={$row ['C5CACHID']})";
+	
+	$sqlResult5 = db2_exec ( $i5Connect->getConnection (), $stmtSQL );
+	
+	// If row not added, set identity column and try again
+	if (! $sqlResult5) {
+		$sqlResult5 = Check_Identity ( 'HRACC5', 'C5CACHID', $stmtSQL );
+	}
+	$row5 = db2_fetch_assoc ( $sqlResult5 );
+	
+	$stmtSQL = " Insert Into HRACC2
+						    (C2CAID5,C2DFNAM,C2DMNAM,C2DLNAM,C2DSUFF,C2DSSOC,C2TINRT,C2DDOB,C2CVCDA,
+						     C2CVCD01,C2CVCD02,C2CVCD03,C2CVCD04,C2CVCD05,C2CVCD06,C2CVCD07,
+						     C2CVCD08,C2CVCD09,C2CVCD10,C2CVCD11,C2CVCD12) 
+	                 Select {$row5 ['C5CACHID']},C2DFNAM,C2DMNAM,C2DLNAM,C2DSUFF,C2DSSOC,C2TINRT,C2DDOB,C2CVCDA,
+						     C2CVCD01,C2CVCD02,C2CVCD03,C2CVCD04,C2CVCD05,C2CVCD06,C2CVCD07,
+						     C2CVCD08,C2CVCD09,C2CVCD10,C2CVCD11,C2CVCD12
+				     From HRACC2 a Where a.C2CAID5={$row ['C5CACHID']}";
+	
+	$sqlResult2 = db2_exec ( $i5Connect->getConnection (), $stmtSQL );
+	
+	// If row not added, set identity column and try again
+	if (! $sqlResult2) {
+		$sqlResult2 = Check_Identity ( 'HRACC2', 'C2DCID5', $stmtSQL );
+	}
+}
+
+print "\n <meta http-equiv=\"refresh\" content=\"0; URL={$backURL}&amp;confMessage=" . urlencode ( trim ( $confMessage ) ) . "\"> ";
+
+function Check_Identity($table, $column, $stmtSQL) {
+	global $pgmLibrary, $i5Connect;
+	if (! $i5Connect)
+		die ( "<br>Check Identity Column Connection Failed. Error number =" . i5_errno () . " msg=" . i5_errormsg () );
+	
+	$maxSQL = "Select max({$column}) + 1 as MAXID From {$table}";
+	$sqlResult = db2_exec ( $i5Connect->getConnection (), $maxSQL );
+	$row = db2_fetch_assoc ( $sqlResult );
+	if (array_key_exists ( 'MAXID', $row )) {
+		$maxSQL = "ALTER TABLE {$table} ALTER COLUMN {$column} RESTART WITH {$row['MAXID']}";
+		$status = db2_exec ( $i5Connect->getConnection (), $maxSQL );
+		if ($status) {
+			$status = db2_exec ( $i5Connect->getConnection (), $stmtSQL );
+		}
+	}
+	return $status;
+}
+?>	

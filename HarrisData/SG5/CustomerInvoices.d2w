@@ -1,0 +1,579 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job:  Customer Invoices                                          *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title               = "Customer Open Invoices"
+  d2wName                  = "CustomerInvoices.d2w"
+  d2wVarBase               = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;agingBucket=@dtw_rurlescseq(agingBucket)&amp;agingDesc=@dtw_rurlescseq(agingDesc)&amp;agingAmt=@dtw_rurlescseq(agingAmt)&amp;agingCnt=@dtw_rurlescseq(agingCnt)&amp;downloadProfileHandle=@dtw_rurlescseq(downloadProfileHandle)"
+  currentURL               = "$(d2wName)/REPORT$(d2wVarBase)"
+  nextPrevVar              = "$(d2wVarBase)"
+  wildDftVar               = "REPORT$(d2wVarBase)"
+  DATABASE                 = "*LOCAL"
+  DTW_DEFAULT_REPORT       = "NO"
+  RPT_MAX_ROWS             = "10"
+  dspMaxRows               = "$(dspMaxRowsDft)"
+  prtMaxRows               = "$(prtMaxRowsDft)"
+  ROW_NUM                  = "0"
+  START_ROW_NUM            = "1"
+  DTW_PAD_PGM_PARMS        = "YES"
+  rowIndexNext             = "1"
+  totalPages               = "0"	
+  shipToCount              = "0"	
+  billToCount              = "0"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@vendCustName", "@dtw_rurlescseq(vendCustName)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @CustomerUserView(profileHandle, dataBaseID, userPass, customerNumber, " ")
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+	           %INCLUDE "numedit.icl"
+                  %INCLUDE "AJAXRequest.icl"
+                  %INCLUDE "SaveCurrentURL.icl"
+                  %INCLUDE "CheckEnterSearch.icl"
+                  function validate(searchForm) {
+                      if (editNum(document.Search.srchInvoice, 7, 0) &&
+                          editNum(document.Search.srchOrder, 8, 0))
+                          return true;
+                  }
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                           @dtw_assign(pageID, "CUSTOMERINVOICES")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          @dtw_assign(uv_SalesmanName, "IVSLSM")
+                          @dtw_assign(uv_BillingLocationName, "IVLOC#")
+                          @dtw_assign(uv_CustomerName, "IVBLTO")
+	                   %INCLUDE "userview.icl"
+
+                          @RtvFldDesc("IVBLTO=$(customerNumber) and IVBLTO<>IVCUST", "HDINVC", "char(count(*))", shipToCount)
+                          @RtvFldDesc("IVCUST=$(customerNumber) and IVBLTO<>IVCUST", "HDINVC", "char(count(*))", billToCount)
+
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select IVLOC#, IVBLTO, IVCUST, IVIVDT, IVAIV#, ", stmtSQL)
+                          @dtw_concat(stmtSQL, "        IVIVAM, IVNPOS, IVORD#, IVSEQ#, IVARPO, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " IVIVAM-IVNPOS as NETDUE ", stmtSQL)
+                          %if (billToCount > "0")
+                              @dtw_concat(stmtSQL, " , b.CMCNA1 as BTNAME, b.CMCNA1U as BTNAMEU", stmtSQL)
+                          %endif
+                          %if (shipToCount > "0")
+                              @dtw_concat(stmtSQL, " , c.CMCNA1 as STNAME, c.CMCNA1U as STNAMEU", stmtSQL)
+                          %endif
+                          @dtw_concat(fileSQL, " HDINVC ", fileSQL)
+                          %if (billToCount > "0")
+                              @dtw_concat(fileSQL, " left join HDCUST b on IVBLTO=b.CMCUST  ", fileSQL)
+                          %endif
+                          %if (shipToCount > "0")
+                              @dtw_concat(fileSQL, " left join HDCUST c on IVCUST=c.CMCUST  ", fileSQL)
+                          %endif
+                          %if (agingDesc != "")
+                              @dtw_concat(fileSQL, " inner join ARAIWK on IVSEQ#=AISEQ# and AIXHND='$(downloadProfileHandle)' and AIBCKT=$(agingBucket) ", fileSQL)
+                          %endif
+                          @dtw_concat(selectSQL, "(IVBLTO=$(customerNumber) or IVCUST=$(customerNumber)) ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @Invoice_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Invoice_Query (IN  CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitleWithPrint.icl"
+
+      <table $(contentTable)>
+          @Format_Header_URL("Customer", $(customerName), $(customerNumber), "$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(d2wVarBase)")
+          %if (agingDesc != "")
+              @Format_Header_URL("Aging Days", $(agingDesc), "", "")
+              @Format_Header_URL("Aging Amount", $(agingAmt), "", "")
+              @Format_Header_URL("Number Of Invoices", $(agingCnt), "", "")
+          %endif
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+      $(hrTagAttr)
+			
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Invoice<br>Number</th>
+                      <th class="colhdr">Order<br>Number</th>
+                      <th class="colhdr">Reference<br>Number</th></tr>
+                  <tr>
+                      <td><input type="text" class="inputnmbr" name="srchInvoice" size="10" maxlength="7">
+                          <input type="hidden" name="operInvoice" value="=">
+                      </td>
+                      <td><input type="text" class="inputnmbr" name="srchOrder" size="10" maxlength="8">
+                          <input type="hidden" name="operOrder" value="=">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchRef" size="10" maxlength="10">
+                          <input type="hidden" name="operRef" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchInvoice.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+	
+      <table $(contentTable)>
+          @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+          <tr>
+              @OrderBy_Sort("IVAIV#", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=InvoiceNumber" title="Sequence By Invoice Number"> Invoice<br>Number</a></th>
+              @OrderBy_Sort("IVIVDT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=InvoiceDate" title="Sequence By Invoice Date, Invoice Number"> Invoice<br>Date</a></th>
+              @OrderBy_Sort("IVIVAM", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Amount" title="Sequence By Invoice Amount, Invoice Date, Invoice Number"> Amount</a></th>	
+              @OrderBy_Sort("IVNPOS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=AmountPaid" title="Sequence By Amount Paid, Invoice Date, Invoice Number"> Amount<br>Paid</a></th>
+              @OrderBy_Sort("NETDUE", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=AmountDue" title="Sequence By Amount Due, Invoice Date, Invoice Number"> Amount<br>Due</a></th>
+              @OrderBy_Sort("IVORD#", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=OrderNumber" title="Sequence By Order Number, Invoice Date, Invoice Number"> Order<br>Number</a></th>
+              @OrderBy_Sort("IVARPO", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ReferenceNumber" title="Sequence By Reference Number, Invoice Date, Invoice Number"> Reference<br>Number</a></th>
+              @OrderBy_Sort("IVLOC#", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Location" title="Sequence By Location, Invoice Date, Invoice Number">Loc</a></th>
+              %if (billToCount > "0")
+                  @OrderBy_Sort("IVBLTO", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=BillToNumber" title="Sequence By Bill-To Number, Invoice Date, Invoice Number">Bill-To<br>Number</a></th>
+                  @OrderBy_Sort("BTNAMEU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=BillToName" title="Sequence By Bill-ToName, Invoice Date, Invoice Number">Bill-To Name</a></th>
+              %endif
+              %if (shipToCount > "0")
+                  @OrderBy_Sort("IVCUST", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ShipToNumber" title="Sequence By Ship-To Number, Invoice Date, Invoice Number">Ship-To<br>Number</a></th>
+                  @OrderBy_Sort("STNAMEU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ShipToName" title="Sequence By Ship-To Name, Invoice Date, Invoice Number">Ship-To Name</a></th>
+              %endif
+          </tr>		
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_assign(IVDT, $(V_IVIVDT))
+
+              %INCLUDE "SetRowClass.icl"
+              %if (V_HDOERL > "0")
+                  @Check_Invoice(profileHandle, dataBaseID, V_IVAIV#, V_IVBLTO, invoiceFound)
+                  @retHistorySeq(profileHandle, dataBaseID, V_IVAIV#, historySeq)
+              %else
+                  @dtw_assign(invoiceFound, "N")
+                  @dtw_assign(historySeq, "0")
+              %endif
+              @Format_Nbr($(V_IVIVAM), F_IVIVAM, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_IVNPOS), F_IVNPOS, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_NETDUE), F_NETDUE, "2", $(amtEditCode), "", "", "")
+              @Format_Date(V_IVIVDT, "D", F_IVIVDT)
+
+              <tr class="$(rowClass)">
+                  %if (invoiceFound == "Y")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)SelectInvoice.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVBLTO)&amp;customerName=@dtw_rurlescseq(customerName)&amp;invoiceNumber=@dtw_rurlescseq(V_IVAIV#)&amp;invoiceDate=@dtw_rurlescseq(IVDT)&amp;formatToPrint=Y" onclick="$(invoiceWinVar)" title="Invoice Quickview">$(V_IVAIV#)</a></td>
+                  %else
+                      <td class="colnmbr">$(V_IVAIV#)</td>
+                  %endif
+                  <td class="coldate">$(F_IVIVDT)</td>
+                  <td class="colnmbr">$(F_IVIVAM)</td>
+                  %if (V_IVNPOS != ".00")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerPayments.d2w/REPORT$(d2wVarBase)&amp;forInvoiceNumber=@dtw_rurlescseq(V_IVSEQ#)" title="View Payments">$(F_IVNPOS)</a></td>
+                  %else
+                      <td class="colnmbr">$(F_IVNPOS)</td>
+                  %endif
+                  <td class="colnmbr">$(F_NETDUE)</td>
+
+                  %if (V_IVORD# != "0" && V_IVORD# != "99999999" && historySeq > "0")
+                      <td class="colnmbr"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrderHistory.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_IVORD#)&amp;orderSequence=@dtw_rurlescseq(historySeq)" title="View Order History Detail">$(V_IVORD#)</a></td>
+                  %elseif (V_IVORD# == "99999999")
+                      <td class="colnmbr">Summary</td>
+                  %else
+                      <td class="colnmbr">$(V_IVORD#)</td>
+                  %endif
+                  <td class="colalph">$(V_IVARPO)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)LocationSelect.d2w/REPORT$(genericVarBase)&amp;locationNumber=@dtw_rurlescseq(V_IVLOC#)&amp;locationName=@dtw_rurlescseq(V_LOLNA1)" title="View Location">$(V_IVLOC#)</a></td>
+                  %if (billToCount > "0")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVBLTO)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(V_IVBLTO)</a></td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVBLTO)&amp;customerName=@dtw_rurlescseq(V_BTNAME)" title="View Customer">$(V_BTNAME)</a></td>
+                  %endif
+                  %if (shipToCount > "0")
+                      %if (V_IVBLTO != V_IVCUST || billToCount == "0")
+                          <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVCUST)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(V_IVCUST)</a></td>
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVCUST)&amp;customerName=@dtw_rurlescseq(V_STNAME)" title="View Customer">$(V_STNAME)</a></td>
+                      %else
+                          <td class="colnmbr">$(V_IVCUST)</td>
+                          <td class="colalph">$(V_STNAME)</td>
+                      %endif
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %if (downloadProfileHandle == "")
+      @dtw_assign(downloadProfileHandle, profileHandle)
+  %else
+      @dtw_assign(profileHandle, downloadProfileHandle)
+  %endif
+
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint == "Y")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Invoice Date, Invoice Number")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "InvoiceNumber")
+      %if (orderBy == "IVAIV#")
+          @DTW_ASSIGN(orderBy, "IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Invoice Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Invoice Number")
+      %endif
+  %elseif (sequence == "InvoiceDate")
+      %if (orderBy == "IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderBy, "IVIVDT DESC,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Invoice Date (descending), Invoice Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Invoice Date, Invoice Number")
+      %endif
+  %elseif (sequence == "Amount")
+      %if (orderBy == "IVIVAM,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderBy, "IVIVAM DESC,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Invoice Amount (descending), Invoice Date, Invoice Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IVIVAM,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Invoice Amount, Invoice Date, Invoice Number")
+      %endif
+  %elseif (sequence == "AmountPaid")
+      %if (orderBy == "IVNPOS,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderBy, "IVNPOS DESC,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Amount Paid (descending), Invoice Date (descending), Invoice Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IVNPOS,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Amount Paid, Invoice Date (descending), Invoice Number (descending)")
+      %endif
+  %elseif (sequence == "AmountDue")
+      %if (orderBy == "NETDUE,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderBy, "NETDUE DESC,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Amount Due (descending), Invoice Date (descending), Invoice Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "NETDUE,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Amount Due, Invoice Date, Invoice Number")
+      %endif
+  %elseif (sequence == "OrderNumber")
+      %if (orderBy == "IVORD#,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderBy, "IVORD# DESC,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Order Number (descending), Invoice Date (descending), Invoice Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IVORD#,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Order Number, Invoice Date, Invoice Number")
+      %endif
+  %elseif (sequence == "ReferenceNumber")
+      %if (orderBy == "IVARPO,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderBy, "IVARPO DESC,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Reference Number (descending), Invoice Date (descending), Invoice Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IVARPO,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Reference Number, Invoice Date, Invoice Number")
+      %endif
+  %elseif (sequence == "Location")
+      %if (orderBy == "IVLOC#,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderBy, "IVLOC# DESC,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Location (descending), Invoice Date (descending), Invoice Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IVLOC#,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Location, Invoice Date, Invoice Number")
+      %endif
+  %elseif (sequence == "BillToNumber")
+      %if (orderBy == "IVBLTO,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderBy, "IVBLTO DESC,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Bill-To Number (descending), Invoice Date (descending), Invoice Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IVBLTO,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Bill-To Number, Invoice Date, Invoice Number")
+      %endif
+  %elseif (sequence == "BillToName")
+      %if (orderBy == "BTNAMEU,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderBy, "BTNAMEU DESC,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Bill-To Name (descending), Invoice Date (descending), Invoice Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "BTNAMEU,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Bill-To Name, Invoice Date, Invoice Number")
+      %endif
+  %elseif (sequence == "ShipToNumber")
+      %if (orderBy == "IVCUST,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderBy, "IVCUST DESC,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Ship-To Number (descending), Invoice Date (descending), Invoice Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IVCUST,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Ship-To Number, Invoice Date, Invoice Number")
+      %endif
+  %elseif (sequence == "ShipToName")
+      %if (orderBy == "STNAMEU,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderBy, "STNAMEU DESC,IVIVDT DESC,IVAIV# DESC")
+          @DTW_ASSIGN(orderByDisplay, "Ship-To Name (descending), Invoice Date (descending), Invoice Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "STNAMEU,IVIVDT,IVAIV#")
+          @DTW_ASSIGN(orderByDisplay, "Ship-To Name, Invoice Date, Invoice Number")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  @RtvFldDesc("IVBLTO=$(customerNumber) and IVBLTO<>IVCUST", "HDINVC", "char(count(*))", shipToCount)
+  @RtvFldDesc("IVCUST=$(customerNumber) and IVBLTO<>IVCUST", "HDINVC", "char(count(*))", billToCount)
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "dateedit.icl"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editdate(document.Search.frInvDate) &&
+                      editdate(document.Search.toInvDate) &&
+                      editNum(document.Search.frInvoice, 7, 0) &&
+                      editNum(document.Search.toInvoice, 7, 0) &&
+                      editNum(document.Search.frAmount, 9, 2) &&
+                      editNum(document.Search.toAmount, 9, 2) &&
+                      editNum(document.Search.frOrder, 8, 0) &&
+                      editNum(document.Search.toOrder, 8, 0) &&
+                      editNum(document.Search.frLoc, 3, 0) &&
+                      editNum(document.Search.toLoc, 3, 0)
+                      %if (billToCount > "0")
+                          && editNum(document.Search.frBillTo, 7, 0)
+                          && editNum(document.Search.toBillTo, 7, 0)
+                      %endif
+                      %if (shipToCount > "0")
+                          && editNum(document.Search.frShipTo, 7, 0)
+                          && editNum(document.Search.toShipTo, 7, 0)
+                      %endif
+                     )
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "CUSTOMERINVOICESRCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          @dtw_assign(fromToSearch, "Y")
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Invoice Number</td>
+                              @dtw_assign(operNbr, "operInv#")
+                              <td>%INCLUDE "opersel_num2_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="frInvoice" size="8" maxlength="7"></td> 		
+                              <td class="inputnmbr"><input type="text" name="toInvoice" size="8" maxlength="7"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Invoice Date</td>
+                              @dtw_assign(operNbr, "operInvD")
+                              <td>%INCLUDE "opersel_num2_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="frInvDate" size="8" maxlength="6"> 		
+                                  <a href="javascript:calWindow('frInvDate');">$(calendarImage)</a></td>
+                              <td class="inputnmbr"><input type="text" name="toInvDate" size="8" maxlength="6"> 		
+                                  <a href="javascript:calWindow('toInvDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Amount</td>
+                              @dtw_assign(operNbr, "operAmount")
+                              <td>%INCLUDE "opersel_num2_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="frAmount" size="8" maxlength="11"></td> 		
+                              <td class="inputnmbr"><input type="text" name="toAmount" size="8" maxlength="11"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Order Number</td>
+                              @dtw_assign(operNbr, "operOrd#")
+                              <td>%INCLUDE "opersel_num2_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="frOrder" size="8" maxlength="8"></td> 		
+                              <td class="inputnmbr"><input type="text" name="toOrder" size="8" maxlength="8"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Reference Number</td>
+                              @dtw_assign(operNbr, "operRef#")
+                              <td>%INCLUDE "opersel_alph2_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="frRef" size="8" maxlength="10"></td> 		
+                              <td class="inputnmbr"><input type="text" name="toRef" size="8" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Location</td>
+                              @dtw_assign(operNbr, "operLoc")
+                              <td>%INCLUDE "opersel_num2_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="frLoc" size="8" maxlength="3"></td> 		
+                              <td class="inputnmbr"><input type="text" name="toLoc" size="8" maxlength="3"></td>
+                          </tr>
+
+                          %if (billToCount > "0")
+                              <tr><td class="dsphdr">Bill-To Number</td>
+                                  @dtw_assign(operNbr, "operBillTo")
+                                  <td>%INCLUDE "opersel_num2_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="frBillTo" size="8" maxlength="7"></td> 		
+                                  <td class="inputnmbr"><input type="text" name="toBillTo" size="8" maxlength="7"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Bill-To Name</td>
+                                  @dtw_assign(operNbr, "operBTName")
+                                  <td>%INCLUDE "opersel_alph2_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="frBTName" size="8" maxlength="26"></td> 		
+                                  <td class="inputnmbr"><input type="text" name="toBTName" size="8" maxlength="26"></td>
+                              </tr>
+                          %endif
+
+                          %if (shipToCount > "0")
+                              <tr><td class="dsphdr">Ship-To Number</td>
+                                  @dtw_assign(operNbr, "operShipTo")
+                                  <td>%INCLUDE "opersel_num2_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="frShipTo" size="8" maxlength="7"></td> 		
+                                  <td class="inputnmbr"><input type="text" name="toShipTo" size="8" maxlength="7"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Ship-To Name</td>
+                                  @dtw_assign(operNbr, "operSTName")
+                                  <td>%INCLUDE "opersel_alph2_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="frSTName" size="8" maxlength="26"></td> 		
+                                  <td class="inputnmbr"><input type="text" name="toSTName" size="8" maxlength="26"></td>
+                              </tr>
+                          %endif
+
+                          %INCLUDE "SearchBottom.icl"
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                      </form>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("IVAIV#", "Invoice Number", $(srchInvoice), "", operInvoice, "N")
+  @Build_WildCard ("IVORD#", "Order Number", $(srchOrder), "", operOrder, "N")
+  @Build_WildCard ("IVARPO", "Reference Number", $(srchRef), "U", operRef, "A")
+
+  @Range_WildCard ("IVAIV#", "Invoice Number", $(frInvoice), $(toInvoice), "", operInv#, "N")
+  @Range_WildCard ("IVIVDT", "Invoice Date", $(frInvDate), $(toInvDate), "", operInvD, "D")
+  @Range_WildCard ("IVIVAM", "Amount", $(frAmount), $(toAmount), "", operAmount, "N")
+  @Range_WildCard ("IVORD#", "Order Number", $(frOrder), $(toOrder), "", operOrd#, "N")
+  @Range_WildCard ("IVARPO", "Reference Number", $(frRef), $(toRef), "", operRef#, "A")
+  @Range_WildCard ("IVLOC#", "Location", $(frLoc), $(toLoc), "", operLoc, "N")
+  @Range_WildCard ("IVBLTO", "Bill-To Number", $(frBillTo), $(toBillTo), "", operBillTo, "N")
+  @Range_WildCard ("b.CMCNA1U", "Bill-To Name", $(frBTName), $(toBTName), "U", operBTName, "A")
+  @Range_WildCard ("IVCUST", "Ship-To Number", $(frShipTo), $(toShipTo), "", operShipTo, "N")
+  @Range_WildCard ("c.CMCNA1U", "Ship-To Name", $(frSTName), $(toSTName), "U", operSTName, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

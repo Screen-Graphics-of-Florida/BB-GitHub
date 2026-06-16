@@ -1,0 +1,298 @@
+%{
+*********************************************************************
+* Copr 1979 2002 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Customer Contact Events                                     *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Customer Contact Related Events"
+  d2wName                 = "CustomerContactRelatedEvents.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;contactNumber=@dtw_rurlescseq(contactNumber)&amp;eventSequence=@dtw_rurlescseq(eventSequence)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HCRCEM_E"
+  fileName                = "CRCEVU"	
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  dspCmt                  = "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "dateedit.icl"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "calendar.icl"
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editdate(document.Search.srchDate)
+                      %if (customerNumber == "")
+                          && editNum(document.Search.srchCust, 7, 0)
+                      %endif
+                     )
+                     return true;
+              }
+              function toggleCmt() {
+                  var table = document.getElementById('relTable');
+                  var rows = table.rows;
+                  for (var rowLoop=0; rowLoop<rows.length; rowLoop++) {
+                      var id = rows[rowLoop].id;
+                      var id2 = id.substring(0,3);
+                      if (id2 == 'cmt') {
+                          if (document.getElementById(id).style.display=='none'){
+                              document.getElementById(id).style.display = '';}
+                          else {document.getElementById(id).style.display = 'none';}
+                      }
+                  }
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          @RtvFldDesc("UFFILN='CRCEVU' and UFEVNT=' ' and UFFLDN='$(relEventCol)' and UFTYPE='C'", "SYUDFM", "count(*)", dspCmt)
+
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "CUSTCONTACTEVENT")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(begSeq, eventSequence)
+                      @dtw_assign(prevSeq, eventSequence)
+                      %while (prevSeq > "0") {
+                          @RtvFldDesc("EMESEQ=$(prevSeq)", "CRCEVM", "EMOSEQ", prevSeq)
+                          %if (prevSeq > "0")
+                              @dtw_assign(begSeq, prevSeq)
+                          %endif
+                      %}
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, "WITH RELATED (GROUP,ESEQ, OSEQ,CONT,INDENT) AS", stmtSQL)
+                      @dtw_concat(stmtSQL, "  (SELECT DIGITS(EMESEQ), EMESEQ,EMOSEQ,EMCONT,0 ", stmtSQL)
+                      @dtw_concat(stmtSQL, "   FROM CRCEVM ", stmtSQL)
+                      @dtw_concat(stmtSQL, "   WHERE EMCONT=$(contactNumber) and EMESEQ=$(begSeq) ", stmtSQL)
+                      @dtw_concat(stmtSQL, "   UNION ALL ", stmtSQL)
+                      @dtw_concat(stmtSQL, "   SELECT m.GROUP || '_' || DIGITS(E.EMESEQ), E.EMESEQ,E.EMOSEQ,E.EMCONT,m.INDENT+1 ", stmtSQL)
+                      @dtw_concat(stmtSQL, "   FROM CRCEVM E JOIN RELATED M  ON E.EMOSEQ = M.ESEQ and E.EMCONT=$(contactNumber) ", stmtSQL)
+                      @dtw_concat(stmtSQL, "  ) ", stmtSQL)
+                      @dtw_concat(stmtSQL, " SELECT GROUP,INDENT,CRCEVM.*", stmtSQL)
+                      %if (dspCmt != "0")
+                          @dtw_concat(stmtSQL, " , coalesce(EUFLDV,' ') as EUFLDV ", stmtSQL)
+                      %endif
+                      @dtw_concat(fileSQL, " RELATED inner join CRCEVM on ESEQ=EMESEQ and CONT=EMCONT ", fileSQL)
+                      %if (dspCmt != "0")
+                          @dtw_concat(fileSQL, " left join CRCEVU on ESEQ=EUESEQ and CONT=EUCONT and EUFLDN='$(relEventCol)'", fileSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By GROUP,ESEQ ", stmtSQL)
+                      @dtw_assign(saveMaxRows, dspMaxRows)
+                      @dtw_assign(dspMaxRows, "9999")
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @dtw_assign(dspMaxRows, saveMaxRows)
+                      @Contact_Event_Related(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Contact_Event_Related (IN CHAR(64)    profileHandle,
+				              CHAR(2)     dataBaseID,
+                                             CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, evtsec_01, evtsec_02, evtsec_03, evtsec_04, evtsec_05, evtsec_06, evtsec_07, evtsec_08, evtsec_09, evtsec_10, evtsec_11, evtsec_12, evtsec_13, evtsec_14, evtsec_15)
+
+      <table $(contentTable)>
+          <colgroup>
+	   	   <col width="80%">
+	   	   <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if (contactNumber <= "0")
+                          @dtw_assign(vendCustNumber, $(customerNumber))
+                          @dtw_assign(vendCustName, $(customerName))
+                      %endif
+                      <a href="$(homeURL)$(cGIPath)CustomerContactEvent.d2w/REPORT$(d2wVarBase)&amp;confMessage=" title="Return To Contact Events">$(portalHome)</a>
+                      %if (evtsec_01 == "Y" && (customerNumber > "0" || contactNumber > "0"))
+                          <a href="$(homeURL)$(cGIPath)EventCodeSelection.d2w/REPORT$(genericVarBase)&amp;fileName=@dtw_rurlescseq(fileName)&amp;contactNumber=@dtw_rurlescseq(contactNumber)&amp;vendCustNumber=@dtw_rurlescseq(vendCustNumber)&amp;vendCustName=@dtw_rurlescseq(vendCustName)&amp;fromContactNumber=@dtw_rurlescseq(contactNumber)&amp;origSequence=0&amp;fromD2w=@dtw_rurlescseq(d2wName)" onclick="$(searchWinVar)">$(addEventImageLrg)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      @RtvCustCont(profileHandle, dataBaseID, contactNumber, srchName, firstName, salutation, companyName)
+      @Format_EmplName(firstName, srchName, "", "", "", "H", F_Name)
+      @Format_Code(contactNumber, F_contactNumber)
+      %if (dspCmt != "0")
+          <div class="page">View: <input type="checkbox" CHECKED onClick="toggleCmt();">Comments</div>
+      %endif
+      $(hrTagAttr)
+      @dtw_tb_rows(userDefinedTable, maxRows)
+      @dtw_assign(ux, "1")
+      @dtw_assign(x, "1")
+      %while(x < maxRows)
+          {@dtw_tb_getv(userDefinedTable, x, @dtw_tb_rQuerycolnonj(userDefinedTable, "UFFLDN"), UFFLDN)
+           %if (UFFLDN == $(relEventCol))
+               @dtw_assign(ux, x)
+               @dtw_assign(x, maxRows)
+           %else
+               @dtw_add(x, "1", x)
+               @dtw_assign(ux, x)
+           %endif
+      %}
+      %INCLUDE "UserDefined.icl"
+      <table $(contentTable) id="relTable">
+          <tr>
+              %if (formatToPrint != "Y" && (evtsec_01 == "Y" || evtsec_02 == "Y" || evtsec_03 == "Y"))
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              <th class="colhdr">Event<br>Code</th>
+              <th class="colhdr">Description</th>
+              <th class="colhdr">User</th>
+              <th class="colhdr">Event<br>Date</th>
+              <th class="colhdr">Event<br>Time</th>
+              <th class="colhdr">Completion<br>Date</th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+              %ROW {
+                  %INCLUDE "SetRowClass.icl"
+                  @Date_FromISO_ToCYMD(V_EMEVTD, F_CYMD)
+                  @Format_Date(F_CYMD, "D", F_EMEVTD)
+                  @EditHrsMinSec(V_EMEVTT)
+                  @Date_FromISO_ToCYMD(V_EMCMPD, F_CYMD)
+                  @Format_Date(F_CYMD, "D", F_EMCMPD)
+
+                  @retrieveUserRole(profileHandle, dataBaseID, V_EMUSER, userCustomer, userVendor, userSalesman, userBadge, userCatalog, newsLink, profileName)
+                  @RtvFldDesc("ECFILN='$(fileName)' and ECEVNT='$(V_EMEVNT)' ", "SYEVNT", "ECDESC", eventDesc)
+                  @RtvFldDesc("EMCONT=$(V_EMCONT) and EMOSEQ=$(V_EMESEQ)", "CRCEVM", "count(*)", relCnt)
+                  @Format_Confirm_Desc($(V_EMDESC), $(V_EMEVNT), "", "", "", "", confirmDesc)
+
+                  @dtw_assign(indent, "")
+                  @dtw_assign(rowID, "row$(ROW_NUM)")
+                  %if (V_EMESEQ == eventSequence)
+                      @dtw_assign(rowClass, "selrow")
+                      @dtw_assign(rowID, "hashRow")
+                  %endif
+                  %while(V_INDENT >= "1"){
+                      @dtw_concat(indent, "&nbsp; &nbsp; &nbsp; ", indent)
+                      @dtw_subtract(V_INDENT, "1", V_INDENT)
+                  %}
+                  @dtw_substr(V_EMDESC, "1", "30", desc)
+                  %if (@dtw_rlength(V_EMDESC) > "30")
+                      @dtw_concat(desc, "...", desc)
+                  %endif
+
+                  @dtw_assign(maintainVar, "$(genericVarBase)&amp;contactNumber=@dtw_rurlescseq(V_EMCONT)&amp;eventSequence=@dtw_rurlescseq(V_EMESEQ)&amp;eventCode=@dtw_rurlescseq(V_EMEVNT)&amp;desc=@dtw_rurlescseq(V_EMDESC)&amp;fromRel=Y")
+                  <tr class="$(rowClass)" id="$(rowID)">
+                      %if (formatToPrint != "Y" && (evtsec_01 == "Y" || evtsec_02 == "Y" || evtsec_03 == "Y"))
+                          <td class="opticon">
+                              %if (evtsec_02 == "Y" || evtsec_03 == "Y")
+                                  <a href="$(homeURL)$(cGIPath)CustomerContactEventMaintain.d2w/MAINTAIN$(genericVarBase)&amp;eventSequence=@dtw_rurlescseq(V_EMESEQ)&amp;eventCode=@dtw_rurlescseq(V_EMEVNT)&amp;contactNumber=@dtw_rurlescseq(contactNumber)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;fromContactNumber=@dtw_rurlescseq(contactNumber)&amp;fromD2w=&amp;maintenanceCode=C&amp;fromRel=Y">$(changeImageSml)</a>
+                              %endif
+                              %if (evtsec_03 == "Y" && relCnt == "0")
+                                  <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)CustomerContactEventMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                              %endif
+                              %if (evtsec_01 == "Y")
+                                  <a href="$(homeURL)$(cGIPath)EventCodeSelection.d2w/REPORT$(genericVarBase)&amp;fileName=@dtw_rurlescseq(fileName)&amp;contactNumber=@dtw_rurlescseq(contactNumber)&amp;vendCustNumber=@dtw_rurlescseq(vendCustNumber)&amp;vendCustName=@dtw_rurlescseq(vendCustName)&amp;fromContactNumber=@dtw_rurlescseq(contactNumber)&amp;origSequence=@dtw_rurlescseq(V_EMESEQ)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;fromRel=Y" onclick="$(searchWinVar)">$(addEventImageSml)</a>
+                              %endif
+                          </td>
+                      %endif
+                      <td class="colalph" $(helpCursor)><span title="$(eventDesc)">$(indent) $(V_EMEVNT)</span></td>
+                      <td class="colalph" $(helpCursor)><a href="$(homeURL)$(cGIPath)CustomerContactEventSelect.d2w/REPORT$(genericVarBase)&amp;eventSequence=@dtw_rurlescseq(V_EMESEQ)&amp;eventCode=@dtw_rurlescseq(V_EMEVNT)&amp;contactNumber=@dtw_rurlescseq(contactNumber)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)"><span title="View Event:&#13;$(V_EMDESC)">$(desc)</span></a></td>
+                      <td class="colalph" $(helpCursor)><span title="$(V_EMUSER)">$(profileName)</span></td>
+                      @dtw_assign(calYear, @dtw_rsubstr(V_EMEVTD, "1", "4"))
+                      @dtw_assign(calMonth, @dtw_rsubstr(V_EMEVTD, "6", "2"))
+                      <td class="coldate"> <a href="$(homeURL)$(cGIPath)EventCalendarSelect.d2w/Edit_Data$(genericVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=0&amp;calView=M&amp;reload=Y&amp;user=@dtw_rurlescseq(V_EMUSER)&amp;dspCustomer=CHECKED&amp;dspOpen=CHECKED&amp;dspTime=CHECKED&amp;dspCompleted=CHECKED" title="View Calendar">$(F_EMEVTD)</a></td>
+                      <td class="colcode">$(V_EMEVTT)</td>
+                      <td class="coldate">$(F_EMCMPD)</td>
+                      %if (rowClass == "selrow")
+                          <td><a name="selRow"></a></td>
+                      %endif
+                  </tr>
+
+                  %if (dspCmt != "0")
+                      %if (V_UFTYPE == "C" && V_EUFLDV != "")
+                          @dtw_chartohex(V_EUFLDV, hexValue)
+                          @DTW_REPLACE(hexValue, "0D25", "<br>", hexValue)
+                          <tr class="$(rowClass)" id="cmt$(ROW_NUM)">
+                              <td class="colalph" colspan="2">&nbsp;</td>
+                                  @dtw_length(V_EUFLDV, cmtLen)
+                                  @dtw_assign(moreCmt, "")
+                                  %if (formatToPrint == "")
+                                      %if (cmtLen > "500")
+                                          @dtw_assign(moreCmt, "<br>&nbsp; &nbsp; more...")
+                                      %endif
+                                      @dtw_substr(V_EUFLDV, "1", "500", V_EUFLDV)
+                                  %endif
+                                  @dtw_chartohex(V_EUFLDV, hexValue)
+                                  @dtw_assign(printRows, "1")
+                                  @dtw_replace(hexValue, "0D25", "4CC2D96E", hexValue)
+                                  @dtw_hextochar(hexValue, comment)
+                                  <td class="cmtdsp" colspan="6">$(comment) $(moreCmt)</td>
+                          </tr>
+                      %endif
+                  %endif
+              %}
+      </table>
+
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+      <script TYPE="text/javascript">
+          window.location.hash = "hashRow";
+      </script>
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  @UserDefined_Query(profileHandle, dataBaseID, "CRCEVU    ", "          ", userDefinedTable)
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+

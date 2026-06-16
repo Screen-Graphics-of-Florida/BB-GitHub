@@ -1,0 +1,490 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Payroll Tax Payment History                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Payroll Tax Payments"
+  d2wName                 = "PayrollTaxPayments.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;backHome=@dtw_rurlescseq(backHome)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HPRTPI"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "NewWindowOpen.icl"
+              %INCLUDE "DateEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editdate(document.Search.srchDatePaid))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "TAXPAYMENTS ")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_FederalEINName, "XPFEIN")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                      @dtw_concat(fileSQL, " PRTXPH ", fileSQL)
+                      %if (wildCardSearch!="" || uv_Sql!="")
+                          @dtw_concat(selectSQL, "XPFEIN > 0 ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @TaxPayment_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) TaxPayment_Query (IN  CHAR(64) profileHandle,
+                                        CHAR(2)   dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count != "1")
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="80%">
+                  <col width="15%">
+              <tr><td><h1> $(page_title)</h1></td>
+                  %if (formatToPrint != "Y")
+                      <td class="toolbar">
+                          %if ((backHome != "$(d2wName)/report") && (backHome != ""))
+                              <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Bach Home">$(portalHome)</a>
+                          %endif
+                          %INCLUDE "XMLFormat.icl"
+                          %INCLUDE "FormatToPrint.icl"
+                          %INCLUDE "HelpPage.icl"
+                      </td>
+                  %endif
+              </tr>
+          </table>
+          %INCLUDE "ConfMessageDisplay.icl"
+
+          $(hrTagAttr)
+
+          %if (formatToPrint != "Y")
+              <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+                  <table $(quickSearchTable)>
+                      <tr><th class="colhdr">Tax<br>ID</th>
+                          <th class="colhdr">Date<br>Paid</th></tr>
+                      <tr><td><input type="text" class="inputalph" name="srchTaxId" size="2" maxlength="2">
+                              <input type="hidden" name="operTaxId" value="LIKE">
+                          </td>
+                          <td><input type="text" class="inputnmbr" name="srchDatePaid" size="6" maxlength="6">
+                              <input type="hidden" name="operDatePaid" value="=">
+                          </td>
+                          <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                      </tr>
+                  </table>
+                  <script TYPE="text/javascript">
+                      document.Search.srchTaxId.focus();
+                  </script>
+              </form>
+
+              %INCLUDE "WildCardPage.icl"
+          %endif
+
+          <table $(contentTable)>
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("XPFEIN", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=FedEin" title="Sequence By Federal EIN, Tax Type, Tax ID">Federal<br>EIN</a></th>
+                  @OrderBy_Sort("XPSEIN", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=OtherEin" title="Sequence By State, SUI Or Local EIN, Tax Type, Tax ID">State, SUI Or<br>Local EIN</a></th>
+                  @OrderBy_Sort("XPTYPE", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TaxType" title="Sequence By Tax Type, Tax ID">Tax<br>Type</a></th>
+                  <th class="colhdr">Tax Type<br>Description</th>
+                  @OrderBy_Sort("XPTXID", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TaxId" title="Sequence By Tax ID, Tax Type">Tax<br>ID</a></th>
+                  @OrderBy_Sort("XPDUE", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PaymentDueDate" title="Sequence By Payment Due Date, Tax ID, Tax Type">Payment<br>Due Date</a></th>
+                  @OrderBy_Sort("XPPAID", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DatePaid" title="Sequence By Date Paid, Tax ID, Tax Type">Date<br>Paid</a></th>
+                  @OrderBy_Sort("XPPAMT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=AmountPaid" title="Sequence By Amount Paid">Amount<br>Paid</a></th>
+                  @OrderBy_Sort("XPCKNO", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CheckNumber" title="Sequence By Check Number">Check<br>Number</a></th>
+              </tr>
+          %INCLUDE "NoRecordsFound.icl"
+      %endif
+
+          %ROW{
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;federalEin=@dtw_rurlescseq(V_XPFEIN)&amp;otherEin=@dtw_rurlescseq(V_XPSEIN)&amp;taxId=@dtw_rurlescseq(V_XPTXID)&amp;taxType=@dtw_rurlescseq(V_XPTYPE)&amp;datePaid=@dtw_rurlescseq(V_XPPAID)&amp;checkNumber=@dtw_rurlescseq(V_XPCKNO)&amp;paymentSequence=@dtw_rurlescseq(V_XPSEQ)")
+              %if (sql_Record_Count == "1")
+                  @Save_WebReg(webRegCurFile, profileHandle, d2wName, "", orderBy, orderByDisplay, "")
+                  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)PayrollTaxPaySelect.d2w/REPORT$(maintainVar)">
+              %else
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr">$(V_XPFEIN)</td>
+                      <td class="colalph">$(V_XPSEIN)</td>
+                      <td class="colcode">$(V_XPTYPE)</td>
+                      @RtvFldDesc("XTTYPE=$(V_XPTYPE)", "PRTXTY", "XTDESC", taxTypeDesc)
+                      <td class="colalph">$(taxTypeDesc)</td>
+                      <td class="colcode">$(V_XPTXID)</td>
+                      @Format_Date(V_XPDUE, "D", F_XPDUE)
+                      <td class="colalph">$(F_XPDUE)</td>
+                      @Format_Date(V_XPPAID, "D", F_XPPAID)
+                      <td class="colalph">$(F_XPPAID)</td>
+                      @Format_Nbr($(V_XPPAMT), F_XPPAMT, "2", $(amtEditCode), "", "", "")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)PayrollTaxPaySelect.d2w/REPORT$(maintainVar)" title="View Payroll Tax Payment">$(V_XPPAMT)</a></td>
+                      %if(V_XPCKNO != "0")
+                      @Format_Nbr($(V_XPCKNO), F_XPCKNO, "0", "", "", "", "")
+                          <td class="colnmbr">$(F_XPCKNO)</td>
+                      %else
+                          <td class="colnmbr">EFT</td>
+                      %endif
+                  </tr>
+              %endif
+          %}
+          </table>
+          %if (sql_Record_Count != "1")
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+              $(hrTagAttr)
+              %INCLUDE "Copyright.icl"
+          %endif
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+  @dtw_concat(fileSQL, " PRTXPH ", fileSQL)
+  %if (wildCardSearch!="" || uv_Sql!="")
+      @dtw_concat(selectSQL, "XPFEIN > 0 ", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @TaxPayment_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) TaxPayment_XMLQuery (IN CHAR(64) profileHandle,
+				            CHAR(2)   dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @XMLBeginTag("TaxPaymentList")
+          %ROW{
+              @RtvFldDesc("XTTYPE=$(V_XPTYPE)", "PRTXTY", "XTDESC", taxTypeDesc)
+              @DateFromCYMD(V_XPDUE)
+              @DateFromCYMD(V_XPPAID)
+
+	       @XMLIDTag(@DTW_rCONCAT(V_XPFEIN, @DTW_rCONCAT("/", @DTW_rCONCAT(V_XPSEIN, @DTW_rCONCAT("/", V_XPTXID)))), "TaxPayment ID")
+                  @XMLTag(V_XPFEIN, "FederalEIN")
+                  @XMLTag(V_XPSEIN, "StateOrOtherEIN")
+                  @XMLTag(V_XPTXID, "TaxID")
+                  @XMLTag(taxTypeDesc, "TaxType")
+                  @XMLTag(V_XPDUE, "DueDate")
+                  @XMLTag(V_XPPAID, "DatePaid")
+                  @XMLTag(V_XPPAMT, "AmountPaid")
+                  %if(V_XPCKNO != "0")
+                      @XMLTag(V_XPCKNO, "CheckNumber")
+                  %else
+                      @XMLTag("EFT", "CheckNumber")
+                  %endif
+                  %if(V_XPBKNO != "0")
+                      @XMLTag(V_XPBKNO, "BankNumber")
+                  %endif
+                  @XMLTag(V_XPCMN1, "CommentOne")
+                  @XMLTag(V_XPCMN2, "CommentTwo")
+              @XMLEndTag("TaxPayment")
+		%}
+      @XMLEndTag("TaxPaymentList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      %INCLUDE "WebReg.icl"
+      %if (formatToPrint != "")
+          @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+      %else
+          %if (orderBy == "")
+              @DTW_ASSIGN(orderBy, "XPFEIN,XPTYPE,XPTXID")
+              @DTW_ASSIGN(orderByDisplay, "Federal EIN, Tax Type, Tax ID")
+              @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+          %endif
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %endif
+      %INCLUDE "SearchReturn.icl"
+  %endif
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+
+  %if (sequence == "FedEin")
+      %if (orderBy == "XPFEIN,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderBy, "XPFEIN DESC,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderByDisplay, "Federal EIN (descending), Tax Type, Tax ID")
+      %else
+          @DTW_ASSIGN(orderBy, "XPFEIN,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderByDisplay, "Federal EIN, Tax Type, Tax ID")
+      %endif
+  %elif (sequence == "OtherEin")
+      %if (orderBy == "XPSEIN,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderBy, "XPSEIN DESC,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderByDisplay, "State, SUI Or Local EIN (descending), Tax Type, Tax ID")
+      %else
+          @DTW_ASSIGN(orderBy, "XPSEIN,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderByDisplay, "State, SUI Or Local EIN, Tax Type, Tax ID")
+      %endif
+  %elif (sequence == "TaxType")
+      %if (orderBy == "XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderBy, "XPTYPE DESC,XPTXID")
+          @DTW_ASSIGN(orderByDisplay, "Tax Type (descending), Tax ID")
+      %else
+          @DTW_ASSIGN(orderBy, "XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderByDisplay, "Tax Type, Tax ID")
+      %endif
+  %elif (sequence == "TaxId")
+      %if (orderBy == "XPTXID,XPTYPE")
+          @DTW_ASSIGN(orderBy, "XPTXID DESC,XPTYPE")
+          @DTW_ASSIGN(orderByDisplay, "Tax ID (descending), Tax Type")
+      %else
+          @DTW_ASSIGN(orderBy, "XPTXID,XPTYPE")
+          @DTW_ASSIGN(orderByDisplay, "Tax ID, Tax Type")
+      %endif
+  %elif (sequence == "PaymentDueDate")
+      %if (orderBy == "XPDUE,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderBy, "XPDUE DESC,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderByDisplay, "Payment Due Date (descending), Tax Type, Tax ID")
+      %else
+          @DTW_ASSIGN(orderBy, "XPDUE,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderByDisplay, "Payment Due Date, Tax Type, Tax ID")
+      %endif
+  %elif (sequence == "DatePaid")
+      %if (orderBy == "XPPAID,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderBy, "XPPAID DESC,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderByDisplay, "Date Paid (descending), Tax Type, Tax ID")
+      %else
+          @DTW_ASSIGN(orderBy, "XPPAID,XPTYPE,XPTXID")
+          @DTW_ASSIGN(orderByDisplay, "Date Paid, Tax Type, Tax ID")
+      %endif
+  %elif (sequence == "AmountPaid")
+      %if (orderBy == "XPPAMT")
+          @DTW_ASSIGN(orderBy, "XPPAMT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Amount Paid (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "XPPAMT")
+          @DTW_ASSIGN(orderByDisplay, "Amount Paid")
+      %endif
+  %elif (sequence == "CheckNumber")
+      %if (orderBy == "XPCKNO")
+          @DTW_ASSIGN(orderBy, "XPCKNO DESC")
+          @DTW_ASSIGN(orderByDisplay, "Check Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "XPCKNO")
+          @DTW_ASSIGN(orderByDisplay, "Check Number")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              @dtw_assign(formName, "Search")
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchEIN, 9, 0) &&
+                      editdate(document.Search.srchDueDate) &&
+                      editdate(document.Search.srchDatePaid) &&
+                      editNum(document.Search.srchAmount, 11, 2) &&
+                      editNum(document.Search.srchCheck, 6, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "TAXPAYSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Federal EIN</td>
+                              @dtw_assign(operNbr, "operEIN")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputalph"><input name="srchEIN" type="text" size="9" maxlength="9"> <a href="$(homeURL)$(cGIPath)EINSearch.d2w/ENTRY$(d2wVarBase)&amp;docName=Search&amp;fldName=srchEIN&amp;fldDesc=einDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="einDesc" value="$(EINName)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">State, SUI Or Local EIN</td>
+                              @dtw_assign(operNbr, "operOein")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchOein" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Tax ID</td>
+                              @dtw_assign(operNbr, "operTaxId")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchTaxId" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Payment Due Date</td>
+                              @dtw_assign(operNbr, "operDueDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchDueDate" size="6" maxlength="6"> 		
+                                  <a href="javascript:calWindow('srchDueDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Date Paid</td>
+                              @dtw_assign(operNbr, "operDatePaid")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchDatePaid" size="6" maxlength="6"> 		
+                                  <a href="javascript:calWindow('srchDatePaid');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Amount Paid</td>
+                              @dtw_assign(operNbr, "operAmount")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchAmount" size="11" maxlength="11"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Check Number</td>
+                              @dtw_assign(operNbr, "operCheck")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchCheck" size="6" maxlength="6"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchEIN.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("XPFEIN", "Federal EIN", $(srchEIN), "", operEIN, "N")
+  @Build_WildCard ("XPSEIN", "State, SUI Or Local EIN", $(srchOein), "U", operOein, "A")
+  @Build_WildCard ("XPTXID", "Tax ID", $(srchTaxId), "U", operTaxId, "A")
+  @Build_WildCard ("XPDUE", "Payment Due Date", $(srchDueDate), "", operDueDate, "D")
+  @Build_WildCard ("XPPAID", "Date Paid", $(srchDatePaid), "", operDatePaid, "D")
+  @Build_WildCard ("XPPAMT", "Amount Paid", $(srchAmount), "", operAmount, "N")
+  @Build_WildCard ("XPCKNO", "Check Number", $(srchCheck), "", operCheck, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

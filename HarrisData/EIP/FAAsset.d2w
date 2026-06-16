@@ -1,0 +1,620 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Fixed Asset                                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {	
+  page_title              = "Fixed Asset"
+  d2wName                 = "FAAsset.d2w"
+  programName             = "HFAMSU"
+  d2wVarBase              = "$(genericVarBase)&amp;passedSite=@dtw_rurlescseq(passedSite)&amp;passedProperty=@dtw_rurlescseq(passedProperty)&amp;inclSched=@dtw_rurlescseq(inclSched)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+  inclSched               = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchAsset, 12, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "FAASSET")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_SiteName, "AMSITE")
+                      @dtw_assign(uv_PropertyTypeName, "AMPROP")
+                      @dtw_assign(uv_FamilyCodeName, "AMFMCD")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select AMSITE, AMASST, AMDESC, AMAQDT, AMPROP, AMFMCD, upper(AMDESC) as AMDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(ACLONM,' ') as ACLONM, upper(coalesce(ACLONM,' ')) as ACLONMU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(PTDESC,' ') as PTDESC, upper(coalesce(PTDESC,' ')) as PTDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(FMFMDS,' ') as FMFMDS, upper(coalesce(FMFMDS,' ')) as FMFMDSU ", stmtSQL)
+                      %if (inclSched == "Y")
+                          @dtw_concat(stmtSQL, ", coalesce(ASSCHD,' ') as ASSCHD, coalesce(ASDPCD,' ') as ASDPCD, ", stmtSQL)
+                          @dtw_concat(stmtSQL, "  coalesce(ASLFYY,0) as ASLFYY, coalesce(ASLFMM,0) as ASLFMM, ", stmtSQL)
+                          @dtw_concat(stmtSQL, "  coalesce(SMDESC,' ') as SMDESC, upper(coalesce(SMDESC,' ')) as SMDESCU, ", stmtSQL)
+                          @dtw_concat(stmtSQL, "  coalesce(DCABBR,' ') as DCABBR, upper(coalesce(DCABBR,' ')) as DCABBRU ", stmtSQL)
+                      %endif
+                      @dtw_concat(fileSQL, " FAMSTR ", fileSQL)
+                      %if (inclSched == "Y")
+                          @dtw_concat(fileSQL, " left join FAMSCH on ASSITE=AMSITE and ASASST=AMASST ", fileSQL)
+                          @dtw_concat(fileSQL, " left join FASCHD on SMSCHD=ASSCHD ", fileSQL)
+                          @dtw_concat(fileSQL, " left join FADPCD on DCDPCD=ASDPCD ", fileSQL)
+                      %endif
+                      @dtw_concat(fileSQL, " left join FASITE on ACLOCN=AMSITE ", fileSQL)
+                      @dtw_concat(fileSQL, " left join FAPROP on PTTYPE=AMPROP ", fileSQL)
+                      @dtw_concat(fileSQL, " left join FAFMCD on FMFMCD=AMFMCD ", fileSQL)
+                      %if (passedSite!="")
+                          @dtw_concat(selectSQL, "AMSITE=$(passedSite) ", selectSQL)
+                      %elif (passedProperty!="")
+                          @dtw_concat(selectSQL, "AMPROP='$(passedProperty)' ", selectSQL)
+                      %elif (wildCardSearch!="" || uv_Sql != "")
+                          @dtw_concat(selectSQL, "AMSITE>0 ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      %if (backHome != "$(d2wName)/report" && backHome != "")
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)&amp;backHome=@dtw_rurlescseq(backHome)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %if (sec_01 == "Y" && "N"=="Y")
+                          <a href="$(homeURL)$(cGIPath)FAAssetMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          %if (passedSite != "")
+              @RtvFldDesc("ACLOCN=$(passedSite)", "FASITE", "ACLONM", V_ACLONM)
+              @Format_Header_URL("Fixed Asset Status - Site", $(V_ACLONM), $(passedSite), "$(homeURL)$(cGIPath)FixedAssetSelect.d2w/REPORT$(genericVarBase)")
+          %endif
+
+          %if (passedProperty != "")
+              @RtvFldDesc("PTTYPE='$(passedProperty)'", "FAPROP", "PTDESC", V_PTDESC)
+              @Format_Header_URL("Fixed Asset Status - Property Type", $(V_PTDESC), $(passedProperty), "$(homeURL)$(cGIPath)FixedAssetSelect.d2w/REPORT$(genericVarBase)")
+          %endif
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+	
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Name</th>
+                      %if (passedSite == "")
+                          <th class="colhdr">Site</th>
+                      %endif
+                      <th class="colhdr">Asset</th>
+                  </tr>
+                  <tr>
+                      <td class="inputalph"><input type="text" name="srchDesc" size="20" maxlength="60">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      %if (passedSite == "")
+                          <td class="inputalph"><input name="srchSite" type="text" size="3" maxlength="3">
+                              <input type="hidden" name="operSite" value="LIKE">
+                          </td>
+                      %endif
+                      <td class="inputnmbr"><input name="srchAsset" type="text" size="12" maxlength="12">
+                          <input type="hidden" name="operAsset" value="=">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>
+
+          %if (inclSched == "Y")
+              @dtw_assign(schedChecked, "CHECKED")
+          %else
+              @dtw_assign(schedChecked, "")
+          %endif
+          @dtw_assign(viewCheckBox, "FAAsset")
+          %INCLUDE "WildCardPage.icl"
+      %endif
+	   		
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y") && "N"=="Y")
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              %if (passedSite == "")
+                  @OrderBy_Sort("ACLONMU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Site"        title="Sequence By Site">Site</a></th>
+              %endif
+              @OrderBy_Sort("AMASST", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Asset"       title="Sequence By Asset">Asset</a></th>
+              @OrderBy_Sort("AMDESCU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description" title="Sequence By Description, Site, Asset">Description</a></th>
+              @OrderBy_Sort("AMAQDT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Acquired"    title="Sequence By Date Acquired, Site, Asset">Date Acquired</a></th>
+              %if (passedProperty == "")
+                  @OrderBy_Sort("PTDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Property"    title="Sequence By Property Type, Site, Asset">Property Type</a></th>
+              %endif
+              @OrderBy_Sort("FMFMCDU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Family"      title="Sequence By Family Code, Site, Asset">Family Code</a></th>
+              %if (inclSched == "Y")
+                  @OrderBy_Sort("SMDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Schedule"      title="Sequence By Schedule, Site, Asset">Schedule</a></th>
+                  @OrderBy_Sort("DCABBRU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DeprCode"      title="Sequence By Depreciation Code, Site, Asset">Depreciation Code</a></th>
+                  @OrderBy_Sort("ASLFYY", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Life"      title="Sequence By Life, Site, Asset">Life</a></th>
+              %endif
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;siteNumber=@dtw_rurlescseq(V_AMSITE)&amp;assetNumber=@dtw_rurlescseq(V_AMASST)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+              %INCLUDE "SetRowClass.icl"
+
+              @Format_Date(V_AMAQDT, "D", F_AMAQDT)
+              @Format_Confirm_Desc($(V_AMDESC), "$(V_AMSITE)-$(V_AMASST)", "", "", "", "", confirmDesc)
+
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y") && "N"=="Y")
+                      <td class="opticon">
+                          %if (sec_02 == "Y" || sec_03 == "Y")
+                              <a href="$(homeURL)$(cGIPath)FAAssetMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          %endif
+                          %if (sec_01=="Y" && sec_04=="Y")
+                              <a href="$(homeURL)$(cGIPath)FAAssetMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                          %endif
+                          %if (sec_03 == "Y")
+                              <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)FAAssetMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                          %endif
+                      </td>
+                  %endif
+                  %if (passedSite == "")
+                      <td class="colalph" $(helpCursor)><span title="$(V_AMSITE)">$(V_ACLONM)</span></td>
+                  %endif
+                  <td class="colnmbr">$(V_AMASST)</td>
+                  %if (inclSched == "Y")
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)FAAssetSelect.d2w/ENTRY$(maintainVar)&amp;scheduleNumber=@dtw_rurlescseq(V_ASSCHD)&amp;backHome=$(d2wName)/report" title="View Asset">$(V_AMDESC)</a></td>
+                  %else
+                      <td class="colalph">$(V_AMDESC)</td>
+                  %endif
+                  <td class="coldate">$(F_AMAQDT)</td>
+                  %if (passedProperty == "")
+                      <td class="colalph" $(helpCursor)><span title="$(V_AMPROP)">$(V_PTDESC)</span></td>
+                  %endif
+                  <td class="colalph" $(helpCursor)><span title="$(V_AMFMCD)">$(V_FMFMDS)</span></td>
+                  %if (inclSched == "Y")
+                      <td class="colalph" $(helpCursor)><span title="$(V_ASSCHD)">$(V_SMDESC)</span></td>
+                      <td class="colalph" $(helpCursor)><span title="$(V_ASDPCD)">$(V_DCABBR)</span></td>
+                      <td class="colnmbr">$(V_ASLFYY)-$(V_ASLFMM)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  @dtw_assign(uv_SiteName, "AMSITE")
+  @dtw_assign(uv_PropertyTypeName, "AMPROP")
+  @dtw_assign(uv_FamilyCodeName, "AMFMCD")
+  %INCLUDE "userview.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select AMSITE, AMASST, AMDESC, AMAQDT, AMPROP, AMFMCD, upper(AMDESC) as AMDESCU, ", stmtSQL)
+  @dtw_concat(stmtSQL, " coalesce(ACLONM,' ') as ACLONM, upper(coalesce(ACLONM,' ')) as ACLONMU, ", stmtSQL)
+  @dtw_concat(stmtSQL, " coalesce(PTDESC,' ') as PTDESC, upper(coalesce(PTDESC,' ')) as PTDESCU, ", stmtSQL)
+  @dtw_concat(stmtSQL, " coalesce(FMFMDS,' ') as FMFMDS, upper(coalesce(FMFMDS,' ')) as FMFMDSU ", stmtSQL)
+  %if (inclSched == "Y")
+      @dtw_concat(stmtSQL, ", coalesce(ASSCHD,' ') as ASSCHD, coalesce(ASDPCD,' ') as ASDPCD, ", stmtSQL)
+      @dtw_concat(stmtSQL, "  coalesce(ASLFYY,0) as ASLFYY, coalesce(ASLFMM,0) as ASLFMM, ", stmtSQL)
+      @dtw_concat(stmtSQL, "  coalesce(SMDESC,' ') as SMDESC, upper(coalesce(SMDESC,' ')) as SMDESCU, ", stmtSQL)
+      @dtw_concat(stmtSQL, "  coalesce(DCABBR,' ') as DCABBR, upper(coalesce(DCABBR,' ')) as DCABBRU ", stmtSQL)
+  %endif
+  @dtw_concat(fileSQL, " FAMSTR ", fileSQL)
+  %if (inclSched == "Y")
+      @dtw_concat(fileSQL, " left join FAMSCH on ASSITE=AMSITE and ASASST=AMASST ", fileSQL)
+      @dtw_concat(fileSQL, " left join FASCHD on SMSCHD=ASSCHD ", fileSQL)
+      @dtw_concat(fileSQL, " left join FADPCD on DCDPCD=ASDPCD ", fileSQL)
+  %endif
+  @dtw_concat(fileSQL, " left join FASITE on ACLOCN=AMSITE ", fileSQL)
+  @dtw_concat(fileSQL, " left join FAPROP on PTTYPE=AMPROP ", fileSQL)
+  @dtw_concat(fileSQL, " left join FAFMCD on FMFMCD=AMFMCD ", fileSQL)
+  %if (passedSite!="")
+      @dtw_concat(selectSQL, "AMSITE=$(passedSite) ", selectSQL)
+  %elif (passedProperty!="")
+      @dtw_concat(selectSQL, "AMPROP='$(passedProperty)' ", selectSQL)
+  %elif (wildCardSearch!="" || uv_Sql != "")
+      @dtw_concat(selectSQL, "AMSITE>0 ", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @Export_Query(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) Export_Query (IN  CHAR(64)    profileHandle,
+                                     CHAR(2)     dataBaseID,
+                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @XMLBeginTag("FAAssetList")
+          %ROW{
+	       @XMLIDTag("$(V_AMSITE)/$(V_AMASST)", "FASiteAsset ID")
+                  @XMLTag(V_AMSITE, "Site")
+                  @XMLTag(V_AMASST, "Asset")
+                  @XMLTag(V_AMDESC, "Description")
+                  @XMLTag(V_AMAQDT, "DateAcquired")
+                  @XMLTag(V_AMPROP, "PropertyType")
+                  @XMLTag(V_AMFMCD, "FamilyCode")
+                  %if (inclSched == "Y")
+                      @XMLTag(V_ASSCHD, "Schedule")
+                      @XMLTag(V_ASDPCD, "DepreciationCode")
+                      @XMLTag(V_ASLFYY, "LifeYY")
+                      @XMLTag(V_ASLFMM, "LifeMM")
+                  %endif
+              @XMLEndTag("FASiteAsset")
+          %}
+      @XMLEndTag("FAAssetList")
+  %}
+%}
+
+%HTML(REPORT)
+{
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "AMDESCU,ACLONM,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Description, Site, Asset")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %elif (chgSched == "Y" && inclSched == "Y")
+          @dtw_assign(inclSched, "")
+      %elif (chgSched == "Y")
+          @dtw_assign(inclSched, "Y")
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %if (inclSched == "" && chgSched != "Y")
+      @dtw_assign(inclSched, "Y")
+  %endif
+  %if (inclSched!="Y" && (@dtw_rPos("SMDESCU", orderBy)>"0" || @dtw_rPos("ASLFYY", orderBy)>"0" || @dtw_rPos("DCABBRU", orderBy)>"0"))
+      @DTW_ASSIGN(orderBy, "AMDESCU,ACLONM,AMASST")
+      @DTW_ASSIGN(orderByDisplay, "Description, Site, Asset")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT)
+{
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(EXPORT)
+{
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit ()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(ORDERBY)
+{
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Number")
+      %if (orderBy == "ACLONMU,AMASST")
+          @DTW_ASSIGN(orderBy, "ACLONMU DESC,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Site (descending), Asset")
+      %else
+          @DTW_ASSIGN(orderBy, "ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Site, Asset")
+      %endif
+  %elif (sequence == "Name")
+      %if (orderBy == "AMDESCU,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderBy, "AMDESCU DESC,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Site, Asset")
+      %else
+          @DTW_ASSIGN(orderBy, "AMDESCU,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Description, Site, Asset")
+      %endif
+  %elif (sequence == "Acquired")
+      %if (orderBy == "AMAQDT,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderBy, "AMAQDT DESC,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Date Acquired (descending), Site, Asset")
+      %else
+          @DTW_ASSIGN(orderBy, "AMAQDT,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Date Acquired, Site, Asset")
+      %endif
+  %elif (sequence == "Property")
+      %if (orderBy == "PTDESCU,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderBy, "PTDESCU DESC,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Property Type (descending), Site, Asset")
+      %else
+          @DTW_ASSIGN(orderBy, "PTDESCU,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Property Type, Site, Asset")
+      %endif
+  %elif (sequence == "Family")
+      %if (orderBy == "FMFMDSU,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderBy, "FMFMDSU DESC,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Family Code (descending), Site, Asset")
+      %else
+          @DTW_ASSIGN(orderBy, "FMFMDSU,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Family Code, Site, Asset")
+      %endif
+  %elif (sequence == "Schedule")
+      %if (orderBy == "SMDESCU,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderBy, "SMDESCU DESC,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Schedule (descending), Site, Asset")
+      %else
+          @DTW_ASSIGN(orderBy, "SMDESCU,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Schedule, Site, Asset")
+      %endif
+  %elif (sequence == "DeprCode")
+      %if (orderBy == "DCABBRU,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderBy, "DCABBRU DESC,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Depreciation Code (descending), Site, Asset")
+      %else
+          @DTW_ASSIGN(orderBy, "DCABBRU,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Depreciation Code, Site, Asset")
+      %endif
+  %elif (sequence == "Life")
+      %if (orderBy == "ASLFYY,ASLFMM,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderBy, "ASLFYY DESC,ASLFMM DESC,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Family Code (descending), Site, Asset")
+      %else
+          @DTW_ASSIGN(orderBy, "ASLFYY,ASLFMM,ACLONMU,AMASST")
+          @DTW_ASSIGN(orderByDisplay, "Family Code, Site, Asset")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "calendar.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "Menu.js"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchAsset, 12, 0) &&
+                      %if (inclSched == "Y")
+                          editNum(document.Search.srchLifeYY, 2, 0) &&
+                          editNum(document.Search.srchLifeMM, 2, 0) &&
+                      %endif
+                      editdate(document.Search.srchDate))
+                  return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "FAASSETSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchDesc" size="20" maxlength="60"></td>
+                          </tr>
+
+                          %if (passedSite == "")
+                              <tr><td class="dsphdr">Site</td>
+                                  @dtw_assign(operNbr, "operSite")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"> <input type="text" name="srchSite" size="20" maxlength="30"></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Asset</td>
+                              @dtw_assign(operNbr, "operAsset")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchAsset" size="12" maxlength="12"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Date Acquired</td>
+                              @dtw_assign(operNbr, "operDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchDate" size="6" maxlength="6">
+                                  <a href="javascript:calWindow('srchDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          %if (passedProperty == "")
+                              <tr><td class="dsphdr">Property Type</td>
+                                  @dtw_assign(operNbr, "operProperty")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"> <input type="text" name="srchProperty" size="20" maxlength="30"></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Family Code</td>
+                              @dtw_assign(operNbr, "operFamily")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchFamily" size="20" maxlength="30"></td>
+                          </tr>
+
+                          %if (inclSched == "Y")
+                              <tr><td class="dsphdr">Schedule</td>
+                                  @dtw_assign(operNbr, "operSched")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchSched" size="20" maxlength="30"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Depreciation Code</td>
+                                  @dtw_assign(operNbr, "operDepr")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchDepr" size="6" maxlength="6"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Life YY</td>
+                                  @dtw_assign(operNbr, "operLifeYY")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"> <input type="text" name="srchLifeYY" size="2" maxlength="2"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Life MM</td>
+                                  @dtw_assign(operNbr, "operLifeMM")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"> <input type="text" name="srchLifeMM" size="2" maxlength="2"></td>
+                              </tr>
+                          %endif
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchDesc.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD)
+{
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("upper(AMDESC)", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("upper(ACLONM)", "Site", $(srchSite), "U", operSite, "A")
+  @Build_WildCard ("AMASST", "Asset", $(srchAsset), "", operAsset, "N")
+  @Build_WildCard ("AMAQDT", "Date Acquired", $(srchDate), "", operDate, "D")
+  @Build_WildCard ("upper(PTDESC)", "Property Type", $(srchProperty), "U", operProperty, "A")
+  @Build_WildCard ("upper(FMFMDS)", "Family Code", $(srchFamily), "U", operFamily, "A")
+  @Build_WildCard ("upper(SMDESC)", "Schedule", $(srchSched), "U", operSched, "A")
+  @Build_WildCard ("upper(DCABBR)", "Depreciation Code", $(srchDepr), "U", operDepr, "A")
+  @Build_WildCard ("ASLFYY", "Life YY", $(srchLifeYY), "", operLifeYY, "N")
+  @Build_WildCard ("ASLFMM", "Life MM", $(srchLifeMM), "", operLifeMM, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

@@ -1,0 +1,748 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Asset Detail                                                *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Asset Detail"
+  d2wName                 = "FAAssetSelect.d2w"
+  d2wVarBase              = "$(genericVarBase)$(glDDVarBase)&amp;siteNumber=@dtw_rurlescseq(siteNumber)&amp;assetNumber=@dtw_rurlescseq(assetNumber)&amp;scheduleNumber=@dtw_rurlescseq(scheduleNumber)&amp;glJrnl=@dtw_rurlescseq(glJrnl)&amp;glDDSeq=@dtw_rurlescseq(glDDSeq)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "99"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @AssetUserView(profileHandle, dataBaseID, userPass, siteNumber, assetNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          @dtw_assign(pageID, "FAASSETSELECT")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %{Asset %}
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                              @dtw_concat(fileSQL, " FAMSTR ", fileSQL)
+                              @dtw_concat(selectSQL, " AMSITE=$(siteNumber) and AMASST=$(assetNumber) ", selectSQL)
+                              %INCLUDE "stmtSQLSelect.icl"
+                              @dtw_concat(stmtSQL, " ORDER BY AMSITE,AMASST ", stmtSQL)
+                              %INCLUDE "stmtSQLEnd.icl"
+                              %INCLUDE "stmtSQLTotalRows.icl"
+                              @AssetMaster_Query(profileHandle, dataBaseID, stmtSQL)
+
+                          %{Schedule/Depreciation/Retirement %}
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                              @dtw_concat(fileSQL, " FAMSCH ", fileSQL)
+                              @dtw_concat(fileSQL, " inner join FAMSTR on AMSITE=ASSITE and AMASST=ASASST ", fileSQL)
+                              @dtw_concat(selectSQL, " ASSITE=$(siteNumber) and ASASST=$(assetNumber) ", selectSQL)
+                              @dtw_concat(selectSQL, " and ASSCHD=$(scheduleNumber)", selectSQL)
+                              %INCLUDE "stmtSQLSelect.icl"
+                              @dtw_concat(stmtSQL, " ORDER BY ASSITE,ASASST ", stmtSQL)
+                              %INCLUDE "stmtSQLEnd.icl"
+                              @Schedule_Query(profileHandle, dataBaseID, stmtSQL)
+
+                          %{Leased %}
+                              %INCLUDE "stmtSQLClear.icl"
+                              @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                              @dtw_concat(fileSQL, " FALESD ", fileSQL)
+                              @dtw_concat(selectSQL, " ALSITE=$(siteNumber) and ALASST=$(assetNumber) ", selectSQL)
+                              %INCLUDE "stmtSQLSelect.icl"
+                              @dtw_concat(stmtSQL, " ORDER BY ALSITE,ALASST ", stmtSQL)
+                              %INCLUDE "stmtSQLEnd.icl"
+                              @Leased_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) AssetMaster_Query (IN  CHAR(64) profileHandle,
+                                          CHAR(2)   dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %ROW {
+          <a name="top"></a>
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="70%">
+                  <col width="30%">
+              <tr><td><h1>$(page_title)</h1></td>
+                  %if (formatToPrint != "Y")
+                      <td class="toolbar">
+                          %if (backHome != "")
+                              <a href="$(homeURL)$(cGIPath)$(backHome)$(genericVarBase)$(glDDVarBase)&amp;glJrnl=@dtw_rurlescseq(glJrnl)&amp;glDDSeq=@dtw_rurlescseq(glDDSeq)&amp;backHome=@dtw_rurlescseq(backHome)" title="BackHome">$(portalHome)</a>
+                          %endif
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/ENTRY$(d2wVarBase)&amp;formatToPrint=Y" target=_blank>$(formatPrintDesc)</a>
+                          %INCLUDE "HelpPage.icl"
+                      </td>
+                  %endif
+              </tr>
+          </table>
+
+          $(hrTagAttr)
+
+          %if (formatToPrint == "")
+              <table $(contentTable)>
+                  <tr><td><a href="#Schedule">Schedule</a></td></tr>
+                  <tr><td><a href="#Depreciation">Depreciation</a></td></tr>
+                  <tr><td><a href="#Retirement">Retirement</a></td></tr>
+                  %if (V_AMLACD == "Y")
+                  <tr><td><a href="#Leased">Leased</a></td></tr>
+                  %endif
+                  <tr><td>&nbsp;</td></tr>
+              </table>
+          %endif
+
+          %if (sql_Record_Count == "0")
+              <table $(contentTable)>
+                  <tr><td class="colalph">No Row Found For This Asset</td></tr>
+              </table>
+          %endif
+
+          <table $(contentTable)>
+              @RtvFldDesc("ACLOCN=$(V_AMSITE)", "FASITE", "ACLONM", fieldDesc)
+              @Format_Code(V_AMSITE, F_AMSITE)
+              <tr><td class="dsphdr">Site</td>
+                  <td class="dspnmbr">$(fieldDesc)</td>
+                  <td class="dspnmbr">$(F_AMSITE)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Asset Number</td>
+                  <td class="dspnmbr">$(V_AMASST)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Description</td>
+                  <td class="dspalph">$(V_AMDESC)</td>
+              </tr>
+
+              @Format_Date(V_AMAQDT, "H", F_AMAQDT)
+              <tr><td class="dsphdr">Acquisition Date</td>
+                  <td class="dspdate">$(F_AMAQDT)</td>
+              </tr>
+
+              @RtvFldDesc("PTTYPE='$(V_AMPROP)'", "FAPROP", "PTDESC", fieldDesc)
+              @Format_Code(V_AMPROP, F_AMPROP)
+              <tr><td class="dsphdr">Property Type</td>
+                  <td class="dspnmbr">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_AMPROP)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='YORN' and FLVALU='$(V_AMIMQT)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_AMIMQT, F_AMIMQT)
+              <tr><td class="dsphdr">Include Midquarter Test</td>
+                  <td class="dspnmbr">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_AMIMQT)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='YORN' and FLVALU='$(V_AMLACD)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_AMLACD, F_AMLACD)
+              <tr><td class="dsphdr">Leased Asset</td>
+                  <td class="dspnmbr">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_AMLACD)</td>
+              </tr>
+
+              @Format_Nbr($(V_AMQNTY), F_AMQNTY, "0", $(qtyEditCode), "Y", "", "")
+              <tr><td class="dsphdr">Quantity</td>
+                  <td class="dspnmbr">$(F_AMQNTY)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Serial Number</td>
+                  <td class="dspalph">$(V_AMSER#)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Identification Number</td>
+                  <td class="dspalph">$(V_AMIDNO)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Tag Number</td>
+                  <td class="dspalph">$(V_AMTAG#)</td>
+              </tr>
+
+              <tr><td class="dsphdr">P/O Number</td>
+                  <td class="dspnmbr">$(V_AMPONO)-$(V_AMPOL#)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Vendor</td>
+                  <td class="dspalph">$(V_AMVEND)</td>
+              </tr>
+
+              @RtvFldDesc("FLTYPE='PARTTYPE' and FLVALU='$(V_AMAQCD)'", "SYFLAG", "FLDESC", fieldDesc)
+              @Format_Code(V_AMAQCD, F_AMAQCD)
+              <tr><td class="dsphdr">Acquisition Type</td>
+                  <td class="dspnmbr">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_AMAQCD)</td>
+              </tr>
+
+              <tr><td class="dsphdr">New/Used</td>
+                  <td class="dspalph">$(V_AMNUCD)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Asset Class Code</td>
+                  <td class="dspalph">$(V_AMCLAS)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Physical Location</td>
+                  <td class="dspnmbr">$(V_AMLOCN)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Building</td>
+                  <td class="dspnmbr">$(V_AMBLDG)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Cost Center</td>
+                  <td class="dspnmbr">$(V_AMCSTC)</td>
+              </tr>
+
+              <tr><td class="dsphdr">State</td>
+                  <td class="dspalph">$(V_AMSTCD)</td>
+              </tr>
+
+              <tr><td class="dsphdr">County</td>
+                  <td class="dspalph">$(V_AMCNTY)</td>
+              </tr>
+
+              <tr><td class="dsphdr">City</td>
+                  <td class="dspalph">$(V_AMCITY)</td>
+              </tr>
+
+              @Format_Nbr($(V_AMINSC), F_AMINSC, "2", $(amtEditCode), "Y", "", "")
+              <tr><td class="dsphdr">Insurance Replace Cost</td>
+                  <td class="dspnmbr">$(F_AMINSC)</td>
+              </tr>
+
+              @Format_Nbr($(V_AMINSV), F_AMINSV, "2", $(amtEditCode), "Y", "", "")
+              <tr><td class="dsphdr">Insurance Value</td>
+                  <td class="dspnmbr">$(F_AMINSV)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Insurance Carrier</td>
+                  <td class="dspalph">$(V_AMINCA)</td>
+              </tr>
+
+              @Format_Date(V_AMIVDT, "H", F_AMIVDT)
+              <tr><td class="dsphdr">Insurance Value Date</td>
+                  <td class="dspdate">$(F_AMIVDT)</td>
+              </tr>
+
+              @RtvFldDesc("FMFMCD='$(V_AMFMCD)'", "FAFMCD", "FMFMDS", fieldDesc)
+              @Format_Code(V_AMFMCD, F_AMFMCD)
+              <tr><td class="dsphdr">Family Code</td>
+                  <td class="dspnmbr">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_AMFMCD)</td>
+              </tr>
+          </table>
+      %}
+  %}
+%}
+
+%FUNCTION(dtw_sql) Schedule_Query (IN  CHAR(64) profileHandle,
+                                       CHAR(2)   dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count == "0")
+          <table $(contentTable)>
+              <tr><td class="colalph">No Schedule Found For This Asset</td></tr>
+          </table>
+      %endif
+
+      %ROW {
+          <a name="Schedule"></a>
+          <fieldset class="legendBody">
+              @RtvFldDesc("SMSCHD=$(scheduleNumber)", "FASCHD", "SMDESC", V_SMDESC)
+              @Format_Code(scheduleNumber, F_scheduleNumber)
+              <legend class="legendTitle">Schedule $(V_SMDESC) $(F_scheduleNumber)</legend>
+              %if (formatToPrint != "Y")
+                  <table align="right" $(contentTable)>
+                      <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                  </table>
+              %endif
+              <table $(contentTable)>
+                  @Format_Nbr($(V_ASICST), F_ASICST, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Install Cost</td>
+                      <td class="dspnmbr">$(F_ASICST)</td>
+                  </tr>
+
+                  @PeriodFromCYP(V_ASBDPD)
+                  <tr><td class="dsphdr">Begin Depr Period</td>
+                      <td class="dspnmbr">$(V_ASBDPD)</td>
+                  </tr>
+
+                  @Format_Date(V_ASBDDT, "H", F_ASBDDT)
+                  <tr><td class="dsphdr">Begin Depr Date</td>
+                      <td class="dspdate">$(F_ASBDDT)</td>
+                  </tr>
+
+                  @RtvFldDesc("DCDPCD='$(V_ASDPCD)'", "FADPCD", "DCLONG", fieldDesc)
+                  @Format_Code(V_ASDPCD, F_ASDPCD)
+                  <tr><td class="dsphdr">Depreciation Method</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_ASDPCD)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Life</td>
+                      <td class="dspnmbr">$(V_ASLFYY)/$(V_ASLFMM)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Half Year Code</td>
+                      <td class="dspalph">$(V_ASHYCD)</td>
+                  </tr>
+
+                  @RtvFldDesc("FLTYPE='YORN' and FLVALU='$(V_ASMMCD)'", "SYFLAG", "FLDESC", fieldDesc)
+                  @Format_Code(V_ASMMCD, F_ASMMCD)
+                  <tr><td class="dsphdr">Mid Month Code</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_ASMMCD)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">ACRS Code</td>
+                      <td class="dspalph">$(V_ASACRC)</td>
+                  </tr>
+
+                  @Format_Nbr($(V_ASSLVG), F_ASSLVG, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Salvage Value</td>
+                      <td class="dspnmbr">$(F_ASSLVG)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">ITC Code</td>
+                      <td class="dspalph">$(V_ASITCD)</td></tr>
+
+                  @Format_Nbr($(V_ASITCA), F_ASITCA, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">ITC Amount</td>
+                      <td class="dspnmbr">$(F_ASITCA)</td></tr>
+
+                  @Format_Nbr($(V_ASWOFA), F_ASWOFA, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Section 179 Expense</td>
+                      <td class="dspnmbr">$(F_ASWOFA)</td></tr>
+
+                  @Format_Nbr($(V_ASSPCA), F_ASSPCA, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Special Allowance</td>
+                      <td class="dspnmbr">$(V_ASSPCA)</td></tr>
+              </table>
+          </fieldset>
+
+          <a name="Depreciation"></a>
+          <fieldset class="legendBody">
+              <legend class="legendTitle">Depreciation</legend>
+              %if (formatToPrint != "Y")
+                  <table align="right" $(contentTable)>
+                      <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                  </table>
+              %endif
+              <table $(contentTable)>
+                  <tr><td class="colhdr">Period</td>
+                      <td class="colhdr">Amount</td></tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASPDEP), F_ASPDEP, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)"><td class="colalph">Prior Depreciation</td>
+                                          <td class="colnmbr">$(F_ASPDEP)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP01), F_ASDP01, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 01</td>
+                      <td class="colnmbr">$(F_ASDP01)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP02), F_ASDP02, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 02</td>
+                      <td class="colnmbr">$(F_ASDP02)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP03), F_ASDP03, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 03</td>
+                      <td class="colnmbr">$(F_ASDP03)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP04), F_ASDP04, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 04</td>
+                      <td class="colnmbr">$(F_ASDP04)</td></tr>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP05), F_ASDP05, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 05</td>
+                      <td class="colnmbr">$(F_ASDP05)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP06), F_ASDP06, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 06</td>
+                      <td class="colnmbr">$(F_ASDP06)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP07), F_ASDP07, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 07</td>
+                      <td class="colnmbr">$(F_ASDP07)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP08), F_ASDP08, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 08</td>
+                      <td class="colnmbr">$(F_ASDP08)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP09), F_ASDP09, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 09</td>
+                      <td class="colnmbr">$(F_ASDP09)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP10), F_ASDP10, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 10</td>
+                      <td class="colnmbr">$(F_ASDP10)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP11), F_ASDP11, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 11</td>
+                      <td class="colnmbr">$(F_ASDP11)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASDP12), F_ASDP12, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Period 12</td>
+                      <td class="colnmbr">$(F_ASDP12)</td>
+                  </tr>
+
+                  %if (V_ASDP13 != "")
+                      %INCLUDE "SetRowClass.icl"
+                      @Format_Nbr($(V_ASDP13), F_ASDP13, "2", $(amtEditCode), "Y", "", "")
+                      <tr class="$(rowClass)">
+                          <td class="colalph">Period 13</td>
+                          <td class="colnmbr">$(F_ASDP13)</td>
+                      </tr>
+                  %endif
+              </table>
+
+              <table $(contentTable)>
+                  @PeriodFromCYP(V_ASLSTP)
+                  <tr><td class="dsphdr">Last Period Updated</td>
+                      <td class="dspnmbr">$(V_ASLSTP)</td></tr>
+
+                  <tr><td class="dsphdr">Converted To Straight-Line</td>
+                      <td class="dspalph">$(V_ASSTLC)</td></tr>
+
+                  <tr><td class="dsphdr">Fully Depreciated Code</td>
+                      <td class="dspalph">$(V_ASFDCD)</td></tr>
+
+                  @Format_Nbr($(V_ASCGLD), F_ASCGLD, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Current G/L Depr Amount</td>
+                      <td class="dspnmbr">$(F_ASCGLD)</td></tr>
+
+                  @Format_Nbr($(V_ASNPDP), F_ASNPDP, "2", $(amtEditCode), "Y", "", "")
+                  <tr><td class="dsphdr">Next Period Depr Amount</td>
+                      <td class="dspnmbr">$(F_ASNPDP)</td></tr>
+              </table>
+          </fieldset>
+
+          <a name="Retirement"></a>
+          <fieldset class="legendBody">
+              <legend class="legendTitle">Retirement</legend>
+              %if (formatToPrint != "Y")
+                  <table align="right" $(contentTable)>
+                      <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                  </table>
+              %endif
+
+              <table $(contentTable)>
+                  @PeriodFromCYP(V_AMTFPD)
+                  <tr><td class="dsphdr">Transfer Period</td>
+                      <td class="dspnmbr">$(V_AMTFPD)</td>
+                      <td class="dsphdr">Transfer Site</td>
+                      <td class="dspnmbr">$(V_AMTSIT)</td></tr>
+                  </tr>
+
+                  <tr><td class="dsphdr">Transfer Flag</td>
+                      <td class="dspalph">$(V_AMTRFG)</td>
+                      <td class="dsphdr">Transfer Asset</td>
+                      <td class="dspnmbr">$(V_AMTAST)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Retirement Code</td>
+                      <td class="dspalph">$(V_AMFPCD)</td></tr>
+
+                  @PeriodFromCYP(V_AMRTPD)
+                  @Format_Date(V_AMRTDT, "H", F_AMRTDT)
+                  <tr><td class="dsphdr">Retirement Period</td>
+                      <td class="dspnmbr">$(V_AMRTPD)</td>
+                      <td class="dsphdr">Retirement Date</td>
+                      <td class="dspdate">$(F_AMRTDT)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Retirement Reason</td>
+                      <td class="dspalph">$(V_AMRRES)</td>
+                      <td class="dsphdr">Include Midquarter Test</td>
+                      <td class="dspalph">$(V_AMRINQ)</td>
+                  </tr>
+              </table>
+
+              <table $(contentTable)>
+                  <tr><td class="colhdr"></td>
+                      <td class="colhdr">Current</td>
+                      <td class="colhdr">Year-To-Date</td>
+                      <td class="colhdr">Cumulative</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_AMSOLD), F_AMSOLD, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_AMYSLD), F_AMYSLD, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_AMCSLD), F_AMCSLD, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Sale Amount</td>
+                      <td class="colnmbr">$(F_AMSOLD)</td>
+                      <td class="colnmbr">$(F_AMYSLD)</td>
+                      <td class="colnmbr">$(F_AMCSLD)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASCRCS), F_ASCRCS, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASYRCS), F_ASYRCS, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASPRCS), F_ASPRCS, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Retired Cost</td>
+                      <td class="colnmbr">$(F_ASCRCS)</td>
+                      <td class="colnmbr">$(F_ASYRCS)</td>
+                      <td class="colnmbr">$(F_ASPRCS)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASCRDP), F_ASCRDP, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASYRDP), F_ASYRDP, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASPRDP), F_ASPRDP, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Retired Depreciation</td>
+                      <td class="colnmbr">$(F_ASCRDP)</td>
+                      <td class="colnmbr">$(F_ASYRDP)</td>
+                      <td class="colnmbr">$(F_ASPRDP)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASCRSV), F_ASCRSV, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASYRSV), F_ASYRSV, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASPRSV), F_ASPRSV, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Retired Salvage</td>
+                      <td class="colnmbr">$(F_ASCRSV)</td>
+                      <td class="colnmbr">$(F_ASYRSV)</td>
+                      <td class="colnmbr">$(F_ASPRSV)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASYRDP), F_ASYRDP, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Retired Cur Year Depr</td>
+                      <td class="colnmbr">&nbsp;</td>
+                      <td class="colnmbr">$(F_ASYRDP)</td>
+                      <td class="colnmbr">&nbsp;</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASWOFR), F_ASWOFR, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASWOFY), F_ASWOFY, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASWOFC), F_ASWOFC, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Section 179 Retired</td>
+                      <td class="colnmbr">$(F_ASWOFR)</td>
+                      <td class="colnmbr">$(F_ASWOFY)</td>
+                      <td class="colnmbr">$(F_ASWOFC)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASSPCR), F_ASSPCR, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASSPCY), F_ASSPCY, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASSPCC), F_ASSPCC, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Special Allowance Retired</td>
+                      <td class="colnmbr">$(F_ASSPCR)</td>
+                      <td class="colnmbr">$(F_ASSPCY)</td>
+                      <td class="colnmbr">$(F_ASSPCC)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASITRA), F_ASITRA, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASITRY), F_ASITRY, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASITRC), F_ASITRC, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">ITC Retired</td>
+                      <td class="colnmbr">$(F_ASITRA)</td>
+                      <td class="colnmbr">$(F_ASITRY)</td>
+                      <td class="colnmbr">$(F_ASITRC)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASITCR), F_ASITCR, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASITCY), F_ASITCY, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">ITC Recapture</td>
+                      <td class="colnmbr">$(F_ASITCR)</td>
+                      <td class="colnmbr">$(F_ASITCY)</td>
+                      <td class="colnmbr">&nbsp;</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASGAIN), F_ASGAIN, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASYGAN), F_ASYGAN, "2", $(amtEditCode), "Y", "", "")
+                  @Format_Nbr($(V_ASCGAN), F_ASCGAN, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Gain/Loss</td>
+                      <td class="colnmbr">$(F_ASGAIN)</td>
+                      <td class="colnmbr">$(F_ASYGAN)</td>
+                      <td class="colnmbr">$(F_ASCGAN)</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASTRDP), F_ASTRDP, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Transferred Amount</td>
+                      <td class="colnmbr">$(F_ASTRDP)</td>
+                      <td class="colnmbr">&nbsp;</td>
+                      <td class="colnmbr">&nbsp;</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASYTCS), F_ASYTCS, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Transferred Out Cost</td>
+                      <td class="colnmbr">&nbsp;</td>
+                      <td class="colnmbr">$(F_ASYTCS)</td>
+                      <td class="colnmbr">&nbsp;</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASYTDP), F_ASYTDP, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Transferred Out Depr</td>
+                      <td class="colnmbr">&nbsp;</td>
+                      <td class="colnmbr">$(F_ASYTDP)</td>
+                      <td class="colnmbr">&nbsp;</td>
+                  </tr>
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr($(V_ASYTSV), F_ASYTSV, "2", $(amtEditCode), "Y", "", "")
+                  <tr class="$(rowClass)">
+                      <td class="colalph">Transferred Out Salvage</td>
+                      <td class="colnmbr">&nbsp;</td>
+                      <td class="colnmbr">$(F_ASYTSV)</td>
+                      <td class="colnmbr">&nbsp;</td>
+                  </tr>
+              </table>
+          </fieldset>
+      %}
+  %}
+%}
+
+%FUNCTION(dtw_sql) Leased_Query (IN  CHAR(64) profileHandle,
+                                     CHAR(2)   dataBaseID,
+                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %ROW{
+          <a name="Leased"></a>
+          <fieldset class="legendBody">
+              <legend class="legendTitle">Leased</legend>
+              %if (formatToPrint != "Y")
+                  <table align="right" $(contentTable)>
+                      <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                  </table>
+              %endif
+
+              <table $(contentTable)>
+                  @PeriodFromCYP(V_ALCREN)
+                  @PeriodFromCYP(V_ALCEXP)
+                  @Format_Nbr($(V_ALAPAY), F_ALAPAY, "2", $(amtEditCode), "Y", "", "")
+
+                  <tr><td class="dsphdr">Contract Number</td>
+                      <td class="dspalph">$(V_ALCNTR)</td></tr>
+
+                  <tr><td class="dsphdr">Contract Term</td>
+                      <td class="dspalph">$(V_ALCTYP)</td></tr>
+
+                  <tr><td class="dsphdr">Contract Renewl Month/Year</td>
+                      <td class="dspnmbr">$(V_ALCREN)</td></tr>
+
+                  <tr><td class="dsphdr">Contract Expire Month/Year</td>
+                      <td class="dspnmbr">$(V_ALCEXP)</td></tr>
+
+                  <tr><td class="dsphdr">Lessors Name</td>
+                      <td class="dspalph">$(V_ALNAME)</td></tr>
+
+                  <tr><td class="dsphdr">Annual Payment Amount</td>
+                      <td class="dspnmbr">$(F_ALAPAY)</td></tr>
+              </table>
+          </fieldset>
+      %}
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}

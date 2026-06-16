@@ -1,0 +1,294 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Employee Deduction Select                                   *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title 	        = "Employee Deduction"
+  d2wName              = "EmployeeDedSelect.d2w"
+  d2wVarBase           = "$(genericVarBase)$(employeeVarBase)&amp;deductionNumber=@dtw_rurlescseq(deductionNumber)&amp;backHome=@dtw_rurlescseq(backHome)"
+  programName          = "HHREDM"
+  CHI_06               = ""
+  CHI_07               = ""
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  RPT_MAX_ROWS         = "99"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext	        = "1"
+  totalPages	        = "0"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+  @dtw_replace(workURL, "@@deductionNumber", "@dtw_rurlescseq(deductionNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @dtw_assign(applicationID, "PR")
+  %INCLUDE "EmplUV.icl"
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                           @dtw_assign(pageID, "EMPLDEDSELECT")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " HREDED inner join HRDEDM on EDDDNO=HVDDNO  ", fileSQL)
+                          @dtw_concat(fileSQL, "        inner join HREMPL on EDCOMP=EMCOMP and EDFACL=EMFACL and EDEMPL=EMEMPL  ", fileSQL)
+                          @dtw_concat(selectSQL, "EDCOMP=$(prCompany) and EDFACL=$(prFacility) and EDEMPL=$(prEmployee) and EDDDNO=$(deductionNumber) ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @EmployeeDed_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) EmployeeDed_Query (IN CHAR(64)    profileHandle,
+				        CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      @Ret_Format_EmplName(prCompany, prFacility, prEmployee, "00", "000000000", "H", F_EmpName)
+      @RtvFldDesc("EMCOMP=$(prCompany) and EMFACL=$(prFacility) and EMEMPL=$(prEmployee)", "HREMPL", "EMTYPE", PAYTYPECODE)
+      %if ((sec_06 == "N" && PAYTYPECODE == "H") || (sec_07 == "N" && PAYTYPECODE != "H"))
+          @dtw_assign(sec_01, "")
+          @dtw_assign(sec_02, "")
+          @dtw_assign(sec_03, "")
+          @dtw_assign(sec_04, "")
+      %endif
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      @dtw_assign(maintainVar, "$(d2wVarBase)")
+                      %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %if (sec_01 == "Y")
+                          <a href="$(homeURL)$(cGIPath)EmplMaintainDed.d2w/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %if (sec_01=="Y" && sec_04=="Y")
+                          <a href="$(homeURL)$(cGIPath)EmplMaintainDed.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=Z">$(copyImageLrg)</a>
+                      %endif
+                      %if (sec_02 == "Y" || sec_03 == "Y")
+                          <a href="$(homeURL)$(cGIPath)EmplMaintainDed.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageLrg)</a>
+                      %endif
+                      %if (sec_03 == "Y")
+                          @Format_Confirm_Desc($(F_EmpName), "deduction", "$(deductionNumber)", "", "", "", confirmDesc)
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)EmplMaintainDed.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageLrg)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+               %endif
+          </tr>
+
+          <tr><td><h2>$(F_EmpName)</h2></td>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      %ROW {
+          <table $(contentTable)>
+              @Format_Code(V_EDDDNO, F_EDDDNO)
+              <tr><td class="dsphdr">Deduction</td>
+                  <td class="dspalph">$(V_HVDDNM)</td>
+                  <td class="dspnmbr">$(F_EDDDNO)</td>
+              </tr>
+
+              @Format_Code(V_EDMTHD, F_EDMTHD)
+              %if ($(V_EDMTHD) > "0" && $(V_EDMTHD) < "10")
+                  @dtw_insert("0", V_EDMTHD, "0", "1", V_EDMTHD)
+              %endif
+              @RtvFldDesc("FLTYPE='DEDCALCMTH' and FLVALU='$(V_EDMTHD)'", "SYFLAG", "FLDESC", syFlagDesc)
+              <tr><td class="dsphdr">Calculation Method</td>
+                  <td class="dspalph">$(syFlagDesc)</td>
+                  <td class="dspalph">$(F_EDMTHD)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Priority</td>
+                  <td class="dspalph">$(V_HVPRTY)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Cycle</td>
+                  <td class="dspalph">$(V_HVCYCL)</td>
+              </tr>
+
+              %if (V_EDAMT > ".00")
+                  @Format_Nbr($(V_EDAMT), F_EDAMT, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">Deduction Amount</td>
+                      <td class="dspnmbr">$(F_EDAMT)</td>
+                  </tr>
+              %endif
+              %if (V_EDPCT != ".00000")
+                  @Format_Nbr("@dtw_rmultiply(V_EDPCT, "100")", F_EDPCT, "3", $(pctEditCode), "", "", "%")
+                  <tr><td class="dsphdr">Deduction Rate</td>
+                      <td class="dspnmbr">$(F_EDPCT)</td>
+                  </tr>
+              %endif
+
+              @Format_Nbr($(V_EDLIMT), F_EDLIMT, "2", $(amtEditCode), "", "", "")
+              <tr><td class="dsphdr">Deduction Limit</td>
+                  <td class="dspnmbr">$(F_EDLIMT)</td>
+              </tr>
+
+              @RtvYNDesc($(V_EDACYN), fieldDesc)
+              <tr><td class="dsphdr">Accumulate</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+              </tr>
+
+              @RtvYNDesc($(V_EDBPAC), fieldDesc)
+              <tr><td class="dsphdr">Bypass Accumulation</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+              </tr>
+
+              @Format_Nbr($(V_EDACUM), F_EDACUM, "2", $(amtEditCode), "", "", "")
+              <tr><td class="dsphdr">Accumulated Amount Due</td>
+                  <td class="dspnmbr">$(F_EDACUM)</td>
+              </tr>
+
+              %if ((sec_06 == "Y" && V_EMTYPE == "H") || (sec_07 == "Y" && V_EMTYPE != "H"))
+                  @Format_Nbr($(V_EDYTD), F_EDYTD, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">Year To Date Amount</td>
+                      <td class="dspnmbr">$(F_EDYTD)</td>
+                  </tr>
+                  @Format_Nbr($(V_EDITD), F_EDITD, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">Inception To Date Amount</td>
+                      <td class="dspnmbr">$(F_EDITD)</td>
+                  </tr>
+              %endif
+
+              %if (V_EDEFDT != "0")
+                  @Format_Date(V_EDEFDT, "H", F_EDEFDT)
+                  <tr><td class="dsphdr">Effective Date</td>
+                      <td class="dspdate">$(F_EDEFDT)</td>
+                  </tr>
+              %endif
+
+              %if (V_EDEXDT != "0")
+              @Format_Date(V_EDEXDT, "H", F_EDEXDT)
+                  <tr><td class="dsphdr">Expiration Date</td>
+                      <td class="dspdate">$(F_EDEXDT)</td>
+                  </tr>
+              %endif
+
+              %if ((V_EDXFIT != "0") || (V_EDXFIC != "N") || (V_EDXFUI != "N") || (V_EDXSIT != "0") || (V_EDXSDI != "N") || (V_EDXSUI != "N") || (V_EDXSWC != "N"))
+                  <tr><td class="dsphdr">Federal Income Tax</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EDXFIT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspalph">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">FICA Tax</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EDXFIC)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspalph">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">Federal Unemployment Insurance</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EDXFUI)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspalph">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">State Income Tax</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EDXSIT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspalph">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">State Disability Insurance</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EDXSDI)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspalph">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">State Unemployment Insurance</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EDXSUI)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspnmbr">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">State Workers' Compensation</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EDXSWC)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspnmbr">$(syFlagDesc)</td>
+                  </tr>
+              %endif
+
+              %if (V_EDPIN != "")
+                  <tr><td class="dsphdr">Personal ID Number</td>
+                      <td class="dspalph">$(V_EDPIN)</td>
+                  </tr>
+              %endif
+
+              %if (V_EDCASE != "")
+                  <tr><td class="dsphdr">Case Number</td>
+                      <td class="dspalph">$(V_EDCASE)</td>
+                  </tr>
+              %endif
+
+              %if (V_EDCNTY != "")
+                  <tr><td class="dsphdr">County Name</td>
+                      <td class="dspalph">$(V_EDCNTY)</td>
+                  </tr>
+              %endif
+
+              %if (V_EDCNFN != "0")
+                  @Format_Nbr($(V_EDCNFN), F_EDCNFN, "0", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">County FIPS Code</td>
+                      <td class="dspnmbr">$(F_EDCNFN)</td>
+                  </tr>
+              %endif
+          </table>
+      %}	
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}

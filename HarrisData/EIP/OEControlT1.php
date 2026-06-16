@@ -1,0 +1,34 @@
+<?php
+
+$CEASSN="Y";
+$CEOAWC="Y";
+$CEDUDT="0";
+$CESHPO="Y";
+$CEAIWD="Y";
+$CEBPBL="N";
+$CEARAC="1201";
+$CEARSB="0000";
+$CETXAC="2100";
+$CETXSB="0000";
+$CEFRAC="4005";
+$CEFRSB="0000";
+$CESCAC="4004";
+$CESCSB="0000";
+$CEOEPO="A";
+$CEMHLD="CHLD";
+$CECCP="Y";
+$CEMRCH="00011";
+$CEUPGP="N";
+$CEAPGO="N";
+$CEAOVS="Y";
+$CEUCD1="Customer Acquisition Type";
+$CEUCD2="Marketing Campaign Type";
+$CEUCD3="";
+$CEUCD4="";
+$CEUCD5="";
+$CESUD1="";
+$CESUD2="";
+$CESUD3="";
+$CESUD4="";
+$CESUD5="";
+?>

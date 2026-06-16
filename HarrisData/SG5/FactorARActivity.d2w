@@ -1,0 +1,265 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Factor A/R Activity                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ARControl$(dataBaseID).icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "A/R Activity"
+  d2wName                 = "FactorARActivity.d2w"
+  d2wVarBase              = "$(genericVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  haveRec                 = ""
+  editVariables           = ""
+  autoAssignBatch         = ""
+  arDistPeriod            = ""
+  F_arDistPeriod          = ""
+  perBegDate              = ""
+  perEndDate              = ""
+  F_perBegDate            = ""
+  F_perEndDate            = ""
+  alertMessage            = ""
+%}
+	
+%MACRO_FUNCTION Check_Sel_ByUser (INOUT alertMessage) {
+  @RtvFldDesc("FPDATA>' '", "HDFFCP", "char(count(*))", arActivityCnt)
+  %if (arActivityCnt =="0")
+      @Rtv_Error_Desc("HAR0661", alertMessage)
+  %else
+      @RtvFldDesc("FBSUSR<>'$(userProfile)' or FBSELC='S' ", "HDFFAB", "char(count(*))", otherUserCnt)
+      %if (otherUserCnt>"0")
+          @Rtv_Error_Desc("HAR0095", alertMessage)
+      %endif
+  %endif
+  %if (alertMessage != "")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)FactorProcess.d2w/REPORT$(d2wVarBase)&amp;alertMessage=@dtw_rurlescseq(alertMessage)">
+  %endif
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @dtw_assign(autoAssignBatch, V_CRABCH)
+  @RtvFldDesc("RRN(ARCTRL)=1", "ARCTRL", "char(CRDPER)", arDistPeriod)
+  @dtw_assign(F_arDistPeriod, arDistPeriod)
+  @PeriodFromCYP(F_arDistPeriod)
+  @RtvFldDesc("PDPER#=$(arDistPeriod)", "HDPBED", "char(PDBDAT)", perBegDate)
+  @Format_Date(perBegDate, "D", F_perBegDate)
+  @RtvFldDesc("PDPER#=$(arDistPeriod)", "HDPBED", "char(PDEDAT)", perEndDate)
+  @Format_Date(perEndDate, "D", F_perEndDate)
+  @RtvFldDesc("FPFTYP='82' ", "HDFFCP", "char(count(*))", recCount)	
+  @dtw_assign(editVariables, "")
+  @dtw_assign(ux, "1")
+  %while(ux <= recCount){
+      @dtw_assign(recNbr, ux)
+      %while(@dtw_rlength(recNbr) != "4") {@dtw_insert("0", recNbr, recNbr)%}
+      %if (editVariables != "")
+          @dtw_concat(editVariables, "  &&", editVariables)
+      %endif
+      %if (autoAssignBatch == "N")
+          @dtw_concat(editVariables, " editZero(document.Chg.bn$(recNbr), 4, 0) && ", editVariables)
+      %endif
+      @dtw_concat(editVariables, " editZero(document.Chg.bd$(recNbr), 6, 0) && ", editVariables)
+      @dtw_concat(editVariables, " editdate(document.Chg.bd$(recNbr)) ", editVariables)
+      @dtw_add(ux, "1", ux)
+  %}
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "NumZero.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              %if (recCount > "0")
+                  function validate(chgForm) {
+                      if ($(editVariables))
+                          return true;
+                  }
+              %else
+                  %INCLUDE "NoFormValidate.icl"
+              %endif
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ARACTIVITY")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select FPCGRP, FPENVP, FPEXTR, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " DEC(DEC(SUBSTR(FPDATA,52,11),11,0)/100,11,2) as FTTGRS, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(FBBCH#,0) as FBBCH#, coalesce(FBBCHD,0) as FBBCHD", stmtSQL)
+                      @dtw_concat(fileSQL, " HDFFCP ", fileSQL)
+                      @dtw_concat(fileSQL, " left join HDFFAB on FBCGRP=FPCGRP and FBENVP=FPENVP and FBEXTR=FPEXTR ", fileSQL)
+                      @dtw_concat(selectSQL, "FPFTYP='82' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By FBEXTR ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @AR_Activity_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+          %INCLUDE "AlertMessageDisplay.icl"
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) AR_Activity_Query (IN CHAR(64)    profileHandle,
+                                         CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              <td class="toolbar">
+                  <a href="$(homeURL)$(cGIPath)FactorProcess.d2w/REPORT$(d2wVarBase)">$(selectBackImage)</a>
+                  <a href="javascript:check(document.Chg)">$(selectAcceptImage)</a>
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/CLEAR$(d2wVarBase)">$(selectClearImage)</a>
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          @Format_Header("Distribution Period", $(F_arDistPeriod), "$(F_perBegDate) to $(F_perEndDate)")
+      </table>
+
+      %INCLUDE "ConfMessageDisplay.icl"
+      $(hrTagAttr)
+
+      <table $(contentTable)>
+          <tr>
+              %if (autoAssignBatch == "N")
+                  <td class="colhdr">Batch</td>
+              %endif
+              <td class="colhdr">Batch Date</td>
+              <td class="colhdr">Date Of Extraction</td>
+              <td class="colhdr">Gross Amount</td>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+	
+          <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/ACCEPT$(d2wVarBase)&amp;recCount=@dtw_rurlescseq(sql_Record_Count)&amp;autoAssignBatch=@dtw_rurlescseq(autoAssignBatch)&amp;arDistPeriod=@dtw_rurlescseq(arDistPeriod)&amp;perBegDate=@dtw_rurlescseq(perBegDate)&amp;perEndDate=@dtw_rurlescseq(perEndDate)">
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Nbr(V_FTTGRS, F_FTTGRS, "2", $(amtEditCode), "Y", "", "")
+                  @dtw_insert("/", V_FPEXTR, "2", F_FPEXTR)
+                  @dtw_assign(recNbr, $(ROW_NUM))
+                  %while(@dtw_rlength(recNbr) != "4") {@dtw_insert("0", recNbr, recNbr)%}
+                  @DateInputFromCYMD(V_FBBCHD)
+
+                  <tr class="$(rowClass)">
+                      %if (autoAssignBatch == "N")
+                          <td class="inputnmbr"><input type="text" name="bn$(recNbr)" value="$(V_FBBCH#)" size="4" maxlength="4"></td>
+                      %endif
+                      <td class="inputnmbr"><input type="text" name="bd$(recNbr)" value="$(V_FBBCHD)" size="6" maxlength="6"><a href="javascript:calWindow('bd$(recNbr)');">$(calendarImage)</a></td> 		
+                      <td class="colnmbr">$(F_FPEXTR)</td>
+                      <td class="colnmbr">$(F_FTTGRS)</td>
+                      <td><input type="hidden" name="ex$(recNbr)" value="$(V_FPEXTR)">
+                          <input type="hidden" name="cg$(recNbr)" value="$(V_FPCGRP)">
+                      </td>
+                  </tr>
+              %}
+          </form>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(CLEAR) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From HDFFAB @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(ACCEPT) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From HDFFAB @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      @dtw_assign(warnMessage, "")
+      @dtw_assign(ux, "1")
+      %while(ux <= recCount){
+          @dtw_assign(recNbr, ux)
+          %while(@dtw_rlength(recNbr) != "4") {@dtw_insert("0", recNbr, recNbr)%}
+          @dtw_assign(batchNmbr, "$(bn$(recNbr))")
+          %while(@dtw_rlength(batchNmbr) != "4") {@dtw_insert("0", batchNmbr, batchNmbr)%}
+          @dtw_assign(batchDate, "$(bd$(recNbr))")
+          @DateToCYMD(batchDate)
+          %if (alertMessage == "" && batchDate < perBegDate)
+              @Rtv_Error_Desc("HAR2114", alertMessage)
+          %endif
+          %if (warnMessage == "" && batchDate > perEndDate)
+              @Rtv_Error_Desc("HAR2115", warnMessage)
+          %endif
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into HDFFAB (FBCGRP,FBENVP,FBEXTR,FBBCH#,FBBCHD,FBSUSR,FBSELC) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Values('$(cg$(recNbr))','25','$(ex$(recNbr))',$(batchNmbr),$(batchDate),'$(userProfile)','Y')  @@endsql", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+          @dtw_add(ux, "1", ux)
+      %}
+      %if (alertMessage != "")
+          @Set_SQL(stmtSQL)
+      %else
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)FactorARActivitySelect.d2w/REPORT$(d2wVarBase)&amp;autoAssignBatch=@dtw_rurlescseq(autoAssignBatch)&amp;arDistPeriod=@dtw_rurlescseq(arDistPeriod)&amp;perBegDate=@dtw_rurlescseq(perBegDate)&amp;perEndDate=@dtw_rurlescseq(perEndDate)&amp;confMessage=@dtw_rurlescseq(warnMessage)&amp;backHome=$(d2wName)/REPORT">
+      %endif
+  %endif
+%}

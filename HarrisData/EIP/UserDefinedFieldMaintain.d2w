@@ -1,0 +1,369 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: User-Defined Column Maintenance                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "userdefinedfieldmaintain.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title  	           = "User-Defined Column Maintenance"
+  d2wName                 = "UserDefinedFieldMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fileName=@dtw_rurlescseq(fileName)&amp;fileDesc=@dtw_rurlescseq(fileDesc)&amp;condUse=@dtw_rurlescseq(condUse)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;fieldName=@dtw_rurlescseq(fieldName)&amp;fieldDesc=@dtw_rurlescseq(fieldDesc)&amp;eventCode=@dtw_rurlescseq(eventCode)&amp;maintenanceCode=D"
+  programName             = "HSYUDF_E"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              function validate(chgForm) {
+                  if (document.Chg.fieldName.value =="" ||
+                      document.Chg.fieldDesc.value =="")
+                         {alert("$(reqFieldError)"); return false;}
+                  var test = document.Chg.fieldName.value;
+                  if(!test.match(/^[A-Z]/i))
+                         {alert("Column Name must start with a character"); return false;}
+                  if (editNum(document.Chg.sequence, 5, 2) &&
+                      editNum(document.Chg.size, 5, 0) &&
+                      editNum(document.Chg.dec, 2, 0))
+                      return true;
+              }
+              function confirmDelete() {return confirm("$(delRecordConf)")}
+	       %INCLUDE "numedit.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "USERDEFFIELDMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(stmtSQL, "")
+                      %if (maintenanceCode == "A")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, " Select * From SYUDFM Where UFFILN='$(fileName)' ", stmtSQL)
+                          @dtw_concat(stmtSQL, " and UFFLDN='$(fieldName)' and UFEVNT='$(eventCode)' ", stmtSQL)
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      <table $(contentTable)>
+          @Format_Header("Table", $(fileDesc), $(fileName))
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                      %if (condUse == "Y")
+                          @dtw_assign(focusField, "eventCode")
+                      %else
+                          @dtw_assign(focusField, "fieldName")
+                      %endif
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@evnt", "eventCode")     @dtw_assign(Err_UFEVNT, fieldValue)
+                          @DecatErr_Field("@@fldn", "fieldName")     @dtw_assign(Err_UFFLDN, fieldValue)
+                          @DecatErr_Field("@@desc", "fieldDesc")     @dtw_assign(Err_UFDESC, fieldValue)
+                          @DecatErr_Field("@@fseq", "sequence")      @dtw_assign(Err_UFFSEQ, fieldValue)
+                          @DecatErr_Field("@@ffmt", "fieldFmt")      @dtw_assign(Err_UFFFMT, fieldValue)
+                          @DecatErr_Field("@@type", "type")          @dtw_assign(Err_UFTYPE, fieldValue)
+                          @DecatErr_Field("@@size", "size")          @dtw_assign(Err_UFSIZE, fieldValue)
+                          @DecatErr_Field("@@decm", "dec")           @dtw_assign(Err_UFDECM, fieldValue)
+                          @DecatErr_Field("@@expt", "exitPoint")     @dtw_assign(Err_UFEXPT, fieldValue)
+                          @DecatErr_Field("@@boxs", "boxSize")       @dtw_assign(Err_UFBOXS, fieldValue)
+                          @DecatErr_Field("@@reqf", "requiredField") @dtw_assign(Err_UFREQF, fieldValue)
+                          @DecatErr_Field("@@vldv", "validateValue") @dtw_assign(Err_UFVLDV, fieldValue)
+                          @DecatErr_Field("@@uppr", "uppercaseOnly") @dtw_assign(Err_UFUPPR, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@evnt")   @dtw_assign(V_UFEVNT, fieldValue)
+                      @Decat_Field("@@fldn")   @dtw_assign(V_UFFLDN, fieldValue)
+                      @Decat_Field("@@desc")   @dtw_assign(V_UFDESC, fieldValue)
+                      @Decat_Field("@@fseq")   @dtw_assign(V_UFFSEQ, fieldValue)
+                      @Decat_Field("@@type")   @dtw_assign(V_UFTYPE, fieldValue)
+                      @Decat_Field("@@ffmt")   @dtw_assign(V_UFFFMT, fieldValue)
+                      @Decat_Field("@@size")   @dtw_assign(V_UFSIZE, fieldValue)
+                      @Decat_Field("@@decm")   @dtw_assign(V_UFDECM, fieldValue)
+                      @Decat_Field("@@expt")   @dtw_assign(V_UFEXPT, fieldValue)
+                      @Decat_Field("@@boxs")   @dtw_assign(V_UFBOXS, fieldValue)
+                      @Decat_Field("@@reqf")   @dtw_assign(V_UFREQF, fieldValue)
+                      @Decat_Field("@@vldv")   @dtw_assign(V_UFVLDV, fieldValue)
+                      @Decat_Field("@@uppr")   @dtw_assign(V_UFUPPR, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(V_UFTYPE, "A")
+                          @dtw_assign(V_UFREQF, "N")
+                          @dtw_assign(V_UFVLDV, "N")
+                          %if (condUse == "Y")
+                              @dtw_assign(focusField, "eventCode")
+                          %else
+                              @dtw_assign(focusField, "fieldName")
+                          %endif
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elif (maintenanceCode == "Z")
+                      @dtw_assign(V_UFEVNT,  "")
+                      @dtw_assign(V_UFFLDN,  "")
+                      %if (condUse == "Y")
+                          @dtw_assign(focusField, "eventCode")
+                      %else
+                          @dtw_assign(focusField, "fieldName")
+                      %endif
+                  %else
+                      @dtw_assign(focusField, "sequence")
+                  %endif
+
+                  %if (condUse == "Y")
+                      @RtvFldDesc("ECFILN='$(fileName)' and ECEVNT='$(V_UFEVNT)'", "SYEVNT", "ECDESC", fieldDesc)
+                      @SetTextOvr(Err_UFEVNT)
+                      <tr><td class="dsphdr"><span $(textOvr)>Event Code</span></td>
+                          %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                              <td class="inputalph"><input name="eventCode" type="text" value="$(V_UFEVNT)" size="10" maxlength="10"><a href="$(homeURL)$(cGIPath)eventcodesearch.d2w/ENTRY$(d2wVarBase)&amp;docName=Chg&amp;fldName=eventCode&amp;fldDesc=eventDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="eventDesc" value="$(fieldDesc)" type="text" size="40" disabled></td>
+                          %else
+                              <td class="inputalph"><input name="eventCode" type="hidden" value="$(V_UFEVNT)" size="10" maxlength="10">$(V_UFEVNT)</td>
+                          %endif
+                      </tr>
+                      @DspErrMsg(Err_UFEVNT)
+                  %endif
+
+                  @SetTextOvr(Err_UFFLDN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Column</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input name="fieldName" type="text" value="$(V_UFFLDN)" size="10" maxlength="6"> $(reqFieldChar) </td>
+                      %else
+                          <td class="inputalph"><input name="fieldName" type="hidden" value="$(V_UFFLDN)" size="10" maxlength="6">$(V_UFFLDN)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_UFFLDN)
+
+                  @SetTextOvr(Err_UFFSEQ)
+                  <tr><td class="dsphdr"><span $(textOvr)>Column Sequence</span></td>
+                      <td class="inputnmbr"><input name="sequence" type="text" value="$(V_UFFSEQ)" size="10" maxlength="9"></td>
+                  </tr>
+                  @DspErrMsg(Err_UFFSEQ)
+
+                  @SetTextOvr(Err_UFDESC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Description</span></td>
+                      <td class="inputalph"><input name="fieldDesc" type="text" value="$(V_UFDESC)" size="40" maxlength="30"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_UFDESC)
+               			
+                  @SetTextOvr(Err_UFTYPE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Column Type</span></td>
+                      @dtw_tb_rows(userDefFldTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(userDefFldTable, x, "1") != V_UFTYPE) && (x < maxRows)) {@dtw_add(x, "1", x)%}
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td>@dtw_tb_select(userDefFldTable, "type", "2", "1", "N", "", x, "1")</td>
+                      %else
+                          <td>@dtw_tb_rgetv(userDefFldTable,  x, @dtw_tb_rQuerycolnonj(userDefFldTable, "FLDESC"))</td>
+                          <td class="inputalph"><input name="type" type="hidden" value="$(V_UFTYPE)" size="1" maxlength="1"></td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_UFTYPE)
+
+                  @RtvFldDesc("FLTYPE='USRFLDFMT' and FLVALU='$(V_UFFFMT)'", "SYFLAG", "FLDESC", fieldFmtDesc)
+                  @SetTextOvr(Err_UFFFMT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Column Format</span></td>
+                      <td class="inputalph"><input name="fieldFmt" type="text" value="$(V_UFFFMT)" size="2" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=USRFLDFMT&amp;flagSrchHdr=@dtw_rurlescseq("Column Format")&amp;docName=Chg&amp;fldName=fieldFmt&amp;fldDesc=fieldFmtDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fieldFmtDesc" value="$(fieldFmt)" type="text" size="50" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_UFFFMT)
+			
+                  @SetTextOvr(Err_UFSIZE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Column Size</span></td>
+                      <td class="inputnmbr"><input name="size" type="text" value="$(V_UFSIZE)" size="2" maxlength="5"> <input name="dec" type="text" value="$(V_UFDECM)" size="1" maxlength="2"></td>
+                  </tr>
+                  @DspErrMsg(Err_UFSIZE)
+               			
+                  @SetTextOvr(Err_UFBOXS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Comment Box Size</span></td>
+                      <td class="inputnmbr"><input name="boxSize" type="text" value="$(V_UFBOXS)" size="2" maxlength="2"></td>
+                  </tr>
+                  @DspErrMsg(Err_UFBOXS)
+               			
+                  @SetTextOvr(Err_UFREQF)
+                  <tr><td class="dsphdr"><span $(textOvr)>Required Column</span></td>
+                      @dtw_tb_rows(yn01Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_UFREQF) && (x < maxRows))
+                            {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn01Table, "requiredField", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_UFREQF)
+               			
+                  @SetTextOvr(Err_UFVLDV)
+                  <tr><td class="dsphdr"><span $(textOvr)>Validate Against Values</span></td>
+                      @dtw_tb_rows(yn02Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn02Table, x, "1") != V_UFVLDV) && (x < maxRows))
+                            {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn02Table, "validateValue", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_UFVLDV)
+               			
+                  @SetTextOvr(Err_UFUPPR)
+                  <tr><td class="dsphdr"><span $(textOvr)>Uppercase Only</span></td>
+                      @dtw_tb_rows(yn03Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn03Table, x, "1") != V_UFUPPR) && (x < maxRows))
+                            {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn03Table, "uppercaseOnly", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_UFUPPR)
+               			
+                  @SetTextOvr(Err_UFEXPT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Exit Point</span></td>
+                      <td class="inputalph"><input name="exitPoint" type="text" value="$(V_UFEXPT)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_UFEXPT)
+
+                  %if (maintenanceCode != "A" && maintenanceCode != "Z")
+                      <tr><td class="dsphdr">Value Rows Exist</td>
+                          <td class="inputalph">$(V_UFVALU)</td>
+                      </tr>
+                  %endif
+
+                  <tr><td><input name="timeStamp" type="hidden" value="$(V_UFTSTP)"></td></tr>
+              %}	
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HSYUDF_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @UserDef_FldType_Query(profileHandle, dataBaseID, "USRDEFFLD ", userDefFldTable)
+      @yn01_Table_Query(profileHandle, dataBaseID, "YORN      ", yn01Table)
+      @yn02_Table_Query(profileHandle, dataBaseID, "YORN      ", yn02Table)
+      @yn03_Table_Query(profileHandle, dataBaseID, "YORN      ", yn03Table)
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(eventCode)
+  @dtw_mUPPERCASE(fieldName)
+  @dtw_mUPPERCASE(fieldFmt)
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@filn", fileName)
+  @Concat_Field("@@evnt", eventCode)
+  @Concat_Field("@@fldn", fieldName)
+  @Concat_Field("@@desc", fieldDesc)
+  @Concat_Field("@@fseq", sequence)
+  @Concat_Field("@@type", type)
+  @Concat_Field("@@ffmt", fieldFmt)
+  @Concat_Field("@@size", size)
+  @Concat_Field("@@decm", dec)
+  @Concat_Field("@@expt", exitPoint)
+  @Concat_Field("@@boxs", boxSize)
+  @Concat_Field("@@reqf", requiredField)
+  @Concat_Field("@@vldv", validateValue)
+  @Concat_Field("@@uppr", uppercaseOnly)
+  @Concat_Field("@@tstp", timeStamp)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      @Format_ConfMsg_Desc(maintenanceCode, $(fieldDesc), $(fieldName), "", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)userdefinedfield.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %elif (maintenanceCode == "D")
+      %if (condUse == "Y")
+          @DecatErr_Field("@@evnt", "eventCode")
+      %else
+          @DecatErr_Field("@@fldn", "fieldName")
+      %endif
+      @Format_ConfMsg_Desc("", $(fieldDesc), $(fieldName), "<br>$(fieldValue)", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)userdefinedfield.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;fieldName=@dtw_rurlescseq(fieldName)&amp;eventCode=@dtw_rurlescseq(eventCode)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

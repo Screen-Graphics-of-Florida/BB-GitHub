@@ -1,0 +1,197 @@
+%{
+*********************************************************************
+* Copr 1979 2005 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Work Item History Data                                      *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "WFEdtVar.icl"
+
+%Define {
+  page_title              = "Application Data History"
+  d2wName                 = "WFHistoryData.d2w"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  Change                  = ""
+  
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@inst", wfInstance)
+  @Concat_Field("@@indt", wfInstanceDate)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @WFWrkItmUserView(profileHandle, dataBaseID, userPass, edtVar)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onLoad="window.focus()" onBlur="window.close()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "$(inquiryBanner)"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      <td>
+                          @dtw_concat(stmtSQL, " Select WFDTAH.* ", stmtSQL)
+                          @dtw_concat(fileSQL, " WFDTAH ", fileSQL)
+                          @dtw_concat(selectSQL, " AHINST=$(wfInstance) and AHINDT=$(wfInstanceDate) and AHWITM=$(wfWorkItem) and AHWISQ=$(wfWorkItemSequence)", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @List_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "$(inquiryTrailer)"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64) profileHandle,
+                                   CHAR(2)   dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @dtw_assign(displayCloseIcon, "Y")
+      %INCLUDE "PageTitle.icl"
+
+      <table $(contentTable)>
+          @RtvFldDesc("APINST=$(wfInstance) and APINDT=$(wfInstanceDate)", "WFDTAP", "APVAR", V_APVAR)
+          @RtvFldDesc("ININST=$(wfInstance) and ININDT=$(wfInstanceDate)", "WFINST", "INDESC", V_INDESC)
+          <tr><td><h2> $(V_INDESC)</h2></td></tr>
+          @RtvFldDesc("ININST=$(wfInstance) and ININDT=$(wfInstanceDate)", "WFINST", "INPROC", V_INPROC)
+          @RtvFldDesc("WHINST=$(wfInstance) and WHINDT=$(wfInstanceDate) and WHWITM=$(wfWorkItem) and WHWISQ=$(wfWorkItemSequence)", "WFWIHS", "CHAR(WHPONT)", V_WHPONT)
+          @RtvFldDesc("WHINST=$(wfInstance) and WHINDT=$(wfInstanceDate) and WHWITM=$(wfWorkItem) and WHWISQ=$(wfWorkItemSequence)", "WFWIHS", "CHAR(WHSEQ)", V_WHSEQ)
+          @RtvFldDesc("PDPROC='$(V_INPROC)' and PDPONT=$(V_WHPONT) and PDSEQ=$(V_WHSEQ) ", "WFPRDT", "PDDESC", V_PDDESC)
+          @Format_Code("$(V_WHPONT)-$(V_WHSEQ)", F_WHPONT)
+          <tr><td><h2> $(V_PDDESC) $(F_WHPONT)</h2></td></tr>
+      </table>
+
+      $(inquiryhrTagAttr)
+
+      %ROW{
+          @dtw_assign(edtVar, V_AHVAR)
+          @dtw_assign(prvVar, V_APVAR)
+          @dtw_assign(FieldPos, "1")
+          @dtw_assign(PrvPos, "1")
+          @dtw_length(edtVar, edtVarLength)
+          %if (V_APVAR != "" && V_AHVAR!=V_APVAR)
+              <table $(contentTable)>
+                  <tr><th class="colhdr">Changes:</th></tr>
+                  %while(FieldPos<edtVarLength) {
+                      @WF_Decat_EdtVar("$(FieldPos)")
+                      @dtw_add(posNext, "2", FieldPos)
+                      @WF_Decat_PrvValue("$(testParameter)")
+                      @RtvFldDesc("PMPARM='$(parameter)'", "WFPARM", "PMPRMD", V_PMPRMD)
+                      %if (V_PMPRMD!="" && fieldValue!=prvValue)
+                          @RtvFldDesc("PMPARM='$(parameter)'", "WFPARM", "PMTYPE", V_PMTYPE)
+                          %if (V_PMTYPE=="D")
+                              @Format_Date(prvValue, "D", prvValue)
+                              @Format_Date(fieldValue, "D", fieldValue)
+                          %elif (V_PMTYPE=="L")
+                              @Format_Date_ISO(prvValue, "D", prvValue)
+                              @Format_Date_ISO(fieldValue, "D", fieldValue)
+                          %elif (V_PMTYPE=="P")
+                              @PeriodFromCYP(prvValue)
+                              @PeriodFromCYP(fieldValue)
+                          %elseif ($(parameter)=="ssno")
+                              @dtw_strip(prvValue,prvValue)
+                              %while(@dtw_rlength(prvValue) != "9") {@dtw_insert("0", prvValue, prvValue)%}
+                              @Format_SSN(prvValue, prvValue)
+                              @dtw_strip(fieldValue,fieldValue)
+                              %while(@dtw_rlength(fieldValue) != "9") {@dtw_insert("0", fieldValue, fieldValue)%}
+                              @Format_SSN(fieldValue, fieldValue)
+                          %endif
+                          @Show_Changes(fieldValue, prvValue, V_PMPRMD)
+                      %endif
+                  %}
+                  %if (Change == "")
+                      <tr><td>&nbsp;</td></tr>
+                      <tr><td class="dspalph" colspan="2">No changes were found</td></tr>
+                      <tr><td>&nbsp;</td></tr>
+                  %endif
+              </table>
+              $(inquiryhrTagAttr)
+          %endif
+
+          @dtw_assign(FieldPos, "1")
+          @dtw_length(edtVar, edtVarLength)
+
+          <table $(contentTable)>
+              %while(FieldPos<edtVarLength) {
+                  @WF_Decat_EdtVar("$(FieldPos)")
+                  @dtw_add(posNext, "2", FieldPos)
+                  @RtvFldDesc("PMPARM='$(parameter)'", "WFPARM", "PMPRMD", V_PMPRMD)
+                  %if (V_PMPRMD!="")
+                      @RtvFldDesc("PMPARM='$(parameter)'", "WFPARM", "PMTYPE", V_PMTYPE)
+                      %if (V_PMTYPE=="D")
+                          @Format_Date(fieldValue, "D", fieldValue)
+                      %elif (V_PMTYPE=="L")
+                          @Format_Date_ISO(fieldValue, "D", fieldValue)
+                      %elif (V_PMTYPE=="P")
+                          @PeriodFromCYP(fieldValue)
+                      %elseif ($(parameter)=="ssno")
+                         @dtw_strip(fieldValue,fieldValue)
+                         %while(@dtw_rlength(fieldValue) != "9") {@dtw_insert("0", fieldValue, fieldValue)%}
+                         @Format_SSN(fieldValue, fieldValue)
+                      %endif
+                      <tr><td class="dsphdr">$(V_PMPRMD)</td>
+                          <td class="dspalph">$(fieldValue)</td>
+                      </tr>
+                  %endif
+              %}
+          </table>
+      %}
+      $(inquiryhrTagAttr)
+      %INCLUDE "CloseWindow.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Show_Changes (IN  CHAR(10) E_field,
+                              IN  CHAR(10) O_field,
+                              IN  CHAR(50) fieldDesc)
+{
+  %if (@dtw_rstrip(E_field)!=@dtw_rstrip(O_field))
+      %if (Change=="")
+          @dtw_assign(Change,  "Y")
+      %else
+          <tr><td class="dsphdr">&nbsp;</td></tr>
+      %endif
+      <tr><td class="dsphdr">$(fieldDesc)</td>
+          <td class="dspalph">$(E_field)</td></tr>
+      %if (E_field!=O_field)
+          <tr><td class="dsphdr">Changed From:</td>
+              <td class="dspalph">$(O_field)</td>
+      %endif
+  %endif
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}

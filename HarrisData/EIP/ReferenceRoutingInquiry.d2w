@@ -1,0 +1,228 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Reference Routing Inquiry                                   *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+
+%Define {	
+  page_title              = "Reference Routing"
+  d2wName                 = "ReferenceRoutingInquiry.d2w"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "0"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  sddesc                  = ""
+  backGround              = ""
+%}
+	
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onLoad="window.focus()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(inquiryBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td>
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select RTPLT, RTPN, RTSEQN, RTDEPT, RTWC, RTSON, RTRTYP, RTALTC, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " RTMHRS, RTMHRC, RTMPON, RTSUHR, RTSURC, RTMACH, RTMTD, RTMAHO, RTCCCD, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " IMIMDS, IMUOMS, IPDWGN, IPECN, IPDLRM, IPEFTD ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDMRTM inner join HDIMST on RTPN=IMITEM ", fileSQL)
+                      @dtw_concat(fileSQL, "        inner join HDIPLT on RTPLT=IPPLT and RTPN=IPITEM ", fileSQL)
+                      @dtw_concat(selectSQL, " RTPLT=$(plantNumber) and RTPN='$(itemNumber)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By RTPLT, RTPN, RTSEQN ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @RefRtg_Inquiry(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(inquiryTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) RefRtg_Inquiry (IN CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      @dtw_assign(dspHeader, "Y")
+      %INCLUDE "NoRecordsFound.icl"
+          %ROW{
+              %if (dspHeader == "Y")
+                  @dtw_assign(dspHeader, "")
+                  @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+                  @RtvFldDesc("UMUOM='$(V_IMUOMS)'", "HDUOM", "UMUMLD", stockUOMDesc)
+                  @Format_Date_ISO(V_IPEFTD, "H", F_IPEFTD)
+                  @Format_Date_ISO(V_IPDLRM, "H", F_IPDLRM)
+                  <table $(contentTable)>
+                      @Format_Header("Plant", $(plantName), $(plantNumber))
+                      @Format_Header("Item", $(V_IMIMDS), $(itemNumber))
+                      @Format_Header("Unit Of Measure", $(stockUOMDesc), $(V_IMUOMS))
+                      @Format_Header("Drawing", $(V_IPDWGN), "")
+                      @Format_Header("ECN", $(V_IPECN), "")
+                      @Format_Header("ECN Date", $(F_IPEFTD), "")
+                      @Format_Header("Last Maintenance", $(F_IPDLRM), "")
+                  </table>
+
+                  $(inquiryhrTagAttr)
+                  <table $(contentTable)>
+                     <tr>
+                         @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                         <th class="colhdr">Rtg<br>Seq</th>
+                         <th class="colhdr">Dept</th>
+                         <th class="colhdr">W/C</th>
+                         <th class="colhdr">Oper#</th>
+                         <th class="colhdr">R<br>T</th>
+                         <th class="colhdr">A<br>L</th>
+                         <th class="colhdr">Crew<br>Size</th>
+                         <th class="colhdr" colspan="2">Measured<br>Hours</th>
+                         <th class="colhdr">Mach<br>Only</th>
+                         <th class="colhdr">Pcs/<br>Hour</th>
+                         <th class="colhdr" colspan="2">Setup<br>Hours</th>
+                         <th class="colhdr">Trn<br>Days</th>
+                         <th class="colhdr">Mach</th>
+                     </tr>
+              %endif
+              @Format_Nbr($(V_RTMPON), F_RTMPON, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_RTMHRS), F_RTMHRS, "4", $(hrsEditCode), "", "", "")
+              @dtw_assign(W_PPHRS, "")
+              %if (V_RTMHRS != "0")
+                  %if (V_RTMHRC== "P")
+                      @DTW_DIVIDE("1", V_RTMHRS, W_PPHRS)
+                  %endif
+                  %if (V_RTMHRC== "H")
+                      @DTW_DIVIDE("100", V_RTMHRS, W_PPHRS)
+                  %endif
+                  %if (V_RTMHRC== "M")
+                      @DTW_DIVIDE("1000", V_RTMHRS, W_PPHRS)
+                  %endif
+              %endif
+              @Format_Nbr($(W_PPHRS), F_PPHRS, "0", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_RTSUHR), F_RTSUHR, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_RTMTD), F_RTMTD, "1", $(amtEditCode), "", "", "")
+              <tr class="evenrow">
+                 <td class="colnmbr">$(V_RTSEQN)</td>
+                 <td class="colalph">$(V_RTDEPT)</td>
+                 <td class="colalph">$(V_RTWC)</td>
+                 <td class="colcode">$(V_RTSON)</td>
+                 <td class="colalph">$(V_RTRTYP)</td>
+                 <td class="colnmbr">$(V_RTALTC)</td>
+                 <td class="colnmbr">$(F_RTMPON)</td>
+                 <td class="colnmbr">$(F_RTMHRS)</td>
+                 <td class="colalph">$(V_RTMHRC)</td>
+                 <td class="colalph">$(V_RTMAHO)</td>
+                 <td class="colnmbr">$(F_PPHRS)</td>
+                 <td class="colnmbr">$(F_RTSUHR)</td>
+                 <td class="colnmbr">$(V_RTSURC)</td>
+                 <td class="colnmbr">$(F_RTMTD)</td>
+                 <td class="colalph">$(V_RTMACH)</td>
+              </tr>
+              %if (V_RTSON != "")
+                 @RtvFldDesc("SDSON='$(V_RTSON)'", "HDMSDM", "SDDESC", sddesc)
+                 <tr><td>&nbsp;</td>
+                     <td>&nbsp;</td>
+                     <td>&nbsp;</td>
+                     <td class="colalph" colspan="10">$(sddesc)</td>
+                 </tr>
+              %endif
+
+              %INCLUDE "stmtSQLClear.icl"
+              @dtw_concat(stmtSQL, " Select ODPLT, ODPN, ODSEQN, ODDOCT, ODLINE, ODDESC ", stmtSQL)
+              @dtw_concat(fileSQL, " HDMODM ", fileSQL)
+              @dtw_concat(selectSQL, " ODPLT=$(plantNumber) and ODPN='$(itemNumber)' and ODSEQN=$(V_RTSEQN) ", selectSQL)
+              %INCLUDE "stmtSQLSelect.icl"
+              @dtw_concat(stmtSQL, " Order By ODPLT, ODPN, ODSEQN, ODDOCT, ODLINE ", stmtSQL)
+              %INCLUDE "stmtSQLEnd.icl"
+              @RtgNotes_Inquiry(profileHandle, dataBaseID, stmtSQL)
+
+              %INCLUDE "stmtSQLClear.icl"
+              @dtw_concat(stmtSQL, " Select RCPLT, RCPN, RCSEQN, RCCECT ", stmtSQL)
+              @dtw_concat(fileSQL, " HDMRCC ", fileSQL)
+              @dtw_concat(selectSQL, " RCPLT=$(plantNumber) and RCPN='$(itemNumber)' and RCSEQN=$(V_RTSEQN) ", selectSQL)
+              %INCLUDE "stmtSQLSelect.icl"
+              @dtw_concat(stmtSQL, " Order By RCPLT, RCPN, RCSEQN, RCCECT ", stmtSQL)
+              %INCLUDE "stmtSQLEnd.icl"
+              @RtgCost_Inquiry(profileHandle, dataBaseID, stmtSQL)
+          %}
+      </table>
+      $(inquiryhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_sql) RtgNotes_Inquiry (IN CHAR(64)    profileHandle,
+                                        CHAR(2)     dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @dtw_assign(first, "Y")
+         %ROW{
+            %if (first == "Y")
+               @dtw_assign(first, "")
+               <tr><td class="colalph" colspan=14  >&nbsp; &nbsp; &nbsp; Notes:</td></tr>
+            %endif
+            <tr><td class="colalph" colspan=14  >&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; $(V_ODDESC)</td></tr>
+         %}
+  %}
+%}
+
+%FUNCTION(dtw_sql) RtgCost_Inquiry (IN CHAR(64)    profileHandle,
+				        CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @dtw_assign(first, "Y")
+         %ROW{
+            %if (first == "Y")
+               @dtw_assign(first, "")
+               <tr>
+                  <td class="colalph" colspan=14  >&nbsp; &nbsp; &nbsp; Cost Category:</td>
+               </tr>
+            %endif
+            @RtvFldDesc("CCPLT = $(plantNumber) and CCCECT = '$(V_RCCECT)'", "HDCECM", "CCLDES", ccldes)
+            %if (ccldes == "")
+               @dtw_assign(ccldes, "*Invalid Cost Elmt Catgy*")
+            %endif
+            <tr>
+               <td class="colalph" colspan=14  >&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; $(V_RCCECT) $(ccldes) </td>
+            </tr>
+
+         %}
+  %}
+%}
+%HTML(DISPLAY) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}

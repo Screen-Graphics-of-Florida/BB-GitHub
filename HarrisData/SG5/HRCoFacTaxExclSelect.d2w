@@ -1,0 +1,187 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Tax Exclusion Select                                        *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title 	        = "Tax Exclusion"
+  d2wName              = "HRCoFacTaxExclSelect.d2w"
+  d2wVarBase           = "$(genericVarBase)$(hrCoFacVarBase)&amp;taxId=@dtw_rurlescseq(taxId)&amp;taxType=@dtw_rurlescseq(taxType)&amp;taxDedCode=@dtw_rurlescseq(taxDedCode)&amp;backHome=@dtw_rurlescseq(backHome)"
+  programName          = "HPREXM"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  RPT_MAX_ROWS         = "99"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext	        = "1"
+  totalPages	        = "0"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "HrCoFacURL.icl"
+  @dtw_replace(workURL, "@@taxType", "@dtw_rurlescseq(taxType)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@taxId", "@dtw_rurlescseq(taxId)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@taxDedCode", "@dtw_rurlescseq(taxDedCode)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @HrCoFacUserView(profileHandle, dataBaseID, userPass, prCompany, prFacility)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                           @dtw_assign(pageID, "TAXEXSELECT")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          @dtw_concat(stmtSQL, "Select * From PRTXEX ", stmtSQL)
+                          @dtw_concat(stmtSQL, " WHERE EXCOMP=$(prCompany) and EXFACL=$(prFacility) and ", stmtSQL)
+                          @dtw_concat(stmtSQL, " EXTYPE=$(taxType) and EXID='$(taxId)' and EXDDNO='$(taxDedCode)'", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Exclusion_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Exclusion_Query (IN CHAR(64)    profileHandle,
+				        CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+
+          @RetHrCompNam(profileHandle, dataBaseID, prCompany, prFacility, coFacName)
+          <tr><td><h2> $(coFacName)</h2></td>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+      $(hrTagAttr)
+
+      %ROW {
+          <table $(contentTable)>
+              <tr>
+                  <td class="dsphdr">Tax Type</td>
+                  @RtvFldDesc("FLTYPE='TXEXTYPE' and FLVALU='$(taxType)'", "SYFLAG", "FLDESC", syFlagDesc)
+                  <td class="dspalph">$(syFlagDesc)</td>
+              </tr>
+              <tr><td class="dsphdr">Tax ID</td>
+                  %if (V_EXID == "")
+                      @dtw_assign(taxId, "All")
+                  %endif
+                  <td class="dspalph">$(taxId)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Deduction/Pay Code</td>
+                  %if (V_EXDDNO > "000" && V_EXDDNO <= "999")
+                      @RtvFldDesc("HVDDNO=$(V_EXDDNO)", "HRDEDM", "HVLDSC", dedName)
+                      <td class="dspalph">$(V_EXDDNO) $(dedName)</td>
+                  %else
+                      @RtvFldDesc("C2COMP=$(prCompany) and C2FACL=$(prFacility) and C2CODE='$(V_EXDDNO)'", "PRCODE", "C2DESC", payCodeDesc)
+                      <td class="dspalph">$(V_EXDDNO) $(payCodeDesc)</td>
+                  %endif
+              </tr>
+              %if (taxType == "1")
+                  <tr><td class="dsphdr">Federal Income Tax</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EXFIT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspnmbr">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">FICA Tax</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EXFIC)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspnmbr">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">Federal Unemployment Insurance</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EXFUT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspnmbr">$(syFlagDesc)</td>
+                  </tr>
+              %endif
+              %if (taxType == "2")
+                  <tr><td class="dsphdr">State Income Tax</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EXSIT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspnmbr">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">State Disability Insurance</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EXSDI)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspnmbr">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">State Unemployment Insurance</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EXSUT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspnmbr">$(syFlagDesc)</td>
+                  </tr>
+                  <tr><td class="dsphdr">State Workers' Compensation</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EXSWC)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspnmbr">$(syFlagDesc)</td>
+                  </tr>
+              %endif
+              %if (taxType == "3")
+                  <tr><td class="dsphdr">Local Income Tax</td>
+                      @RtvFldDesc("FLTYPE='EXEMPTSTS' and FLVALU='$(V_EXLIT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspnmbr">$(syFlagDesc)</td>
+                  </tr>
+              %endif
+          </table>
+      %}	
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}

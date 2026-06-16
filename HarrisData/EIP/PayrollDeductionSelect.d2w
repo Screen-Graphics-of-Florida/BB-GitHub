@@ -1,0 +1,156 @@
+%{
+*********************************************************************
+* Copr 1979 2002 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Payroll Deduction Select                                    *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title 	       = "Voluntary Deduction"
+  d2wName             = "PayrollDeductionSelect.d2w"
+  d2wVarBase           = "$(genericVarBase)&amp;prCompany=@dtw_rurlescseq(prCompany)&amp;prFacility=@dtw_rurlescseq(prFacility)&amp;deductionNumber=@dtw_rurlescseq(deductionNumber)&amp;backHome=@dtw_rurlescseq(backHome)"
+  programName         = "HPRVDM"
+  DATABASE            = "*LOCAL"
+  DTW_DEFAULT_REPORT  = "NO"
+  RPT_MAX_ROWS        = "99"
+  ROW_NUM             = "0"
+  START_ROW_NUM       = "1"
+  rowIndexNext	       = "1"
+  totalPages	       = "0"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@deductionNumber", "@dtw_rurlescseq(deductionNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@prCompany", "@dtw_rurlescseq(prCompany)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@prFacility", "@dtw_rurlescseq(prFacility)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                       @dtw_assign(pageID, "VOLDEDSELECT")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(stmtSQL, "")
+                      @dtw_concat(stmtSQL, "Select * From HRDEDM ", stmtSQL)
+                      @dtw_concat(stmtSQL, " Where HVDDNO = $(deductionNumber) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Deduction_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Deduction_Query (IN CHAR(64)    profileHandle,
+				        CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "")  && (backHome != "$(d2wName)/report"))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      %ROW {
+          <table $(contentTable)>
+             <tr><td class="dsphdr">Deduction Number</td>
+                 <td class="dspnmbr">$(V_HVDDNO)</td>
+             </tr>
+             <tr><td class="dsphdr">Deduction Name</td>
+                 <td class="dspalph">$(V_HVDDNM)</td>
+             </tr>
+             <tr><td class="dsphdr">Priority</td>
+                 <td class="dspalph">$(V_HVPRTY)</td>
+             </tr>
+             <tr><td class="dsphdr">Cycle</td>
+                 <td class="dspalph">$(V_HVCYCL)</td>
+             </tr>
+             @RtvYNDesc($(V_HVACUM), syFlagDesc)
+             <tr><td class="dsphdr">Accumulate</td>
+                 <td class="dspalph">$(syFlagDesc)</td>
+             </tr>
+             @RtvYNDesc($(V_HVFAO), syFlagDesc)
+             <tr><td class="dsphdr">Full Amount Only</td>
+                 <td class="dspalph">$(syFlagDesc)</td>
+             </tr>
+             @RtvYNDesc($(V_HVTOSC), syFlagDesc)
+             <tr><td class="dsphdr">Take On Separate Check</td>
+                 <td class="dspalph">$(syFlagDesc)</td>
+             </tr>
+             @Format_Acct("$(V_HVGLAC)", "$(V_HVGLSB)", "Y", F_AcctSub)
+             <tr><td class="dsphdr">Account</td>
+                 <td class="dspalph">$(F_AcctSub)</td>
+             </tr>
+             %if ($(V_HVMTHD) > "0" && $(V_HVMTHD) < "10")
+                 @dtw_insert("0", V_HVMTHD, "0", "1", V_HVMTHD)
+             %endif
+             @RtvFldDesc("FLTYPE='DEDCALCMTH' and FLVALU='$(V_HVMTHD)'", "SYFLAG", "FLDESC", syFlagDesc)
+             <tr><td class="dsphdr">Calculation Method</td>
+                 <td class="dspalph">$(syFlagDesc)</td>
+             </tr>
+             <tr><td class="dsphdr">Long Description</td>
+                 <td class="dspalph">$(V_HVLDSC)</td>
+             </tr>
+          </table>
+      %}	
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if (sec_05 == "N")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)progOptSecError.d2w/DISPLAY$(genericVarBase)&amp;page_title=@dtw_rurlescseq(page_title)">
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}

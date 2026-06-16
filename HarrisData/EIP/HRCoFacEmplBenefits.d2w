@@ -1,0 +1,630 @@
+%{
+*********************************************************************
+* Copr 1979 2002 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job:  H/R Company/Facility View Of Employee Benefits             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {	
+  page_title 	        = "Employee Benefits"
+  d2wName              = "HRCoFacEmplBenefits.d2w"
+  d2wVarBase           = "$(genericVarBase)$(hrCoFacVarBase)&amp;inclActive=@dtw_rurlescseq(inclActive)&amp;inclTerminated=@dtw_rurlescseq(inclTerminated)&amp;backHome=@dtw_rurlescseq(backHome)"
+  nextPrevVar          = "$(d2wVarBase)"
+  wildDftVar           = "REPORT$(d2wVarBase)"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  inclActive           = ""
+  inclTerminated       = ""
+  rowIndexNext		= "1"
+  totalPages		= "0"
+  viewBenefit          = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "HrCoFacURL.icl"
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NumEdit.icl"
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchEmployee, 5, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                       @dtw_assign(pageID, "HRCOFACBEN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "UserViewEmpl.icl"
+                      %INCLUDE "UserView.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HREMCV inner join HREMPL on ECCOMP=EMCOMP and ECFACL=EMFACL and ECEMPL=EMPEMP ", fileSQL)
+                      @dtw_concat(fileSQL, "        inner join CBCOVR on ECCOMP=CVCOMP and ECFACL=CVFACL and ECCOVR=CVCOVR and ECPLAN=CVPLAN ", fileSQL)
+                      @dtw_concat(selectSQL, " ECCOMP=$(prCompany) and ECFACL=$(prFacility)", selectSQL)
+                      %INCLUDE "activeTerminatedEmplSQL.icl"
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @CoFac_Benefits_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) CoFac_Benefits_Query (IN CHAR(64)    profileHandle,
+				             CHAR(2)     dataBaseID,
+                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @dtw_assign(programName, "HPECVU")
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      @dtw_assign (viewBenefit, $(sec_05))
+      %if (sql_Record_Count != "1")
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="80%">
+                  <col width="15%">
+              <tr><td><h1>$(page_title)</h1></td>
+                  %if (formatToPrint != "Y")
+                      @dtw_assign(programName, "HPEECU")
+                      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                      <td class="toolbar">
+                          %if ((backHome != "$(d2wName)/report") && (backHome != ""))
+                              <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Back Home">$(portalHome)</a>
+                          %endif
+                          %INCLUDE "XMLFormat.icl"
+                          %INCLUDE "FormatToPrint.icl"
+                          %INCLUDE "HelpPage.icl"
+                      </td>
+                  %endif
+              </tr>
+
+              @RetHrCompNam(profileHandle, dataBaseID, prCompany, prFacility, coFacName)
+              <tr><td><h2>$(coFacName)</h2></td></tr>
+          </table>
+          %INCLUDE "ConfMessageDisplay.icl"
+          $(hrTagAttr)
+
+          %if (formatToPrint != "Y")
+	       <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+                  <table $(quickSearchTable)>
+                      <tr><th class="colhdr">Last<br>Name</th>
+                          <th class="colhdr">Employee<br>Number</th>
+                      </tr>
+                      <tr><td class="inputalph"><input type="text" name="srchLast" size="18" maxlength="18">
+                              <input type="hidden" name="operLast" value="LIKE">
+                          </td>
+                          <td class="inputalph"><input type="text" name="srchEmployee" size="9" maxlength="9">
+                              <input type="hidden" name="operEmployee" value="=">
+                          </td>
+                          <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                      </tr>
+                  </table>
+                  <script TYPE="text/javascript">
+                      document.Search.srchLast.focus();
+                  </script>
+              </form>
+
+              %INCLUDE "ActiveTerminatedChecked.icl"
+              @dtw_assign(viewCheckBox, "HR")
+              %INCLUDE "WildCardPage.icl"
+          %endif
+
+          <table $(contentTable)>
+              <tr>
+                  %if (formatToPrint != "Y")
+                      <th class="colhdr">$(optionHeading)</th>
+                  %endif
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("ECEMPL", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=EmplNumber" title="Sequence By Employee Number, Benefit Code, Plan Code, Spouse/Dependent Number">Employee<br>Number</a></th>
+                  @OrderBy_Sort("EMLNAMU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=LastName" title="Sequence By Last Name, Benefit Code, Plan Code, Spouse/Dependent Number">Name</a></th>
+                  @OrderBy_Sort("ECCOVR", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=BenefitCode" title="Sequence By Benefit Code, Plan Code, Employee Number, Spouse/Dependent Number"> Benefit<br>Code</a></th>
+                  @OrderBy_Sort("ECPLAN", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlanCode" title="Sequence By Plan Code, Benefit Code, Employee Number, Spouse/Dependent Number"> Plan<br>Code</a></th>	
+                  @OrderBy_Sort("ECELIG", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=EligibilityDate" title="Sequence By Eligibility Date, Benefit Code, Plan Code"> Eligibility<br>Date</a></th>	
+                  @OrderBy_Sort("ECELEC", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=EnrollmentDate" title="Sequence By Enrollment Date,  Benefit Code, Plan Code"> Enrollment<br>Date</a></th>	
+                  @OrderBy_Sort("ECDCE", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DateEffective" title="Sequence By Date Effective,  Benefit Code, Plan Code"> Date<br>Effective</a></th>	
+                  @OrderBy_Sort("ECDCT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TerminationDate" title="Sequence By Termination Date, Benefit Code, Plan Code"> Termination<br>Date</a></th>	
+                  <th class="colhdr">Spouse/Dependent<br>Name</th>
+                  <th class="colhdr">Relationship</th>
+                  <th class="colhdr">Date<br>Of Birth</th>
+              </tr>
+          %INCLUDE "NoRecordsFound.icl"
+      %endif
+	       %ROW{
+                  @dtw_assign(maintainVar, "$(d2wVarBase)&amp;prEmployee=@dtw_rurlescseq(V_EMEMPL)&amp;hrEmployee=@dtw_rurlescseq(V_EMPEMP)&amp;benefitCode=@dtw_rurlescseq(V_ECCOVR)&amp;planCode=@dtw_rurlescseq(V_ECPLAN)&amp;dependentNbr=@dtw_rurlescseq(V_ECSPDP)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+                  @dtw_assign(maintainPHP, "$(altVarBase)$(hrCoFacVarBase)$(employeeVarBase)&amp;prEmployee=@dtw_rurlescseq(V_EMEMPL)&amp;hrEmployee=@dtw_rurlescseq(V_EMPEMP)&amp;benefitCode=@dtw_rurlescseq(V_ECCOVR)&amp;planCode=@dtw_rurlescseq(V_ECPLAN)&amp;dependentNbr=@dtw_rurlescseq(V_ECSPDP)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+                  %if (sql_Record_Count == "1")
+                      @Save_WebReg(webRegCurFile, profileHandle, d2wName, "", orderBy, orderByDisplay, "")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)emplBenefitSelect.d2w/REPORT$(maintainVar)">
+                  %else
+                      @dtw_assign(imageExists, "")
+                      %if (V_CVIMG != "")
+                          @dtw_assign(fileImage, "$(V_CVIMG)")
+                          @dtwf_exists(fileImage, imageExists)
+                      %endif
+                      @Format_EmplName(V_EMFNAM, V_EMLNAM, V_EMMIDI, V_EMRNAM, V_EMTRCD, "D", F_EmpName)
+                      @Format_Date(V_ECELIG, "D", F_ECELIG)
+                      @Format_Date(V_ECELEC, "D", F_ECELEC)
+                      @Format_Date(V_ECDCE, "D", F_ECDCE)
+                      @Format_Date(V_ECDCT, "D", F_ECDCT)
+                      %if (V_ECCLAS == "E")
+                          @dtw_assign(F_SDDOB, "")
+                          @dtw_assign(Relationship, "")
+                          @dtw_assign(depName, "")
+                      %else
+                          @RtvFldDesc("SDSPDP=$(V_ECSPDP) ", "HRSPDP", "char(SDDOB)", DateOfBirth)
+                          @RtvFldDesc("SDSPDP=$(V_ECSPDP) ", "HRSPDP", "SDREL", Relationship)
+                          @RetDepNam(profileHandle, dataBaseID, V_ECSPDP, depName)
+                          @Format_Date(DateOfBirth, "D", F_SDDOB)
+                      %endif
+                      %if (V_ECCLAS == "S")
+                          @dtw_assign(F_SDDOB, "")
+                      %endif
+                      @Format_Confirm_Desc($(F_EmpName), "", $(V_CVDESC), $(V_ECCOVR), "", "", confirmDesc)
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          %if (formatToPrint != "Y")
+                              <td class="opticon">
+                                  %if (viewBenefit == "Y")
+                                      <a href="$(homeURL)$(cGIPath)hrBenefitSelect.d2w/REPORT$(maintainVar)">$(benefitInfoImage)</a>
+                                  %endif
+                                  %if (sec_02 == "Y")
+                                      <a  href="$(homeURL)$(phpPath)EmplBenefitsMaintain.php$(maintainPHP)&amp;tag=MAINTAIN&amp;maintenanceCode=C&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">$(changeImageSml)</a>
+                                  %endif
+                                  %if (sec_03 == "Y")
+                                      <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(phpPath)EmplBenefitsMaintain.php$(maintainPHP)&amp;tag=Edit_Data&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                                  %endif
+                                  %if (V_CVURLI != "")
+                                      <a href="$(V_CVURLI)">
+                                          %if (imageExists == "Y")
+                                              <img src="$(homeURL)$(fileImage)">
+                                          %else
+                                              $(planDocImage)
+                                          %endif
+                                      </a>
+                                  %endif
+                              </td>
+                          %endif
+                          <td class="colnmbr">$(V_EMEMPL)</td>
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)emplBenefits.d2w/REPORT$(maintainVar)" title="View All Benefits For This Employee">$(F_EmpName)</a></td>
+                          <td class="colcode"><a href="$(homeURL)$(cGIPath)emplBenefitSelect.d2w/REPORT$(maintainVar)" title="View Benefit Row">$(V_ECCOVR)</a></td>
+        	              <td class="colcode">$(V_ECPLAN)</td>
+            	          <td class="coldate">$(F_ECELIG)</td>
+            	          <td class="coldate">$(F_ECELEC)</td>
+            	          <td class="coldate">$(F_ECDCE)</td>
+            	          <td class="coldate">$(F_ECDCT)</td>
+            	          <td class="colalph">$(depName)</td>
+                          <td class="colalph">$(Relationship)</td>
+        	              <td class="coldate">$(F_SDDOB)</td>
+        	       </tr>
+                  %endif
+              %}
+      </table>
+      %if (sql_Record_Count != "1")
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+          $(hrTagAttr)
+          %INCLUDE "Copyright.icl"
+      %endif
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "UserViewEmpl.icl"
+  %INCLUDE "UserView.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+  @dtw_concat(fileSQL, " HREMCV inner join HREMPL on ECCOMP=EMCOMP and ECFACL=EMFACL and ECEMPL=EMPEMP ", fileSQL)
+  @dtw_concat(fileSQL, "        inner join CBCOVR on ECCOMP=CVCOMP and ECFACL=CVFACL and ECCOVR=CVCOVR and ECPLAN=CVPLAN ", fileSQL)
+  @dtw_concat(selectSQL, " ECCOMP=$(prCompany) and ECFACL=$(prFacility)", selectSQL)
+  %INCLUDE "activeTerminatedEmplSQL.icl"
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @CoFac_EmplBenefits_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) CoFac_EmplBenefits_XMLQuery (IN CHAR(64) profileHandle,
+				                    CHAR(2)   dataBaseID,
+                                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @XMLBeginTag("EmployeeBenefitList")
+          %ROW{
+              @DateFromCYMD(V_ECELIG)
+              @DateFromCYMD(V_ECELEC)
+              @DateFromCYMD(V_ECVEST)
+              @DateFromCYMD(V_ECDCE)
+              @DateFromCYMD(V_ECPREC)
+              @DateFromCYMD(V_ECDCT)
+              @DateFromCYMD(V_ECTRCI)
+              @EditPhoneNumber(V_ECPHON)
+              %if (V_ECSPDP == "0")
+                  @Format_EmplName(V_EMFNAM, V_EMLNAM, V_EMMIDI, V_EMRNAM, V_EMTRCD, "D", F_Name)
+                  @dtw_assign(BenefitType, "Employee Benefit")
+              %else
+                          @RetDepNam(profileHandle, dataBaseID, V_ECSPDP, F_Name)
+                  @dtw_assign(BenefitType, "Dependent Benefit")
+              %endif
+
+	           @XMLIDTag(@DTW_rCONCAT(V_ECCOMP, @DTW_rCONCAT("/", @DTW_rCONCAT(V_ECFACL, @DTW_rCONCAT("/", @DTW_rCONCAT(V_ECEMPL, @DTW_rCONCAT("/", @DTW_rCONCAT(V_ECSPDP, @DTW_rCONCAT("/", V_ECCOVR)))))))), "EmployeeBenefit ID")
+                  @XMLTag(V_ECCOMP, "CompanyNumber")
+                  @XMLTag(V_ECCOMP, "FacilityNumber")
+                  @XMLTag(V_ECEMPL, "EmployeeNumber")
+                  @XMLTag(BenefitType, "BenefitType")
+                  @XMLBeginTag("PersonName")
+                     @XMLTag(F_Name, "FormattedName")
+                  @XMLEndTag("PersonName")
+                  @XMLBeginTag("BenefitIdentification")
+                      @XMLTag(V_ECCOVR, "BenefitCode")
+                      @XMLTag(V_CVDESC, "BenefitDescription")
+                      @XMLTag(V_ECPLAN, "PlanCode")
+                      @XMLTag(V_ECID, "PlanId")
+                      @XMLTag(V_ECELIG, "EligibilityDate")
+                      @XMLTag(V_ECELEC, "EnrollmentDate")
+                      @XMLTag(V_ECDCE, "DateEffective")
+                      @XMLTag(V_ECVEST, "VestingDate")
+                      @XMLBeginTag("Certificate")
+                          @XMLTag(V_ECCERT, "CertificateDateReceived")
+                          @XMLTag(V_ECCISU, "CertificateIssuer")
+                          @XMLTag(V_ECPHON, "IssuerPhoneNumber")
+                          @XMLTag(V_ECMNTH, "PreviousMonthsCoverage")
+                          @XMLTag(V_ECPREC, "PreexistingConditionExpDate")
+                      @XMLEndTag("Certificate")
+                      @XMLBeginTag("BenefitTermination")
+                          @XMLTag(V_ECDCT, "DateCoverageTerminated")
+                          @XMLTag(V_ECQECD, "QualifyingEventCode")
+                          @XMLTag(V_ECTRCI, "DateCertificateIssued")
+                      @XMLEndTag("BenefitTermination")
+                  @XMLEndTag("BenefitIdentification")
+              @XMLEndTag("EmployeeBenefit")
+
+          %}
+      @XMLEndTag("EmployeeBenefitList")
+
+      @DTWF_CLOSE(xMLFile)
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(programName, "HPEECU")
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      %INCLUDE "WebReg.icl"
+      %if (formatToPrint != "")
+          @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+      %else
+          %if (orderBy == "")
+              @DTW_ASSIGN(orderBy, "ECCOVR,ECPLAN,ECEMPL,ECSPDP")
+              @DTW_ASSIGN(orderByDisplay, "Benefit Code, Plan Code, Employee Number, Spouse/Dependent Number")
+              @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+          %elif (chgActive == "Y" && inclActive == "Y")
+              @dtw_assign(inclActive, "")
+          %elif (chgActive == "Y")
+              @dtw_assign(inclActive, "Y")
+          %elif (chgTerminated == "Y" && inclTerminated == "Y")
+              @dtw_assign(inclTerminated, "")
+          %elif (chgTerminated == "Y")
+              @dtw_assign(inclTerminated, "Y")
+          %endif
+          @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      %endif
+      %if (inclActive == "" && inclTerminated == "" && chgActive != "Y" && chgTerminated != "Y")
+          @dtw_assign(inclActive, activeEmpl)
+          @dtw_assign(inclTerminated, terminatedEmpl)
+      %endif
+      %INCLUDE "SearchReturn.icl"
+  %endif
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "EmplNumber")
+      %if (orderBy == "ECEMPL,ECCOVR,ECPLAN,ECSPDP")
+          @DTW_ASSIGN(orderBy, "ECEMPL DESC,ECCOVR,ECPLAN,ECSPDP")
+          @DTW_ASSIGN(orderByDisplay, "Employee Number (descending), Benefit Code, Plan Code, Spouse/Dependent Number")
+      %else
+          @DTW_ASSIGN(orderBy, "ECEMPL,ECCOVR,ECPLAN,ECSPDP")
+          @DTW_ASSIGN(orderByDisplay, "Employee Number, Benefit Code, Plan Code, Spouse/Dependent Number")
+      %endif
+  %elif (sequence == "LastName")
+      %if (orderBy == "EMLNAMU,ECCOVR,ECPLAN,ECEMPL,ECSPDP")
+          @DTW_ASSIGN(orderBy, "EMLNAMU DESC,ECCOVR,ECPLAN,ECEMPL,ECSPDP")
+          @DTW_ASSIGN(orderByDisplay, "Employee Last Name (descending), Benefit Code, Plan Code, Spouse/Dependent Number")
+      %else
+          @DTW_ASSIGN(orderBy, "EMLNAMU,ECCOVR,ECPLAN,ECEMPL,ECSPDP")
+          @DTW_ASSIGN(orderByDisplay, "Employee Last Name, Benefit Code, Plan Code, Spouse/Dependent Number")
+      %endif
+  %elif (sequence == "BenefitCode")
+      %if (orderBy == "ECCOVR,ECPLAN,ECEMPL,ECSPDP")
+          @DTW_ASSIGN(orderBy, "ECCOVR DESC,ECPLAN,ECEMPL,ECSPDP")
+          @DTW_ASSIGN(orderByDisplay, "Benefit Code (descending), Plan Code, Employee Number, Spouse/Dependent Number")
+      %else
+          @DTW_ASSIGN(orderBy, "ECCOVR,ECPLAN,ECEMPL,ECSPDP")
+          @DTW_ASSIGN(orderByDisplay, "Benefit Code, Plan Code, Employee Number, Spouse/Dependent Number")
+      %endif
+  %elif (sequence == "PlanCode")
+      %if (orderBy == "ECPLAN,ECCOVR,ECEMPL,ECSPDP")
+          @DTW_ASSIGN(orderBy, "ECPLAN DESC,ECCOVR,ECEMPL,ECSPDP")
+          @DTW_ASSIGN(orderByDisplay, "Plan Code (descending), Benefit Code, Employee Number, Spouse/Dependent Number")
+      %else
+          @DTW_ASSIGN(orderBy, "ECPLAN,ECCOVR,ECEMPL,ECSPDP")
+          @DTW_ASSIGN(orderByDisplay, "Plan Code, Benefit Code, Employee Number, Spouse/Dependent Number")
+      %endif
+  %elif (sequence == "EligibilityDate")
+      %if (orderBy == "ECELIG,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderBy, "ECELIG DESC,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderByDisplay, "Eligibility Date (descending), Benefit Code, Plan Code")
+      %else
+          @DTW_ASSIGN(orderBy, "ECELIG,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderByDisplay, "Eligibility Date, Benefit Code, Plan Code")
+      %endif
+  %elif (sequence == "EnrollmentDate")
+      %if (orderBy == "ECELEC,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderBy, "ECELEC DESC,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderByDisplay, "Enrollment Date (descending), Benefit Code, Plan Code")
+      %else
+          @DTW_ASSIGN(orderBy, "ECELEC,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderByDisplay, "Enrollment Date, Benefit Code, Plan Code")
+      %endif
+  %elif (sequence == "DateEffective")
+      %if (orderBy == "ECDCE,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderBy, "ECDCE DESC,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderByDisplay, "Date Effective (descending), Benefit Code, Plan Code")
+      %else
+          @DTW_ASSIGN(orderBy, "ECDCE,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderByDisplay, "Date Effective, Benefit Code, Plan Code")
+      %endif
+  %elif (sequence == "TerminationDate")
+      %if (orderBy == "ECDCT,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderBy, "ECDCT DESC,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderByDisplay, "Termination Date (descending), Benefit Code, Plan Code")
+      %else
+          @DTW_ASSIGN(orderBy, "ECDCT,ECCOVR,ECPLAN")
+          @DTW_ASSIGN(orderByDisplay, "Termination Date, Benefit Code, Plan Code")
+      %endif
+  %endif
+	
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              @dtw_assign(formName, "Search")
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              function validate(searchForm) {
+                  if (editdate(document.Search.srchElig) &&
+                      editdate(document.Search.srchEnroll) &&
+                      editdate(document.Search.srchEffective) &&
+                      editNum(document.Search.srchEmployee, 9, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "COFACBENSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      @RetHrCompNam(profileHandle, dataBaseID, prCompany, prFacility, coFacName)
+                      <h2>$(coFacName)</h2>
+
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><th class="dsphdr"> <br>Benefit</th></tr>
+
+                          <tr><td class="dsphdr"> <br>Benefit Code</td>
+                              @dtw_assign(operNbr, "operBenCode")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchBenCode" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Benefit Name</td>
+                              @dtw_assign(operNbr, "operBenName")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchBenName" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Plan Code</td>
+                              @dtw_assign(operNbr, "operPlanCode")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchPlanCode" type="text" size="3" maxlength="3"> <a href="$(homeURL)$(cGIPath)BenefitPlanSearch.d2w/ENTRY$(d2wVarBase)&amp;docName=Search&amp;fldName=srchPlanCode&amp;fldDesc=planDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="planDesc" value="$(planDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Eligibility Date</td>
+                              @dtw_assign(operNbr, "operElig")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchElig" size="6" maxlength="6"> 		
+                                  <a href="javascript:calWindow('srchElig');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Enrollment Date</td>
+                              @dtw_assign(operNbr, "operEnroll")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchEnroll" size="6" maxlength="6"> 		
+                                  <a href="javascript:calWindow('srchEnroll');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Date Effective</td>
+                              @dtw_assign(operNbr, "operEffective")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchEffective" size="6" maxlength="6"> 		
+                                  <a href="javascript:calWindow('srchEffective');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><th class="dsphdr"> <br>Employee</th></tr>
+
+                          <tr><td class="dsphdr"> <br>Number</td>
+                              @dtw_assign(operNbr, "operEmployee")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchEmployee" size="9" maxlength="9"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">First Name</td>
+                              @dtw_assign(operNbr, "operFirst")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchFirst" size="18" maxlength="18"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Last Name</td>
+                              @dtw_assign(operNbr, "operLast")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchLast" size="18" maxlength="18"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Location</td>
+                              @dtw_assign(operNbr, "operLoc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchLoc" type="text" size="5" maxlength="4"> <a href="$(homeURL)$(phpPath)HRCodesSearch.php$(altVarBase)&amp;docName=Search&amp;fldComp=@dtw_rurlescseq(hrCompany)&amp;fldType=O&amp;fldName=srchLoc&amp;fldDesc=locCodeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="locCodeDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Department</td>
+                              @dtw_assign(operNbr, "operDept")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchDept" type="text" size="5" maxlength="5"> <a href="$(homeURL)$(phpPath)DepartmentSearch.php$(altVarBase)&amp;docName=Search&amp;fldName=srchDept&amp;fldDesc=deptDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="deptDesc" value="$(deptDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Job Code</td>
+                              @dtw_assign(operNbr, "operJob")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchJob" type="text" size="5" maxlength="4"> <a href="$(homeURL)$(phpPath)HRCodesSearch.php$(altVarBase)&amp;docName=Search&amp;fldComp=@dtw_rurlescseq(hrCompany)&amp;fldType=J&amp;fldName=srchJob&amp;fldDesc=jobCodeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="jobCodeDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchBenCode.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("ECCOVR", "Benefit Code", $(srchBenCode), "U", operBenCode, "A")
+  @Build_WildCard ("CVDESCU", "Benefit Name", $(srchBenName), "U", operBenName, "A")
+  @Build_WildCard ("ECPLAN", "Plan Code", $(srchPlanCode), "U", operPlanCode, "A")
+  @Build_WildCard ("ECELIG", "Eligibility Date", $(srchElig), "", operElig, "D")
+  @Build_WildCard ("ECELEC", "Enrollment Date", $(srchEnroll), "", operEnroll, "D")
+  @Build_WildCard ("ECDCE", "Date Effective", $(srchEffective), "", operEffective, "D")
+  @Build_WildCard ("ECEMPL", "Employee Number", $(srchEmployee), "", operEmployee, "N")
+  @Build_WildCard ("EMFNAMU", "Employee First Name", $(srchFirst), "U", operFirst, "A")
+  @Build_WildCard ("EMLNAMU", "Last Name", $(srchLast), "U", operLast, "A")
+  @Build_WildCard ("EMLOC", "Location", $(srchLoc), "U", operLoc, "A")
+  @Build_WildCard ("EMDEPT", "Department", $(srchDept), "U", operDept, "A")
+  @Build_WildCard ("EMJOB", "Job Code", $(srchJob), "U", operJob, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

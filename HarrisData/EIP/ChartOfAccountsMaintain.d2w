@@ -1,0 +1,326 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Chart Of Accounts Maintenance                               *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "MCControl$(dataBaseID).icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Chart Of Accounts Maintenance"
+  d2wName                 = "ChartOfAccountsMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;accountNumber=@dtw_rurlescseq(accountNumber)&amp;subAccountNumber=@dtw_rurlescseq(subAccountNumber)&amp;accountDesc=@dtw_rurlescseq(accountDesc)&amp;maintenanceCode=D"
+  programName             = "HHDCHU"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              function validate(chgForm) {
+                  if (document.Chg.accountNumber.value =="" ||
+                      document.Chg.accountDesc.value ==""
+                      %if (V_HDMCRL>"0" && V_MUPTFS=="Y")
+                        || document.Chg.currencyRateType.value ==""
+                      %endif
+                     )
+                     {alert("$(reqFieldError)"); return false;}
+                  if (editNum(document.Chg.accountNumber, 4, 0) &&
+                      editNum(document.Chg.subAccountNumber, 4, 0) &&
+                      editdate(document.Chg.dateEstablished) &&
+                      editdate(document.Chg.dateDeactivated))
+                      return true;
+              }
+              function confirmDelete() {return confirm("$(delRecordConf)")}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "CHARTOFACCOUNTSMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(stmtSQL, "")
+                      %if (maintenanceCode == "A")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                           %INCLUDE "stmtSQLClear.icl"
+                           @dtw_concat(stmtSQL, " Select HDCHRT.*, coalesce(CLCLLD,' ') as CLCLLD ", stmtSQL)
+                           @dtw_concat(fileSQL, " HDCHRT ", fileSQL)
+                           @dtw_concat(fileSQL, " left join HDCHRD on CHACCT=CLACCT and CHSUB=CLSUB ", fileSQL)
+                           @dtw_concat(selectSQL, " CHACCT=$(accountNumber) and CHSUB=$(subAccountNumber) ", selectSQL)
+                           %INCLUDE "stmtSQLSelect.icl"
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- Ebd Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=9")
+      %endif
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "accountNumber")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@acct", "accountNumber")      @dtw_assign(Err_CHACCT, fieldValue)
+                          @DecatErr_Field("@@sub@", "subAccountNumber")   @dtw_assign(Err_CHSUB,  fieldValue)
+                          @DecatErr_Field("@@chds", "accountDesc")        @dtw_assign(Err_CHCHDS, fieldValue)
+                          @DecatErr_Field("@@nab@", "normalAcctBal")      @dtw_assign(Err_CHNAB,  fieldValue)
+                          @DecatErr_Field("@@acsg", "usage")              @dtw_assign(Err_CHACSG, fieldValue)
+                          @DecatErr_Field("@@dtes", "dateEstablished")    @dtw_assign(Err_CHDTES, fieldValue)
+                          @DecatErr_Field("@@dtde", "dateDeactivated")    @dtw_assign(Err_CHDTDE, fieldValue)
+                          @DecatErr_Field("@@rtyp", "currencyRateType")   @dtw_assign(Err_CHRTYP, fieldValue)
+                          @DecatErr_Field("@@clld", "longDesc")           @dtw_assign(Err_CLCLLD, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@acct")   @dtw_assign(V_CHACCT, fieldValue)
+                      @Decat_Field("@@sub@")   @dtw_assign(V_CHSUB,  fieldValue)
+                      @Decat_Field("@@chds")   @dtw_assign(V_CHCHDS, fieldValue)
+                      @Decat_Field("@@nab@")   @dtw_assign(V_CHNAB,  fieldValue)
+                      @Decat_Field("@@acsg")   @dtw_assign(V_CHACSG, fieldValue)
+                      @Decat_Field("@@dtes")   @dtw_assign(V_CHDTES, fieldValue)
+                      @Decat_Field("@@dtde")   @dtw_assign(V_CHDTDE, fieldValue)
+                      @Decat_Field("@@rtyp")   @dtw_assign(V_CHRTYP, fieldValue)
+                      @Decat_Field("@@clld")   @dtw_assign(V_CLCLLD, fieldValue)
+                      @Decat_Field("@@updt")   @dtw_assign(V_CHUPDT, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(focusField, "accountNumber")
+                     %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elif (maintenanceCode == "Z")
+                      @dtw_assign(V_CHACCT,  "")
+                      @dtw_assign(V_CHSUB, "")
+                      @DateInputFromCYMD(V_CHDTES)
+                      @DateInputFromCYMD(V_CHDTDE)
+                      @dtw_assign(focusField, "accountNumber")
+                  %elif (maintenanceCode != "A")
+                      @DateInputFromCYMD(V_CHDTES)
+                      @DateInputFromCYMD(V_CHDTDE)
+                      @dtw_assign(focusField, "accountDesc")
+                  %endif
+
+                  @SetTextOvr(Err_CHACCT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Account Number</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr"><input name="accountNumber" type="text" value="$(V_CHACCT)" size="4" maxlength="4"> $(reqFieldChar) </td>
+                      %else
+                          <td class="inputnmbr"><input name="accountNumber" type="hidden" value="$(V_CHACCT)" size="4" maxlength="4">$(V_CHACCT)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CHACCT)
+
+                  @SetTextOvr(Err_CHSUB)
+                  <tr><td class="dsphdr"><span $(textOvr)>Subaccount Number</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr"><input name="subAccountNumber" type="text" value="$(V_CHSUB)" size="4" maxlength="4"></td>
+                      %else
+                          <td class="inputnmbr"><input name="subAccountNumber" type="hidden" value="$(V_CHSUB)" size="4" maxlength="4">$(V_CHSUB)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_CHSUB)
+
+                  @SetTextOvr(Err_CHCHDS)
+	           <tr><td class="dsphdr"><span $(textOvr)>Description</span></td>
+                      <td class="inputalph"><input name="accountDesc" type="text" value="$(V_CHCHDS)" size="30" maxlength="30"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_CHCHDS)
+	   		
+                  @RtvFldDesc("FLTYPE='ACCTBAL' and FLVALU='$(V_CHNAB)'", "SYFLAG", "FLDESC", fieldDesc)
+                  @SetTextOvr(Err_CHNAB)
+                  <tr><td class="dsphdr"><span $(textOvr)>Normal Account Balance</span></td>
+                      <td class="inputalph"><input name="accountBal" type="text" value="$(V_CHNAB)" size="6" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=ACCTBAL&amp;flagSrchHdr=@dtw_rurlescseq("Normal Account Balance")&amp;docName=Chg&amp;fldName=accountBal&amp;fldDesc=accountBalDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage)</a>
+                          <input name="accountBalDesc" value="$(fieldDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_CHNAB)
+	   		
+                  @RtvFldDesc("FLTYPE='USAGE' and FLVALU='$(V_CHACSG)'", "SYFLAG", "FLDESC", fieldDesc)
+                  @SetTextOvr(Err_CHACSG)
+                  <tr><td class="dsphdr"><span $(textOvr)>Account Usage</span></td>
+                      <td class="inputalph"><input name="usage" type="text" value="$(V_CHACSG)" size="6" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=USAGE&amp;flagSrchHdr=@dtw_rurlescseq("Account Usage")&amp;docName=Chg&amp;fldName=usage&amp;fldDesc=usageDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage)</a>
+                          <input name="usageDesc" value="$(fieldDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_CHACSG)
+               			
+                  @SetTextOvr(Err_CHDTES)
+                  <tr><td class="dsphdr"><span $(textOvr)>Date Established</span></td>
+                      <td class="inputnmbr"><input type="text" name="dateEstablished" value="$(V_CHDTES)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('dateEstablished');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_CHDTES)
+
+                  @SetTextOvr(Err_CHDTDE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Date Deactivated</span></td>
+                      <td class="inputnmbr"><input type="text" name="dateDeactivated" value="$(V_CHDTDE)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('dateDeactivated');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_CHDTDE)
+
+                  %if (V_HDMCRL > "0")
+                      @RtvFldDesc("RYTYPE='$(V_CHRTYP)'", "HDRTYP", "RYDESC", fieldDesc)
+                      @SetTextOvr(Err_CHRTYP)
+                      <tr><td class="dsphdr"><span $(textOvr)>Currency Rate Type</span></td>
+                          <td class="inputalph"><input name="currencyRateType" value="$(V_CHRTYP)" type="text" size="15" maxlength="10">
+                                                <a href="$(homeURL)$(phpPath)CurrencyRateTypeSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=currencyRateType&amp;fldDesc=currencyRateTypeDesc" onclick="$(searchWinVar)">
+                                                %if (V_MUPTFS=="Y")
+                                                    $(reqFieldChar)
+                                                %endif
+                                                $(searchImage) </a>
+                                                <input name="currencyRateTypeDesc" value="$(fieldDesc)" type="text" size="26" disabled></td>
+                      </tr>
+                      @DspErrMsg(Err_CHRTYP)
+                  %else			
+                      <tr><td class="inputalph"><input name="currencyRateType" type="hidden" value="$(V_CHRTYP)" size="3" maxlength="3"></td></tr>
+                  %endif
+
+                  @SetTextOvr(Err_CLCLLD)
+	           <tr><td class="dsphdr"><span $(textOvr)>Long Description</span></td>
+                      <td class="inputalph"><input name="longDesc" type="text" value="$(V_CLCLLD)" size="50" maxlength="116"></td>
+                  </tr>
+                  @DspErrMsg(Err_CLCLLD)
+
+                  %if (maintenanceCode == "C")
+                      @Format_Date(V_CHUPDT, "H", F_CHUPDT)
+                      <tr><td class="dsphdr">Date Last Maintained</td>
+                          <td class="dspdate">$(F_CHUPDT)</td>
+                          <td class="inputnmbr"><input name="lastMaintained" type="hidden" value="$(V_CHUPDT)"></td>
+                      </tr>
+                  %endif
+              %}
+          </table>
+	
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HHDCHU_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(accountBal)
+  @dtw_mUPPERCASE(usage)
+  @dtw_mUPPERCASE(currencyRateType)
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@acct", accountNumber)
+  @Concat_Field("@@sub@", subAccountNumber)
+  @Concat_Field("@@chds", accountDesc)
+  @Concat_Field("@@nab@", accountBal)
+  @Concat_Field("@@acsg", usage)
+  @Concat_Field("@@dtes", dateEstablished)
+  @Concat_Field("@@dtde", dateDeactivated)
+  @Concat_Field("@@rtyp", currencyRateType)
+  @Concat_Field("@@clld", longDesc)
+  @Concat_Field("@@updt", lastMaintained)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  @Format_CoFac("$(accountNumber)", "$(subAccountNumber)", "", F_Acct)
+  %if (errFound == "")
+      %if (errFound == "")
+          @Format_ConfMsg_Desc(maintenanceCode, $(accountDesc), $(F_Acct), "", "", "", "", confMessage)
+      %else
+          @DecatErr_Field("@@acct", "accountNumber")
+          @Format_ConfMsg_Desc("", $(accountDesc), $(F_Acct), "<br>$(fieldValue)", "", "", "", confMessage)
+      %endif
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=9&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;accountNumber=@dtw_rurlescseq(accountNumber)&amp;subAccountNumber=@dtw_rurlescseq(subAccountNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

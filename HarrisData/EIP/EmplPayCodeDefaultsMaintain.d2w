@@ -1,0 +1,644 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Employee Pay Code Defaults Maintenance                      *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "Employee Pay Code Defaults Maintenance"
+  d2wName                 = "EmplPayCodeDefaultsMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;coNumber=@dtw_rurlescseq(coNumber)&amp;facNumber=@dtw_rurlescseq(facNumber)&amp;emplNumber=@dtw_rurlescseq(emplNumber)&amp;payCode=@dtw_rurlescseq(payCode)&amp;sequence=@dtw_rurlescseq(sequence)&amp;maintenanceCode=D"
+  programName             = "HPRPDM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  W_MHRC                  = ""
+  W_MHRS                  = "0"
+  W_PPHRS                 = "0"
+  plant                   = "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              function validate(chgForm) {
+                  if (document.Chg.payCode.value =="" ||
+                      document.Chg.defaultRecord.value =="" )
+                         {alert("$(reqFieldError)");
+                          return false;}
+                  if (editNum(document.Chg.sequence,           2, 0) &&
+                      editNum(document.Chg.acctNumber,         4, 0) &&
+                      editNum(document.Chg.subAcctNumber,      4, 0) &&
+                      editNum(document.Chg.hoursUnitsEarnings, 5, 2) &&
+                      editNum(document.Chg.overrideRate,       6, 5) &&
+                      editdate(document.Chg.startDate) &&
+                      editdate(document.Chg.endDate) &&
+                      editNum(document.Chg.maxYTDHoursUnits,   7, 2) &&
+                      editNum(document.Chg.maxYTDEarnings,     7, 2))
+                  return true;
+              }
+              function confirmDelete() {return confirm("$(delRecordConf)")}
+              %INCLUDE "numedit.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "calendar.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "EMPLPAYCODEDEFAULTSMAINTAIN")
+                  %INCLUDE "userviewEmpl.icl"
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(stmtSQL, "")
+                      %if (maintenanceCode == "A")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, "SELECT * FROM PREMDF WHERE C3COMP=$(coNumber) and C3FACL=$(facNumber) and C3EMPL=$(emplNumber) and C3CODE='$(payCode)' and C3SEQ=$(sequence)", stmtSQL)
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=192")
+      %endif
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      @RtvFldDesc("CFCOMP=$(coNumber) and CFFACL=$(facNumber)", "HRCOFC", "CFNAME", coFacDesc)
+      @Format_HRCoFac("$(coNumber)", "$(facNumber)", "", F_CoFac)
+      @Ret_Format_EmplName(coNumber, facNumber, emplNumber, "", "", "H", F_EmpName)
+      %INCLUDE "MaintainTop.icl"
+
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "payCode")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@comp", "coNumber")           @dtw_assign(Err_C3COMP, fieldValue)
+                          @DecatErr_Field("@@facl", "facNumber")          @dtw_assign(Err_C3FACL, fieldValue)
+                          @DecatErr_Field("@@empl", "emplNumber")         @dtw_assign(Err_C3EMPL, fieldValue)
+                          @DecatErr_Field("@@code", "payCode")            @dtw_assign(Err_C3CODE, fieldValue)
+                          @DecatErr_Field("@@seq@", "sequence")           @dtw_assign(Err_C3SEQ,  fieldValue)
+                          @DecatErr_Field("@@acct", "acctNumber")         @dtw_assign(Err_C3ACCT, fieldValue)
+                          @DecatErr_Field("@@sub@", "subAcctNumber")      @dtw_assign(Err_C3SUB,  fieldValue)
+                          @DecatErr_Field("@@hrs@", "hoursUnitsEarnings") @dtw_assign(Err_C3HRS,  fieldValue)
+                          @DecatErr_Field("@@dept", "department")         @dtw_assign(Err_C3DEPT, fieldValue)
+                          @DecatErr_Field("@@ovrt", "overrideRate")       @dtw_assign(Err_C3OVRT, fieldValue)
+                          @DecatErr_Field("@@shfw", "shiftWorked")        @dtw_assign(Err_C3SHFW, fieldValue)
+                          @DecatErr_Field("@@job@", "jobNumber")          @dtw_assign(Err_C3JOB,  fieldValue)
+                          @DecatErr_Field("@@strt", "startDate")          @dtw_assign(Err_C3STRT, fieldValue)
+                          @DecatErr_Field("@@end@", "endDate")            @dtw_assign(Err_C3END,  fieldValue)
+                          @DecatErr_Field("@@max1", "maxYTDHoursUnits")   @dtw_assign(Err_C3MAX1, fieldValue)
+                          @DecatErr_Field("@@max2", "maxYTDEarnings")     @dtw_assign(Err_C3MAX2, fieldValue)
+                          @DecatErr_Field("@@dflt", "defaultRecord")      @dtw_assign(Err_C3DFLT, fieldValue)
+                          @DecatErr_Field("@@tstp", "timeStamp")          @dtw_assign(Err_C3TSTP, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@comp")   @dtw_assign(V_C3COMP, fieldValue)
+                      @Decat_Field("@@facl")   @dtw_assign(V_C3FACL, fieldValue)
+                      @Decat_Field("@@empl")   @dtw_assign(V_C3EMPL, fieldValue)
+                      @Decat_Field("@@code")   @dtw_assign(V_C3CODE, fieldValue)
+                      @Decat_Field("@@seq@")   @dtw_assign(V_C3SEQ,  fieldValue)
+                      @Decat_Field("@@acct")   @dtw_assign(V_C3ACCT, fieldValue)
+                      @Decat_Field("@@sub@")   @dtw_assign(V_C3SUB,  fieldValue)
+                      @Decat_Field("@@hrs@")   @dtw_assign(V_C3HRS,  fieldValue)
+                      @Decat_Field("@@dept")   @dtw_assign(V_C3DEPT, fieldValue)
+                      @Decat_Field("@@ovrt")   @dtw_assign(V_C3OVRT, fieldValue)
+                      @Decat_Field("@@shft")   @dtw_assign(V_C3SHFT, fieldValue)
+                      @Decat_Field("@@job@")   @dtw_assign(V_C3JOB,  fieldValue)
+                      @Decat_Field("@@strt")   @dtw_assign(V_C3STRT, fieldValue)
+                      @Decat_Field("@@end@")   @dtw_assign(V_C3END,  fieldValue)
+                      @Decat_Field("@@max1")   @dtw_assign(V_C3MAX1, fieldValue)
+                      @Decat_Field("@@max2")   @dtw_assign(V_C3MAX2, fieldValue)
+                      @Decat_Field("@@dflt")   @dtw_assign(V_C3DFLT, fieldValue)
+                      @Decat_Field("@@tstp")   @dtw_assign(V_C3TSTP, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(V_C3COMP, "0")
+                          @dtw_assign(V_C3FACL, "0")
+                          @dtw_assign(V_C3EMPL, "0")
+                          @dtw_assign(V_C3DFLT, "N")
+                          @dtw_assign(focusField, "coNumber")
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elif (maintenanceCode == "Z")
+                      @dtw_assign(V_C3SEQ, "")
+                      @DateInputFromCYMD(V_C3STRT)
+                      @DateInputFromCYMD(V_C3END)
+                      @dtw_assign(focusField, "payCode")
+                  %else
+                      @DateInputFromCYMD(V_C3STRT)
+                      @DateInputFromCYMD(V_C3END)
+                      @dtw_assign(focusField, "acctNumber")
+                  %endif
+              	  @SetTextOvr(Err_C3TSTP)
+                  <tr><td class="dsphdr"><span $(textOvr)>.</span></td>
+                  	  <td><input name="timeStamp" type="hidden" value="$(V_C3TSTP)"></td> 
+                  </tr>
+                  @DspErrMsg(Err_C3TSTP)
+
+                  @Format_HRCoFac("$(V_C3COMP)", "$(V_C3FACL)", "", F_CoFac)
+                  @RtvFldDesc("CFCOMP=$(V_C3COMP) and CFFACL=$(V_C3FACL)", "HRCOFC", "CFNAME", fieldDesc)
+                  @SetTextOvr(Err_WDCOMP)
+                  <tr><td class="dsphdr"><span $(textOvr)>Company/Facility</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr"><input name="coNumber" value="$(V_C3COMP)" type="text" size="4" maxlength="2"> / <input name="facNumber" value="$(V_C3FACL)" type="text" size="4" maxlength="4"> $(reqFieldChar) <a href="$(homeURL)$(phpPath)HRCoFacSearch.php$(altVarBase)&amp;docName=Chg&amp;fldCo=coNumber&amp;fldFac=facNumber&amp;fldDesc=coFacDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="coFacDesc" value="$(fieldDesc)"  type="text" size="30" maxlength="30"></td>
+                      %else
+                          @Format_Code(F_CoFac, F2_CoFac)
+                          <td class="dspalph"><input name="coNumber" value="$(V_C3COMP)" type="hidden" size="4" maxlength="2"> <input name="facNumber" value="$(V_C3FACL)" type="hidden" size="4" maxlength="4">$(fieldDesc) &nbsp; &nbsp; $(F2_CoFac)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_WDCOMP)
+                  @DspErrMsg(Err_WDFACL)
+
+                  @SetTextOvr(Err_WDEMPL)
+                  @Ret_Format_EmplName("$(V_C3COMP)", "$(V_C3FACL)", "$(V_C3EMPL)", "", "", "H", F_EmpName)
+                  <tr><td class="dsphdr"><span $(textOvr)>Employee Number</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr"><input type="text" name="emplNumber" value="$(V_C3EMPL)" size="5" maxlength="5"> $(reqFieldChar) <a href="$(homeURL)$(phpPath)EmployeeSearch.php$(altVarBase)&amp;docName=Chg&amp;fromD2w=@dtw_rurlescseq($(d2wName))&amp;fldCo=coNumber&amp;fldFacl=facNumber&amp;fldEmpl=emplNumber&amp;fldHRCo=hrCompany&amp;fldHREmpl=hrEmployee&amp;fldEmplName=emplName&amp;fldCoName=coFacDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input disabled name="emplName" value="$(F_EmpName)"  type="text" size="30" maxlength="30"><input name="hrEmployee" type="hidden"><input name="hrCompany"  type="hidden"></td>
+                      %else
+                          @Format_Code(V_C3EMPL, F_WDEMPL)
+                          <td class="dspalph"><input type="hidden" name="emplNumber" value="$(V_C3EMPL)" size="5" maxlength="5">$(F_EmpName) &nbsp; &nbsp; $(F_WDEMPL)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_WDEMPL)
+
+                  @RtvFldDesc("C2COMP=$(coNumber) and C2FACL=$(facNumber) and C2CODE='$(V_C3CODE)'", "PRCODE", "C2DESC", fieldDesc)
+                  @Format_Code(V_C3CODE, F_C3CODE)
+                  @SetTextOvr(Err_C3CODE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Pay Code</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input name="payCode" type="text" VALUE="$(V_C3CODE)" size="5" maxlength="3"> $(reqFieldChar) <input name="emplcoNumber" value="$(coNumber)" type="hidden"><input name="emplfacNumber" value="$(facNumber)" type="hidden">  <a href="$(homeURL)$(phpPath)PayCodeSearch.php$(altVarBase)&amp;docName=Chg&amp;fldCo=emplcoNumber&amp;fldFac=emplfacNumber&amp;fldName=payCode&amp;fldDesc=payCodeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="payCodeDesc" value="$(fieldDesc)"  type="text" size="20" maxlength="20"></td>
+                      %else
+                          <td class="dspalph"><input name="payCode" type="hidden" value="$(V_C3CODE)" size="5" maxlength="3">$(fieldDesc) &nbsp; &nbsp; $(F_C3CODE)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_C3CODE)
+
+                  @SetTextOvr(Err_C3SEQ)
+                  <tr><td class="dsphdr"><span $(textOvr)>Sequence</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr"><input name="sequence" type="text" value="$(V_C3SEQ)" size="3" maxlength="3"></td>
+                      %else
+                          <td class="inputnmbr"><input name="sequence" type="hidden" value="$(V_C3SEQ)" size="3" maxlength="3">$(V_C3SEQ)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_C3SEQ)
+
+                  @Default_Zero(V_C3ACCT)
+                  @Default_Zero(V_C3SUB)
+                  @RtvFldDesc("CHACCT=$(V_C3ACCT) and CHSUB=$(V_C3SUB) ", "HDCHRT", "CHCHDS", acctDesc)
+                  @SetTextOvr(Err_C3ACCT)
+                  <tr><td class="dsphdr"><span $(textOvr)>G/L Account</span></td>
+                      <td class="inputnmbr"><input name="acctNumber" value="$(V_C3ACCT)" type="text" size="4" maxlength="4"> - <input name="subAcctNumber" value="$(V_C3SUB)" type="text" size="4" maxlength="4"> <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=acctNumber&amp;subFld=subAcctNumber&amp;descFld=glAcctDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="glAcctDesc" value="$(acctDesc)"  type="text" size="30" maxlength="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_C3ACCT)
+
+                  @Default_Zero(V_C3HRS)
+                  @SetTextOvr(Err_C3HRS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Hours/Units/Earnings</span></td>
+                      <td class="inputnmbr"><input type="text" name="hoursUnitsEarnings" value="$(V_C3HRS)" size="9" maxlength="9"></td>
+                  </tr>
+                  @DspErrMsg(Err_C3HRS)
+
+                  @RtvFldDesc("EADEPT='$(V_C3DEPT)' ", "PREXAC", "EANAME", fieldDesc)
+                  @SetTextOvr(Err_C3DEPT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Department Worked</span></td>
+                      <td class="inputalph"><input name="department" type="text" value="$(V_C3DEPT)" size="5" maxlength="5">  <a href="$(homeURL)$(phpPath)DepartmentSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=department&amp;fldDesc=deptDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="deptDesc" value="$(fieldDesc)"  type="text" size="20" maxlength="20">  </td>
+                  </tr>
+                  @DspErrMsg(Err_C3DEPT)
+
+                  @Default_Zero(V_C3OVRT)
+                  @SetTextOvr(Err_C3OVRT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Override Rate</span></td>
+                      <td class="inputnmbr"><input type="text" name="overrideRate" value="$(V_C3OVRT)" size="13" maxlength="13"></td>
+                  </tr>
+                  @DspErrMsg(Err_C3OVRT)
+
+                  @RtvFldDesc("PPCOMP=$(coNumber) and PPFACL=$(facNumber) and PPDEPT='$(V_C3DEPT)' and PPSHFT='$(V_C3SHFW)' ", "PRPREM", "CHAR(PPDESC)", codeDesc)
+                  %if (shiftDesc =="")
+                      @RtvFldDesc("PPCOMP=$(coNumber) and PPFACL=$(facNumber) and PPDEPT=' ' and PPSHFT='$(V_C3SHFW)' ", "PRPREM", "CHAR(PPDESC)", codeDesc)
+                  %endif
+                  @SetTextOvr(Err_C3SHFW)
+                  <tr><td class="dsphdr"><span $(textOvr)>Shift Worked</span></td>
+                      <td class="inputalph"><input name="shiftWorked" type="text" value="$(V_C3SHFW)" size="2" maxlength="2"> <a href="$(homeURL)$(cGIPath)ShiftSearch.d2w/ENTRY$(d2wVarBase)&amp;docName=Chg&amp;fldName=shiftWorked&amp;fldDesc=shiftDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="shiftDesc" value="$(codeDesc)"  type="text" size="20" maxlength="20"></td>
+                  </tr>
+                  @DspErrMsg(Err_C3SHFW)
+
+                  @SetTextOvr(Err_C3JOB)
+                  <tr><td class="dsphdr"><span $(textOvr)>Job Number</span></td>
+                      <td class="inputalph"><input name="jobNumber" type="text" value="$(V_C3JOB)" size="19" maxlength="14"> </td>
+                  </tr>
+                  @DspErrMsg(Err_C3JOB)
+
+                  @SetTextOvr(Err_C3STRT)
+	           <tr><td class="dsphdr"><span $(textOvr)>Start Date</span></td>
+                      <td class="inputnmbr"><input type="text" name="startDate" value="$(V_C3STRT)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('startDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_C3STRT)
+
+                  @SetTextOvr(Err_C3END)
+	           <tr><td class="dsphdr"><span $(textOvr)>End Date</span></td>
+                      <td class="inputnmbr"><input type="text" name="endDate" value="$(V_C3END)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('endDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_C3END)
+
+                  @Default_Zero(V_C3MAX1)
+                  @SetTextOvr(Err_C3MAX1)
+                  <tr><td class="dsphdr"><span $(textOvr)>Maximum YTD Hours/Units</span></td>
+                      <td class="inputnmbr"><input type="text" name="maxYTDHoursUnits" value="$(V_C3MAX1)" size="11" maxlength="11"></td>
+                  </tr>
+                  @DspErrMsg(Err_C3MAX1)
+
+                  @Default_Zero(V_C3MAX2)
+                  @SetTextOvr(Err_C3MAX2)
+                  <tr><td class="dsphdr"><span $(textOvr)>Maximum YTD Earnings</span></td>
+                      <td class="inputnmbr"><input type="text" name="maxYTDEarnings" value="$(V_C3MAX2)" size="11" maxlength="11"></td>
+                  </tr>
+                  @DspErrMsg(Err_C3MAX2)
+
+                  @SetTextOvr(Err_C3DFLT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Default Row</span></td>
+                      @dtw_tb_rows(yn01Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_C3DFLT) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn01Table, "defaultRecord", "2", "1", "N", "", x, "1") $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_C3DFLT)
+              %}	
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar,
+                                        INOUT CHAR(10) SUBR)
+{%EXEC {HPRPDM_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @yn01_Table_Query(profileHandle, dataBaseID, "YORN        ", yn01Table)
+
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(payCode)
+  @dtw_mUPPERCASE(department)
+  @dtw_mUPPERCASE(jobNumber)
+
+  @dtw_assign(coNumber,@dtw_rstrip(coNumber))
+  @dtw_assign(facNumber,@dtw_rstrip(facNumber))
+  @dtw_assign(emplNumber,@dtw_rstrip(emplNumber))
+  @dtw_assign(payCode,@dtw_rstrip(payCode))
+  @dtw_assign(sequence,@dtw_rstrip(sequence))
+  @dtw_assign(acctNumber,@dtw_rstrip(acctNumber))
+  @dtw_assign(subAcctNumber,@dtw_rstrip(subAcctNumber))
+  @dtw_assign(hoursUnitsEarnings,@dtw_rstrip(hoursUnitsEarnings))
+  @dtw_assign(department,@dtw_rstrip(department))
+  @dtw_assign(overrideRate,@dtw_rstrip(overrideRate))
+  @dtw_assign(shiftWorked,@dtw_rstrip(shiftWorked))
+  @dtw_assign(jobNumber,@dtw_rstrip(jobNumber))
+  @dtw_assign(startDate,@dtw_rstrip(startDate))
+  @dtw_assign(endDate,@dtw_rstrip(endDate))
+  @dtw_assign(maxYTDHoursUnits,@dtw_rstrip(maxYTDHoursUnits))
+  @dtw_assign(maxYTDEarnings,@dtw_rstrip(maxYTDEarnings))
+  @dtw_assign(defaultRecord,@dtw_rstrip(defaultRecord))
+
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@comp", coNumber)
+  @Concat_Field("@@facl", facNumber)
+  @Concat_Field("@@empl", emplNumber)
+  @Concat_Field("@@code", payCode)
+  @Concat_Field("@@seq@", sequence)
+  @Concat_Field("@@acct", acctNumber)
+  @Concat_Field("@@sub@", subAcctNumber)
+  @Concat_Field("@@hrs@", hoursUnitsEarnings)
+  @Concat_Field("@@dept", department)
+  @Concat_Field("@@ovrt", overrideRate)
+  @Concat_Field("@@shfw", shiftWorked)
+  @Concat_Field("@@job@", jobNumber)
+  @Concat_Field("@@strt", startDate)
+  @Concat_Field("@@end@", endDate)
+  @Concat_Field("@@max1", maxYTDHoursUnits)
+  @Concat_Field("@@max2", maxYTDEarnings)
+  @Concat_Field("@@dflt", defaultRecord)
+  @Concat_Field("@@tstp", timeStamp)
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @dtw_assign(SUBR, "")
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar, SUBR)
+  @DecatErr_Field("@@code", "payCode")            @dtw_assign(Err_C3CODE, fieldValue)
+  
+  %if (errFound == "")
+      @Format_ConfMsg_Desc(maintenanceCode, "Pay Code ", $(payCode), "", "", "", "", confMessage)
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=192&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %elif ((maintenanceCode == "C" || maintenanceCode == "D") && errFound != "" && fieldValue != "")
+      @Format_ConfMsg_Desc("E", "Pay Code ", $(payCode), "<br>$(fieldValue)", "", "", "", confMessage)
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=192&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;coNumber=@dtw_rurlescseq(coNumber)&amp;facNumber=@dtw_rurlescseq(facNumber)&amp;emplNumber=@dtw_rurlescseq(emplNumber)&amp;payCode=@dtw_rurlescseq(payCode)&amp;sequence=@dtw_rurlescseq(sequence)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+
+%HTML(COPYALL) {
+  @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+  %if (backURL == "")
+      @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=192")
+  %endif
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "NewWindowOpen.icl"
+              function validate(chgForm) {
+                 if (document.Chg.tocoNumber.value =="" ||
+                     document.Chg.tofacNumber.value =="" ||
+                     document.Chg.toemplNumber.value =="" )
+                       {alert("$(reqFieldError)");
+                           return false;}
+                 if (editNum(document.Chg.tocoNumber,    2, 0) &&
+                     editNum(document.Chg.tofacNumber,   4, 0) &&
+                     editNum(document.Chg.toemplNumber,  5, 0))
+                          return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "EMPLPAYCODEDEFAULTSMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      <table $(baseTable)>
+                          <colgroup>
+                              <col width="80%">
+                              <col width="15%">
+                          <tr><td><h1>Copy Employee</h1></td>
+                              <td class="toolbar">
+                                  %INCLUDE "MaintainTopNoTable.icl"
+                              </td>
+                          </tr>
+                      </table>
+
+                      $(hrTagAttr)
+                      %INCLUDE "RequiredField.icl"
+                      %INCLUDE "ErrorDisplay.icl"
+
+                      <form class="formClass" METHOD=POST name="Chg" onSubmit="return validate(document.Chg)"
+                          ACTION="$(homeURL)$(cGIPath)$(d2wName)/EDIT_COPYALL$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+                          <table $(contentTable)>
+                              @dtw_assign(focusField, "coNumber")
+                              %if (errFound != "" || maintenanceCode == "A")
+                                  %if (errFound == "" && maintenanceCode == "A")
+                                      @dtw_assign(edtVar, "")
+                                  %else
+                                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                                      @ErrVarErr(profileHandle, typeError, errVar)
+                                      @DecatErr_Field("@@comp", "coNumber")           @dtw_assign(Err_C3COMP, fieldValue)
+                                      @DecatErr_Field("@@facl", "facNumber")          @dtw_assign(Err_C3FACL, fieldValue)
+                                      @DecatErr_Field("@@empl", "emplNumber")         @dtw_assign(Err_C3EMPL, fieldValue)
+                                      @DecatErr_Field("@@fcod", "frompayCode")   @dtw_assign(Err_FROMPAYCODE,  fieldValue)
+                                      @DecatErr_Field("@@tcom", "tocoNumber")    @dtw_assign(Err_TOCOM,  fieldValue)
+                                      @DecatErr_Field("@@tfac", "tofacNumber")   @dtw_assign(Err_TOFAC,  fieldValue)
+                                      @DecatErr_Field("@@temp", "toemplNumber")  @dtw_assign(Err_TOEMP,  fieldValue)
+                                  %endif
+
+                                  @Decat_Field("@@fcom")   @dtw_assign(V_C3COMP, fieldValue)
+                                  @Decat_Field("@@ffac")   @dtw_assign(V_C3FACL, fieldValue)
+                                  @Decat_Field("@@femp")   @dtw_assign(V_C3EMPL, fieldValue)
+                                  @Decat_Field("@@fcod")   @dtw_assign(V_C3FCOD,  fieldValue)
+                                  @Decat_Field("@@tcom")   @dtw_assign(V_C3TCOM,  fieldValue)
+                                  @Decat_Field("@@tfac")   @dtw_assign(V_C3TFAC,  fieldValue)
+                                  @Decat_Field("@@temp")   @dtw_assign(V_C3TEMP,  fieldValue)
+                                  @dtw_assign(errFound, "")
+
+                              %elif (maintenanceCode == "Z")
+                                  @dtw_assign(V_C3COMP, "0")
+                                  @dtw_assign(V_C3FACL, "0")
+                                  @dtw_assign(V_C3EMPL, "0")
+                                  @dtw_assign(V_C3FCOD, "")
+                                  @dtw_assign(V_C3TCOM, "0")
+                                  @dtw_assign(V_C3TFAC, "0")
+                                  @dtw_assign(V_C3TEMP, "0")
+                              %endif
+
+
+                              @Format_HRCoFac("$(V_C3COMP)", "$(V_C3FACL)", "", F_CoFac)
+                              @RtvFldDesc("CFCOMP=$(V_C3COMP) and CFFACL=$(V_C3FACL)", "HRCOFC", "CFNAME", fieldDesc)
+                              @SetTextOvr(Err_C3COMP)
+                              <tr><td class="dsphdr"><span $(textOvr)>From Company/Facility</span></td>
+                                  %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                                      <td class="inputnmbr"><input name="coNumber" value="$(V_C3COMP)" type="text" size="4" maxlength="2"> / <input name="facNumber" value="$(V_C3FACL)" type="text" size="4" maxlength="4"> $(reqFieldChar) <a href="$(homeURL)$(phpPath)HRCoFacSearch.php$(altVarBase)&amp;docName=Chg&amp;fldCo=coNumber&amp;fldFac=facNumber&amp;fldDesc=coFacDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="coFacDesc" value="$(fieldDesc)"  type="text" size="30" maxlength="30"></td>
+                                  %else
+                                      @Format_Code(F_CoFac, F2_CoFac)
+                                      <td class="dspalph"><input name="coNumber" value="$(V_C3COMP)" type="hidden" size="4" maxlength="2"> <input name="facNumber" value="$(V_C3FACL)" type="hidden" size="4" maxlength="4">$(fieldDesc) &nbsp; &nbsp; $(F2_CoFac)</td>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_C3COMP)
+                              @DspErrMsg(Err_C3FACL)
+
+                              @SetTextOvr(Err_C3EMPL)
+                              @Ret_Format_EmplName("$(V_C3COMP)", "$(V_C3FACL)", "$(V_C3EMPL)", "", "", "H", F_EmpName)
+                              <tr><td class="dsphdr"><span $(textOvr)>From Employee Number</span></td>
+                                  %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                                      <td class="inputnmbr"><input type="text" name="emplNumber" value="$(V_C3EMPL)" size="4" maxlength="5"> $(reqFieldChar) <a href="$(homeURL)$(phpPath)EmployeeSearch.php$(altVarBase)&amp;docName=Chg&amp;fromD2w=@dtw_rurlescseq($(d2wName))&amp;fldCo=coNumber&amp;fldFacl=facNumber&amp;fldEmpl=emplNumber&amp;fldHRCo=hrCompany&amp;fldHREmpl=hrEmployee&amp;fldEmplName=emplName&amp;fldCoName=coFacDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input disabled name="emplName" value="$(F_EmpName)"  type="text" size="30" maxlength="30"><input name="hrEmployee" type="hidden"><input name="hrCompany"  type="hidden"></td>
+                                  %else
+                                      @Format_Code(V_C3EMPL, F_WDEMPL)
+                                      <td class="dspalph"><input type="hidden" name="emplNumber" value="$(V_C3EMPL)" size="4" maxlength="5">$(F_EmpName) &nbsp; &nbsp; $(F_WDEMPL)</td>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_C3EMPL)
+
+                              @SetTextOvr(Err_FROMPAYCODE)
+                              <tr><td class="dsphdr"><span $(textOvr)>From Pay Code</span></td>
+                                  <td class="inputnmbr"><input name="frompayCode" value="$(V_C3FCOD)" type="text" size="4" maxlength="3"><input name="emplcoNumber" value="$(coNumber)" type="hidden"><input name="emplfacNumber" value="$(facNumber)" type="hidden"><a href="$(homeURL)$(phpPath)PayCodeSearch.php$(altVarBase)&amp;docName=Chg&amp;fldCo=emplcoNumber&amp;fldFac=emplfacNumber&amp;fldName=frompayCode&amp;fldDesc=payCodeDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="payCodeDesc" value="$(fieldDesc)"  type="hidden" size="20" maxlength="20"></td>
+                              </tr>
+                              @DspErrMsg(Err_FROMPAYCODE)
+
+                              @Default_Zero(V_C3TCOM)
+                              @Default_Zero(V_C3TFAC)
+                              @RtvFldDesc("CFCOMP=$(V_C3TCOM) and CFFACL=$(V_C3TFAC)", "HRCOFC", "CFNAME", fieldDesc)
+                              @SetTextOvr(Err_TOCOM)
+                              <tr><td class="dsphdr"><span $(textOvr)>To Company/Facility</span></td>
+                                  <td class="inputnmbr"><input name="tocoNumber" value="$(V_C3TCOM)" type="text" size="4" maxlength="2"> / <input name="tofacNumber" value="$(V_C3TFAC)" type="text" size="4" maxlength="4"> <a href="$(homeURL)$(phpPath)HRCoFacSearch.php$(altVarBase)&amp;docName=Chg&amp;fldCo=tocoNumber&amp;fldFac=tofacNumber&amp;fldDesc=tocoFacDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="tocoFacDesc" value="$(fieldDesc)"  type="text" size="30" maxlength="30">$(reqFieldChar)</td>
+                              </tr>
+                              @DspErrMsg(Err_TOCOM)
+                              @DspErrMsg(Err_TOFAC)
+
+                              @SetTextOvr(Err_TOEMP)
+                              @Ret_Format_EmplName(tocoNumber, tofacNumber, toemplNumber, "", "", "H", F_toEmpName)
+                              <tr><td class="dsphdr"><span $(textOvr)>To Employee Number</span></td>
+                                  <td class="inputnmbr"><input type="text" name="toemplNumber" value="$(V_C3TEMP)" size="4" maxlength="5"> $(reqFieldChar) <a href="$(homeURL)$(phpPath)EmployeeSearch.php$(altVarBase)&amp;docName=Chg&amp;fromD2w=@dtw_rurlescseq($(d2wName))&amp;fldCo=tocoNumber&amp;fldFacl=tofacNumber&amp;fldEmpl=toemplNumber&amp;fldHRCo=hrCompany&amp;fldHREmpl=hrEmployee&amp;fldEmplName=emplName&amp;fldCoName=tocoFacDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input disabled name="emplName" value="$(F_toEmpName)"  type="text" size="30" maxlength="30"><input name="hrEmployee" type="hidden"><input name="hrCompany"  type="hidden"></td>
+                              </tr>
+                              @DspErrMsg(Err_TOEMP)
+
+
+                          </table>
+
+                          %INCLUDE "MaintainBottom.icl"
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                      </form>
+                  </td>
+              </tr>
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(EDIT_COPYALL) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(frompayCode)
+  @dtw_assign(coNumber,@dtw_rstrip(coNumber))
+  @dtw_assign(facNumber,@dtw_rstrip(facNumber))
+  @dtw_assign(emplNumber,@dtw_rstrip(emplNumber))
+  @dtw_assign(frompayCode,@dtw_rstrip(frompayCode))
+  @dtw_assign(tocoNumber,@dtw_rstrip(tocoNumber))
+  @dtw_assign(tofacNumber,@dtw_rstrip(tofacNumber))
+  @dtw_assign(toemplNumber,@dtw_rstrip(toemplNumber))
+  @dtw_assign(SUBR, "SRCpyAll")
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@fcom", coNumber)
+  @Concat_Field("@@ffac", facNumber)
+  @Concat_Field("@@femp", emplNumber)
+  @Concat_Field("@@fcod", frompayCode)
+  @Concat_Field("@@tcom", tocoNumber)
+  @Concat_Field("@@tfac", tofacNumber)
+  @Concat_Field("@@temp", toemplNumber)
+
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Validate_Data(profileHandle, dataBaseID, maintCode, errFound, edtVar, errVar, SUBR)
+  
+  %if (errFound == "")
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=192&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/COPYALL$(d2wVarBase)&amp;frompayCode=@dtw_rurlescseq(frompayCode)&amp;tocoNumber=@dtw_rurlescseq(tocoNumber)&amp;tofacNumber=@dtw_rurlescseq(tofacNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

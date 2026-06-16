@@ -1,0 +1,442 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Factor Credit Request History                               *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Credit Request History"
+  d2wName                 = "FactorCreditRequestHistory.d2w"
+  d2wVarBase              = "$(genericVarBase)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+
+	
+%MACRO_FUNCTION Check_Sel_ByUser (INOUT alertMessage) {
+  @RtvFldDesc("CCDATA>' '", "HDFFCR", "char(count(*))", fillCrReqCnt)
+  @RtvFldDesc("FCSELC='Y' and (FCSUSR<>'$(userProfile)' or FCOTDT<>$(origTranDate) or FCOTSQ<>$(origTranSeq)) or FCSELC='S' ", "HDFACH", "char(count(*))", otherUserCnt)
+  %if (otherUserCnt>"0" || fillCrReqCnt >"0")
+      %if (fillCrReqCnt >"0")
+          @Rtv_Error_Desc("HAR0096", alertMessage)
+      %elif (otherUserCnt>"0")
+          @Rtv_Error_Desc("HAR0090", alertMessage)
+      %endif
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)FactorProcess.d2w/REPORT$(d2wVarBase)&amp;alertMessage=@dtw_rurlescseq(alertMessage)">
+  %endif
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              function validate(searchForm) {
+                  if (editdate(document.Search.srchDate))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "FACTORCREDITREQHISTORY")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select Distinct FCOTDT,FCOTSQ,FCTDAT,FCTSEQ,FCUSER,",  stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(USDESC,' ') as USDESC, coalesce(USDESCU,' ') as USDESCU",  stmtSQL)
+                      @dtw_concat(fileSQL, " HDFACH left join SYUSER on USUSER=FCUSER ", fileSQL)
+                      @dtw_concat(selectSQL, " FCOTDT>0 ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Credit_Request_History_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+          %INCLUDE "AlertMessageDisplay.icl"
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Credit_Request_History_Query (IN CHAR(64)    profileHandle,
+                                                    CHAR(2)     dataBaseID,
+                                                    CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1> $(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/CLEAR$(d2wVarBase)">$(portalHome)</a>
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Transmission<br>Date</th>
+                      <th class="colhdr">User</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputnum" name="srchDate" size="6" maxlength="6">
+                          <input type="hidden" name="operDate" value="=">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchUser" size="10" maxlength="30">
+                          <input type="hidden" name="operUser" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDate.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+    %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y")
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("FCTDAT", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TranDate" title="Sequence By Transmission Date">Transmission<br>Date</a></th>
+              @OrderBy_Sort("FCTSEQ", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TranSeq" title="Sequence By Transmission Sequence, Transmission Date">Transmission<br>Sequence</a></th>
+              @OrderBy_Sort("USDESCU", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=User" title="Sequence By User, Transmission Date">User</a></th>
+          </tr>
+
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_assign(maintainVar, "$(genericVarBase)&amp;origTranDate=@dtw_rurlescseq(V_FCOTDT)&amp;origTranSeq=@dtw_rurlescseq(V_FCOTSQ)&amp;tranDate=@dtw_rurlescseq(V_FCTDAT)&amp;tranSeq=@dtw_rurlescseq(V_FCTSEQ)&amp;tranUser=@dtw_rurlescseq(V_FCUSER)")
+              %INCLUDE "SetRowClass.icl"
+              @Format_Date(V_FCTDAT, "D", F_FCTDAT)
+              @Format_Confirm_Desc("Transmission Date", $(F_FCTDAT), "Sequence", "$(V_FCTSEQ)", "", "", confirmDesc)
+
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y")
+                      <td class="opticon">
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/PROCESS$(genericVarBase)$(maintainVar)">$(selectImageSml)</a>
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/DELETE$(maintainVar)">$(deleteImageSml)</a>
+                      </td>
+                  %endif
+                  <td class="coldate">$(F_FCTDAT)</td>
+                  <td class="colnmbr">$(V_FCTSEQ)</td>
+                  <td class="colalph" $(helpCursor)><span title="$(V_FCUSER)">$(V_USDESC)</span></td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select Distinct FCOTDT,FCOTSQ,FCTDAT,FCTSEQ,FCUSER,",  stmtSQL)
+  @dtw_concat(stmtSQL, " coalesce(USDESC,' ') as USDESC, coalesce(USDESCU,' ') as USDESCU",  stmtSQL)
+  @dtw_concat(fileSQL, " HDFACH left join SYUSER on USUSER=FCUSER ", fileSQL)
+  @dtw_concat(selectSQL, " FCOTDT>0 ", selectSQL)
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  %INCLUDE "stmtSQLTotalRows.icl"
+  @Credit_Request_History_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) Credit_Request_History_XMLQuery (IN CHAR(64)    profileHandle,
+                                                       CHAR(2)     dataBaseID,
+                                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @XMLBeginTag("CreditReqHistoryList")
+          %ROW{
+	       @XMLIDTag("$(V_FCTDAT)/$(V_FCTSEQ)", "TransDateSeq ID")
+                  @XMLTag(V_FCTDAT, "TransDate")
+                  @XMLTag(V_FCTSEQ, "TransSeq")
+                  @XMLTag(V_FCUSER, "User")
+              @XMLEndTag("TransDateSeq")
+          %}
+      @XMLEndTag("CreditReqHistoryList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "FCTDAT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Transmission Date (descending)")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Update HDFACH Set FCSELC=' ', FCSUSR=' ' ", stmtSQL)
+  @dtw_concat(stmtSQL, " Where FCSELC='Y' and FCSUSR='$(userProfile)' @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(CLEAR) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Update HDFACH Set FCSELC=' ', FCSUSR=' ' ", stmtSQL)
+  @dtw_concat(stmtSQL, " Where FCSELC='Y' and FCSUSR='$(userProfile)' @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+  <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)FactorProcess.d2w/REPORT$(d2wVarBase)">
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "TranDate")
+      %if (orderBy == "FCTDAT")
+          @DTW_ASSIGN(orderBy, "FCTDAT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Transmission Date (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "FCTDAT")
+          @DTW_ASSIGN(orderByDisplay, "Transmission Date")
+      %endif
+  %elif (sequence == "TranSeq")
+      %if (orderBy == "FCTSEQ,FCTDAT")
+          @DTW_ASSIGN(orderBy, "FCTSEQ DESC,FCTDAT")
+          @DTW_ASSIGN(orderByDisplay, "Transmission Sequence (descending), Transmission Date")
+      %else
+          @DTW_ASSIGN(orderBy, "FCTSEQ,FCTDAT")
+          @DTW_ASSIGN(orderByDisplay, "Transmission Sequence, Transmission Date")
+      %endif
+  %elif (sequence == "User")
+      %if (orderBy == "USDESCU,FCTDAT")
+          @DTW_ASSIGN(orderBy, "USDESCU DESC,FCTDAT")
+          @DTW_ASSIGN(orderByDisplay, "User (descending), Transmission Date")
+      %else
+          @DTW_ASSIGN(orderBy, "USDESCU,FCTDAT")
+          @DTW_ASSIGN(orderByDisplay, "User, Transmission Date")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "calendar.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editdate(document.Search.srchDate) &&
+                      editNum(document.Search.srchLoc, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "FACTORCREDITREQHISTORY")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Transmission Date</td>
+                              @dtw_assign(operNbr, "operDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchDate" size="6" maxlength="6"><a href="javascript:calWindow('srchDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">User</td>
+                              @dtw_assign(operNbr, "operUser")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchUser" size="6" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">User Profile</td>
+                              @dtw_assign(operNbr, "operProfile")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchProfile" size="6" maxlength="10">
+                                                    <a href="$(homeURL)$(phpPath)UserSearch.php$(altVarBase)&amp;docName=@dtw_rurlescseq(formName)&amp;userFld=srchProfile&amp;descFld=userName" onclick="$(searchWinVar)">$(searchImage)</a>
+                                                    <input type="text" disabled name="userName" size="35"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Location</td>
+                              @dtw_assign(operNbr, "operLoc")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchLoc" size="6" maxlength="3">
+                                                    <a href="$(homeURL)$(phpPath)LocationSearch.php$(altVarBase)&amp;docName=@dtw_rurlescseq(formName)&amp;fldName=srchLoc&amp;fldDesc=locDesc" onclick="$(searchWinVar)">$(searchImage)</a>
+                                                    <input type="text" disabled name="locDesc" size="35"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Client</td>
+                              @dtw_assign(operNbr, "operClient")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchClient" size="6" maxlength="4"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchDate.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("FCTDAT",  "Transmission Date", $(srchDate), "", operDate, "D")
+  @Build_WildCard ("USDESCU", "User", $(srchUser), "U", operUser, "A")
+  @Build_WildCard ("FCUSER",  "User Profile", $(srchProfile), "U", operProfile, "A")
+  @Build_WildCard ("FCLOC#",  "Location", $(srchLoc), "", operLoc, "N")
+  @Build_WildCard ("FCCLI#",  "Client", $(srchClient), "U", operClient, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}
+
+%HTML(PROCESS) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Update HDFACH Set FCSELC=' ', FCSUSR=' ' Where FOOTDT=0 @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Update HDFACH Set FCSELC='Y', FCSUSR='$(userProfile)' ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where FCOTDT=$(origTranDate) and FCOTSQ=$(origTranSeq) @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)FactorFillCreditRequestSelect.d2w/REPORT$(d2wVarBase)&amp;origTranDate=@dtw_rurlescseq(origTranDate)&amp;origTranSeq=@dtw_rurlescseq(origTranSeq)&amp;tranDate=@dtw_rurlescseq(tranDate)&amp;tranSeq=@dtw_rurlescseq(tranSeq)&amp;tranUser=@dtw_rurlescseq(tranUser)&amp;backHome=$(d2wName)/REPORT">
+  %endif
+%}
+
+%HTML(DELETE) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From HDFACH Where FCOTDT=$(origTranDate) and FCOTSQ=$(origTranSeq) @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From HDFACO Where FOOTDT=$(origTranDate) and FOOTSQ=$(origTranSeq) @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  @dtw_assign(maintenanceCode, "D")
+  @Format_Date(tranDate, "D", F_tranDate)
+  @Format_ConfMsg_Desc(maintenanceCode, "Transmission Date", $(F_tranDate), "Sequence", "$(tranSeq)", "", "", confMessage)
+  <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(genericVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+%}

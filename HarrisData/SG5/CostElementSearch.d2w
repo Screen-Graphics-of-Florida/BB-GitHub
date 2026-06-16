@@ -1,0 +1,328 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Cost Element Search                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Cost Element Search"
+  d2wName                 = "CostElementSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;fldCostSet=@dtw_rurlescseq(fldCostSet)&amp;fldCostElement=@dtw_rurlescseq(fldCostElement)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldDesc                 = ""
+  dash                    = "-"
+  advanceSearch           = "N"
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  function selectSetElement(costSet, costElement, desc){
+                      window.opener.document.$(docName).$(fldCostSet).value = costSet;
+                      window.opener.document.$(docName).$(fldCostElement).value = costElement;
+                      window.opener.document.$(docName).$(fldDesc).value = desc;
+                      window.opener.document.$(docName).$(fldCostSet).focus();
+                      window.close();
+                  }
+                  %INCLUDE "CheckEnterSearch.icl"
+                  %INCLUDE "NoFormValidate.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "$(searchBanner)"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      <td class="content">
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      %if (moreInfo == "Y")
+                          @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      %else
+                          @dtw_concat(stmtSQL, " Select EDCSET, EDPTYP, EDCELM, EDCELD,  upper(EDCELD) as EDCELDU, EDCCAT, EDCMET ", stmtSQL)
+                      %endif
+                      @dtw_concat(fileSQL, " HDMEDF ", fileSQL)
+                      %if (moreInfo != "Y")
+                          @dtw_concat(selectSQL, " EDCSET<=3 and EDPTYP = 'M' and EDAREC<>'Y' and EDPURT = 'Y' ", selectSQL)
+                      %endif
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, " EDCSET=$(costSet) and EDPTYP='$(partType)' and EDCELM=$(costElement)", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @CostElement_Search(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "$(searchTrailer)"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+%FUNCTION(dtw_sql) CostElement_Search (IN CHAR(64)    profileHandle,
+                                       CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+
+      %INCLUDE "PageTitle.icl"
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr>
+                      <th class="colhdr"> Cost Set</th>
+                      <th class="colhdr"> Element</th>
+                      <th class="colhdr">Description</th>
+                  </tr>
+                  <tr>
+                      <td class="inputnmbr">
+                          <input type="text" name="srchCostSet" size="2" maxlength="2">
+                          <input type="hidden" name="operCostSet" value="=">
+                      </td>
+                      <td class="inputnmbr">
+                          <input type="text" name="srchCostElement" size="3" maxlength="3">
+                          <input type="hidden" name="operCostElement" value="=">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchDesc" size="30" maxlength="25">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>
+	
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("EDCSET", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=set" title="Sequence By Cost Set"> Cost<br>Set</a></th>
+                  @OrderBy_Sort("EDCELM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=element" title="Sequence By Cost Element"> Cost<br>Element</a></th>
+                  @OrderBy_Sort("EDCELD", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=desc" title="Sequence By Description"> Description</a></th>
+                  @OrderBy_Sort("EDCMET", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=method" title="Sequence By Cost Method"> Cost<br>Method</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif		
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                   @Format_Quote(V_EDCELD, F_EDCELD)
+                   %if (V_EDCMET == "C")
+                       @DTW_ASSIGN(costmethodDesc, "Calculate Cost Adding Cost Elements x Rate")
+                   %elif (V_EDCMET == "L")
+                       @DTW_ASSIGN(costmethodDesc, "(Labor Hours x Crew Size) x Rate")
+                   %elif (V_EDCMET == "M")
+                       @DTW_ASSIGN(costmethodDesc, "Machine Hours x Rate")
+                   %elif (V_EDCMET == "P")
+                       @DTW_ASSIGN(costmethodDesc, "Item Purchase Unit Material Cost")
+                   %elif (V_EDCMET == "R")
+                       @DTW_ASSIGN(costmethodDesc, "Additional Cost Per Unit")
+                   %elif (V_EDCMET == "S")
+                       @DTW_ASSIGN(costmethodDesc, "(Setup Hours x Rate) / Accounting Lot Size")
+                   %elif (V_EDCMET == "V")
+                       @DTW_ASSIGN(costmethodDesc, "Routing Vendor Service  Unit Cost")
+                   %elif (V_EDCMET == "W")
+                       @DTW_ASSIGN(costmethodDesc, "Item Unit Weight x Rate")
+                   %elif (V_EDCMET == "Z")
+                       @DTW_ASSIGN(costmethodDesc, "Item Cubic Feet x Rate")
+                   %endif
+    	      %if (moreInfo != "Y")	
+                      <tr class="$(rowClass)">
+                          <td class="colnmbr">$(V_EDCSET)</td>
+                          <td class="colnmbr">$(V_EDCELM)</td>
+
+                          <td class="colalph"><a href="javascript:selectSetElement($(V_EDCSET), $(V_EDCELM), '$(F_EDCELD)')" title="Select Cost Set, Cost Element">$(V_EDCELD)</a></td>
+                          <td class="colcode" $(helpCursor)><span title="$(costmethodDesc)">$(V_EDCMET)</span></td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;costSet=@dtw_rurlescseq(V_EDCSET)&amp;partType=@dtw_rurlescseq(V_EDPTYP)&amp;costElement=@dtw_rurlescseq(V_EDCELM)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      %{ More Information Page %}
+
+                      <tr><td><a href="javascript:selectSetElement($(V_EDCSET), $(V_EDCELM), '$(F_EDCELD)')" title="Select Cost Set, Cost Element">$(selectImageLrg)</a>
+                          </td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Cost Set</td>
+                          <td class="dspnmbr">$(V_EDCSET)</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Part Type</td>
+                          <td class="dspalph">$(V_EDPTYP)</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Cost Element</td>
+                          <td class="dspnmbr">$(V_EDCELM)</td>
+                      </tr>
+
+      	         <tr><td class="dsphdr">Short Description</td>
+                          <td class="dspalph">$(V_EDCESD)</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Long Description</td>
+                          <td class="dspalph">$(V_EDCELD)</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Cost Category</td>
+                          <td class="dspnmbr">$(V_EDCCAT)</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Cost Method</td>
+                          <td class="dspalph">$(V_EDCMET)</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Account Number</td>
+                          <td class="dspnmbr">$(V_EDACCT) $(dash) $(V_EDSUB)</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Apply Cost To Receipt</td>
+                          <td class="dspalph">$(V_EDAREC)</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Profit Category</td>
+                          <td class="dspnmbr">$(V_EDUDCC)</td>
+                      </tr>
+
+                  %endif
+              %}
+          </table>
+	   %if (moreInfo != "Y")	
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+	   %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "EDCELDU,EDCSET")
+      @DTW_ASSIGN(orderByDisplay, "Description, Cost Set")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(orderBy, "EDCSET")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY)
+{
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "set")
+      %if (orderBy == "EDCSET")
+          @DTW_ASSIGN(orderBy, "EDCSET DESC, EDCELM DESC")
+          @DTW_ASSIGN(orderByDisplay, "Cost Set (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "EDCSET,EDCELM")
+          @DTW_ASSIGN(orderByDisplay, "Cost Set")
+      %endif
+  %elif (sequence == "element")
+      %if (orderBy == "EDCELM")
+          @DTW_ASSIGN(orderBy, "EDCELM DESC")
+          @DTW_ASSIGN(orderByDisplay, "Element (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "EDCELM")
+          @DTW_ASSIGN(orderByDisplay, "Element")
+      %endif
+  %elif (sequence == "desc")
+      %if (orderBy == "EDCELDU")
+          @DTW_ASSIGN(orderBy, "EDCELDU DESC")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "EDCELDU")
+          @DTW_ASSIGN(orderByDisplay, "Description ")
+      %endif
+  %elif (sequence == "method")
+      %if (orderBy == "EDCMET")
+          @DTW_ASSIGN(orderBy, "EDCMET DESC")
+          @DTW_ASSIGN(orderByDisplay, "Cost Method (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "EDCMET")
+          @DTW_ASSIGN(orderByDisplay, "Cost Method ")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+
+%HTML(WILDCARD)
+{
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+  @Build_WildCard ("EDCSET", "Cost Set", $(srchCostSet), "", operCostSet, "N")
+  @Build_WildCard ("EDCELM", "Cost Element", $(srchCostElement), "", operCostElement, "N")
+  @Build_WildCard ("upper(EDCELD)", "Description", $(srchDesc), "U", operDesc, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

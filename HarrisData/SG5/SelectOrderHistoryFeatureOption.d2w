@@ -1,0 +1,181 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Select Order History Feature/Option                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Feature/Option Inquiry"
+  d2wName                 = "SelectOrderHistoryFeatureOption.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;salesmanNumber=@dtw_rurlescseq(salesmanNumber)&amp;salesmanName=@dtw_rurlescseq(salesmanName)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;orderSequence=@dtw_rurlescseq(orderSequence)&amp;noMenu=@dtw_rurlescseq(noMenu)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "1000"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "1000"
+  prtMaxRows              = "1000"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onLoad="window.focus()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(inquiryBanner)"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select HDMFDH.*, OEORDH.*,  coalesce(IMIMDS,' ') as IMIMDS ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDMFDH inner join OEORDH on HOORD#=DHORD# and HOSEQ#=DHSEQ# and HOORL#=DHORL# ", fileSQL)
+                      @dtw_concat(fileSQL, "        join HDIMST on HOOPTN=IMITEM ", fileSQL)
+                      @dtw_concat(selectSQL, "HOORD#=$(orderNumber) and HOSEQ#=$(orderSequence) and HOORL#=$(lineNumber) ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By HODSEQ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Feature_Option_History(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(inquiryTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Feature_Option_History (IN CHAR(64)    profileHandle,
+                                              CHAR(2)     dataBaseID,
+                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+          %INCLUDE "PageTitle.icl"
+          $(inquiryhrTagAttr)
+          @dtw_assign(saveFeature, "")
+          @dtw_assign(optionTotal, "0")
+		
+          %ROW{
+              %if (saveFeature == "")
+                  <table $(contentTable)>
+                      <tr>
+                          <td class="colhdr">Order Number</td>
+                          <td class="colhdr">Ln</td>
+                          <td class="colhdr">Item Number</td>
+                          <td class="colhdr">Description</td>
+                          <td class="colhdr">Quantity</td>
+                          <td class="colhdr">Price</td>
+                          <td class="colhdr">Extended Price</td>
+                      </tr>
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          <td class="colnmbr">$(V_DHORD#)</td>		
+                          <td class="colnmbr">$(V_DHORL#)</td>		
+                          <td class="colalph">$(V_DHITEM)</td>		
+                          <td class="colalph">$(V_DHIMDS)</td>		
+                          @Format_Nbr(V_DHQORD, F_DHQORD, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                          <td class="colnmbr">$(F_DHQORD)</td>
+                          @Format_Nbr(V_DHSLPR, F_DHSLPR, $(prcNbrDec), $(amtEditCode), "", "", "")
+                          %if (ODLPOV == "Y")
+                              <td class="oepriceover">$(F_DHSLPR)</td>
+                          %else
+                              <td class="colnmbr">$(F_DHSLPR)</td>
+                          %endif
+			  @dtw_assign(price, V_DHSLPR)
+                          @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(V_DHQORD, V_DHSLPR), V_DHORUF)", ExtendedPrice, "2", $(amtEditCode), "Y", "$", "")
+                          <td class="colnmbr">$(ExtendedPrice)</td>
+                      </tr>
+                  </table>
+                  <table $(contentTable)>
+                      <tr>
+                          <td class="colhdr">Feature</td>
+                          <td class="colhdr">Option</td>
+                          <td class="colhdr">Description</td>
+                          <td class="colhdr">Quantity</td>
+                          <td class="colhdr">Price</td>
+                          <td class="colhdr">Extra<br>Charge</td>
+                          <td class="colhdr">Extended Price</td>
+                      </tr>
+              %endif
+              %if (saveFeature != V_HOFEAT)
+                  %INCLUDE "SetRowClass.icl"
+                  @dtw_assign(saveFeature, V_HOFEAT)
+                  @dtw_assign(newFeature, V_HOFEAT)
+              %else
+                  @dtw_assign(newFeature, "")
+              %endif
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(newFeature)</td>
+                  <td class="colalph">$(V_HOOPTN)</td>
+                  <td class="colalph">$(V_IMIMDS)</td>
+                  @Format_Nbr(V_HOQORD, F_HOQORD, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                  <td class="colnmbr">$(F_HOQORD)</td>
+                  @Format_Nbr(V_HOSLPR, F_HOSLPR, $(prcNbrDec), $(amtEditCode), "", "", "")
+                  %if (V_HOLPOV == "Y" && DHLPOV != "Y")
+                      <td class="oepriceover">$(F_HOSLPR)</td>
+                  %else
+                      <td class="colnmbr">$(F_HOSLPR)</td>
+                  %endif
+                  @Format_Nbr(V_HOXCHG, F_HOXCHG, $(prcNbrDec), $(amtEditCode), "", "$", "")
+                  <td class="colnmbr">$(F_HOXCHG)</td>
+                  @dtw_assign(extPrice, @dtw_radd(@dtw_rmultiply(V_HOQORD, V_HOSLPR), V_HOXCHG))
+                  @dtw_add(optionTotal, @dtw_radd(@dtw_rmultiply(V_HOQORD, V_HOSLPR), V_HOXCHG), "15", optionTotal)
+                  @Format_Nbr(extPrice, ExtendedPrice, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                  <td class="colnmbr">$(ExtendedPrice)</td>
+              </tr>
+          %}
+          @Format_Nbr(optionTotal, F_optionTotal, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+          %INCLUDE "SetRowClass.icl"
+          <tr class="$(rowClass)">
+              <td class="colnmbr" colspan="6">Option Total</td>
+              <td class="coltotal">$(F_optionTotal)</td>
+          </tr>
+          @dtw_subtract(price, optionTotal, itemPrice)
+          @Format_Nbr(itemPrice, F_itemPrice, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+          <tr class="$(rowClass)">
+              <td class="colnmbr" colspan="6">Base Item Price</td>
+              <td class="colnmbr">$(F_itemPrice)</td>
+          </tr>
+          @Format_Nbr(price, F_price, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+          <tr class="$(rowClass)">
+              <td class="colnmbr" colspan="6">Total Price</td>
+              <td class="coltotal">$(F_price)</td>
+          </tr>
+      </table>
+      $(inquiryhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}

@@ -1,0 +1,487 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Item Search                                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "BrowserType.icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "OrderEntryItemSearch.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Item Search"
+  d2wName                 = "OrderEntryVendorCatalogSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;shipToWhs=@dtw_rurlescseq(shipToWhs)"
+  nextPrevVar             = "$(d2wVarBase)$(searchVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  START_ROW_NUM           = "1"
+  RPT_MAX_ROWS            = "$(dspMaxRowsDft)"
+  ROW_NUM                 = "0"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  popUpWin                = "Y"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "head.icl"
+          %INCLUDE "OrderEntryProgOpt.icl"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+	       %INCLUDE "numzero.icl"
+              %INCLUDE "NewWindowOpen.icl"
+              function goToPage(selectedPage) {if (selectedPage != "") {self.location=selectedPage;}}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td>&nbsp;</td>
+                  <td>
+                      @RtvFldDesc("XPEXPT='OE.ITEM.ADD'", "SYUXPM", "XPUXPG", exitPointItem)
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select coalesce(nullif(VCITEM,' '),nullif(VCVNIT,' '), VCPITM) as VCVNIT, VCITEM, VCPITM, VCIMDS, VCIMDSU, VCSYNM, VCPCLS, VCWHS, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " Case When VCITEM=' ' or VCVENI='Y' or VCNSTK='Y' Then 'Y' Else ' ' End as VCAT ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDVCAT ", fileSQL)
+                      @dtw_concat(selectSQL, " VCWHS>0 and ", selectSQL)
+                      @dtw_concat(selectSQL, " VCPCLS>' ' and VCUOMS>' ' ", selectSQL)
+                      %if (oe_sec_10 == "N")
+                          @dtw_concat(selectSQL, " and VCWHS=$(shipToWhs) ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @RtvFldDesc("$(selectSQL)", "$(fileSQL)", "char(count(*))", sq1_Record_Count)
+                      @dtw_assign(stmtSQL_sv, stmtSQL)
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select IMITEM as VCVNIT, IMITEM as VCITEM, ' ' as VCPITM,", stmtSQL)
+                      %if (V_CIUSMP == "Y")
+                          @dtw_concat(stmtSQL, "  coalesce(SMPART,IMIMDS) as VCIMDS, coalesce(SMPART,IMIMDSU) as VCIMDSU, ", stmtSQL)
+                      %else
+                          @dtw_concat(stmtSQL, "  IMIMDS as VCIMDS, IMIMDSU as VCIMDSU, ", stmtSQL)
+                      %endif
+                      @dtw_concat(stmtSQL, " coalesce(SYSYNM,'') as VCSYNM, IMPCLS as VCPCLS, IWWHS as VCWHS, ' ' as VCAT ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDIMST inner join HDIWHS on IMITEM=IWITEM", fileSQL)
+                      @dtw_concat(fileSQL, "        left  join HDSITM on IMITEM=SYITEM", fileSQL)
+                      %if (V_CIUSMP == "Y")
+                          @dtw_concat(fileSQL, "    left  join HDSPRT on IMITEM=SMCITM", fileSQL)
+                      %endif
+                      @dtw_concat(fileSQL, "        left exception join HDVCAT on IMITEM=VCITEM", fileSQL)
+                      @dtw_concat(selectSQL, "IWIWAC=' ' ", selectSQL)
+                      @dtw_assign(wildCardSearch_sv, wildCardSearch)
+                      @dtw_replace(wildCardSearch, "VCVNIT", "IMITEM", wildCardSearch)
+                      @dtw_replace(wildCardSearch, "VCWHS", "IWWHS", wildCardSearch)
+                      %if (V_CIUSMP == "Y")
+                          @dtw_replace(wildCardSearch, "VCIMDSU", "coalesce(SMPART,IMIMDSU)", wildCardSearch)
+                      %else
+                          @dtw_replace(wildCardSearch, "VCIMDSU", "IMIMDSU", wildCardSearch)
+                      %endif
+                      @dtw_replace(wildCardSearch, "VCSYNM", "SYSYNM", wildCardSearch)
+                      @dtw_replace(wildCardSearch, "VCPCLS", "IMPCLS", wildCardSearch)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @RtvFldDesc("$(selectSQL)", "$(fileSQL)", "char(count(*))", sq2_Record_Count)
+                      @dtw_assign(wildCardSearch, wildCardSearch_sv)
+                      @dtw_add(sq1_Record_Count, sq2_Record_Count, sql_Record_Count)
+
+                      @dtw_assign(stmtSQL, "$(stmtSQL_sv) UNION $(stmtSQL)")
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %if (sql_Record_Count == "0")
+                          @dtw_assign(stmtSQL, "Select FLTYPE From SYFLAG Where FLTYPE='NoRecFnd'")
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @VendorCatalog_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) VendorCatalog_Search (IN CHAR(64)    profileHandle,
+                                            CHAR(2)     dataBaseID,
+                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+  	   <colgroup>
+  	       <col width="80%">
+  	       <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              <td class="toolbar">
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/CLOSE$(d2wVarBase)">$(closeImageMed)</a>
+              </td>
+          </tr>
+      </table>
+      $(hrTagAttr)
+
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Item Number</th>
+                      <th class="colhdr">Whs</th>
+                      <th class="colhdr">Description</th>
+                      <th class="colhdr">Synonynm</th>
+                      <th class="colhdr">Product<br>Class</th>
+                  </tr>
+                  <tr><td class="inputalph">
+                          <input type="text" name="srchItem" size="15" maxlength="15">
+                          <input type="hidden" name="operItem" value="LIKE">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchWhs" size="3" maxlength="3">
+                          <input type="hidden" name="operWhs" value="=">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchDesc" size="15" maxlength="30">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchSyn" size="15" maxlength="15">
+                          <input type="hidden" name="operSyn" value="LIKE">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchProdClass" size="4" maxlength="4">
+                          <input type="hidden" name="operProdClass" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchItem.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @OrderBy_Sort("VCVNIT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=vendItem" title="Sequence By Item Number, Warehouse">Item Number</a></th>
+                  @OrderBy_Sort("VCWHS", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=whs" title="Sequence By Warehouse, Item Number">Whs</a></th>
+                  @OrderBy_Sort("VCIMDSU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=desc" title="Sequence By Description, Item Number">Description</a></th>
+                  @OrderBy_Sort("VCSYNM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=synonym" title="Sequence By Synonym">Synonym</a></th>
+                  @OrderBy_Sort("VCPCLS", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=prodClass" title="Sequence By Product Class, Item Number">Product<br>Class</a></th>
+                  <th class="colhdr">Quantity<br>Available</th>
+                  <th class="colhdr">Order<br>Quantity</th>
+              </tr>
+
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (V_VCAT == "Y")
+                  @dtw_assign(itemClass, "colvcat")
+              %else
+                  @dtw_assign(itemClass, "colalph")
+              %endif
+              %if (V_VCITEM == "")
+                  @dtw_assign(qtyAvailable, "0")
+              %else
+                  @Get_Qty_Avail(profileHandle, dataBaseID, V_VCITEM, V_VCWHS, qtyAvailable)
+              %endif
+              @Format_Nbr(qtyAvailable, F_qtyAvailable, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+
+              <tr class="$(rowClass)">
+                  <td class="$(itemClass)">$(V_VCVNIT)</td>
+                  <td class="$(itemClass)">$(V_VCWHS)</td>
+                  @dtw_assign(V_SPPART, V_VCIMDS)
+                  <td class="$(itemClass)">
+                     %INCLUDE "SmartPartDisplay.icl"
+                  </td>
+                  <td class="$(itemClass)">$(V_VCSYNM)</td>
+                  <td class="$(itemClass)">$(V_VCPCLS)</td>
+                  %if (srchTypQtyAvail == "S")
+                      %if (qtyAvailable > "0")
+                          <td class="colalph">$(inStockImage)</td>
+                      %else
+                          <td class="colalph"></td>
+                      %endif
+                  %else
+                      <td class="colnmbr">$(F_qtyAvailable)</td>
+                  %endif
+                  @dtw_assign(itemError, "")
+                  %if (exitPointItem != "")
+                      @Exit_Point_OEITEMADD(orderControlNumber, V_VCITEM, itemError)
+                  %endif
+	              %if (itemError != "")
+	                  <td class="error">$(itemError)</td>
+	              %else
+	                  <td class="inputnmbr">
+	                      <form class="formClass" NAME="Qty" METHOD=POST onSubmit="return (editZero(orderQty1, 9, 4))"
+	                          ACTION="$(homeURL)$(cGIPath)$(d2wName)/ADDTOORDER$(nextPrevVar)&amp;item1=@dtw_rurlescseq(V_VCITEM)&amp;pseudoItem=@dtw_rurlescseq(V_VCPITM)&amp;whs1=@dtw_rurlescseq(V_VCWHS)&amp;vCat=@dtw_rurlescseq(V_VCAT)&amp;updRecNbr=@dtw_rurlescseq(START_ROW_NUM)">
+	                          <input type="text" name="orderQty1" size="5" maxlength="15">
+	                           @BrowserType(browserCode)
+	                           %if (browserCode == "IE")
+	                               <button type=submit>$(orderAddToImage)</button>
+	                           %else
+	                               <input TYPE=SUBMIT VALUE="Add To Cart">
+	                           %endif
+	                      </form>
+	                  </td>
+                  %endif
+              </tr>
+
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "VCIMDSU,VCVNIT")
+      @DTW_ASSIGN(orderByDisplay, "Description, Item Number")
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "vendItem")
+      %if (orderBy == "VCVNIT,VCWHS")
+          @DTW_ASSIGN(orderBy, "VCVNIT DESC,VCWHS")
+          @DTW_ASSIGN(orderByDisplay, "Item Number (descending), Warehouse")
+      %else
+          @DTW_ASSIGN(orderBy, "VCVNIT,VCWHS")
+          @DTW_ASSIGN(orderByDisplay, "Item Number, Warehouse")
+      %endif
+  %elif (sequence == "whs")
+      %if (orderBy == "VCWHS,VCVNIT")
+          @DTW_ASSIGN(orderBy, "VCWHS DESC,VCVNIT")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "VCWHS,VCVNIT")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse, Item Number")
+      %endif
+  %elif (sequence == "desc")
+      %if (orderBy == "VCIMDSU,VCVNIT")
+          @DTW_ASSIGN(orderBy, "VCIMDSU DESC,VCVNIT")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "VCIMDSU,VCVNIT")
+          @DTW_ASSIGN(orderByDisplay, "Description, Item Number")
+      %endif
+  %elif (sequence == "synonym")
+      %if (orderBy == "VCSYNM")
+          @DTW_ASSIGN(orderBy, "VCSYNM DESC")
+          @DTW_ASSIGN(orderByDisplay, "Synonym (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "VCSYNM")
+          @DTW_ASSIGN(orderByDisplay, "Synonym")
+      %endif
+  %elif (sequence == "prodClass")
+      %if (orderBy == "VCPCLS,VCVNIT")
+          @DTW_ASSIGN(orderBy, "VCPCLS DESC,VCVNIT")
+          @DTW_ASSIGN(orderByDisplay, "Product Class (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "VCPCLS,VCVNIT")
+          @DTW_ASSIGN(orderByDisplay, "Product Class, Item Number")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ADDTOORDER){
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(orderQty1,@dtw_rstrip(orderQty1))
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@shto", customerNumber)
+  %if (vCat == "Y")
+      @Concat_Field("@@pitm", pseudoItem)
+  %endif
+  @Concat_Field("@@itm1", item1)
+  @Concat_Field("@@whs1", whs1)
+  @Concat_Field("@@qty1", orderQty1)
+  @Concat_Field("@@vcat", "Y")
+  @Concat_Field("@@pcfc", productCfgFormat)
+  @Concat_Field("@@pcrr", productCfgReqReview)
+  @Concat_Field("@@adpc", autoDisplayProdCfg)
+  @Concat_Field("@@adko", autoDisplayKitCfg)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Add_To_Order(profileHandle, dataBaseID, haveKit, edtVar)
+
+  @DTW_ASSIGN(updateTotal, "Y")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  %if (haveKit == "K")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryKitOptionError.d2w/DISPLAY$(genericVarBase)&amp;catalogVarName=@dtw_rurlescseq(srchalogVarName)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;vendCustItemsFound=@dtw_rurlescseq(vendCustItemsFound)&amp;reliefCode=D&amp;addToOrder=I&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %elif (haveKit == "F")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)OrderEntryFeatureOptionError.d2w/DISPLAY$(genericVarBase)&amp;catalogVarName=@dtw_rurlescseq(srchalogVarName)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;reliefCode=D&amp;addToOrder=I&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %else
+      %if (srchCloseItemWin == "Y")
+          <script TYPE="text/javascript">
+              opener.location.href=opener.location.href;
+              window.close();
+          </script>
+      %else
+          %if (updRecNbr > "0")
+              @dtw_assign(START_ROW_NUM, updRecNbr)
+              @dtw_assign(updRecNbr, "")
+          %endif
+          @Set_SQL(stmtSQL)
+      %endif
+  %endif
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          %INCLUDE "OrderEntryProgOpt.icl"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %if (oe_sec_10 == "Y")
+                  function validate(searchForm) {
+                      if (editNum(document.Search.srchWhs, 3, 0))
+                      return true;
+                  }
+              %else
+                  %INCLUDE "NoFormValidate.icl"
+              %endif
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+        			
+                          <tr><td class="dsphdr">Item Number</td>
+                              @dtw_assign(operNbr, "operItem")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchItem" type="text" size="15" maxlength="15"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Warehouse</td>
+                              @dtw_assign(operNbr, "operWhs")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchWhs" type="text" size="4" maxlength="3"><a href="$(homeURL)$(phpPath)WarehouseSearch.php$(altVarBase)&amp;docName=Search&amp;fldName=srchWhs&amp;fldDesc=warehouseName" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="warehouseName" value="$(fieldDesc)" type="text" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchDesc" type="text" size="15" maxlength="30"></td>
+                          </tr>
+        			
+                          <tr><td class="dsphdr">Synonym</td>
+                              @dtw_assign(operNbr, "operSyn")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchSyn" type="text" size="15" maxlength="15"></td>
+                          </tr>
+        			
+                          <tr><td class="dsphdr">Product Class</td>
+                              @dtw_assign(operNbr, "operProdClass")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchProdClass" type="text" size="4" maxlength="4"><a href="$(homeURL)$(cGIPath)ProdClassSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchProdClass&amp;fldDesc=productClassDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="productClassDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchSmartPart.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("coalesce(nullif(VCITEM,' '),nullif(VCVNIT,' '), VCPITM)", "Item Number", $(srchItem), "U", operItem, "A")
+  @Build_WildCard ("VCWHS", "Warehouse", $(srchWhs), "", operWhs, "N")
+  @Build_WildCard ("VCIMDSU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("VCSYNM", "Synonynm", $(srchSyn), "U", operSyn, "A")
+  @Build_WildCard ("VCPCLS", "Product Class", $(srchProdClass), "U", operProdClass, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}
+
+%HTML(CLOSE) {
+  <script TYPE="text/javascript">
+      opener.location.href=opener.location.href;
+      window.close();
+  </script>
+%}

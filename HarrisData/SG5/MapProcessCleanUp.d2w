@@ -1,0 +1,210 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Map Process (Clean Up Program)                              *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "SubmitScheduleVar.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Clear Interface Table"
+  d2wName                 = "MapProcessCleanUp.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;importKey=@dtw_rurlescseq(importKey)&amp;clearSelection=@dtw_rurlescseq(clearSelection)&amp;backHome=@dtw_rurlescseq(backHome)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  submitNoSelection       = "N"
+  submitCallProgram       = ""
+  submitEnvProgram        = ""
+  submitEnvPrinter        = ""
+  submitScheduleD2W       = "MapProcess.d2w"
+  apid                    = "SY"
+  selectedOption          = "C"
+%}
+
+%MACRO_FUNCTION Check_Sel_ByUser (INOUT alertMessage) {
+  @RtvFldDesc("FHIMKY=$(importKey) and (FHSELC='S' or (FHSELC='Y' and (FHSUSR<>'$(userProfile)' or FHSOPT<>'$(selectedOption)'))) ", "SYMIHD", "char(count(*))", otherUserCnt)
+  %if (otherUserCnt > "0")
+      @Rtv_Error_Desc("HSY0197", alertMessage)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)MapProcess.d2w/REPORT$(d2wVarBase)&amp;alertMessage=@dtw_rurlescseq(alertMessage)">
+  %endif
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL () {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "MAPPROCESSMAP")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      @dtw_assign(clearSelection, "Y")
+                      %INCLUDE "SubmitScheduleTop.icl"
+                      @dtw_assign(clearSelection, "")
+
+                      <table $(contentTable)>
+                          @RtvFldDesc("FHIMKY=$(importKey)", "SYMIHD", "FHDESC", V_FHDESC)
+                          @Format_Header("Import Definition", $(V_FHDESC), $(importKey))
+
+                          @RtvFldDesc("FHIMKY=$(importKey)", "SYMIHD", "CHAR(FHMPKY)", V_FHMPKY)
+                          @RtvFldDesc("MHMPKY=$(V_FHMPKY)", "SYMMHD", "MHDESC", V_MHDESC)
+                          @RtvFldDesc("MHMPKY=$(V_FHMPKY)", "SYMMHD", "MHWPGM", V_MHWPGM)
+                          @Format_Header("Map Definition", $(V_MHDESC), $(V_MHWPGM))
+                      </table>
+                      %INCLUDE "ConfMessageDisplayNoTable.icl"
+                      $(hrTagAttr)
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYMITB ", fileSQL)
+                      @dtw_concat(selectSQL, " FFIMKY=$(importKey)", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By FFDESC,FFIFIL ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Display_Table(profileHandle, dataBaseID, stmtSQL)
+            			
+                      <form class="formClass" METHOD=POST NAME="Chg" onSubmit="return validate(document.Chg)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)">
+                          <table $(contentTable)>
+                              %if (errFound != "" || scheduleJobSwitch == "Y")
+                                  @dtw_assign(scheduleJobSwitch, "")
+                                  @EdtVarErr(profileHandle, typeValue, edtVar)
+                                  @ErrVarErr(profileHandle, typeError, errVar)
+                                  @Decat_Field("@@sbjb")                @dtw_assign(submitSchedule, fieldValue)
+
+                                  %INCLUDE "ScheduleJobErr.icl"    %{ Schedule Entries Errors %}
+                                  %INCLUDE "ScheduleJobValue.icl"  %{ Schedule Entries Values %}
+                              %endif
+                          </table>
+                          @dtw_assign(envProgram, submitEnvProgram)
+                          @dtw_assign(envPrinter, submitEnvPrinter)
+                          %INCLUDE "ScheduleJob.icl"
+                          %if (submitSchedule == "S")
+                              %INCLUDE "SubmitScheduleBottom.icl"
+                              $(hrTagAttr)
+                          %else
+                              $(hrTagAttr)
+                          %endif
+                          %INCLUDE "Copyright.icl"
+                      </form>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Display_Table (IN CHAR(64)    profileHandle,
+                                     CHAR(2)     dataBaseID,
+                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <tr>
+              <td class="colhdr">Description</td>
+              <td class="colhdr">Import Table</td>
+          </tr>
+	   	
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_FFDESC)</td>
+                  <td class="colalph">$(V_FFIFIL)</td>
+              </tr>
+          %}
+      </table>
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     submitSchedule,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HSYSSS_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Update SYMIHD Set FHSELC='Y', FHSOPT='$(selectedOption)', FHSUSR='$(userProfile)' ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where FHIMKY=$(importKey) and FHSELC=' ' @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      @RtvFldDesc("FHIMKY=$(importKey)", "SYMIHD", "CHAR(FHMPKY)", V_FHMPKY)
+      @RtvFldDesc("MHMPKY=$(V_FHMPKY)", "SYMMHD", "MHCPGM", V_MHCPGM)
+      @dtw_assign(submitCallProgram, V_MHCPGM)
+      @dtw_assign(submitEnvProgram, V_MHCPGM)
+
+      @Set_SQL()
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+
+  @Check_Sel_ByUser(alertMessage)
+  %if (alertMessage == "")
+      @RtvFldDesc("FHIMKY=$(importKey)", "SYMIHD", "CHAR(FHMPKY)", V_FHMPKY)
+      @RtvFldDesc("MHMPKY=$(V_FHMPKY)", "SYMMHD", "MHCPGM", V_MHCPGM)
+      @dtw_assign(submitCallProgram, V_MHCPGM)
+      @dtw_assign(submitEnvProgram, V_MHCPGM)
+
+      %while(@dtw_rlength(importKey) != "8") {@dtw_insert("0", importKey, importKey)%}
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@rqst", "CALL $(submitCallProgram) PARM('$(importKey)' '$(userProfile)')")
+      @Concat_Field("@@pgid", submitEnvProgram)
+      @Concat_Field("@@prtf", submitEnvPrinter)
+      @Concat_Field("@@pref", submitApplPrefix)
+      @Concat_Field("@@apid", apid)
+      %INCLUDE "ScheduleJobConcat.icl"    %{ Schedule Entries Values %}
+      @dtw_concat(edtVar, "}{", edtVar)
+      @Validate_Data(profileHandle, dataBaseID, submitSchedule, errFound, edtVar, errVar)
+
+      %if (errFound == "" && selScheduleJob =="")
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Update SYMIHD Set FHSELC='S' ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where FHIMKY=$(importKey) and FHSELC='Y' and FHSUSR='$(userProfile)' and FHSOPT='$(selectedOption)' @@endsql", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      %INCLUDE "SubmitScheduleUpdate.icl"
+  %endif
+%}

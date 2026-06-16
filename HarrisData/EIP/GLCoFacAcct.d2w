@@ -1,0 +1,504 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: General Ledger Account                                      *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "WildCardAcct.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {	
+  page_title              = "General Ledger Account"
+  d2wName                 = "GLCoFacAcct.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;passedCompany=@dtw_rurlescseq(passedCompany)&amp;passedFacility=@dtw_rurlescseq(passedFacility)&amp;passedAcct=@dtw_rurlescseq(passedAcct)&amp;passedSub=@dtw_rurlescseq(passedSub)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = ""
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  noMsg                   = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@passedCompany", "@dtw_rurlescseq(passedCompany)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@passedFacility", "@dtw_rurlescseq(passedFacility)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@passedAcct", "@dtw_rurlescseq(passedAcct)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@passedSub", "@dtw_rurlescseq(passedSub)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "Menu.js"
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchCo, 2, 0) &&
+                      editNum(document.Search.srchFac, 4, 0) &&
+                      editNum(document.Search.srchAcct, 4, 0) &&
+                      editNum(document.Search.srchSub, 4, 0) &&
+                      editNum(document.Search.srchYear, 4, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "GLCOFACACCT")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_CompanyName, "OBCO")
+                      @dtw_assign(uv_FacilityName, "OBFAC")
+                      @dtw_assign(uv_AccountName, "OBACCT")
+                      @dtw_assign(uv_SubaccountName, "OBSUB")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select a.*, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(CFCFNM,' ') as CFCFNM, coalesce(CFCFNMU,' ') as CFCFNMU ", stmtSQL)
+                      @dtw_concat(fileSQL, " GLTROB a ", fileSQL)
+                      @dtw_concat(fileSQL, " left join HDCFAC on CFCO#=OBCO and CFFAC#=OBFAC ", fileSQL)
+                      @dtw_concat(selectSQL, "OBYEAR=(Select Max(OBYEAR) from GLTROB Where OBCO=a.OBCO and OBFAC=a.OBFAC and OBACCT=a.OBACCT and OBSUB=a.OBSUB $(wildCardSearch)) ", selectSQL)
+                      %if (passedCompany>"0")
+                          @dtw_concat(selectSQL, " and OBCO=$(passedCompany)", selectSQL)
+                      %endif
+                      %if (passedFacility>"0")
+                          @dtw_concat(selectSQL, " and OBFAC=$(passedFacility)", selectSQL)
+                      %endif
+                      %if (passedAcct>"0")
+                          @dtw_concat(selectSQL, " and OBACCT=$(passedAcct) and OBSUB=$(passedSub)", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count != "1")
+          <table $(contentTable)>
+              <colgroup>
+	   	   <col width="80%">
+	   	   <col width="15%">
+              <tr><td><h1> $(page_title)</h1></td>
+                  %if (formatToPrint != "Y")
+                      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                      <td class="toolbar">
+                          %if ("1"=="3" && sec_01 == "Y")
+                              <a href="$(homeURL)$(cGIPath)GLCoFacAcctMaintain.d2w/MAINTAIN$(genericVarBase)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                          %endif
+                          %if (passedAcct>"0")
+                               <a href="$(homeURL)$(cGIPath)GlAcctSelect.d2w/ENTRY$(d2wVarBase)" title="Return To Account">$(portalHome)</a>
+                          %elif (passedFacility>"0")
+                               <a href="$(homeURL)$(cGIPath)CoFacSelect.d2w/COFAC$(d2wVarBase)" title="Return To Company/Facility">$(portalHome)</a>
+                          %elif (passedCompany>"0")
+                               <a href="$(homeURL)$(cGIPath)GlCoSelect.d2w/ENTRY$(d2wVarBase)" title="Return To G/L Company">$(portalHome)</a>
+                          %endif
+                          %INCLUDE "XMLFormat.icl"
+                          %INCLUDE "FormatToPrint.icl"
+                          %INCLUDE "HelpPage.icl"
+                      </td>
+                  %endif
+              </tr>
+          </table>
+
+          <table $(contentTable)>
+              %if (passedAcct>"0")
+                  @RtvFldDesc("CHACCT=$(passedAcct) and CHSUB=$(passedSub)", "HDCHRT", "CHCHDS", V_CHCHDS)
+                  @Format_Acct(passedAcct, passedSub, "", F_AcctSub)
+                  @Format_Header("Account", $(V_CHCHDS), $( F_AcctSub))
+              %elif (passedFacility>"0")
+                  @RtvFldDesc("CFCO#=$(passedCompany) and CFFAC#=$(passedFacility)", "HDCFAC", "CFCFNM", V_CFCFNM)
+                  @Format_CoFac(passedCompany, passedFacility, "", F_coFac)
+                  @Format_Header("Company/Facility", $(V_CFCFNM), $(F_coFac))
+              %elif (passedCompany>"0")
+                  @RtvFldDesc("COCO=$(passedCompany) ", "HDCOMP", "CONAME", V_CONAME)
+                  @Format_Header("Company", $(V_CONAME), $(passedCompany))
+              %endif
+          </table>
+          %INCLUDE "ConfMessageDisplay.icl"
+
+          $(hrTagAttr)
+
+          %if (formatToPrint == "")
+              <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+                  <table $(quickSearchTable)>
+                      <tr>
+                          <th class="colhdr">Account Name</th>
+                          <th class="colhdr">Co</th>
+                          <th class="colhdr">Fac</th>
+                          <th class="colhdr">Account</th>
+                          <th class="colhdr">Fiscal Year</th>
+                      </tr>
+                      <tr><td><input type="text" class="inputalph" name="srchName" size="30" maxlength="30">
+                              <input type="hidden" name="operName" value="LIKE">
+                          </td>
+                          <td><input type="text" class="inputnmbr" name="srchCo" size="2" maxlength="2">
+                              <input type="hidden" name="operCo" value="=">
+                          </td>
+                          <td><input type="text" class="inputnmbr"  name="srchFac" size="4" maxlength="4">
+                              <input type="hidden" name="operFac" value="=">
+                          </td>
+                          <td><input type="text" class="inputnmbr"  name="srchAcct" size="4" maxlength="4">
+                              <input type="text" class="inputnmbr"  name="srchSub" size="4" maxlength="4">
+                              <input type="hidden" name="operAcct" value="=">
+                          </td>
+                          <td><input type="text" class="inputnmbr" name="srchYear" size="4" maxlength="4">
+                              <input type="hidden" name="operYear" value="=">
+                          </td>
+                          <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                      </tr>
+                  </table>
+                  <script TYPE="text/javascript">
+                      document.Search.srchName.focus();
+                  </script>
+              </form>
+
+               %INCLUDE "WildCardPage.icl"
+          %endif
+
+          <table $(contentTable)>
+              <tr>
+                  %if ("1"=="3" && formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y" || sec_05 == "Y"))
+                      <th class="colhdr">$(optionHeading)</th>
+                  %endif
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("OBGMNMU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Name"    title="Sequence By Name, Company/Facility, Account, Fiscal Year">Account Name</a></th>
+                  @OrderBy_Sort("CFCFNMU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Company"  title="Sequence By  Company/Facility, Account, Fiscal Year">Company/Facility</a></th>
+                  @OrderBy_Sort("OBACCT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Account"    title="Sequence By Account, Company/Facility, Fiscal Year">Account</a></th>
+                  @OrderBy_Sort("OBYEAR", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Year"   title="Sequence By Fiscal Year, Company/Facility, Account">Fiscal Year</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %endif
+
+              %ROW{
+                  @dtw_assign(maintainVar, "$(d2wVarBase)&amp;GLCompany=@dtw_rurlescseq(V_OBCO)&amp;GLFacility=@dtw_rurlescseq(V_OBFAC)&amp;GLAcct=@dtw_rurlescseq(V_OBACCT)&amp;GLSub=@dtw_rurlescseq(V_OBSUB)&amp;GLYear=@dtw_rurlescseq(V_OBYEAR)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+                  @Format_CoFac("$(V_OBCO)", "$(V_OBFAC)", "", F_CoFac)
+                  @Format_Acct("$(V_OBACCT)", "$(V_OBSUB)", "", F_AcctSub)
+                  %if (sql_Record_Count == "1")
+                      @Save_WebReg(webRegCurFile, profileHandle, d2wName, "", orderBy, orderByDisplay, "")
+                      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)GLCoFacAcctSelect.d2w/ENTRY$(maintainVar)">
+                  %else
+                      %INCLUDE "SetRowClass.icl"
+                      @Format_Confirm_Desc($(V_OBGMNM), "$(F_CoFac) $(F_AcctSub) $(F_OBYEAR)", "", "", "", "", confirmDesc)
+
+                      <tr class="$(rowClass)">
+                          %if ("1"=="3" && formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_01=="Y" && sec_04=="Y" || sec_05 == "Y"))
+                              <td class="opticon">
+                                  %if (sec_02 == "Y" || sec_03 == "Y")
+                                      <a href="$(homeURL)$(cGIPath)GLCoFacAcctMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                                  %endif
+                                  %if (sec_01=="Y" && sec_04=="Y")
+                                      <a href="$(homeURL)$(cGIPath)GLCoFacAcctMaintain.d2w/MAINTAIN$(maintainVar)&amp;fromCompanyNumber=@dtw_rurlescseq(V_OBCO)&amp;fromFacilityNumber=@dtw_rurlescseq(V_OBFAC)&amp;fromAccountNumber=@dtw_rurlescseq(V_OBACCT)&amp;fromSubAccountNumber=@dtw_rurlescseq(V_OBSUB)&amp;fromFiscalYear=@dtw_rurlescseq(V_OBYEAR)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                                  %endif
+                                  %if (sec_03 == "Y")
+                                      <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)GLCoFacAcctMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                                  %endif
+                              </td>
+                          %endif
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)GLCoFacAcctSelect.d2w/ENTRY$(maintainVar)" title="View G/L Account">$(V_OBGMNM)</a></td>
+                          <td class="colalph" $(helpCursor)><span title="$(F_CoFac)">$(V_CFCFNM)</span></td>
+                          <td class="colnmbr">$(F_AcctSub)</td>                                      	
+                          <td class="colnmbr">$(V_OBYEAR)</td>                                      	
+                      </tr>
+                  %endif
+              %}
+          </table>
+          %if (sql_Record_Count != "1")
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+              $(hrTagAttr)
+              %INCLUDE "Copyright.icl"
+          %endif
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  @dtw_assign(uv_CompanyName, "OBCO")
+  @dtw_assign(uv_FacilityName, "OBFAC")
+  @dtw_assign(uv_AccountName, "OBACCT")
+  @dtw_assign(uv_SubaccountName, "OBSUB")
+  %INCLUDE "userview.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+  @dtw_concat(fileSQL, " GLTROB a ", fileSQL)
+  @dtw_concat(selectSQL, "OBYEAR=(Select Max(OBYEAR) from GLTROB Where OBCO=a.OBCO and OBFAC=a.OBFAC and OBACCT=a.OBACCT and OBSUB=a.OBSUB $(wildCardSearch)) ", selectSQL)
+  %if (passedCompany>"0")
+      @dtw_concat(selectSQL, " and OBCO=$(passedCompany)", selectSQL)
+  %endif
+  %if (passedFacility>"0")
+      @dtw_concat(selectSQL, " and OBFAC=$(passedFacility)", selectSQL)
+  %endif
+  %if (passedAcct>"0")
+      @dtw_concat(selectSQL, " and OBACCT=$(passedAcct) and OBSUB=$(passedSub)", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+
+  @List_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) List_XMLQuery (IN  CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @XMLBeginTag("GLCoFacAcctList")
+          %ROW{
+
+              @XMLIDTag("$(V_OBCO)/$(V_OBFAC)-$(OBACCT)-$(OBSUB)-$(OBYEAR)", "GLAccount ID")
+                  @XMLTag(V_OBGMNM, "Name")
+                  @XMLTag(V_OBCO, "Company")
+                  @XMLTag(V_OBFAC, "Facility")
+                  @XMLTag(V_OBACCT, "AccountNumber")
+                  @XMLTag(V_OBSUB, "SubAccountNumber")
+                  @XMLTag(V_OBYEAR, "FiscalYear")
+                  @XMLTag(V_OBPBAL, "OpeningBalance")
+              @XMLEndTag("GLAccount")
+          %}
+      @XMLEndTag("GLCoFacAcctList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "OBGMNMU,OBCO,OBFAC,OBACCT,OBSUB,OBYEAR")
+          @DTW_ASSIGN(orderByDisplay, "Name, Company/Facility Account, Fiscal Year")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Name")
+      %if (orderBy == "OBGMNMU,OBCO,OBFAC,OBACCT,OBSUB,OBYEAR")
+          @DTW_ASSIGN(orderBy, "OBGMNMU DESC,OBCO,OBFAC,OBACCT,OBSUB,OBYEAR")
+          @DTW_ASSIGN(orderByDisplay, "Name (descending), Company/Facility Account, Fiscal Year")
+      %else
+          @DTW_ASSIGN(orderBy, "OBGMNMU,OBCO,OBFAC,OBACCT,OBSUB,OBYEAR")
+          @DTW_ASSIGN(orderByDisplay, "Name, Company/Facility Account, Fiscal Year")
+      %endif
+  %elif (sequence == "Company")
+      %if (orderBy == "OBCO,OBFAC,OBACCT,OBSUB,OBYEAR")
+          @DTW_ASSIGN(orderBy, "OBCO DESC,OBFAC DESC,OBACCT DESC,OBSUB DESC,OBYEAR")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility Account (descending), Fiscal Year")
+      %else
+          @DTW_ASSIGN(orderBy, "OBCO,OBFAC,OBACCT,OBSUB,OBYEAR")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility Account, Fiscal Year")
+      %endif
+  %elif (sequence == "Facility")
+      %if (orderBy == "OBFAC,OBCO,OBACCT,OBSUB,OBYEAR")
+          @DTW_ASSIGN(orderBy, "OBFAC DESC,OBCO DESC,OBACCT DESC,OBSUB DESC,OBYEAR")
+          @DTW_ASSIGN(orderByDisplay, "Facility, Company, Account (descending), Fiscal Year")
+      %else
+          @DTW_ASSIGN(orderBy, "OBFAC,OBCO,OBACCT,OBSUB,OBYEAR")
+          @DTW_ASSIGN(orderByDisplay, "Facility, Company, Account, Fiscal Year")
+      %endif
+  %elif (sequence == "Account")
+      %if (orderBy == "OBACCT,OBSUB,OBCO,OBFAC,OBYEAR")
+          @DTW_ASSIGN(orderBy, "OBACCT DESC,OBSUB DESC,OBCO DESC,OBFAC DESC,OBYEAR")
+          @DTW_ASSIGN(orderByDisplay, "Account Company/Facility (descending), Fiscal Year")
+      %else
+          @DTW_ASSIGN(orderBy, "OBACCT,OBSUB,OBCO,OBFAC,OBYEAR")
+          @DTW_ASSIGN(orderByDisplay, "Account Company/Facility, Fiscal Year")
+      %endif
+  %elif (sequence == "Year")
+      %if (orderBy == "OBYEAR,OBCO,OBFAC,OBACCT,OBSUB")
+          @DTW_ASSIGN(orderBy, "OBYEAR DESC,OBCO,OBFAC,OBACCT,OBSUB")
+          @DTW_ASSIGN(orderByDisplay, "Fiscal Year (descending), Company/Facility Account")
+      %else
+          @DTW_ASSIGN(orderBy, "OBYEAR,OBCO,OBFAC,OBACCT,OBSUB")
+          @DTW_ASSIGN(orderByDisplay, "Fiscal Year, Company/Facility Account")
+      %endif
+  %endif
+	
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchCo, 2, 0) &&
+                      editNum(document.Search.srchFac, 4, 0) &&
+                      editNum(document.Search.srchAcct, 4, 0) &&
+                      editNum(document.Search.srchSub, 4, 0) &&
+                      editNum(document.Search.srchYear, 4, 0) &&
+                      editNum(document.Search.srchAmt, 15, 2))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "GLCOFACACCTSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Account Name</td>
+                              @dtw_assign(operNbr, "operName")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchName" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Company</td>
+                              @dtw_assign(operNbr, "operCo")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchCo" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Facility</td>
+                              @dtw_assign(operNbr, "operFac")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchFac" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Account</td>
+                              @dtw_assign(operNbr, "operAcct")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchAcct" size="4" maxlength="4">
+                                                    <input type="text" name="srchSub" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Fiscal Year</td>
+                              @dtw_assign(operNbr, "operYear")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchYear" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Opening Balance</td>
+                              @dtw_assign(operNbr, "operAmt")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchAmt" size="18" maxlength="18">
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchName.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("OBGMNMU", "Account Name", $(srchName), "U", operName, "A")
+  @Build_WildCard ("OBCO",   "Company", $(srchCo), "", operCo, "N")
+  @Build_WildCard ("OBFAC",  "Facility", $(srchFac), "", operFac, "N")
+  @Build_WildCard ("OBYEAR", "Fiscal Year", $(srchYear), "", $(operYear), "N")
+  @Build_WildCard ("OBPBAL", "Opening Balance", $(srchAmt), "", $(operAmt), "N")
+  @Build_WildCard_Acct ("OBACCT", "OBSUB", "Account", $(srchAcct), $(srchSub), $(operAcct))
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

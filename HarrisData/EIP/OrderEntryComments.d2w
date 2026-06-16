@@ -1,0 +1,414 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Order Entry Comments                                        *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Order Entry Comments"
+  d2wName                 = "OrderEntryComments.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;commentLine=@dtw_rurlescseq(commentLine)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "COMMENTS$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  tabID                   = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %if (commentLine > "0")
+      @dtw_assign(tabID, "ITEMCOMMENT")
+  %else
+      @dtw_assign(tabID, "COMMENT")
+  %endif
+
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "OrderEntryConfirm.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "ORDERENTRYCMT")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(distinctSQL, "DODOCT concat DODESC ", distinctSQL)
+                      @dtw_concat(stmtSQL, " Select distinct DODOCT, DODESC, upper(DODESC) as DODESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDDOCT ", fileSQL)
+                      @dtw_concat(selectSQL, "(DOAPID='OE' or DOAPID='  ') ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @OrderComment_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+     </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) OrderComment_Query (IN CHAR(64)    profileHandle,
+                                          CHAR(2)     dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (commentLine > "0")
+          @dtw_assign(commentType, "Detail")
+      %else
+          @dtw_assign(commentType, "")
+      %endif
+      %INCLUDE "OrderEntryProgOpt.icl"
+      %INCLUDE "OrderEntryTabs.icl"
+
+      %if ("$(itemNumber)" != "")
+          <table $(contentTable)>
+              @Format_Header("Item", $(itemDescription), $(itemNumber))
+          </table>
+          $(hrTagAttr)
+      %endif
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr"> Document </th>
+                      <th class="colhdr"> Description </th></tr>
+                  <tr><td align=center><input type="text" class="inputalph" name="srchDoc" size="7" maxlength="3">
+                          <input type="hidden" name="operDoc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchDesc" size="30" maxlength="30">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDoc.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+          <tr>
+              %if (formatToPrint != "Y")
+                  %if (commentLine > "0")
+                      <th class="colhdr">Detail</th>
+                  %else
+                      <th class="colhdr">Order<br>Header</th>
+                      <th class="colhdr">Order<br>Trailer</th>
+                  %endif
+              %endif
+              @OrderBy_Sort("DODOCT", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=document" title="Sequence By Document"> Document</a></th>
+              @OrderBy_Sort("DODESCU", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=description" title="Sequence By Description, Document"> Description</a></th>
+              %if (formatToPrint != "Y")
+                  %if (commentLine > "0")
+                      %if (vendCustItemsFound == "Y")
+                          <th class="colhdr">Customer<br>Item</th>
+                      %endif
+                      <th class="colhdr">Extended<br>Description</th>
+                  %else
+                      <th class="colhdr">Customer<br>Header</th>
+                      <th class="colhdr">Customer<br>Trailer</th>
+                      <th class="colhdr">Document<br>Header</th>
+                      <th class="colhdr">Document<br>Trailer</th>
+                  %endif
+              %endif
+          </tr>
+
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (commentLine > "0")
+                  @RtvFldDesc("O4OCTL=$(orderControlNumber) and O4ORL#=$(commentLine) and O4DOCT='$(V_DODOCT)'", "OECMWK", "char(count(*))", dtlCount)
+                  %if (vendCustItemsFound == "Y")
+                      @RtvFldDesc("VCVCF='C' and VCVNCS=$(H1SHTO) and VCITEM='$(itemNumber)' and ICDOCT='$(V_DODOCT)'", "HDVCIT inner join HDVCIC on VCID=ICID", "char(count(*))", vendCustItemDesc)
+                  %endif
+                  @RtvFldDesc("IXITEM='$(itemNumber)' and IXDOCT='$(V_DODOCT)'", "HDIMXD", "char(count(*))", extDescCount)
+              %else
+                  @RtvFldDesc("O4OCTL=$(orderControlNumber) and O4ORL#=000 and O4DOCT='$(V_DODOCT)'", "OECMWK", "char(count(*))", hdrCount)
+                  @RtvFldDesc("O4OCTL=$(orderControlNumber) and O4ORL#=999 and O4DOCT='$(V_DODOCT)'", "OECMWK", "char(count(*))", trlCount)
+                  @RtvFldDesc("CXVCF='C' and CXNMBR=$(H1SHTO) and CXDOCT='$(V_DODOCT)' and CXHT='H'", "HDCCMT", "char(count(*))", custHdrCount)
+                  @RtvFldDesc("CXVCF='C' and CXNMBR=$(H1SHTO) and CXDOCT='$(V_DODOCT)' and CXHT='T'", "HDCCMT", "char(count(*))", custTrlCount)
+                  @RtvFldDesc("(DCAPID='OE' or DCAPID=' ') and DCDOCT='$(V_DODOCT)' and DCHT='H'", "HDDCMT", "char(count(*))", docHdrCount)
+                  @RtvFldDesc("(DCAPID='OE' or DCAPID=' ') and DCDOCT='$(V_DODOCT)' and DCHT='T'", "HDDCMT", "char(count(*))", docTrlCount)
+              %endif
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y")
+                      %if (commentLine > "0")
+                          <td class="opticon">
+        		       %if (dtlCount > "0")
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=@dtw_rurlescseq(commentLine)&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)" title="Maintain Document" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsCopy.d2w/COPY$(d2wVarBase)&amp;detailLine=@dtw_rurlescseq(commentLine)&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)" title="Copy Comments" onclick="$(commentWinVar)">$(copyImageSml)</a>
+                                  @Format_Confirm_Desc("$(V_DODESC)", "$(V_DODOCT)", "Detail Comments", "", "", "", confirmDesc)
+                                  <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/DELETE$(orderByVar)&amp;detailLine=@dtw_rurlescseq(commentLine)&amp;documentType=@dtw_rurlescseq(V_DODOCT)">$(deleteImageSml)</a>
+                              %else
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=@dtw_rurlescseq(commentLine)&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)" title="Maintain Document" onclick="$(commentWinVar)">$(commentImage)</a>
+                              %endif
+                          </td>
+                      %else
+                          <td class="opticon">
+        		       %if (hdrCount > "0")
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=000&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)" title="Maintain Document" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsCopy.d2w/COPY$(d2wVarBase)&amp;detailLine=000&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)" title="Copy Comments" onclick="$(commentWinVar)">$(copyImageSml)</a>
+                                  @Format_Confirm_Desc("$(V_DODESC)", "$(V_DODOCT)", "Header Comments", "", "", "", confirmDesc)
+                                  <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/DELETE$(orderByVar)&amp;detailLine=000&amp;documentType=@dtw_rurlescseq(V_DODOCT)">$(deleteImageSml)</a>
+                              %else
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=000&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)" title="Maintain Document" onclick="$(commentWinVar)">$(commentImage)</a>
+                              %endif
+                          </td>
+                          <td class="opticon">
+        		       %if (trlCount > "0")
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=999&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)" title="Maintain Document" onclick="$(commentWinVar)">$(commentExistImage)</a>
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsCopy.d2w/COPY$(d2wVarBase)&amp;detailLine=999&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)" title="Copy Comments" onclick="$(commentWinVar)">$(copyImageSml)</a>
+                                  @Format_Confirm_Desc("$(V_DODESC)", "$(V_DODOCT)", "Trailer Comments", "", "", "", confirmDesc)
+                                  <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/DELETE$(orderByVar)&amp;detailLine=999&amp;documentType=@dtw_rurlescseq(V_DODOCT)">$(deleteImageSml)</a>
+                              %else
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/MAINTAIN$(d2wVarBase)&amp;detailLine=999&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)" title="Maintain Document" onclick="$(commentWinVar)">$(commentImage)</a>
+                              %endif
+                          </td>
+                      %endif
+                  %endif
+                  <td class="colalph">$(V_DODOCT)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)OrderEntryCommentsDocument.d2w/REPORT$(d2wVarBase)&amp;detailLine=999&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)" title="Maintain Document" onclick="$(invoiceWinVar)">$(V_DODESC)</a></td>
+                  %if (commentLine > "0")
+                      %if (vendCustItemsFound == "Y")
+                          <td class="colcode">
+    		               %if (vendCustItemDesc > "0")
+                                  <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=@dtw_rurlescseq(commentLine)&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)&amp;cmtSelection=Y&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentRetrieveImage)</a>
+                              %else
+                                  &nbsp;
+                              %endif
+                          </td>
+                      %endif
+                      <td class="colcode">
+    		           %if (extDescCount > "0")
+                              <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=@dtw_rurlescseq(commentLine)&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)&amp;cmtSelection=E&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentRetrieveImage)</a>
+                          %else
+                              &nbsp;
+                          %endif
+                      </td>
+                  %else
+                      <td class="colcode">
+    		       %if (custHdrCount > "0")
+                              <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=000&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)&amp;cmtSelection=Y&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentRetrieveImage)</a>
+                          %else
+                              &nbsp;
+                          %endif
+                      </td>
+                      <td class="colcode">
+    		       %if (custTrlCount > "0")
+                              <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=999&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)&amp;cmtSelection=Y&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentRetrieveImage)</a>
+                          %else
+                              &nbsp;
+                          %endif
+                      </td>
+                      <td class="colcode">
+    		           %if (docHdrCount > "0")
+                              <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=000&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)&amp;cmtSelection=D&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentRetrieveImage)</a>
+                          %else
+                              &nbsp;
+                          %endif
+                      </td>
+                      <td class="colcode">
+    		           %if (docTrlCount > "0")
+                              <a href="$(homeURL)$(cGIPath)OrderEntryCommentsMaintain.d2w/ACCEPT$(d2wVarBase)&amp;detailLine=999&amp;documentType=@dtw_rurlescseq(V_DODOCT)&amp;docDescription=@dtw_rurlescseq(V_DODESC)&amp;cmtSelection=D&amp;clearOnClose=Y" onclick="$(commentWinVar)">$(commentRetrieveImage)</a>
+                          %else
+                              &nbsp;
+                          %endif
+                      </td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      %INCLUDE "EndTabs.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(COMMENTS) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "DODESCU,DODOCT")
+          @DTW_ASSIGN(orderByDisplay, "Description, Document")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "document")
+      %if (orderBy == "DODOCT")
+          @DTW_ASSIGN(orderBy, "DODOCT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Document (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "DODOCT")
+          @DTW_ASSIGN(orderByDisplay, "Document")
+      %endif
+  %elif (sequence == "description")
+      %if (orderBy == "DODESCU,DODOCT")
+          @DTW_ASSIGN(orderBy, "DODESCU DESC,DODOCT")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Document")
+      %else
+          @DTW_ASSIGN(orderBy, "DODESCU,DODOCT")
+          @DTW_ASSIGN(orderByDisplay, "Description, Document")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ITEMEXTCMTSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Document</td>
+                              @dtw_assign(operNbr, "operDoc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDoc" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="30" maxlength="30"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchDoc.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("DODOCT", "Document", $(srchDoc), "U", operDoc, "A")
+  @Build_WildCard ("upper(DODESC)", "Description", $(srchDesc), "U", operDesc, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}
+
+%HTML(DELETE) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From OECMWK Where O4OCTL=$(orderControlNumber) and O4ORL#=$(detailLine) ", stmtSQL)
+  %if (documentType != "@@ALL")
+      @dtw_concat(stmtSQL, "  and O4DOCT='$(documentType)' @@endsql ", stmtSQL)
+  %endif
+  @dtw_concat(stmtSQL, "  @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/COMMENTS$(d2wVarBase)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+%}

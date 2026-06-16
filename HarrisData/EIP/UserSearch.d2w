@@ -1,0 +1,314 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: User Search                                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "User Search"
+  d2wName                 = "UserSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)&amp;autoSubmit=@dtw_rurlescseq(autoSubmit)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldName                 = ""
+  fldDesc                 = ""
+  advanceSearch           = "N"
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectUser(user, userName){
+                  window.opener.document.$(docName).$(fldName).value = user;
+                  window.opener.document.$(docName).$(fldDesc).value = userName;
+                  window.opener.document.$(docName).$(fldName).focus();
+                  %if (autoSubmit == "Y")
+                      window.opener.document.$(docName).submit();
+                  %endif
+                  window.close();
+              }
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select SYUSER.* ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYUSER ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_assign(START_ROW_NUM, "1")
+                          @dtw_assign(RPT_MAX_ROWS, "9999")
+                          @dtw_concat(selectSQL, " USUSER='$(user)'", selectSQL)
+                      %elseif (wildCardSearch!="")
+                          @dtw_concat(selectSQL, " USUSER>' ' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Description</th>
+                      <th class="colhdr">User</th>
+                  </tr>
+                  <tr><td class="inputalph">
+                          <input type="text" name="srchDesc" size="20" maxlength="30">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchUser" size="10" maxlength="10">
+                          <input type="hidden" name="operUser" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>
+	
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              <tr>	
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("USDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=description" title="Sequence By Description, User Profile">Description</a></th>
+                  @OrderBy_Sort("USUSER", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=user" title="Sequence By User Profile">User Profile</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif		
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Quote(V_USUSER, F_USUSER)
+                  @Format_Quote(V_USDESC, F_USDESC)
+
+                  %if (moreInfo != "Y")	
+                      <tr class="$(rowClass)">
+                          <td class="colalph"><a href="javascript:selectUser('$(F_USUSER)','$(F_USDESC)')" title="Select User">$(V_USDESC)</a></td>
+                          <td class="colalph">$(V_USUSER)</td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;user=@dtw_rurlescseq(V_USUSER)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+
+                      <tr><td><a href="javascript:selectUser('$(F_USUSER)','$(F_USDESC)')" title="Select User">$(selectImageLrg)</a>
+                          </td>
+                      </tr>
+
+                      <tr><td class="dsphdr">User Profile</td>
+                          <td class="dspalph">$(V_USUSER)</td>
+                      </tr>
+                   			
+                      <tr><td class="dsphdr">Description</td>
+                          <td class="dspalph">$(V_USDESC)</td>
+                      </tr>
+
+                      @RtvFldDesc("RMROLE='$(V_USROLE)'", "SYROLM", "RMDESC", fieldDesc)
+                      <tr><td class="dsphdr">Role</td>
+                          @Format_Code(V_USROLE, F_USROLE)
+                          <td class="dspalph">$(fieldDesc) $(F_USROLE)</td>
+                      </tr>
+
+                      @RtvFldDesc("CMCUST=$(V_USCUST)", "HDCUST", "CMCNA1", fieldDesc)
+                      <tr><td class="dsphdr">Customer Number</td>
+                          @Format_Code(V_USCUST, F_USCUST)
+                          <td class="dspnmbr">$(fieldDesc) $(F_USCUST)</td>
+                      </tr>
+                   			
+                      @RtvFldDesc("VMVEND=$(V_USVEND)", "HDVEND", "VMVNA1", fieldDesc)
+                      <tr><td class="dsphdr">Vendor Number</td>
+                          @Format_Code(V_USVEND, F_USVEND)
+                          <td class="dspnmbr">$(fieldDesc) $(F_USVEND)</td>
+                      </tr>
+                   			
+                      @RtvFldDesc("SMSLSM=$(V_USSLSM)", "HDSLSM", "SMSNA1", fieldDesc)
+                      <tr><td class="dsphdr">Salesman Number</td>
+                          @Format_Code(V_USSLSM, F_USSLSM)
+                          <td class="dspnmbr">$(fieldDesc) $(F_USSLSM)</td>
+                      </tr>
+                   			
+                      <tr><td class="dsphdr">Badge Number</td>
+                          <td class="dspalph">$(V_USCLCK)</td>
+                      </tr>
+    	   		
+                      @RtvFldDesc("FLTYPE='BYN' and FLVALU='$(V_USADMN)'", "SYFLAG", "FLDESC", fieldDesc)
+                      <tr><td class="dsphdr">Administrator</td>
+                          @Format_Code(V_USADMN, F_USADMN)
+                          <td class="dspalph">$(fieldDesc) $(F_USADMN)</td>
+                      </tr>
+    	   		
+                      @RtvFldDesc("FLTYPE='BYN' and FLVALU='$(V_USAASI)'", "SYFLAG", "FLDESC", fieldDesc)
+                      <tr><td class="dsphdr">Allow Access To Security Inquiry</td>
+                          @Format_Code(V_USAASI, F_USAASI)
+                          <td class="dspalph">$(fieldDesc) $(F_USAASI)</td>
+                      </tr>
+        	   		
+                      @RtvFldDesc("FLTYPE='BYN' and FLVALU='$(V_USADOC)'", "SYFLAG", "FLDESC", fieldDesc)
+                      <tr><td class="dsphdr">Allow Access To Documentation</td>
+                          @Format_Code(V_USADOC, F_USADOC)
+                          <td class="dspalph">$(fieldDesc) $(F_USADOC)</td>
+                      </tr>
+                   			
+                      @RtvFldDesc("CNCATN='$(V_USCATN)'", "OECATN", "CNDESC", fieldDesc)
+                      <tr><td class="dsphdr">Catalog</td>
+                          @Format_Code(V_USCATN, F_USCATN)
+                          <td class="dspalph">$(fieldDesc) $(F_USCATN)</td>
+                      </tr>
+                   			
+                      @RtvFldDesc("PLPLNT=$(V_USDPLT)", "HDPLNT", "PLNAME", fieldDesc)
+                      <tr><td class="dsphdr">Default Plant Number</td>
+                          @Format_Code(V_USDPLT, F_USDPLT)
+                          <td class="dspnmbr">$(fieldDesc) $(F_USDPLT)</td>
+                      </tr>
+        	   		
+                      <tr><td class="dsphdr">Fax Number</td>
+                          <td class="dspalph">$(V_USFAX)</td>
+                      </tr>
+                   			
+                      <tr><td class="dsphdr">E-Mail Address</td>
+                          <td class="dspalph">$(V_USEMAL)</td>
+                      </tr>
+                   			
+                      <tr><td class="dsphdr">News Category URL</td>
+                          <td class="dspalph">$(V_USNEWS)</td>
+                      </tr>
+
+                      @RtvFldDesc("MDMEDM='$(V_USMEDM)'", "WFMEDM", "MDDESC", fieldDesc)
+                      <tr><td class="dsphdr">Medium</td>
+                          @Format_Code(V_USMEDM, F_USMEDM)
+                          <td class="dspalph">$(fieldDesc) $(F_USMEDM)</td>
+                      </tr>
+                  %endif
+              %}
+          </table>
+
+          %if (moreInfo != "Y")	
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+          %endif	   	
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "USDESCU,USUSER")
+      @DTW_ASSIGN(orderByDisplay, "Description, User Profile")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "description")
+      %if (orderBy == "USDESCU,USUSER")
+          @DTW_ASSIGN(orderBy, "USDESCU DESC,USUSER")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), User Profile")
+      %else
+          @DTW_ASSIGN(orderBy, "USDESCU,USUSER")
+          @DTW_ASSIGN(orderByDisplay, "Description, User Profile")
+      %endif
+  %elseif (sequence == "user")
+      %if (orderBy == "USUSER")
+          @DTW_ASSIGN(orderBy, "USUSER DESC")
+          @DTW_ASSIGN(orderByDisplay, "User Profile (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "USUSER")
+          @DTW_ASSIGN(orderByDisplay, "User Profile")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("USDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("USUSER", "User", $(srchUser), "U", operUser, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

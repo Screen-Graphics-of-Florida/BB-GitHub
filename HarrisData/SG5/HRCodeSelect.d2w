@@ -1,0 +1,179 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Company Code Select                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "QuickLink.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title 	        = "Human Resources Code"
+  d2wName              = "HRCodeSelect.d2w"
+  attachFolder         = "HRCode"
+  d2wVarBase           = "$(genericVarBase)&amp;hrCompany=@dtw_rurlescseq(hrCompany)&amp;hrCodeType=@dtw_rurlescseq(hrCodeType)&amp;hrCode=@dtw_rurlescseq(hrCode)&amp;backHome=@dtw_rurlescseq(backHome)"
+  programName          = "HPEPCU"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  RPT_MAX_ROWS         = "99"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  facilityZero         = "0000"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext	        = "1"
+  totalPages	        = "0"	
+  attachVarKey         = ""
+  attachForDesc        = ""
+  quickLinksInUse      = "N"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@hrCompany", "@dtw_rurlescseq(hrCompany)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@hrCodeType", "@dtw_rurlescseq(hrCodeType)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@hrCode", "@dtw_rurlescseq(hrCode)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @dtw_assign(UVFac, "0000")
+  @HrCoFacUserView(profileHandle, dataBaseID, userPass, hrCompany, UVFac)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+                  <table $(baseTable)>
+                      <tr valign="top">
+                          %if (formatToPrint == "")
+                              @dtw_assign(pageID, "CODESELECT")
+                              <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                          %endif
+                          <td class="content">
+                              @dtw_assign(stmtSQL, "")
+                              @dtw_concat(stmtSQL, "SELECT *", stmtSQL)
+                              @dtw_concat(stmtSQL, " FROM PECODE inner join HRCDTY on ODTYPE=CDTYPE", stmtSQL)
+                              @dtw_concat(stmtSQL, " WHERE ODCOMP=$(hrCompany) and ODTYPE='$(hrCodeType)' and ODCODE='$(hrCode)'", stmtSQL)
+                              %INCLUDE "stmtSQLEnd.icl"
+                              @HrCode_Query(profileHandle, dataBaseID, stmtSQL)
+                          </td>
+                      </tr>
+                  </table>
+                  <!-- Start Of Trailer Code -->
+                  %INCLUDE "trailer.icl"
+                  <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) HrCode_Query (IN  CHAR(64)    profileHandle,
+				      CHAR(2)     dataBaseID,
+                                     CHAR(32000) stmtSQL)
+  {CALL $(pgmLibrary)HSYSQL_W
+
+      %REPORT{
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="80%">
+                  <col width="15%">
+
+              @RetHrCompNam(profileHandle, dataBaseID, hrCompany, facilityZero, coFacName)
+              <tr><td><h1>$(page_title)</h1></td>
+              @dtw_assign(hrCompanyFilled, "$(hrCompany)")
+              %while(@dtw_rlength(hrCompanyFilled) != "2") {@dtw_insert("0", hrCompanyFilled, hrCompanyFilled)%}
+              @dtw_assign(attachVarKey, "$(hrCompanyFilled)_$(hrCodeType)_$(hrCode)")
+              @dtw_assign(attachForDesc, coFacName)
+              @dtw_assign(attachPrg1, "PECODE Where ODCOMP=$(hrCompany) and ODTYPE='$(hrCodeType)' and ODCODE='$(hrCode)'")
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "")  && (backHome != "$(d2wName)/report"))
+                          <a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&tblID=22" title="Back Home">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "Attachment.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+              </tr>
+              <tr><td><h2>$(coFacName)</h2></td></tr>
+          </table>
+          %INCLUDE "ConfMessageDisplay.icl"
+          $(hrTagAttr)
+
+          %ROW {
+
+              <table $(contentTable)>
+
+              <tr><td class="dsphdr">Type Of Code</td>
+                  <td class="dspalph">$(V_ODTYPE) - $(V_CDTYDS)</td></tr>
+
+              <tr><td class="dsphdr">Code Description</td>
+                  <td class="dspalph">$(V_ODDESC)</td></tr>
+                  %if (hrCodeType == "J")
+                      @dtw_assign(T_EEO, "")
+                      @CvtEEO(V_ODJEEO, T_EEO)
+                      @RtvFldDesc("ODCOMP=$(hrCompany) and ODTYPE='Y' and ODCODE='$(T_EEO)' ", "PECODE", "ODDESC", HrCodeDesc)
+                      @Format_Code(V_ODJEEO, F_ODJEEO)
+                      <tr><td class="dsphdr">EEO-1 Job Category</td>
+                      <td class="dspalph">$(HrCodeDesc)</td>
+                      <td class="dspalph">$(F_ODJEEO)</td></tr>
+                      @RtvFldDesc("ODCOMP=$(hrCompany) and ODTYPE='4' and ODCODE='$(V_ODPGRD)' ", "PECODE", "ODDESC", HrCodeDesc)
+                      <tr><td class="dsphdr">Pay Grade</td>
+                      <td class="dspalph">$(HrCodeDesc)</td></tr>
+                  %endif
+
+                  %if (hrCodeType == "4")
+                      <tr><td class="dsphdr">Low Salary</td>
+                           @Format_Nbr($(V_ODLOWR), F_ODLOWR, "0", $(amtEditCode), "", "", "")
+                          <td class="dspnmbr">$(F_ODLOWR)</td></tr>
+                      <tr><td class="dsphdr">Mid Salary</td>
+                           @Format_Nbr($(V_ODMIDR), F_ODMIDR, "0", $(amtEditCode), "", "", "")
+                          <td class="dspnmbr">$(F_ODMIDR)</td></tr>
+                      <tr><td class="dsphdr">High Salary</td>
+                           @Format_Nbr($(V_ODHIGR), F_ODHIGR, "0", $(amtEditCode), "", "", "")
+                      <td class="dspnmbr">$(F_ODHIGR)</td></tr>
+                  %endif
+              </table>
+              %INCLUDE "AttachmentSQL.icl"
+          %}	
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%INCLUDE "AttachmentSelect.icl"
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(programName, "HPEPCU")
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}

@@ -1,0 +1,353 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Comment Search                                              *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Comment Search"
+  d2wName                 = "CommentSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=@dtw_rurlescseq(lineNumber)&amp;headerTrailer=@dtw_rurlescseq(headerTrailer)&amp;commentType=@dtw_rurlescseq(commentType)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;documentType=@dtw_rurlescseq(documentType)&amp;docDescription=@dtw_rurlescseq(docDescription)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  advanceSearch           = "N"
+  customerIDNumber        = ""
+  vendCustFlag            = "C"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      @RtvFldDesc("VCVCF='C' and VCVNCS=$(customerNumber) and VCITEM='$(itemNumber)'", "HDVCIT", "char(VCID)", customerIDNumber)
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(distinctSQL, "DODOCT concat DODESC ", distinctSQL)
+                      @dtw_concat(stmtSQL, " Select distinct DODOCT, DODESC, upper(DODESC) as DODESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDDOCT ", fileSQL)
+                      %if (itemNumber != "" && customerIDNumber>"0")
+                          @dtw_concat(selectSQL, " (Exists (Select * From HDIMXD ", selectSQL)
+                          @dtw_concat(selectSQL, " Where IXITEM='$(itemNumber)' and IXDOCT=DODOCT) ", selectSQL)
+                          @dtw_concat(selectSQL, " or Exists (Select * From HDVCIC  ", selectSQL)
+                          @dtw_concat(selectSQL, " Where ICID=$(customerIDNumber) and ICDOCT=DODOCT)) ", selectSQL)
+                      %elif (itemNumber != "")
+                          @dtw_concat(selectSQL, " Exists (Select * From HDIMXD ", selectSQL)
+                          @dtw_concat(selectSQL, " Where IXITEM='$(itemNumber)' and IXDOCT=DODOCT) ", selectSQL)
+                      %else
+                          @dtw_concat(selectSQL, " Exists (Select * From HDCCMT ", selectSQL)
+                          @dtw_concat(selectSQL, " Where CXVCF='C' and CXNMBR=$(customerNumber) and ", selectSQL)
+                          @dtw_concat(selectSQL, " CXDOCT=DODOCT and CXHT='$(headerTrailer)') ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @CommentSearch_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+     </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) CommentSearch_Query (IN CHAR(64)    profileHandle,
+                                           CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(commentType) $(page_title)</h1></td>
+              <td class="toolbar">
+                  %INCLUDE "CloseWindow.icl"
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          @Format_Header("Customer", $(customerName), $(customerNumber))
+          @Format_Header("Document", $(docDescription), $(documentType))
+          %if (itemNumber != "")
+              @Format_Header("Item", $(itemDescription), $(itemNumber))
+          %endif
+      </table>
+
+      $(searchhrTagAttr)
+
+      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+          <table $(quickSearchTable)>
+              <tr><th class="colhdr"> Document </th>
+                  <th class="colhdr"> Description </th></tr>
+              <tr><td align=center><input type="text" class="inputalph" name="srchDoc" size="10" maxlength="3">
+                      <input type="hidden" name="operDoc" value="LIKE">
+                  </td>
+                  <td><input type="text" class="inputalph" name="srchDesc" size="30" maxlength="30">
+                      <input type="hidden" name="operDesc" value="LIKE">
+                  </td>
+                  <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+              </tr>
+          </table>
+          <script TYPE="text/javascript">
+              document.Search.srchDoc.focus();
+          </script>
+      </form>
+
+      %INCLUDE "WildCardPage.icl"
+
+      <table $(contentTable)>
+          @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+          <tr>
+              @OrderBy_Sort("DODOCT", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=document" title="Sequence By Document"> Document</a></th>
+              @OrderBy_Sort("DODESCU", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=description" title="Sequence By Description, Document"> Description</a></th>
+              %if (itemNumber != "")
+                  %if (customerIDNumber > "0")
+                     <th class="colhdr">Customer/<br>Item</th>
+                  %endif
+                 <th class="colhdr">Extended<br>Description</th>
+              %endif
+          </tr>
+
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @RtvFldDesc("ICID=$(customerIDNumber) and ICDOCT='$(V_DODOCT)'", "HDVCIC", "char(count(*))", custItemCount)
+              @RtvFldDesc("IXITEM='$(itemNumber)' and IXDOCT='$(V_DODOCT)'", "HDIMXD", "char(count(*))", extDescCount)
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_DODOCT)</td>
+                  %if (itemNumber != "")
+                      <td class="colalph">$(V_DODESC)</td>
+                      %if (customerIDNumber > "0")
+                          %if (custItemCount > "0" && customerIDNumber > "0")
+                              <td class="colicon">
+                                  <a href="$(homeURL)$(cGIPath)$(d2wName)/SELECT$(d2wVarBase)&amp;fromDocument=@dtw_rurlescseq(V_DODOCT)&amp;commentFile=HDVCIC" title="Select Comments">$(copyImageSml)</a>
+                                  <a href="$(homeURL)$(cGIPath)$(d2wName)/VIEW$(d2wVarBase)&amp;fromDocument=@dtw_rurlescseq(V_DODOCT)&amp;fromDocumentDesc=@dtw_rurlescseq(V_DODESC)&amp;commentFile=HDVCIC" title="View Comments">$(moreInfoImage)</a>
+                              </td>
+                          %else
+                              <td class="colicon">&nbsp;</td>
+                          %endif
+                      %endif
+                      %if (extDescCount > "0")
+                          <td class="colicon">
+                              <a href="$(homeURL)$(cGIPath)$(d2wName)/SELECT$(d2wVarBase)&amp;fromDocument=@dtw_rurlescseq(V_DODOCT)&amp;commentFile=HDIMXD" title="Select Comments">$(copyImageSml)</a>
+                              <a href="$(homeURL)$(cGIPath)$(d2wName)/VIEW$(d2wVarBase)&amp;fromDocument=@dtw_rurlescseq(V_DODOCT)&amp;fromDocumentDesc=@dtw_rurlescseq(V_DODESC)&amp;commentFile=HDIMXD" title="View Comments">$(moreInfoImage)</a>
+                          </td>
+                      %else
+                          <td class="colicon">&nbsp;</td>
+                      %endif
+                  %else
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)$(d2wName)/SELECT$(d2wVarBase)&amp;fromDocument=@dtw_rurlescseq(V_DODOCT)&amp;commentFile=HDCCMT" title="Select Comments">$(V_DODESC)</a></td>
+                      <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/VIEW$(d2wVarBase)&amp;fromDocument=@dtw_rurlescseq(V_DODOCT)&amp;fromDocumentDesc=@dtw_rurlescseq(V_DODESC)&amp;commentFile=HDCCMT" title="View Comments">$(moreInfoImage)</a></td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+%MACRO_FUNCTION Display_Comments () {	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(contentTable)>
+              <tr valign="top">
+                  <td>
+                      %if (commentFile == "HDCCMT")
+                          @Get_Customer_Comments(profileHandle, dataBaseID, vendCustFlag, customerNumber, fromDocument, headerTrailer, comment)
+                      %elif (commentFile == "HDIMXD")
+                          @Get_Item_Comments(profileHandle, dataBaseID, itemNumber, fromDocument, comment)
+                      %else
+                          @RtvFldDesc("VCVCF='C' and VCVNCS=$(customerNumber) and VCITEM='$(itemNumber)'", "HDVCIT", "char(VCID)", customerIDNumber)
+                          @Get_CustItem_Comments(profileHandle, dataBaseID, customerIDNumber, fromDocument, comment)
+                      %endif
+                      <table $(contentTable)>
+                          <tr><td><h1>$(page_title)</h1></td>
+                              <td class="toolbar">
+                                  <a href="$(homeURL)$(cGIPath)$(d2wName)/SELECT$(d2wVarBase)&amp;fromDocument=@dtw_rurlescseq(fromDocument)&amp;commentFile=@dtw_rurlescseq(commentFile)" title="Select Comments">$(copyImageSq)</a>
+                                  %INCLUDE "CloseWindow.icl"
+                              </td>
+                          </tr>
+                      </table>
+                      <table $(contentTable)>
+                          @Format_Header("Customer", $(customerName), $(customerNumber))
+                          @Format_Header("Document", $(docDescription), $(documentType))
+                          %if (itemNumber != "")
+                              @Format_Header("Item", $(itemDescription), $(itemNumber))
+                          %endif
+                      </table>
+                      <table $(contentTable)>
+                          <tr align="center"><td><h2>$(fromDocumentDesc)</h2></td></tr>
+                          <tr><td><textarea ROWS=20 COLS=60 WRAP="hard">$(comment)</textarea></td></tr>
+                      </table>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(DTW_directcall) Get_Customer_Comments(INOUT CHAR(64)     profileHandle,
+				                       CHAR(2)      dataBaseID,
+				      	               CHAR(1)      vendCustFlag,
+				                       DECIMAL(7,0) customerNumber,
+				      	               CHAR(3)      fromDocument,
+				      	               CHAR(1)      headerTrailer,
+				                       char(65000)  comment)
+{%EXEC {HHDCMT_P.PGM %}
+%}
+
+%FUNCTION(DTW_directcall) Get_Item_Comments(INOUT CHAR(64)     profileHandle,
+				                   CHAR(2)      dataBaseID,
+				                   CHAR(15)     itemNumber,	
+				      	           CHAR(3)      fromDocument,
+				                   char(32000)  comment)
+{%EXEC {HHDEDM_P.PGM %}
+%}
+
+%FUNCTION(DTW_directcall) Get_CustItem_Comments(INOUT CHAR(64)     profileHandle,
+				                       CHAR(2)      dataBaseID,
+				                       DECIMAL(9,0) customerIDNumber,	
+				      	               CHAR(3)      fromDocument,
+				                       char(32000)  comment)
+{%EXEC {HHDVCC_P.PGM %}
+%}
+
+%FUNCTION(DTW_directcall) Select_Comments (INOUT   CHAR(64)    profileHandle,
+				      		    CHAR(2)     dataBaseID,
+				                    CHAR(10)    commentFile,
+				                    CHAR(3)     fromDocument,
+				                    CHAR(3)     documentType,
+				      		    DEC(7,0)    customerNumber,
+				      		    DEC(8,0)    orderControlNumber,
+				      		    CHAR(15)    itemNumber,
+				      		    DEC(3,0)    lineNumber)
+
+{%EXEC {HOECMS_W.PGM %}
+%}
+
+%HTML(VIEW) {
+  %INCLUDE "setLibraryList.icl"
+  @Display_Comments ()
+%}
+
+%HTML(SELECT){
+  %INCLUDE "setLibraryList.icl"
+  @Select_Comments(profileHandle, dataBaseID, commentFile, fromDocument, documentType, customerNumber, orderControlNumber, itemNumber, lineNumber)
+
+  <script TYPE="text/javascript">
+      opener.location.href=opener.location.href;
+      window.close()
+  </script>
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "DODESCU,DODOCT")
+      @DTW_ASSIGN(orderByDisplay, "Description, Document")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "document")
+      %if (orderBy == "DODOCT")
+          @DTW_ASSIGN(orderBy, "DODOCT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Document (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "DODOCT")
+          @DTW_ASSIGN(orderByDisplay, "Document")
+      %endif
+  %elif (sequence == "description")
+      %if (orderBy == "DODESCU,DODOCT")
+          @DTW_ASSIGN(orderBy, "DODESCU DESC,DODOCT")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Document")
+      %else
+          @DTW_ASSIGN(orderBy, "DODESCU,DODOCT")
+          @DTW_ASSIGN(orderByDisplay, "Description, Document")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("DODOCT", "Document", $(srchDoc), "U", operDoc, "A")
+  @Build_WildCard ("upper(DODESC)", "Description", $(srchDesc), "U", operDesc, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

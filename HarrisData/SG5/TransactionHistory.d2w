@@ -1,0 +1,918 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Transaction History                                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Transaction History"
+  d2wName                 = "TransactionHistory.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;viewOption=@dtw_rurlescseq(viewOption)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  currentURL              = "$(d2wName)/REPORT$(d2wVarBase)&amp;START_ROW_NUM=@dtw_rurlescseq(START_ROW_NUM)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  DTW_PAD_PGM_PARMS       = "YES"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "AJAXRequest.icl"
+              %INCLUDE "SaveCurrentURL.icl"
+              %INCLUDE "dateedit.icl"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchDoc, 8, 0) &&
+                      editNum(document.Search.srchShipTo, 7, 0) &&
+                      %if (V_HDPORL > "0")
+                          editNum(document.Search.srchVend, 7, 0) &&
+                      %endif
+                      editdate(document.Search.srchTransDate))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- Start Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                       @dtw_assign(pageID, "TRANSHISTORY")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_TransactionTypeName, "DTIVTT")
+                      @dtw_assign(uv_BankName, "DTBANK")
+                      @dtw_assign(uv_CustomerName, "DTSTCS")
+                      @dtw_assign(uv_VendorName, "DTVEND")
+                      @dtw_assign(uv_WarehouseName, "DTWHS")
+                      @dtw_assign(uv_ProductGroupName, "DTPGRP")
+                      @dtw_assign(uv_ProductClassName, "DTPCLS")
+                      @dtw_assign(uv_PlantName, "DTPLT")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select HDDTRN.*, ifnull(IMIMDS, ' ') as IMIMDS, ifnull(IMIMDSU, ' ') as IMIMDSU ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDDTRN left join HDIMST on DTITEM=IMITEM", fileSQL)
+                      %if (wildCardSearch!="" || uv_Sql!="" || viewOption != "E")
+                          @dtw_concat(selectSQL, "DTIVTT<>' ' ", selectSQL)
+                      %endif
+                      %if (viewOption != "E")
+                          @dtw_concat(selectSQL, " and DTQTY<>0 ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Trans_History_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Trans_History_Query (IN CHAR(64)    profileHandle,
+				            CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitleWithPrint.icl"
+      %INCLUDE "ConfMessageDisplay.icl"
+	
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr>
+                      <th class="colhdr">Trans<br>Type</th>
+                      <th class="colhdr">Item<br>Number</th>
+                      <th class="colhdr">Description</th>
+                      <th class="colhdr">Whs</th>
+                      %if (V_HDPDRL > "0")
+                          <th class="colhdr">Plt</th>
+                      %endif
+                      <th class="colhdr">Trans<br>Date</th>
+                      <th class="colhdr">Document<br>Number</th>
+                      %if (V_HDPDRL>"0")
+                          <th class="colhdr">Mfg<br>Order</th>
+                      %endif
+                      %if (V_CILTUS == "Y")
+                          <th class="colhdr">Lot<br>Number</th>
+                      %endif
+                      <th class="colhdr">Ship-To<br>Number</th>
+                      %if (V_HDPORL > "0")
+                          <th class="colhdr">Vendor<br>Number</th>
+                      %endif
+                  </tr>
+                  <tr>
+                      <td><input type="text" class="inputalph" name="srchTransType" size="5" maxlength="4">
+                          <input type="hidden" name="operTransType" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchItem" size="5" maxlength="15">
+                          <input type="hidden" name="operItem" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchDesc" size="5" maxlength="30">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputnmbr" name="srchWhs" size="1" maxlength="3">
+                          <input type="hidden" name="operWhs" value="=">
+                      </td>
+                      %if (V_HDPDRL > "0")
+                          <td><input type="text" class="inputnmbr" name="srchPlt" size="1" maxlength="3">
+                              <input type="hidden" name="operPlt" value="=">
+                          </td>
+                      %endif
+                      <td><input type="text" class="inputnmbr" name="srchTransDate" size="5" maxlength="6"><a href="javascript:calWindow('srchTransDate');">$(calendarImage)</a>
+                          <input type="hidden" name="operTransDate" value="=">
+                      </td>
+                      <td><input type="text" class="inputnmbr" name="srchDoc" size="5" maxlength="8">
+                          <input type="hidden" name="operDoc" value="=">
+                      </td>
+                      %if (V_HDPDRL > "0")
+                          <td><input type="text" class="inputnmbr" name="srchMfgOrder" size="5" maxlength="9">
+                              <input type="hidden" name="operMfgOrder" value="LIKE">
+                          </td>
+                      %endif
+                      %if (V_CILTUS == "Y")
+                          <td><input type="text" class="inputalph" name="srchLot" size="5" maxlength="15">
+                              <input type="hidden" name="operLot" value="LIKE">
+                          </td>
+                      %endif
+                      <td><input type="text" class="inputnmbr" name="srchShipTo" size="5" maxlength="7">
+                          <input type="hidden" name="operShipTo" value="=">
+                      </td>
+                      %if (V_HDPORL > "0")
+                          <td><input type="text" class="inputnmbr" name="srchVend" size="5" maxlength="7">
+                              <input type="hidden" name="operVend" value="=">
+                          </td>
+                      %endif
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchTransType.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("DTTRDT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TransDate" title="Sequence By Transaction Date, Item Number, Warehouse, Transaction Type">Trans<br>Date</a></th>
+              @OrderBy_Sort("DTIVTT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TransType" title="Sequence By Transaction Type, Item Number, Warehouse, Transaction Date (descending)">Trans<br>Type</a></th>
+              @OrderBy_Sort("DTITEM", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ItemNbr" title="Sequence By Item Number, Warehouse, Transaction Date (descending), Transaction Type">Item<br>Number</a></th>
+              @OrderBy_Sort("IMIMDSU", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ItemDesc" title="Sequence By Description, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Description</a></th>
+              @OrderBy_Sort("DTQTY", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=TransQty" title="Sequence By Transaction Quantity, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Trans<br>Quantity</a></th>
+              %if (viewOption == "E")
+                  @OrderBy_Sort("DTEXPA", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ExtPrice" title="Sequence By Extended Price, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Extended<br>Price</a></th>
+                  @OrderBy_Sort("DTEXCA", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ExtCost" title="Sequence By Extended Cost, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Extended<br>Cost</a></th>
+              %endif
+              @OrderBy_Sort("DTDOC#", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=DocNbr" title="Sequence By Document Number, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Document<br>Number</a></th>
+              %if (V_HDPDRL>"0")
+                  @OrderBy_Sort("DTMORD", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=MfgOrder" title="Sequence By Mfg Order, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Mfg<br>Order</a></th>
+              %endif
+              %if (V_CISTKL == "Y")
+                  @OrderBy_Sort("DTSTKR", sortVar)
+                  <th class="colhdr$(sortVar)" colspan="3"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=StockLoc" title="Sequence By Stock Location, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Stock Location</a></th>
+              %endif
+              %if (V_CILTUS == "Y")
+                  @OrderBy_Sort("DTLOT#", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Lot" title="Sequence By Lot Number, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Lot Number</a></th>
+              %endif
+              @OrderBy_Sort("DTWHS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Whs" title="Sequence By Warehouse, Item Number, Transaction Date (descending), Transaction Type">Whs</a></th>
+              %if (V_HDPDRL > "0")
+                  @OrderBy_Sort("DTPLT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Plant" title="Sequence By Plant, Item Number, Transaction Date (descending), Transaction Type">Plt</a></th>
+              %endif
+              %if (viewOption == "E" && V_CIIVGL == "Y")
+                  @OrderBy_Sort("DTOEGL", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=FeedGL" title="Sequence By G/L Feed, Item Number, Warehouse, Transaction Date (descending), Transaction Type">G/L<br>Feed</a></th>
+              %endif
+              @OrderBy_Sort("DTBTCS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=BillTo" title="Sequence By Bill-To Customer, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Bill-To<br>Number</a></th>
+              @OrderBy_Sort("DTSTCS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ShipTo" title="Sequence By Ship-To Customer, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Ship-To<br>Number</a></th>
+              @OrderBy_Sort("DTVEND", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Vendor" title="Sequence By Vendor Number, Item Number, Warehouse, Transaction Date (descending), Transaction Type">Vendor<br>Number</a></th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+	   		
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Date(V_DTTRDT, "D", F_DTTRDT)
+              @dtw_add(T_DTQTY, V_DTQTY, "15", T_DTQTY)
+              @dtw_add(T_DTEXPA, V_DTEXPA, "15", T_DTEXPA)
+              @dtw_add(T_DTEXCA, V_DTEXCA, "15", T_DTEXCA)
+              @Format_Nbr(V_DTQTY, F_DTQTY, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              %if (viewOption == "E")
+                  @Format_Nbr(V_DTEXPA, F_DTEXPA, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                  @Format_Nbr(V_DTEXCA, F_DTEXCA, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+              %endif
+              %if (V_DTIVTT == "TAX")
+                 @dtw_assign(tranTypeDesc, "Tax")
+              %elseif (V_DTIVTT == "FRT")
+                 @dtw_assign(tranTypeDesc, "Freight")
+              %elseif (V_DTIVTT == "SPC")
+                 @dtw_assign(tranTypeDesc, "Special Charge")
+              %else
+                  @RtvFldDesc("TTTYPE='$(V_DTIVTT)'", "HDTTYP", "TTDESC", tranTypeDesc)
+              %endif
+
+              <tr class="$(rowClass)">
+                  <td class="coldate">$(F_DTTRDT)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)TransactionHistoryInquiry.d2w/DISPLAY$(orderByVar)&amp;origTransSequence=@dtw_rurlescseq($(V_DTOSEQ))&amp;transSequence=@dtw_rurlescseq($(V_DTDSEQ))" onclick="$(inquiryWinVar)" title="$(tranTypeDesc) Transaction Quickview">$(V_DTIVTT)</a></td>
+                  <td class="colalph">
+                      %if (V_IMIMDS != "")
+                          <a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_DTITEM))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_DTITEM)</a>
+                      %else
+                          $(V_DTITEM)
+                      %endif
+                  </td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_DTITEM)&amp;itemDescription=@dtw_rurlescseq(V_IMIMDS)" title="View Item">$(V_IMIMDS)</a></td>
+                  <td class="colnmbr">
+                      %if (V_DTQTY != ".0000")
+                          %if (V_HDPDRL>"0")
+                              <a href="$(homeURL)$(cGIPath)ItemTransactionHistory.d2w/Edit_Plant$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_DTITEM)&amp;plantNumber=@dtw_rurlescseq(V_DTPLT)&amp;warehouseNumber=" title="Item Transaction History">$(F_DTQTY)</a>
+                          %else
+                              <a href="$(homeURL)$(cGIPath)ItemTransactionHistory.d2w/Edit_Plant$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_DTITEM)&amp;plantNumber=&amp;warehouseNumber=@dtw_rurlescseq(V_DTWHS)" title="Item Transaction History">$(F_DTQTY)</a>
+                          %endif
+                      %else
+                          $(F_DTQTY)
+                      %endif
+                  </td>
+                  %if (viewOption == "E")
+                      <td class="colnmbr">$(F_DTEXPA)</td>
+                      <td class="colnmbr">$(F_DTEXCA)</td>
+                  %endif
+                  @dtw_assign(orderHistCnt, "0")
+                  @dtw_assign(poOpenCnt, "0")
+                  @dtw_assign(poHistSeq, "0")
+                  %if (V_DTDOC# > "0" && V_DTSTCS > "0")
+                      @RtvFldDesc("HHORD#=$(V_DTDOC#) and HHSEQ#=0", "OEORHH", "char(count(*))", orderHistCnt)
+                  %elseif (V_DTDOC# > "0" && V_DTVEND > "0" && V_DTTEFF == "0" && V_DTTEFL == "0" && V_DTTERC == "0")
+                      @RtvFldDesc("POPO=$(V_DTDOC#)", "POPOMS", "char(count(*))", poOpenCnt)
+                  %elseif (V_DTDOC# > "0" && V_DTVEND > "0")
+                      @RtvFldDesc("PIPO=$(V_DTDOC#) and PIQTOR=$(V_DTQTY) and PIDLRC=$(V_DTTRDT) and PITRXN='$(V_DTIVTT)'", "POPOHD", "char(max(PISEQ#))", poHistSeq)
+                  %endif
+                  <td class="colnmbr">
+                      %if (orderHistCnt > "0")
+                          @RtvFldDesc("CMCUST=$(V_DTSTCS)", "HDCUST", "CMCNA1", CMCNA1)
+                          <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrderHistory.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_DTDOC#)&amp;orderSequence=0&amp;customerNumber=@dtw_rurlescseq(V_DTSTCS)&amp;customerName=@dtw_rurlescseq(CMCNA1)" title="View Order History">$(V_DTDOC#)</a>
+                      %elseif (poOpenCnt > "0")
+                          @RtvFldDesc("VMVEND=$(V_DTVEND)", "HDVEND", "VMVNA1", VMVNA1)
+                          <a href="$(homeURL)$(cGIPath)SelectPurchaseOrder.d2w/REPORT$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(V_DTVEND)&amp;vendorName=@dtw_rurlescseq(VMVNA1)&amp;purchaseOrderNumber=@dtw_rurlescseq(V_DTDOC#)" title="View Purchase Order">$(V_DTDOC#)</a>
+                      %elseif (poHistSeq > "0")
+                          @RtvFldDesc("VMVEND=$(V_DTVEND)", "HDVEND", "VMVNA1", VMVNA1)
+                          <a href="$(homeURL)$(cGIPath)SelectPurchaseOrderHistory.d2w/REPORT$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(V_DTVEND)&amp;vendorName=@dtw_rurlescseq(VMVNA1)&amp;purchaseOrderNumber=@dtw_rurlescseq(V_DTDOC#)&amp;orderSequence=@dtw_rurlescseq(poHistSeq)" title="View Purchase Order History">$(V_DTDOC#)</a>
+                      %else
+                          $(V_DTDOC#)
+                      %endif
+                  </td>
+                  %if (V_HDPDRL>"0")
+                      %if (V_DTMORD != "")
+                          @RtvFldDesc("OHPLT=$(V_DTPLT) and OHORD='$(V_DTMORD)'", "HDMOHM", "CHAR(COUNT(OHORD))", mfgOrderCnt)
+                      %else
+                          @dtw_assign(mfgOrderCnt, "0")
+                      %endif
+                      %if (mfgOrderCnt > "0")
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq($(V_DTPLT))&amp;mfgOrder=@dtw_rurlescseq($(V_DTMORD))" onclick="$(inquiryWinVar)" title="View Mfg Order">$(V_DTMORD)</a></td>
+                      %else
+                          <td class="colalph">$(V_DTMORD)</td>
+                      %endif
+                  %endif
+                  %if (V_CISTKL == "Y")
+                      <td class="colalph">$(V_DTSTKR)</td>
+                      <td class="colalph">$(V_DTAILE)</td>
+                      <td class="colalph">$(V_DTSLOC)</td>
+                  %endif
+                  %if (V_CILTUS == "Y")
+                      <td class="colnmbr">$(V_DTLOT#)</td>
+                  %endif
+                  <td class="colnmbr">
+                      %if (V_DTWHS > "0")
+                          <a href="$(homeURL)$(cGIPath)WarehouseSelect.d2w/REPORT$(genericVarBase)&amp;warehouseNumber=@dtw_rurlescseq(V_DTWHS)" title="View Warehouse"> $(V_DTWHS)</a>
+                      %else
+                          $(V_DTWHS)
+                      %endif
+                  </td>
+                  %if (V_HDPDRL > "0")
+                      <td class="colnmbr">
+                          %if (V_DTPLT > "0")
+                              <a href="$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(V_DTPLT)" title="View Plant"> $(V_DTPLT)</a></td>
+                          %else
+                              $(V_DTPLT)
+                          %endif
+                      </td>
+                  %endif
+                  %if (viewOption == "E" && V_CIIVGL == "Y")
+                      @RtvFldDesc("FLTYPE='IVFEED' and FLVALU='$(V_DTOEGL)'", "SYFLAG", "FLDESC", feedGLDesc)
+                      %if (V_DTOEGL == "")
+                          @dtw_assign(V_DTOEGL, "&nbsp")
+                      %endif
+                      <td class="colcode" $(helpCursor)><span title="$(feedGLDesc)">$(V_DTOEGL)</span></td>
+                  %endif
+                  <td class="colnmbr">
+                      %if (V_DTBTCS > "0")
+                          <a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_DTBTCS)" onclick="$(inquiryWinVar)" title="Bill-To Customer Quickview">$(V_DTBTCS)</a>
+                      %else
+                          $(V_DTBTCS)
+                      %endif
+                  </td>
+                  <td class="colnmbr">
+                      %if (V_DTSTCS > "0")
+                          <a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_DTSTCS)" onclick="$(inquiryWinVar)" title="Ship-To Customer Quickview">$(V_DTSTCS)</a>
+                      %else
+                          $(V_DTSTCS)
+                      %endif
+                  </td>
+                  %if (V_HDPORL > "0")
+                      <td class="colnmbr">
+                          %if (V_DTVEND > "0")
+                              <a href="$(homeURL)$(cGIPath)VendorInquiry.d2w/DISPLAY$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(V_DTVEND)" onclick="$(inquiryWinVar)" title="Vendor Quickview">$(V_DTVEND)</a>
+                          %else
+                              $(V_DTVEND)
+                          %endif
+                      </td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {	
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+
+  %if (sequence == "ItemNbr")
+      %if (orderBy == "DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTITEM DESC,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Item Number (descending), Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "ItemDesc")
+      %if (orderBy == "IMIMDSU,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "IMIMDSU DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Item Description (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "IMIMDSU,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Item Description, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "DocNbr")
+      %if (orderBy == "DTDOC#,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTDOC# DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Document Number (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTDOC#,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Document Number, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "MfgOrder")
+      %if (orderBy == "DTMORD,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTMORD DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Mfg Order (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTMORD,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Mfg Order, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "TransType")
+      %if (orderBy == "DTIVTT,DTITEM,DTWHS,DTTRDT DESC")
+          @DTW_ASSIGN(orderBy, "DTIVTT DESC,DTITEM,DTWHS,DTTRDT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Transaction Type (descending), Item Number, Warehouse, Transaction Date (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "DTIVTT,DTITEM,DTWHS,DTTRDT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Transaction Type, Item Number, Warehouse, Transaction Date (descending)")
+      %endif
+  %elseif (sequence == "TransDate")
+      %if (orderBy == "DTTRDT,DTITEM,DTWHS,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTTRDT DESC,DTITEM,DTWHS,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Transaction Date (descending), Item Number, Warehouse, Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTTRDT,DTITEM,DTWHS,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Transaction Date, Item Number, Warehouse, Transaction Type")
+      %endif
+  %elseif (sequence == "TransQty")
+      %if (orderBy == "DTQTY,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTQTY DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Qty Ordered (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTQTY,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Qty Ordered, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "ExtPrice")
+      %if (orderBy == "DTEXPA,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTEXPA DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Extended Price (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTEXPA,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Extended Price, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "ExtCost")
+      %if (orderBy == "DTEXCA,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTEXCA DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Extended Cost (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTEXCA,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Extended Cost, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "FeedGL")
+      %if (orderBy == "DTOEGL,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTOEGL DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "G/L Feed (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTOEGL,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "G/L Feed, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "Lot")
+      %if (orderBy == "DTLOT#,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTLOT# DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Lot Number (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTLOT#,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Lot Number, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "StockLoc")
+      %if (orderBy == "DTSTKR,DTAILE,DTSLOC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTSTKR DESC,DTAILE,DTSLOC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Stock Location (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTSTKR,DTAILE,DTSLOC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Stock Location, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "Whs")
+      %if (orderBy == "DTWHS,DTITEM,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTWHS DESC,DTITEM,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse (descending), Item Number, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTWHS,DTITEM,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse, Item Number, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "Plant")
+      %if (orderBy == "DTPLT,DTITEM,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTPLT DESC,DTITEM,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Plant (descending), Item Number, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTPLT,DTITEM,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Plant, Item Number, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "BillTo")
+      %if (orderBy == "DTBTCS,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTBTCS DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Bill-To Customer (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTBTCS,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Bill-To Customer, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "ShipTo")
+      %if (orderBy == "DTSTCS,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTSTCS DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Ship-To Customer (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTSTCS,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Ship-To Customer, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %elseif (sequence == "Vendor")
+      %if (orderBy == "DTVEND,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderBy, "DTVEND DESC,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Vendor Number (descending), Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %else
+          @DTW_ASSIGN(orderBy, "DTVEND,DTITEM,DTWHS,DTTRDT DESC,DTIVTT")
+          @DTW_ASSIGN(orderByDisplay, "Vendor Number, Item Number, Warehouse, Transaction Date (descending), Transaction Type")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchDoc, 7, 0) &&
+                      editdate(document.Search.srchTransDate) &&
+                      editNum(document.Search.srchQty, 9, 4))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "TRANSHISTORY")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Transaction Type</td>
+                              @dtw_assign(operNbr, "operTransType")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchTransType" type="text" size="7" maxlength="4"><a href="$(homeURL)$(cGIPath)TransactionTypeSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchTransType&amp;fldDesc=srchTransTypeDesc" onclick="$(searchWinVar)">  $(searchImage) </a><input name="srchTransTypeDesc" type="text" size="35" disabled></td></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Item Number</td>
+                              @dtw_assign(operNbr, "operItem")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchItem" type="text" size="7" maxlength="15"><a href="$(homeURL)$(cGIPath)ItemSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchItem&amp;fldDesc=srchItemDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchItemDesc" type="text" size="35" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchDesc" type="text" size="7" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Transaction Date</td>
+                              @dtw_assign(operNbr, "operTransDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchTransDate" type="text" size="7" maxlength="6">
+                                  <a href="javascript:calWindow('srchTransDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          %if (viewOption == "E")
+                              <tr><td class="dsphdr">Distribution Period</td>
+                                  @dtw_assign(operNbr, "operDistPer")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input name="srchDistPer" type="text" size="7" maxlength="4"><a href="$(homeURL)$(cGIPath)PeriodSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldPeriod=srchDistPer&amp;fldBeginDate=begindate&amp;fldEndDate=enddate" onclick="$(searchWinVar)"> $(searchImage) </a><input name="begindate" type="hidden"><input name="enddate" type="hidden"></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Transaction Quantity</td>
+                              @dtw_assign(operNbr, "operQty")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchQty" size="7" maxlength="14"></td>
+                          </tr>
+
+                          %if (viewOption == "E")
+                              <tr><td class="dsphdr">Extend Price</td>
+                                  @dtw_assign(operNbr, "operPrice")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchPrice" size="7" maxlength="14"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Extended Cost</td>
+                                  @dtw_assign(operNbr, "operCost")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchCost" size="7" maxlength="14"></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Document Number</td>
+                              @dtw_assign(operNbr, "operDoc")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchDoc" size="7" maxlength="8"></td>
+                          </tr>
+
+                          %if (viewOption == "E")
+                              <tr><td class="dsphdr">Invoice Number</td>
+                                  @dtw_assign(operNbr, "operARInv")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchARInv" size="7" maxlength="7"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Offset Account</td>
+                                  @dtw_assign(operNbr, "operAcct")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input name="srchAcct" type="text" size="7" maxlength="4"><a href="$(homeURL)$(cGIPath)AccountSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;acctFld=srchAcct&amp;subFld=srchSub&amp;descFld=srchAcctDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchAcctDesc" type="text" size="35" disabled></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Offset Subaccount</td>
+                                  @dtw_assign(operNbr, "operSub")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchSub" size="7" maxlength="4"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Inventory Asset Account 1</td>
+                                  @dtw_assign(operNbr, "operInvAcct")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input name="srchInvAcct" type="text" size="7" maxlength="4"><a href="$(homeURL)$(cGIPath)AccountSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;acctFld=srchInvAcct&amp;subFld=srchInvSub&amp;descFld=srchInvAcctDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchInvAcctDesc" type="text" size="35" disabled></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Inventory Asset Subaccount 1</td>
+                                  @dtw_assign(operNbr, "operInvSub")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchInvSub" size="7" maxlength="4"></td>
+                              </tr>
+
+                              %if (V_CIIVGL == "Y")
+                                  <tr><td class="dsphdr">G/L Feed</td>
+                                      @dtw_assign(operNbr, "operGLFeed")
+                                      <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                      <td class="inputalph"><input name="srchGLFeed" type="text" size="7" maxlength="1"></td>
+                                  </tr>
+                    	       %endif
+                	   %endif
+
+                          %if (V_CILTUS == "Y")
+                              <tr><td class="dsphdr">Lot Number</td>
+                                  @dtw_assign(operNbr, "operLot")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input name="srchLot" type="text" size="7" maxlength="15"></td>
+                              </tr>
+                	   %endif
+
+                          %if (V_CISTKL == "Y")
+                              <tr><td class="dsphdr">Stockroom</td>
+                                  @dtw_assign(operNbr, "operRoom")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input name="srchRoom" type="text" size="7" maxlength="3"></td>
+                              </tr>
+                              <tr><td class="dsphdr">Aisle</td>
+                                  @dtw_assign(operNbr, "operAisle")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input name="srchAisle" type="text" size="7" maxlength="4"></td>
+                              </tr>
+                              <tr><td class="dsphdr">Location</td>
+                                  @dtw_assign(operNbr, "operLoc")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input name="srchLoc" type="text" size="7" maxlength="8"></td>
+                              </tr>
+                	   %endif
+
+                          %if (V_HDPDRL>"0")
+                              <tr><td class="dsphdr">Mfg Order</td>
+                                  @dtw_assign(operNbr, "operMfgOrder")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input name="srchMfgOrder" type="text" size="7" maxlength="9"></td>
+                              </tr>
+                	   %endif
+
+                          <tr><td class="dsphdr">Order Type</td>
+                              @dtw_assign(operNbr, "operOrderType")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchOrderType" type="text" size="7" maxlength="1"><a href="$(homeURL)$(cGIPath)OrderTypeSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchOrderType&amp;fldDesc=srchOrderTypeDesc&amp;appID=OE" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchOrderTypeDesc" type="text" size="35" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Warehouse</td>
+                              @dtw_assign(operNbr, "operWhs")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchWhs" size="7" maxlength="3"><a href="$(homeURL)$(cGIPath)WarehouseSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchWhs&amp;fldDesc=whsName" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="whsName" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                          </tr>
+	
+                          %if (V_HDPDRL>"0")
+                              <tr><td class="dsphdr">Plant</td>
+                                  @dtw_assign(operNbr, "operPlant")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchPlant" size="7" maxlength="3"><a href="$(homeURL)$(cGIPath)PlantSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchPlant&amp;fldDesc=plantName" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="plantName" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                              </tr>
+                	   %endif
+
+                          %if (viewOption == "E")
+                              <tr><td class="dsphdr">State Shipped To</td>
+                                  @dtw_assign(operNbr, "operStateShip")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchStateShip" size="7" maxlength="2"><a href="$(homeURL)$(cGIPath)StateSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchStateShip&amp;fldDesc=stateShipDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="stateShipDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Tax State</td>
+                                  @dtw_assign(operNbr, "operState")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input type="text" name="srchState" size="7" maxlength="2"><a href="$(homeURL)$(cGIPath)StateSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchState&amp;fldDesc=stateDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="stateDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Bill-To Number</td>
+                              @dtw_assign(operNbr, "operBillTo")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchBillTo" type="text" size="7" maxlength="7"><a href="$(homeURL)$(cGIPath)CustomerSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchBillTo&amp;fldDesc=srchBillToName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchBillToName" type="text" size="35" disabled></td>
+                          </tr>
+	
+                          <tr><td class="dsphdr">Ship-To Number</td>
+                              @dtw_assign(operNbr, "operShipTo")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchShipTo" type="text" size="7" maxlength="7"><a href="$(homeURL)$(cGIPath)CustomerSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchShipTo&amp;fldDesc=srchShipToName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchShipToName" type="text" size="35" disabled></td>
+                          </tr>
+
+                          %if (V_HDPORL > "0")
+                              <tr><td class="dsphdr">Vendor Number</td>
+                                  @dtw_assign(operNbr, "operVend")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input name="srchVend" type="text" size="7" maxlength="7"><a href="$(homeURL)$(cGIPath)VendorSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchVend&amp;fldDesc=srchVendName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchVendName" type="text" size="35" disabled></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Remit-To Vendor Number</td>
+                                  @dtw_assign(operNbr, "operRemitToVend")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input name="srchRemitToVend" type="text" size="7" maxlength="7"><a href="$(homeURL)$(cGIPath)VendorSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchRemitToVend&amp;fldDesc=srchRemitToVendName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchRemitToVendName" type="text" size="35" disabled></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Salesman Number</td>
+                              @dtw_assign(operNbr, "operSlsm")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input name="srchSlsm" type="text" size="7" maxlength="3"><a href="$(homeURL)$(cGIPath)SalesmanSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchSlsm&amp;fldDesc=srchSlsmName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchSlsmName" type="text" size="35" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Product Class</td>
+                              @dtw_assign(operNbr, "operProdClass")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchProdClass" type="text" size="7" maxlength="4"><a href="$(homeURL)$(cGIPath)prodclasssearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchProdClass&amp;fldDesc=productClassDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="productClassDesc" type="text" size="35" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Product Group</td>
+                              @dtw_assign(operNbr, "operProdGroup")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchProdGroup" type="text" size="7" maxlength="4"><a href="$(homeURL)$(cGIPath)productgroupsearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchProdGroup&amp;fldDesc=productGroupDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="productGroupDesc" type="text" size="35" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Inventory Type</td>
+                              @dtw_assign(operNbr, "operInvType")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchInvType" type="text" size="7" maxlength="4"><a href="$(homeURL)$(cGIPath)invtypesearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchInvType&amp;fldDesc=srchInvTypeDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchInvTypeDesc" type="text" size="35" disabled></td>
+                          </tr>
+
+                          %if (V_HDPDRL > "0")
+                              <tr><td class="dsphdr">Part Type</td>
+                                  @dtw_assign(operNbr, "operPartType")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"><input name="srchPartType" type="text" size="7" maxlength="1"><a href="$(homeURL)$(cGIPath)FlagSearch.d2w/REPORT$(genericVarBase)&amp;flagType=PARTTYPEMP&amp;flagSrchHdr=@dtw_rurlescseq("Part Type")&amp;docName=Search&amp;fldName=srchPartType&amp;fldDesc=srchPartTypeDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchPartTypeDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                              </tr>
+                          %endif
+
+                          <tr><td class="dsphdr">Adjustment Reason Code</td>
+                              @dtw_assign(operNbr, "operAdjCode")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchAdjCode" type="text" size="7" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Adjustment Reason Description</td>
+                              @dtw_assign(operNbr, "operAdjDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchAdjDesc" type="text" size="7" maxlength="25"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">User Profile</td>
+                              @dtw_assign(operNbr, "operUser")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input name="srchUser" type="text" size="7" maxlength="10"><a href="$(homeURL)$(cGIPath)UserSearch.d2w/REPORT$(genericVarBase)&amp;docName=Search&amp;fldName=srchUser&amp;fldDesc=srchUserDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="srchUserDesc" type="text" size="35" disabled></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchTransType.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("DTIVTT", "Transaction Type", $(srchTransType), "U", operTransType, "A")
+  @Build_WildCard ("DTITEM", "Item Number", $(srchItem), "U", operItem, "A")
+  @Build_WildCard ("IMIMDSU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("DTTRDT", "Transaction Date", $(srchTransDate), "", operTransDate, "D")
+  @Build_WildCard ("DTDPER", "Distribution Period", $(srchDistPer), "", operDistPer, "DP")
+  @Build_WildCard ("DTQTY",  "Transaction Quantity", $(srchQty), "", operQty, "N")
+  @Build_WildCard ("DTEXPA", "Extended Price", $(srchPrice), "", operPrice, "N")
+  @Build_WildCard ("DTEXCA", "Extended Cost", $(srchCost), "", operCost, "N")
+  @Build_WildCard ("DTDOC#", "Document Number", $(srchDoc), "", operDoc, "N")
+  @Build_WildCard ("DTRINV", "Invoice Number", $(srchARInv), "", operARInv, "N")
+  @Build_WildCard ("DTACCT", "Offset Account", $(srchAcct), "", operAcct, "N")
+  @Build_WildCard ("DTSUB",  "Offset Subaccount", $(srchSub), "", operSub, "N")
+  @Build_WildCard ("DTIAA1", "Inventory Asset Account 1", $(srchInvAcct), "", operInvAcct, "N")
+  @Build_WildCard ("DTIAS1", "Inventory Asset Subaccount 1", $(srchInvSub), "", operInvSub, "N")
+  @Build_WildCard ("DTOEGL", "G/L Feed", $(srchGLFeed), "U", operGLFeed, "A")
+  @Build_WildCard ("DTLOT#", "Lot Number", $(srchLot), "U", operLot, "A")
+  @Build_WildCard ("DTMORD", "Mfg Order Number", $(srchMfgOrder), "U", operMfgOrder, "A")
+  @Build_WildCard ("DTOTYP", "Order Type", $(srchOrderType), "U", operOrderType, "A")
+  @Build_WildCard ("DTWHS",  "Warehouse", $(srchWhs), "", operWhs, "N")
+  @Build_WildCard ("DTPLT",  "Plant", $(srchPlt), "", operPlt, "N")
+  @Build_WildCard ("DTSTKR", "Stockroom", $(srchRoom), "U", operRoom, "A")
+  @Build_WildCard ("DTAILE", "Aisle", $(srchAisle), "U", operAisle, "A")
+  @Build_WildCard ("DTSLOC", "Location", $(srchLoc), "U", operLoc, "A")
+  @Build_WildCard ("DTSTST", "State Shipped To", $(srchStateShip), "U", operStateShip, "A")
+  @Build_WildCard ("DTST",   "Tax State", $(srchState), "U", operState, "A")
+  @Build_WildCard ("DTBTCS", "Bill-To Number", $(srchBillTo), "", operBillTo, "N")
+  @Build_WildCard ("DTSTCS", "Ship-To Number", $(srchShipTo), "", operShipTo, "N")
+  @Build_WildCard ("DTVEND", "Vendor Number", $(srchVend), "", operVend, "N")
+  @Build_WildCard ("DTRMVD", "Remit-To Vendor Number", $(srchRemitToVend), "", operRemitToVend, "N")
+  @Build_WildCard ("DTSLSM", "Salesman Number", $(srchSlsm), "", operSlsm, "N")
+  @Build_WildCard ("DTPCLS", "Product Class", $(srchProdClass), "U", operProdClass, "A")
+  @Build_WildCard ("DTPGRP", "Product Group", $(srchProdGroup), "U", operProdGroup, "A")
+  @Build_WildCard ("DTITC",  "Inventory Type", $(srchInvType), "U", operInvType, "A")
+  @Build_WildCard ("DTTYPN", "Part Type", $(srchPartType), "U", operPartType, "A")
+  @Build_WildCard ("DTRSNC", "Adjustment Reason Code", $(srchAdjCode), "U", operAdjCode, "A")
+  @Build_WildCard ("upper(DTRSND)", "Adjustment Reason Description", $(srchAdjDesc), "U", operAdjDesc, "A")
+  @Build_WildCard ("DTUSER", "User Profile", $(srchUser), "U", operUser, "A")
+  @Build_WildCard ("DTOSEQ", "Originating Transaction Sequence", $(srchOrigSeq), "", "=", "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

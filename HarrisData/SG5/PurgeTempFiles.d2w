@@ -1,0 +1,150 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Purge Temporary Tables                                      *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "SubmitScheduleVar.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Purge Temporary Tables"
+  d2wName                 = "PurgeTempFiles.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;backHome=@dtw_rurlescseq(backHome)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL () {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "Calendar.icl"
+              %INCLUDE "DateEdit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              function validate(chgForm) {
+                  if (document.Chg.hoursOld.value =="")
+                     {alert("$(reqFieldError)"); return false;}
+                  if (editNum(document.Chg.hoursOld, 5, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "Banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "PURGETEMPFILES")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SubmitScheduleTop.icl"
+                      %INCLUDE "ConfMessageDisplayNoTable.icl"
+                      $(hrTagAttr)
+            			
+                      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)">
+                          <table $(contentTable)>
+                              %if (errFound != "" || scheduleJobSwitch == "Y")
+                                  @dtw_assign(scheduleJobSwitch, "")
+                                  @EdtVarErr(profileHandle, typeValue, edtVar)
+                                  @ErrVarErr(profileHandle, typeError, errVar)
+                                  @Decat_Field("@@sbjb")                @dtw_assign(submitSchedule, fieldValue)
+                                  @Decat_Field("@@hour")                @dtw_assign(hoursOld, fieldValue)
+                                  @DecatErr_Field("@@hour", "hoursOld") @dtw_assign(Err_hoursOld, fieldValue)
+
+                                  %INCLUDE "ScheduleJobErr.icl"      %{ Schedule Entries Errors %}
+                                  %INCLUDE "ScheduleJobValue.icl"    %{ Schedule Entries Values %}
+                              %endif
+
+                              @SetTextOvr(Err_hoursOld)
+                              <tr><td class="dsphdr">Remove Rows</td>
+                                  <td class="inputnmbr"><input name="hoursOld" type="text" value="$(hoursOld)" size="5" maxlength="5"></td>
+                                  <td class="dsphdr">Hours Old</td>
+                              </tr>
+                              @DspErrMsg(Err_hoursOld)
+                          </table>
+
+                          @dtw_assign(envProgram, "HSYHNC")
+                          @dtw_assign(envPrinter, "")
+                          %INCLUDE "ScheduleJob.icl"
+                          %INCLUDE "SubmitScheduleBottom.icl"
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+
+                          %if (focusField !="")
+                              <script TYPE="text/javascript">
+                                  document.Chg.$(focusField).focus();
+                              </script>
+                          %endif
+                      </form>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     submitSchedule,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HSYHNC_W.PGM %}
+%}
+
+%FUNCTION(dtw_directcall) Check_Authority(IN    CHAR(10)    userProfile,
+                                          OUT   CHAR(100)   userAuthority)
+{%EXEC {CSYSPC.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Check_Authority(userProfile, userAuthority)
+  @dtw_pos("*ALLOBJ", "$(userAuthority)", posAllObj)
+  %if (posAllObj > "0" || userProfile =="QSECOFR")
+      @Set_SQL()
+  %else
+      @dtw_assign(alertMessage, "Purge Temporary Tables requires *ALLOBJ authority to run")
+     <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)&amp;alertMessage=@dtw_rurlescseq(alertMessage)">
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@hour", hoursOld)
+  @Concat_Field("@@wbrl", webRegLibrary)
+  @Concat_Field("@@wbrc", webRegCurFile)
+  %INCLUDE "ScheduleJobConcat.icl"    %{ Schedule Entries Values %}
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, submitSchedule, errFound, edtVar, errVar)
+
+  %INCLUDE "SubmitScheduleUpdate.icl"
+%}

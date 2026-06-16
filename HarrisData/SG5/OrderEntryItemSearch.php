@@ -1,0 +1,38 @@
+<?php
+$srchCloseItemWin= (string) "N";
+$srchItemImgLarge= (string) "height=\"250\" width=\"250\"";
+$srchItemImgSmall= (string) "height=\"30\"  width=\"30\"";
+$srchSeqItemDesc= (string) "03";
+$srchSeqItemImage= (string) "06";
+$srchSeqItemNbr= (string) "02";
+$srchSeqOrderQty= (string) "04";
+$srchSeqPrice= (string) "07";
+$srchSeqQtyAvail= (string) "05";
+$srchSeqUDA1= (string) "08";
+$srchSeqUDA2= (string) "09";
+$srchSeqUDA3= (string) "10";
+$srchSeqUDA4= (string) "11";
+$srchSeqUDA5= (string) "12";
+$srchSeqUDN1= (string) "13";
+$srchSeqUDN2= (string) "14";
+$srchSeqUDN3= (string) "15";
+$srchSeqUDN4= (string) "16";
+$srchSeqUDN5= (string) "17";
+$srchSeqUXA1= (string) "18";
+$srchSeqUXA2= (string) "19";
+$srchSeqUXA3= (string) "20";
+$srchSeqUXA4= (string) "21";
+$srchSeqUXA5= (string) "22";
+$srchSeqUXD1= (string) "28";
+$srchSeqUXD2= (string) "29";
+$srchSeqUXD3= (string) "30";
+$srchSeqUXD4= (string) "";
+$srchSeqUXD5= (string) "";
+$srchSeqUXN1= (string) "23";
+$srchSeqUXN2= (string) "24";
+$srchSeqUXN3= (string) "25";
+$srchSeqUXN4= (string) "26";
+$srchSeqUXN5= (string) "27";
+$srchSeqWhsNbr= (string) "01";
+$srchTypQtyAvail= (string) "Q";
+?>

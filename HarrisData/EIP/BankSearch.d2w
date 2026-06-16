@@ -1,0 +1,410 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Bank Search                                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "WildCardAcct.icl"
+
+%Define {	
+  page_title              = "Bank Search"
+  d2wName                 = "BankSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldName                 = ""
+  fldDesc                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectBank(bankNumber, bankName){
+                  window.opener.document.$(docName).$(fldName).value = bankNumber;
+                  window.opener.document.$(docName).$(fldDesc).value = bankName;
+                  window.opener.document.$(docName).$(fldName).focus();
+                  window.close();
+              }
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      @dtw_assign(uv_BankName, "BKBANK")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select BKBANK,BKBKNM,BKBACC,BKCO,BKFAC,", stmtSQL)
+                      @dtw_concat(stmtSQL, " BKBLSD,BKACCT,BKSUB,upper(BKBKNM) as BKBKNMU  ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDBANK ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, " BKBANK=$(bankNumber)", selectSQL)
+                      %elseif (wildCardSearch!="")
+                          @dtw_concat(selectSQL, " BKBANK<>0 ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Bank_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Bank_Search (IN CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Name</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchName" size="30" maxlength="30">
+                          <input type="hidden" name="operName" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchName.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @OrderBy_Sort("BKBANK", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Bank" title="Sequence By Bank">Bank</a></th>
+                  @OrderBy_Sort("BKBKNMU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Name" title="Sequence By Name, Bank">Name</a></th>
+                  @OrderBy_Sort("BKBACC", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CheckAccount" title="Sequence By Checking Account, Bank">Checking<br>Account</a></th>
+                  @OrderBy_Sort("BKCO", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CoFac" title="Sequence By Company/Facility, Bank">Co/Fac</a></th>
+                  @OrderBy_Sort("BKACCT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Account" title="Sequence By Account, Bank">Account</a></th>
+                  @OrderBy_Sort("BKBLSD", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=StatementDate" title="Sequence By Statement Date, Bank">Statement<br>Date</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif		
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_CoFac("$(V_BKCO)", "$(V_BKFAC)", "", F_CoFac)
+                  @Format_Acct("$(V_BKACCT)", "$(V_BKSUB)", "", F_AcctSub)
+                  @Format_Date(V_BKBLSD, "D", F_BKBLSD)
+                  @Format_Quote(V_BKBKNM, F_BKBKNM)
+
+                  %if (moreInfo != "Y")	
+                      <tr class="$(rowClass)">
+                          <td class="colnmbr">$(V_BKBANK)</td>
+                          <td class="colalph"><a href="javascript:selectBank($(V_BKBANK),'$(F_BKBKNM)')" title="Select Bank">$(V_BKBKNM)</a></td>
+                          <td class="colalph">$(V_BKBACC)</td>
+                          <td class="colalph">$(F_CoFac)</td>
+                          <td class="colcode">$(F_AcctSub)</td>
+                          <td class="colnmbr">$(F_BKBLSD)</td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;bankNumber=@dtw_rurlescseq(V_BKBANK)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+
+                      <tr><td><a href="javascript:selectBank($(V_BKBANK),'$(F_BKBKNM)')" title="Select Bank">$(selectImageLrg)</a></td></tr>
+
+                      <tr><td class="dsphdr">Bank</td>
+                          <td class="dspnmbr">$(V_BKBANK)</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Bank Name</td>
+                          <td class="dspalph">$(V_BKBKNM)</td></tr>
+
+                      <tr><td class="dsphdr">Checking Account</td>
+                          <td class="dspalph">$(V_BKBACC)</td></tr>	
+
+                      @RtvFldDesc("CFCO#=$(V_BKCO) and CFFAC#=$(V_BKFAC)", "HDCFAC", "CFCFNM", coFacDesc)
+                      <tr><td class="dsphdr">Company/Facility</td>
+                          <td class="dspnmbr">$(F_CoFac) &nbsp; $(coFacDesc)</td></tr>
+
+                      @RtvFldDesc("CHACCT=$(V_BKACCT) and CHSUB=$(V_BKSUB)", "HDCHRT", "CHCHDS", acctDesc)
+                      <tr><td class="dsphdr">Account</td>
+                          <td class="dspnmbr">$(F_AcctSub) &nbsp; $(acctDesc)</td></tr>
+
+                      <tr><td class="dsphdr">Statement Date</td>
+                          <td class="dspdate">$(F_BKBLSD)</td></tr>
+
+                      <tr><td class="dsphdr">Number Of Checks To Void</td>
+                          <td class="dspnmbr">$(V_BKVCK#)</td></tr>
+
+                      <tr><td class="dsphdr">Print Check# On The Check</td>
+                          <td class="dspalph">$(V_BKPNOC)</td></tr>
+
+                      <tr><td class="dsphdr">Print Check# On The Stub</td>
+                          <td class="dspalph">$(V_BKPNOS)</td></tr>
+
+                      %if (V_BKCURT !="")
+                          <tr><td class="dsphdr">Currency Type</td>
+                              <td class="dspalph">$(V_BKCURT)</td></tr>
+                      %endif
+                  %endif
+              %}
+          </table>
+          %if (moreInfo != "Y")	
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+          %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "BKBKNMU,BKBANK")
+      @DTW_ASSIGN(orderByDisplay, "Name, Bank")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Bank")
+      %if (orderBy == "BKBANK")
+          @DTW_ASSIGN(orderBy, "BKBANK DESC")
+          @DTW_ASSIGN(orderByDisplay, "Bank (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Bank")
+      %endif
+  %elseif (sequence == "Name")
+      %if (orderBy == "BKBKNMU,BKBANK")
+          @DTW_ASSIGN(orderBy, "BKBKNMU DESC,BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Name (descending), Bank")
+      %else
+          @DTW_ASSIGN(orderBy, "BKBKNMU,BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Name, Bank")
+      %endif
+  %elseif (sequence == "CheckAccount")
+      %if (orderBy == "BKBACC,BKBANK")
+          @DTW_ASSIGN(orderBy, "BKBACC DESC,BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Checking Account (descending), Bank")
+      %else
+          @DTW_ASSIGN(orderBy, "BKBACC,BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Checking Account, Bank")
+      %endif
+  %elseif (sequence == "CoFac")
+      %if (orderBy == "BKCO,BKFAC,BKBANK")
+          @DTW_ASSIGN(orderBy, "BKCO DESC,BKFAC DESC, BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility (descending), Bank")
+      %else
+          @DTW_ASSIGN(orderBy, "BKCO,BKFAC,BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility, Bank")
+      %endif
+  %elseif (sequence == "Account")
+      %if (orderBy == "BKACCT,BKSUB,BKBANK")
+          @DTW_ASSIGN(orderBy, "BKACCT DESC,BKSUB DESC,BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Account (descending), Bank")
+      %else
+          @DTW_ASSIGN(orderBy, "BKACCT,BKSUB,BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Account, Bank")
+      %endif
+  %elseif (sequence == "StatementDate")
+      %if (orderBy == "BKBLSD,BKBANK")
+          @DTW_ASSIGN(orderBy, "BKBLSD DESC,BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Statement Date (descending), Bank")
+      %else
+          @DTW_ASSIGN(orderBy, "BKBLSD,BKBANK")
+          @DTW_ASSIGN(orderByDisplay, "Statement Date, Bank")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "calendar.icl"
+              %INCLUDE "dateedit.icl"
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchBank, 2, 0) &&
+                      editNum(document.Search.srchCo, 2, 0) &&
+                      editNum(document.Search.srchFac, 4, 0) &&
+                      editNum(document.Search.srchAcct, 4, 0) &&
+                      editNum(document.Search.srchSub, 4, 0) &&
+                      editdate(document.Search.srchStmtDate))
+                  return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "bankSearch")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Bank</td>
+                              @dtw_assign(operNbr, "operBank")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchBank" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Bank Name</td>
+                              @dtw_assign(operNbr, "operName")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchName" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Checking Account</td>
+                              @dtw_assign(operNbr, "operCheckAcct")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCheckAcct" size="12" maxlength="12"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Company</td>
+                              @dtw_assign(operNbr, "operCo")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchCo" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Facility</td>
+                              @dtw_assign(operNbr, "operFac")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchFac" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Account</td>
+                              @dtw_assign(operNbr, "operAcct")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchAcct" size="4" maxlength="4">
+                                                          <input type="text" name="srchSub" size="4" maxlength="4"></td>
+                          </tr>
+
+                           <tr><td class="dsphdr">Statement Date</td>
+                              @dtw_assign(operNbr, "operStmtDate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchStmtDate" size="6" maxlength="6"><a href="javascript:calWindow('srchStmtDate');">$(calendarImage)</a></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchBank.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("BKBANK", "Bank", $(srchBank), "", operBank, "N")
+  @Build_WildCard ("upper(BKBKNM)", "Bank Name", $(srchName), "U", operName, "A")
+  @Build_WildCard ("BKBACC", "Checking Account", $(srchCheckAcct), "U", operCheckAcct, "A")
+  @Build_WildCard ("BKCO", "Company", $(srchCo), "", operFac, "N")
+  @Build_WildCard ("BKFAC", "Facility", $(srchFac), "", operFac, "N")
+  @Build_WildCard ("BKBLSD", "Statement Date", $(srchStmtDate), "", operStmtDate, "D")
+  @Build_WildCard_Acct ("BKACCT", "BKSUB", "Account", $(srchAcct), $(srchSub), $(operAcct))
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

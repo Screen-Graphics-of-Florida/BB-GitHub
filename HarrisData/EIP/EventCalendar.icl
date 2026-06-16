@@ -1,0 +1,18 @@
+%DEFINE {
+calDayTable="class=""caldaytable"" border=""0"" cellpadding=""0"" cellspacing=""0"""
+calHeaderTable="class=""calheadertable"" border=""0"" cellpadding=""0"" cellspacing=""0"""
+calMonthTable="class=""calmonthtable"" border=""0"" cellpadding=""0"" cellspacing=""0"""
+calTrailerTable="class=""caltrailertable"" border=""0"" cellpadding=""0"" cellspacing=""0"""
+calWeekEventTable="class=""calweekeventtable"" border=""0"" cellpadding=""0"" cellspacing=""0"""
+calWeekTable="class=""calweektable"" border=""0"" cellpadding=""0"" cellspacing=""0"""
+calYearTable="class=""calyeartable"" border=""0"" cellpadding=""0"" cellspacing=""0"""
+displayComp="Y"
+displayImages="Y"
+displayTime="Y"
+eventsPerDayMth="6"
+eventsPerDayYear="3"
+loadProgram="HHDCSE_W"
+moreMonthImage="more..."
+moreYearImage="more..."
+pastDueImage="Past Due"
+%}

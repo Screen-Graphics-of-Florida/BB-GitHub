@@ -1,0 +1,672 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Pricing Inquiry                                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Pricing Inquiry"
+  d2wName                 = "PricingInquiry.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;productClass=@dtw_rurlescseq(productClass)&amp;origQuantity=@dtw_rurlescseq(origQuantity)&amp;overridePrice=@dtw_rurlescseq(overridePrice)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  bracketUsed             = ""
+  billToNumber            = ""
+  limitUsed               = ""
+  usePct                  = ""
+  formatToPrint           = "Y"
+  totalMSRP               = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @ItemUserView(profileHandle, dataBaseID, userPass, itemNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  window.name="PricingInquiry";
+                  %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %INCLUDE "$(inquiryBanner)"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          @dtw_concat(stmtSQL, " Select * From OEPIWK ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where PIXHND='$(profileHandle)' ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Pricing_Inquiry(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "$(inquiryTrailer)"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Pricing_Inquiry (IN CHAR(64)    profileHandle,
+                                       CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+    	         <col width="80%">
+    	         <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              <td class="toolbar">
+                  <a href="$(homeURL)$(cGIPath)PricingInquiryEntry.d2w/REPORT$(d2wVarBase)&amp;fromQuantity=@dtw_rurlescseq(quantity)&amp;fromOrderDate=@dtw_rurlescseq(orderDate)" title="Change Pricing Criteria" onclick="$(smallPromptWinVar)">$(changeImageMed)</a>
+                  %INCLUDE "CloseWindow.icl"
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+
+      %if (customerNumber != "")
+          @RtvFldDesc("CMCUST=$(customerNumber)", "HDCUST", "CMCNA1", customerName)
+      %endif
+      %if (billToNumber != "")
+          @RtvFldDesc("CMCUST=$(billToNumber)", "HDCUST", "CMCNA1", billToName)
+      %endif
+      @RtvFldDesc("WHWHS=$(warehouseNumber)", "HDWHSM", "WHWHNM", warehouseName)
+      @RtvFldDesc("CCCCLS='$(customerClass)'", "HDCCLS", "CCCCDS", customerClassDesc)
+      @RtvFldDesc("PCPCLS='$(productClass)'", "HDPCLS", "PCPCDS", productClassDesc)
+      @RtvFldDesc("RGCRGN='$(region)'", "HDCRGN", "RGCRDS", regionDesc)
+      %if (productGroup != "")
+          @RtvFldDesc("PGPGRP='$(productGroup)'", "HDPRGM", "PGDESC", productGroupDesc)
+      %endif
+
+      <table $(contentTable)>
+          %if (customerNumber != "")
+              @Format_Header("Customer", $(customerName), $(customerNumber))
+          %endif
+          @Format_Header("Item", $(itemDescription), $(itemNumber))
+      </table>
+
+      $(inquiryhrTagAttr)
+
+      %ROW {
+          @Format_Nbr(quantity, F_quantity, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          @Format_Nbr(V_PILIST, F_PILIST, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+          @Format_Nbr(V_PISLPR, F_PISLPR, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+          @dtw_assign(F_orderDate, orderDate)
+          @DateToCYMD(F_orderDate)
+          @Format_Date(F_orderDate, "H", F_orderDate)
+          @dtw_assign(limitUsed, V_PILMTU)
+          @dtw_assign(usePct, V_PIUP)
+
+          %if (V_PIUP == "Y")
+             @dtw_assign(amtPctDesc, "Percent")
+          %else
+             @dtw_assign(amtPctDesc, "Amount")
+          %endif
+          %if (V_PIPMLV == "00" || overridePrice != "")
+              <fieldset class="legendBody">
+                  %if (overridePrice != "")
+                      <legend class="legendTitle">Price Override</legend>
+                  %else
+                      <legend class="legendTitle">No Pricing Level Found</legend>
+                  %endif
+                  <table $(contentTable)>
+                      <colgroup>
+    	                   <col width="40%">
+    	                   <col width="15%">
+    	                   <col width="40%">
+                      <tr valign="center">
+                          <td>
+                              <table $(contentTable)>
+
+                                  <tr><td class="dsphdr">List Price</td>
+                                      <td class="colnmbr">$(F_PILIST)</td>
+                                  </tr>
+
+                                  %if (overridePrice != "")
+                                      @dtw_subtract(V_PILIST, overridePrice, overDiff)
+                                      @Format_Nbr(overDiff, F_overDiff, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                      @Format_Nbr(overridePrice, F_overridePrice, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                      <tr><td class="dsphdr">Discount</td>
+                                          <td class="colnmbr">$(F_overDiff)</td>
+                                      </tr>
+                                      <tr><td class="dsphdr">Selling Price</td>
+                                          <td class="coltotal">$(F_overridePrice)</td>
+                                      </tr>
+
+                                  %elif (V_PIXDSC != "")
+                                      @Format_Nbr(V_PIXAMT, F_PIXAMT, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                      <tr><td class="dsphdr">$(V_PIXDSC)</td>
+                                          <td class="colnmbr">$(F_PIXAMT)</td>
+                                          <td class="colalph">$(V_PIXCAL)</td>
+                                      </tr>
+
+                                      <tr><td class="dsphdr">Selling Price</td>
+                                          <td class="coltotal">$(F_PISLPR)</td>
+                                      </tr>
+                                  %endif
+
+                                  <tr><td class="dsphdr">Quantity</td>
+                                      <td class="colnmbr">$(F_quantity)</td>
+                                  </tr>
+
+                                  %if (overridePrice != "")
+                                      @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(quantity, overridePrice), V_PIPCPP)", ExtendedPrice, "2", $(amtEditCode), "Y", "", "")
+                                  %else
+                                      @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(quantity, V_PISLPR), V_PIPCPP)", ExtendedPrice, "2", $(amtEditCode), "Y", "", "")
+                                  %endif
+                                  <tr><td class="dsphdr">Extended Price</td>
+                                      <td class="coltotal">$(ExtendedPrice)</td>
+                                  </tr>
+                              </table>
+                          </td>
+                          <td>&nbsp;</td>
+                          <td>
+                              <table $(contentTable)>
+                                  %if (V_PIMSRP > ".00000")
+                                      @Format_Nbr(V_PIMSRP, F_PIMSRP, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                      <tr><td class="dsphdr">MSRP</td>
+                                          <td class="colalph">$(F_PIMSRP)</td>
+                                      </tr>
+                                  %endif
+                                  <tr><td class="dsphdr">Date</td>
+                                      <td class="colalph">$(F_orderDate)</td>
+                                  </tr>
+                                  @RtvFldDesc("UMUOM='$(V_PIUOMP)'", "HDUOM", "UMUMLD", pricingUOMDesc)
+                                  @Format_Code(V_PIUOMP, F_PIUOMP)
+                                  <tr><td class="dsphdr">Pricing UOM</td>
+                                      <td class="colalph">$(pricingUOMDesc)</td>
+                                      <td class="colnmbr">$(F_PIUOMP)</td>
+                                  </tr>
+                                  %if (V_PIUOMS != V_PIUOMP)
+                                      @RtvFldDesc("UMUOM='$(V_PIUOMS)'", "HDUOM", "UMUMLD", stockingUOMDesc)
+                                      @Format_Code(V_PIUOMS, F_PIUOMS)
+                                      <tr><td class="dsphdr">Stocking UOM</td>
+                                          <td class="colalph">$(stockingUOMDesc)</td>
+                                          <td class="colalph">$(F_PIUOMS)</td>
+                                      </tr>
+                                      @Format_Nbr(V_PIPCPP, F_PIPCPP, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                                      <tr><td class="dsphdr">Pieces Per Pricing UOM</td>
+                                          <td class="colalph">$(F_PIPCPP)</td>
+                                      </tr>
+                                  %endif
+                              </table>
+                          </td>
+                      </tr>
+                  </table>
+              </fieldset>
+          %else
+              <fieldset class="legendBody">
+                  <legend class="legendTitle">$(V_PILVDS)</legend>
+                  <table $(contentTable)>
+                      <colgroup>
+    	                   <col width="60%">
+    	                   <col width="15%">
+    	                   <col width="20%">
+                      <tr valign="center">
+                          <td>
+                              <table $(contentTable)>
+                                  %if (V_PILL == "Y")
+                                      @Format_Nbr(V_PILIST, F_PILIST, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                      @dtw_assign(lessPlus, "List Less")
+                                      <tr><td class="dsphdr">List Price</td>
+                                          <td class="colnmbr">$(F_PILIST)</td>
+                                      </tr>
+                                      %if (V_PIBP != "Y" && V_PIBA != "Y")
+                                          %if (V_PIUP == "Y")
+                                              @dtw_assign(amount, @dtw_rsubtract(V_PILIST, V_PISLPR))
+                                              @Format_Nbr(amount, F_amount, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                              @dtw_assign(V_PILCPC, "@dtw_rformat(@dtw_rmultiply(V_PILCPC, "100"),"","4")")
+                                              @Format_Nbr(V_PILCPC, F_PILCPC, $(prcNbrDec), $(pctEditCode), "Y", "", "%")
+                                              <tr><td class="dsphdr">List Less</td>
+                                                  <td class="colnmbr">$(F_amount)</td>
+                                                  <td>&nbsp;</td>
+                                                  <td class="colalph">($(F_PILIST) x $(F_PILCPC))</td>
+                                              </tr>
+                                          %else
+                                              @Format_Nbr(V_PILCAM, F_PILCAM, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                              <tr><td class="dsphdr">List Less</td>
+                                                  <td class="colnmbr">$(F_PILCAM)</td>
+                                              </tr>
+                                          %endif
+                                      %endif
+                                  %endif
+                                  %if (V_PICP == "Y")
+                                      @dtw_assign(lessPlus, "Cost Plus")
+                                      @Format_Nbr(V_PICOST, F_PICOST, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+                                      <tr><td class="dsphdr">Total Unit Cost</td>
+                                          <td class="colnmbr">$(F_PICOST)</td>
+                                      </tr>
+                                      %if (V_PIBP != "Y" && V_PIBA != "Y")
+                                          %if (V_PIUP == "Y")
+                                              @dtw_assign(amount, @dtw_rsubtract(V_PISLPR, V_PICOST))
+                                              @Format_Nbr(amount, F_amount, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                              @dtw_assign(V_PILCPC, "@dtw_rformat(@dtw_rmultiply(V_PILCPC, "100"),"","4")")
+                                              @Format_Nbr(V_PILCPC, F_PILCPC, $(prcNbrDec), $(pctEditCode), "Y", "", "%")
+                                              <tr><td class="dsphdr">Cost Plus</td>
+                                                  <td class="colnmbr">$(F_amount)</td>
+                                                  <td>&nbsp;</td>
+                                                  <td class="colalph">($(F_PICOST) x $(F_PILCPC))</td>
+                                              </tr>
+                                          %else
+                                              @Format_Nbr(V_PILCAM, F_PILCAM, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+                                              <tr><td class="dsphdr">Cost Plus</td>
+                                                  <td class="colnmbr">$(F_PILCAM)</td>
+                                              </tr>
+                                          %endif
+                                      %endif
+                                  %endif
+                                  %if (V_PIBP == "Y" || V_PIBA == "Y")
+                                      %if (V_PIUP == "Y" && V_PILL == "Y")
+                                          @dtw_assign(amount, @dtw_rsubtract(V_PILIST, V_PISLPR))
+                                          @Format_Nbr(amount, F_amount, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                          @dtw_assign(V_PILCPC, "@dtw_rformat(@dtw_rmultiply($(V_PIAMPC), "100"),"","4")")
+                                          @Format_Nbr(V_PILCPC, F_PILCPC, $(prcNbrDec), $(pctEditCode), "Y", "", "%")
+                                          <tr><td class="dsphdr">List Less</td>
+                                              <td class="colnmbr">$(F_amount)</td>
+                                              <td>&nbsp;</td>
+                                              <td class="colalph">($(F_PILIST) x $(F_PILCPC))</td>
+                                          </tr>
+                                      %elif (V_PIUP == "Y" && V_PICP == "Y")
+                                          @dtw_assign(amount, @dtw_rsubtract(V_PISLPR, V_PICOST))
+                                          @Format_Nbr(amount, F_amount, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                          @dtw_assign(V_PILCPC, "@dtw_rformat(@dtw_rmultiply($(V_PIAMPC), "100"),"","4")")
+                                          @Format_Nbr(V_PILCPC, F_PILCPC, $(prcNbrDec), $(pctEditCode), "Y", "", "%")
+                                          <tr><td class="dsphdr">Cost Plus</td>
+                                              <td class="colnmbr">$(F_amount)</td>
+                                              <td>&nbsp;</td>
+                                              <td class="colalph">($(F_PICOST) x $(F_PILCPC))</td>
+                                          </tr>
+                                      %else
+                                          @Format_Nbr(V_PIAMPC, F_amtPct, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                          <tr><td class="dsphdr">$(lessPlus)</td>
+                                              <td class="colnmbr">$(F_amtPct)</td>
+                                          </tr>
+                                      %endif
+                                  %endif
+                                  %if (V_PIDL == "Y")
+                                      @Format_Nbr(V_PILCAM, F_PILCAM, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                      <tr><td class="dsphdr">Dollar Amount</td>
+                                          <td class="colnmbr">$(F_PILCAM)</td>
+                                      </tr>
+                                  %endif
+
+                                  %if (V_PIXDSC != "")
+                                      @Format_Nbr(V_PIXAMT, F_PIXAMT, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                      <tr><td class="dsphdr">$(V_PIXDSC)</td>
+                                          <td class="colnmbr">$(F_PIXAMT)</td>
+                                          <td class="colalph">$(V_PIXCAL)</td>
+                                      </tr>
+                                  %endif
+
+                                  <tr><td class="dsphdr">Selling Price</td>
+                                      <td class="coltotal">$(F_PISLPR)</td>
+                                  </tr>
+
+                                  <tr><td class="dsphdr">Quantity</td>
+                                      <td class="colnmbr">$(F_quantity)</td>
+                                  </tr>
+
+                                  @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(quantity, V_PISLPR), V_PIPCPP)", ExtendedPrice, "2", $(amtEditCode), "Y", "", "")
+                                  <tr><td class="dsphdr">Extended Price</td>
+                                      <td class="coltotal">$(ExtendedPrice)</td>
+                                  </tr>
+                              </table>
+                          </td>
+                          <td>&nbsp;</td>
+                          <td>
+                              <table $(contentTable)>
+                                  %if (V_PIMSRP > ".00000")
+                                      @Format_Nbr(V_PIMSRP, F_PIMSRP, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                                      <tr><td class="dsphdr">MSRP</td>
+                                          <td class="colalph">$(F_PIMSRP)</td>
+                                      </tr>
+                                  %endif
+                                  <tr><td class="dsphdr">Date</td>
+                                      <td class="colalph">$(F_orderDate)</td>
+                                  </tr>
+                                  %if (V_PICN == "Y")
+                                      @Format_Date(V_PISTDT, "H", F_PISTDT)
+                                      <tr><td class="dsphdr">Contract Start</td>
+                                          <td class="colalph">$(F_PISTDT)</td>
+                                      </tr>
+                                      @Format_Date(V_PIEXDT, "H", F_PIEXDT)
+                                      <tr><td class="dsphdr">Contract End</td>
+                                          <td class="colalph">$(F_PIEXDT)</td>
+                                      </tr>
+                                  %endif
+                                  @RtvFldDesc("UMUOM='$(V_PIUOMP)'", "HDUOM", "UMUMLD", pricingUOMDesc)
+                                  @Format_Code(V_PIUOMP, F_PIUOMP)
+                                  <tr><td class="dsphdr">Pricing UOM</td>
+                                      <td class="colalph">$(pricingUOMDesc)</td>
+                                      <td class="colalph">$(F_PIUOMP)</td>
+                                  </tr>
+                                  %if (V_PIUOMS != V_PIUOMP)
+                                      @RtvFldDesc("UMUOM='$(V_PIUOMS)'", "HDUOM", "UMUMLD", stockingUOMDesc)
+                                      @Format_Code(V_PIUOMS, F_PIUOMS)
+                                      <tr><td class="dsphdr">Stocking UOM</td>
+                                          <td class="colalph">$(stockingUOMDesc)</td>
+                                          <td class="colalph">$(F_PIUOMS)</td>
+                                      </tr>
+                                      @Format_Nbr(V_PIPCPP, F_PIPCPP, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                                      <tr><td class="dsphdr">Pieces Per Pricing UOM</td>
+                                          <td class="colalph">$(F_PIPCPP)</td>
+                                      </tr>
+                                  %endif
+                              </table>
+                          </td>
+                      </tr>
+                  </table>
+              </fieldset>
+          %endif
+
+          %if (V_PIBP == "Y" || V_PIBA == "Y")
+              @dtw_assign(lessPlus, "")
+              %if (V_PILL == "Y")
+                  @dtw_assign(lessPlus, "List Less")
+              %elif (V_PICP == "Y")
+                  @dtw_assign(lessPlus, "Cost Plus")
+              %endif
+              <fieldset class="legendBody">
+                  <legend class="legendTitle">Available Brackets</legend>
+                  %if (V_PITQTY>"0" && V_PIBP == "Y")
+                      @Format_Nbr(V_PITQTY, F_PITQTY, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                      <div class="page">
+                           Product Group Total Quantity Used: $(F_PITQTY)
+                      </div>
+                  %elif (V_PITAMT>"0")
+                      @Format_Nbr(V_PITAMT, F_PITAMT, "2", $(amtEditCode), "Y", "$", "")
+                      <div class="page">
+                           Product Group Total Amount Used: $(F_PITAMT)
+                      </div>
+                  %endif
+                  @RtvFldDesc("PBPMLV=$(V_PIPMLV) and PBPMKY='$(V_PIPMKY)'", "HDPRCB", "sum(PBMSRP)", totalMSRP)
+                  <table $(contentTable)>
+                      <tr>
+                          %if (V_PIBP == "Y")
+                              <td class="colhdr">Quantity</td>
+                          %else
+                              <td class="colhdr">$(listCost)Amount</td>
+                          %endif
+                          <td class="colhdr">$(lessPlus)<br>$(amtPctDesc)</td>
+                          %if (totalMSRP > "0")
+                              <td class="colhdr">MSRP</td>
+                          %endif
+                      </tr>
+                      @dtw_assign(level, V_PIPMLV)
+                      @dtw_assign(key, V_PIPMKY)
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDPRCB ", fileSQL)
+                      @dtw_concat(selectSQL, "PBPMLV=$(V_PIPMLV) and PBPMKY='$(V_PIPMKY)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By PBLMT", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Select_Brackets(profileHandle, dataBaseID, stmtSQL)
+
+                  </table>
+              </fieldset>
+          %endif
+
+          %if (V_PIPMLV != "00")
+              <fieldset class="legendBody">
+                  <legend class="legendTitle">Pricing Criteria Used</legend>
+                  <table $(contentTable)>
+                      @dtw_assign(x, "1")
+                      %while(x <= "7") {
+                          %if (V_PICSSQ == x)
+                              @Format_Code(billToNumber, F_billToNumber)
+                              <tr><td class="dsphdr">Bill-To Customer</td>
+                                  <td class="colalph">$(billToName)</td>
+                                  <td class="colalph">$(F_billToNumber)</td>
+                              </tr>
+                          %elif (V_PIITSQ == x)
+                              @Format_Code(itemNumber, F_itemNumber)
+                              <tr><td class="dsphdr">Item</td>
+                                  <td class="colalph">$(itemDescription)</td>
+                                  <td class="colalph">$(F_itemNumber)</td>
+                              </tr>
+                          %elif (V_PIWHSQ == x)
+                              @Format_Code(warehouseNumber, F_warehouseNumber)
+                              <tr><td class="dsphdr">Warehouse</td>
+                                  <td class="colalph">$(warehouseName)</td>
+                                  <td class="colalph">$(F_warehouseNumber)</td>
+                              </tr>
+                          %elif (V_PIPCSQ == x)
+                              @Format_Code(productClass, F_productClass)
+                              <tr><td class="dsphdr">Product Class</td>
+                                  <td class="colalph">$(productClassDesc)</td>
+                                  <td class="colalph">$(F_productClass)</td>
+                              </tr>
+                          %elif (V_PICCSQ == x)
+                              @Format_Code(customerClass, F_customerClass)
+                              <tr><td class="dsphdr">Customer Class</td>
+                                  <td class="colalph">$(customerClassDesc)</td>
+                                  <td class="colalph">$(F_customerClass)</td>
+                              </tr>
+                          %elif (V_PIRGSQ == x)
+                              @Format_Code(region, F_region)
+                              <tr><td class="dsphdr">Region</td>
+                                  <td class="colalph">$(regionDesc)</td>
+                                  <td class="colalph">$(F_region)</td>
+                              </tr>
+                          %elif (V_PIPGSQ == x)
+                              %if (productGroup != "")
+                                  @Format_Code(productGroup, F_productGroup)
+                                  <tr><td class="dsphdr">Product Group</td>
+                                      <td class="colalph">$(productGroupDesc)</td>
+                                      <td class="colalph">$(F_productGroup)</td>
+                                  </tr>
+                              %endif
+                          %endif
+                          @dtw_add(x, "1", x)
+                      %}
+                      @Format_Code(V_PIPMLV, F_PIPMLV)
+                      <tr><td class="dsphdr">Pricing Level</td>
+                          <td class="colalph">$(V_PILVDS)</td>
+                          <td class="colalph">$(F_PIPMLV)</td>
+                      </tr>
+                  </table>
+              </fieldset>
+          %endif
+
+          <fieldset class="legendBody">
+              <legend class="legendTitle">Additional Criteria</legend>
+              <table $(contentTable)>
+                  %if (V_PICSSQ == "00")
+                      @Format_Code(billToNumber, F_billToNumber)
+                      <tr><td class="dsphdr">Bill-To Customer</td>
+                          <td class="colalph">$(billToName)</td>
+                          <td class="colalph">$(F_billToNumber)</td>
+                      </tr>
+                  %endif
+                  %if (V_PIITSQ == "00")
+                      @Format_Code(itemNumber, F_itemNumber)
+                      <tr><td class="dsphdr">Item</td>
+                          <td class="colalph">$(itemDescription)</td>
+                          <td class="colalph">$(F_itemNumber)</td>
+                      </tr>
+                  %endif
+                  %if (V_PIWHSQ == "00")
+                      @Format_Code(warehouseNumber, F_warehouseNumber)
+                      <tr><td class="dsphdr">Warehouse</td>
+                          <td class="colalph">$(warehouseName)</td>
+                          <td class="colalph">$(F_warehouseNumber)</td>
+                      </tr>
+                  %endif
+                  %if (V_PIPCSQ == "00")
+                      @Format_Code(productClass, F_productClass)
+                      <tr><td class="dsphdr">Product Class</td>
+                          <td class="colalph">$(productClassDesc)</td>
+                          <td class="colalph">$(F_productClass)</td>
+                      </tr>
+                  %endif
+                  %if (V_PICCSQ == "00")
+                      @Format_Code(customerClass, F_customerClass)
+                      <tr><td class="dsphdr">Customer Class</td>
+                          <td class="colalph">$(customerClassDesc)</td>
+                          <td class="colalph">$(F_customerClass)</td>
+                      </tr>
+                  %endif
+                  %if (V_PIRGSQ == "00")
+                      @Format_Code(region, F_region)
+                      <tr><td class="dsphdr">Region</td>
+                          <td class="colalph">$(regionDesc)</td>
+                          <td class="colalph">$(F_region)</td>
+                      </tr>
+                  %endif
+                  %if (V_PIPGSQ == "00")
+                      %if (productGroup != "")
+                          @Format_Code(productGroup, F_productGroup)
+                          <tr><td class="dsphdr">Product Group</td>
+                              <td class="colalph">$(productGroupDesc)</td>
+                              <td class="colalph">$(F_productGroup)</td>
+                          </tr>
+                      %endif
+                  %endif
+              </table>
+          </fieldset>
+      %}	
+      <table $(contentTable)>
+          <tr><td class="toolbar">
+                  <a href="$(homeURL)$(cGIPath)PricingInquiryEntry.d2w/REPORT$(d2wVarBase)&amp;fromQuantity=@dtw_rurlescseq(quantity)&amp;fromOrderDate=@dtw_rurlescseq(orderDate)" title="Change Pricing Criteria" onclick="$(smallPromptWinVar)">$(changeImageMed)</a>
+                  %INCLUDE "CloseWindow.icl"
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+      $(inquiryhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_sql) Select_Brackets (IN CHAR(64)    profileHandle,
+				        CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      %ROW {
+          @Format_Nbr(V_PBLMT, F_PBLMT, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+          %if (usePct == "Y")
+              @Format_Nbr(@dtw_rformat(@dtw_rmultiply(V_PBPCT, "100"),"","4"), amtPct, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+          %else
+              @Format_Nbr(V_PBPRC, amtPct, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+          %endif
+
+          %if (V_PBLMT == $(limitUsed))
+              @dtw_assign(bracketUsed, fldTextErrOvr)
+          %else
+              @dtw_assign(bracketUsed, "")
+          %endif
+
+          %INCLUDE "SetRowClass.icl"
+          <tr class="$(rowClass)">
+              <td class="colnmbr"><span $(bracketUsed)>$(F_PBLMT)</span></td>
+              <td class="colnmbr"><span $(bracketUsed)>$(amtPct)</span></td>
+              %if (totalMSRP > "0")
+                 @Format_Nbr(V_PBMSRP, F_MSRP, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                 <td class="colnmbr"><span $(bracketUsed)>$(F_MSRP)</span></td>
+              %endif
+          </tr>
+       %}
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(32000) edtVar)
+  {%EXEC {HOEPRC_I.PGM %}
+  %}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(billToNumber, "0")
+  @RtvFldDesc("CMCUST=$(customerNumber)", "HDCUST", "CMBLTO", billToNumber)
+  %if (billToNumber <= "0")
+      @dtw_assign(billToNumber, customerNumber)
+  %endif
+
+  %if (origQuantity <= "0")
+      @dtw_assign(origQuantity, quantity)
+  %endif
+
+  %if (warehouseNumber <= "0")
+      @RtvFldDesc("CMCUST=$(billToNumber)", "HDCUST", "CMWH#", warehouseNumber)
+  %endif
+
+  %if (customerClass == "" && billToNumber != "")
+      @RtvFldDesc("CMCUST=$(billToNumber)", "HDCUST", "CMCCLS", customerClass)
+  %endif
+
+  %if (productClass == "")
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMPCLS", productClass)
+  %endif
+
+  %if (region == "" && billToNumber != "")
+      @RtvFldDesc("CMCUST=$(billToNumber)", "HDCUST", "CMCRGN", region)
+  %endif
+
+  %if (productGroup == "")
+      @RtvFldDesc("IWITEM='$(itemNumber)' and IWWHS=$(warehouseNumber)", "HDIWHS", "IWPGRP", productGroup)
+  %endif
+
+  %if (orderDate == "")
+      @dtw_date("U", mdy)
+      %if (sysDateFormat == "YMD")
+          @dtw_assign(orderDate, "@dtw_rsubstr(mdy, "7", "2")@dtw_rsubstr(mdy, "4", "2")@dtw_rsubstr(mdy, "1", "2")")
+      %elif (sysDateFormat == "DMY")
+          @dtw_assign(orderDate, "@dtw_rsubstr(mdy, "4", "2")@dtw_rsubstr(mdy, "1", "2")@dtw_rsubstr(mdy, "7", "2")")
+      %else
+          @dtw_assign(orderDate, "@dtw_rsubstr(mdy, "1", "2")@dtw_rsubstr(mdy, "4", "2")@dtw_rsubstr(mdy, "7", "2")")
+      %endif
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@ord#", orderNumber)
+  @Concat_Field("@@cust", billToNumber)
+  @Concat_Field("@@shto", customerNumber)
+  @Concat_Field("@@item", itemNumber)
+  @Concat_Field("@@qty@", quantity)
+  @Concat_Field("@@oqty", origQuantity)
+  @Concat_Field("@@whs@", warehouseNumber)
+  @Concat_Field("@@ccls", customerClass)
+  @Concat_Field("@@pcls", productClass)
+  @Concat_Field("@@crgn", region)
+  @Concat_Field("@@pgrp", productGroup)
+  @Concat_Field("@@ordt", orderDate)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, edtVar)
+  @Set_SQL(stmtSQL)
+%}

@@ -1,0 +1,388 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Option                                                     *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {
+  page_title              = "Option"
+  d2wName                 = "Option.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HPD021"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  advanceSearch           = "N"
+  wildCardSearch2         = ""
+  plantNumber             = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %if (plantNumber > "0")
+      @PlantUserView(profileHandle, dataBaseID, userPass, plantNumber)
+  %endif
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+             %INCLUDE "$(headInclude)"
+             <script TYPE="text/javascript">
+                 %INCLUDE "CheckEnterSearch.icl"
+                 %INCLUDE "Menu.js"
+                 %INCLUDE "NoFormValidate.icl"
+             </script>
+             %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+             <!-- Start Of Banner Code -->
+             %INCLUDE "banner.icl"
+             <!-- End Of Banner Code -->
+             <table $(baseTable)>
+                 <tr valign="top">
+                     %if (formatToPrint == "")
+                         @dtw_assign(pageID, "OPTION")
+                         <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                     %endif
+                     <td class="content">
+                         @dtw_assign(uv_PlantName, "a.FOPLT")
+                         %INCLUDE "userview.icl"
+
+                         @dtw_assign(wildCardSearch2, @dtw_rreplace(wildCardSearch, "b.FOFEAT", "a.FOFEAT"))
+                         %INCLUDE "stmtSQLClear.icl"
+                         @dtw_concat(stmtSQL, "Select a.FOPLT, a.FOOPTN, Max(a.FOODSC) as FOODSC, b.FOFEAT, Max(b.FOBLOP) as FOBLOP, ", stmtSQL)
+                         @dtw_concat(stmtSQL, " Max(a.FOFEAT) as FOBILVL, " , stmtSQL)
+                         @dtw_concat(stmtSQL, " upper(Max(a.FOODSC)) as FOODSCU, " , stmtSQL)
+                         @dtw_concat(stmtSQL, " Max(b.FOFDSC) as FOFDSC " , stmtSQL)
+                         %if (plantNumber == "")
+                             @dtw_concat(stmtSQL, " , Max(coalesce(PLNAME,' ')) as PLNAME, ", stmtSQL)
+                             @dtw_concat(stmtSQL, " Max(coalesce(upper(PLNAME),' ')) as PLNAMEU ", stmtSQL)
+                         %endif
+                         @dtw_concat(fileSQL, " HDMFOP a join HDMFOP b on a.FOPLT=b.FOPLT and a.FOFEAT=b.FOOPTN", fileSQL)
+                         %if (plantNumber == "")
+                             @dtw_concat(fileSQL, " left join HDPLNT on a.FOPLT=PLPLNT ", fileSQL)
+                         %endif
+                         @dtw_concat(selectSQL, " a.FOBLOP<>'Y'", selectSQL)
+                         @dtw_concat(selectSQL, " and b.FOBLOP='Y'", selectSQL)
+                         %if (plantNumber > "0")
+                             @dtw_concat(selectSQL, " and a.FOPLT=$(plantNumber)", selectSQL)
+                         %endif
+                         %INCLUDE "stmtSQLSelect.icl"
+                         @dtw_concat(stmtSQL, " Group By a.FOPLT, a.FOOPTN, b.FOFEAT ", stmtSQL)
+                         @RtvFldDesc("$(selectSQL)", "$(fileSQL)", "char(count(distinct digits(a.FOPLT) concat a.FOOPTN concat b.FOFEAT))", sql_Record_Count)
+
+                         @dtw_assign(fileSQL, "")
+                         @dtw_assign(selectSQL, "")
+                         @dtw_concat(fileSQL, " HDMFOP a", fileSQL)
+                         %if (plantNumber == "")
+                             @dtw_concat(fileSQL, " left join HDPLNT on a.FOPLT=PLPLNT ", fileSQL)
+                         %endif
+                         @dtw_concat(selectSQL, "   a.FOBLOP<>'Y'", selectSQL)
+                         %if (plantNumber > "0")
+                             @dtw_concat(selectSQL, "   and a.FOPLT=$(plantNumber)", selectSQL)
+                         %endif
+                         @dtw_concat(selectSQL, "   and a.FOFEAT not in", selectSQL)
+                         @dtw_concat(selectSQL, "   (select fooptn from hdmfop b", selectSQL)
+                         @dtw_concat(selectSQL, "    where a.foplt=b.foplt", selectSQL)
+                         @dtw_concat(selectSQL, "    and a.fofeat=b.fooptn", selectSQL)
+                         @dtw_concat(selectSQL, "    and b.foblop='Y')", selectSQL)
+                         @dtw_concat(selectSQL, " $(wildCardSearch2) ", selectSQL)
+                         %if (uv_Sql != "")
+                             @dtw_concat(selectSQL, " and ($(uv_Sql))", selectSQL)
+                         %endif
+                         @RtvFldDesc("$(selectSQL)", "$(fileSQL)", "char(count(*))", my_sql_Record_Count)
+                         %if (my_sql_Record_Count > "0")
+                             @dtw_add(sql_Record_Count, my_sql_Record_Count, sql_Record_Count)
+                             @dtw_concat(stmtSQL, "Union ", stmtSQL)
+                             @dtw_concat(stmtSQL, "Select a.FOPLT, a.FOOPTN, a.FOODSC, a.FOFEAT, ' ' as FOBLOP, ", stmtSQL)
+                             @dtw_concat(stmtSQL, " ' ' as FOBILVL, " , stmtSQL)
+                             @dtw_concat(stmtSQL, " upper(a.FOODSC) as FOODSCU, " , stmtSQL)
+                             @dtw_concat(stmtSQL, " a.FOFDSC " , stmtSQL)
+                             %if (plantNumber == "")
+                                 @dtw_concat(stmtSQL, " , coalesce(PLNAME,' ') as PLNAME, ", stmtSQL)
+                                 @dtw_concat(stmtSQL, " coalesce(upper(PLNAME),' ') as PLNAMEU ", stmtSQL)
+                             %endif
+                             @dtw_concat(stmtSQL, " From $(fileSQL) ", stmtSQL)
+                             @dtw_concat(stmtSQL, " Where $(selectSQL) ", stmtSQL)
+                         %endif
+
+                         %if (@dtw_rpos("FOFEAT", wildCardSearch) == "0")
+                             @dtw_assign(fileSQL, "")
+                             @dtw_assign(selectSQL, "")
+                             @dtw_concat(fileSQL, " HDMFOP a", fileSQL)
+                             %if (plantNumber == "")
+                                 @dtw_concat(fileSQL, " left join HDPLNT on a.FOPLT=PLPLNT ", fileSQL)
+                             %endif
+                             @dtw_concat(selectSQL, " a.FOBLOP<>'Y'", selectSQL)
+                             %if (plantNumber > "0")
+                                 @dtw_concat(selectSQL, " and a.FOPLT=$(plantNumber)", selectSQL)
+                             %endif
+                             @dtw_concat(selectSQL, " $(wildCardSearch) ", selectSQL)
+                             %if (uv_Sql != "")
+                                 @dtw_concat(selectSQL, " and ($(uv_Sql))", selectSQL)
+                             %endif
+                             @RtvFldDesc("$(selectSQL)", "$(fileSQL)", "char(count(distinct digits(FOPLT) concat FOOPTN))", my_sql_Record_Count)
+                             %if (my_sql_Record_Count > "0")
+                                 @dtw_add(sql_Record_Count, my_sql_Record_Count, sql_Record_Count)
+                                 @dtw_concat(stmtSQL, "Union ", stmtSQL)
+                                 @dtw_concat(stmtSQL, "Select a.FOPLT, a.FOOPTN, Max(a.FOODSC) as FOODSC, ' ' as FOFEAT, ' ' as FOBLOP, ", stmtSQL)
+                                 @dtw_concat(stmtSQL, " ' ' as FOBILVL, " , stmtSQL)
+                                 @dtw_concat(stmtSQL, " upper(Max(a.FOODSC)) as FOODSCU, " , stmtSQL)
+                                 @dtw_concat(stmtSQL, " ' ' " , stmtSQL)
+                                 %if (plantNumber == "")
+                                     @dtw_concat(stmtSQL, " , Max(coalesce(PLNAME,' ')) as PLNAME, ", stmtSQL)
+                                     @dtw_concat(stmtSQL, " Max(coalesce(upper(PLNAME),' ')) as PLNAMEU ", stmtSQL)
+                                 %endif
+                                 @dtw_concat(stmtSQL, " From $(fileSQL) ", stmtSQL)
+                                 @dtw_concat(stmtSQL, " Where $(selectSQL) ", stmtSQL)
+                                 @dtw_concat(stmtSQL, " Group By FOPLT, FOOPTN", stmtSQL)
+                             %endif
+                         %endif
+                         %if (sql_Record_Count > "0")
+                             @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                         %else
+                             @dtw_assign(stmtSQL, "Select FLTYPE From SYFLAG Where FLTYPE='NoRecFnd'")
+                         %endif
+                         %INCLUDE "stmtSQLEnd.icl"
+                         @Option_Query(profileHandle, dataBaseID, stmtSQL)
+                     </td>
+                 </tr>
+             </table>
+             <!-- Start Of Trailer Code -->
+             %INCLUDE "trailer.icl"
+             <!-- End Of Trailer Code -->
+        </body>
+     </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Option_Query (IN CHAR(64)    profileHandle,
+                                     CHAR(2)     dataBaseID,
+                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      <a href="$(homeURL)$(cGIPath)Feature.d2w/REPORT$(d2wVarBase)">$(featuresImage)</a>
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      %if (plantNumber > "0")
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+          <table $(contentTable)>
+              @Format_Header_URL("Plant", $(plantName), $(plantNumber), "$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(d2wVarBase)")
+          </table>
+      %endif
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search"   onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr"> Option </th>
+                      <th class="colhdr"> Description </th>
+                      <th class="colhdr"> Feature </th>
+                      %if (plantNumber == "")
+                          <th class="colhdr">Plant</th>
+                      %endif
+                  </tr>
+                  <tr><td><input type="text" class="inputalph"  name="srchOption" size="15" maxlength="15">
+                          <input type="hidden" name="operOption" value="LIKE">
+                      </td>
+                      <td align=center><input type="text" class="inputalph"  name="srchDesc" size="15" maxlength="30">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph"  name="srchFeature" size="15" maxlength="15">
+                          <input type="hidden" name="operFeature" value="LIKE">
+                      </td>
+                      %if (plantNumber == "")
+                          <td><input type="text" class="inputnmbr" name="srchPlant" size="5" maxlength="3">
+                              <input type="hidden" name="operPlant" value="=">
+                          </td>
+                      %endif
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchOption.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+          <tr>
+              @OrderBy_Sort("2", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=option" title="Sequence By Option"> Option</a></th>
+              @OrderBy_Sort("7", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=optionDesc" title="Sequence By Description"> Description</a></th>
+              @OrderBy_Sort("4", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=feature" title="Sequence By Feature"> Feature</a></th>
+              %if (plantNumber == "")
+                  @OrderBy_Sort("1", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlantNumber" title="Sequence By Plant">Plant</a></th>
+                  @OrderBy_Sort("10", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlantName" title="Sequence By Plant Name">Plant Name</a></th>
+              %endif
+              <th class="colhdr">Routings</th>
+              <th class="colhdr">B/L</th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_assign(maintainVar, "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(plantNumber)&amp;plantNumber=@dtw_rurlescseq(V_FOPLT)&amp;option=@dtw_rurlescseq(V_FOOPTN)&amp;feature=@dtw_rurlescseq(V_FOFEAT)&amp;featureDesc=@dtw_rurlescseq(V_FOFDSC)&amp;biLevel=@dtw_rurlescseq(V_FOBILVL)")
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("FRPLT=$(V_FOPLT) and FRFEAT='$(V_FOOPTN)' and FRFITM='$(V_FOFEAT)'", "HDMFRM","FRDEPT", dept)
+              %if (dept != "")
+                  @dtw_assign(rtgExists, "Y")
+              %else
+                  @dtw_assign(rtgExists, "")
+              %endif
+              <tr class="$(rowClass)">
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)OptionRouting.d2w/REPORT$(maintainVar)" title="View Routing">$(V_FOOPTN)</a></td>
+                  <td class="colalph">$(V_FOODSC)</td>
+                  <td class="colalph">$(V_FOFEAT)</td>
+                  %if (plantNumber == "")
+                      <td class="colnmbr">$(V_FOPLT)</td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(V_FOPLT)&amp;plantName=@dtw_rurlescseq(V_PLNAME)" title="View Plant">$(V_PLNAME)</a></td>
+                  %endif
+                  <td class="colcode">$(rtgExists)</td>
+                  <td class="colcode">$(V_FOBLOP)</td>
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (plantNumber > "0" && orderBy == "10, 2")
+          @dtw_assign(orderBy, "")
+      %endif
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "2, 4")
+          @DTW_ASSIGN(orderByDisplay, "Option")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "option")
+      %if (orderBy == "2, 4")
+          @DTW_ASSIGN(orderBy, "2 DESC, 4")
+          @DTW_ASSIGN(orderByDisplay, "Option (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "2, 4")
+          @DTW_ASSIGN(orderByDisplay, "Option")
+      %endif
+  %elif (sequence == "optionDesc")
+      %if (orderBy == "7, 2, 4")
+          @DTW_ASSIGN(orderBy, "7 DESC, 2, 4")
+          @DTW_ASSIGN(orderByDisplay, "Option Description (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "7, 2, 4")
+          @DTW_ASSIGN(orderByDisplay, "Option Description")
+      %endif
+  %elif (sequence == "feature")
+      %if (orderBy == "4, 2")
+          @DTW_ASSIGN(orderBy, "4 DESC, 2")
+          @DTW_ASSIGN(orderByDisplay, "Feature (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "4, 2")
+          @DTW_ASSIGN(orderByDisplay, "Feature")
+      %endif
+  %elif (sequence == "PlantNumber")
+      %if (orderBy == "1, 2")
+          @DTW_ASSIGN(orderBy, "1 DESC, 2")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number (descending), Option")
+      %else
+          @DTW_ASSIGN(orderBy, "1, 2")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number, Option")
+      %endif
+  %elif (sequence == "PlantName")
+      %if (orderBy == "10, 2")
+          @DTW_ASSIGN(orderBy, "10 DESC, 2")
+          @DTW_ASSIGN(orderByDisplay, "Plant Name (descending), Option")
+      %else
+          @DTW_ASSIGN(orderBy, "10, 2")
+          @DTW_ASSIGN(orderByDisplay, "Plant Name, Option")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("a.FOOPTN", "Option", $(srchOption), "U", operOption, "A")
+  @Build_WildCard ("upper(a.FOODSC)", "Option Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("b.FOFEAT", "Feature", $(srchFeature), "U", operFeature, "A")
+  %if (plantNumber == "")
+      @Build_WildCard ("a.FOPLT", "Plant Number", $(srchPlant), "", operPlant, "N")
+      @Build_WildCard ("upper(PLNAME)", "Plant Name", $(srchName), "U", operName, "A")
+  %endif
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

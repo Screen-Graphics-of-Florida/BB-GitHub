@@ -1,0 +1,278 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Order Entry Linked PO                                       *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Order Entry - Linked PO"
+  d2wName                 = "OrderEntryLinkedPO.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)"
+  programName             = "HOEWRT"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  tabID                   = "LINKEDPO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@orderControlNumber", "@dtw_rurlescseq(orderControlNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          %INCLUDE "OrderEntryProgOpt.icl"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "NewWindowOpen.icl"
+              %INCLUDE "OrderEntryConfirm.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "ORDERLINKEDPO")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select OEPOWK.*,  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(IMIMDS,O1IMDS) as IMIMDS, coalesce(IMDSHP,'N') as IMDSHP, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(IWUOMB,O1STUM) as IWUOMB, coalesce(VMVNA1,' ') as VMVNA1, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(VCADS,' ') as VCADS ", stmtSQL)
+                          @dtw_concat(fileSQL, " OEPOWK inner join OEDTWK on O5OCTL=O1OCTL and O5ORL#=O1ORL# and O5BLN#=O1BLN# ", fileSQL)
+                          @dtw_concat(fileSQL, "        left  join HDIMST on O5ITEM=IMITEM ", fileSQL)
+                          @dtw_concat(fileSQL, "        left  join HDIWHS on O5ITEM=IWITEM and O5WH=IWWHS", fileSQL)
+                          @dtw_concat(fileSQL, "        left  join HDVEND on O5VEND=VMVEND", fileSQL)
+                          @dtw_concat(fileSQL, "        left  join HDVCIT on VCVCF='V' and VCVNCS=O5VEND and VCITEM=O5ITEM", fileSQL)
+                          @dtw_concat(selectSQL, "O5OCTL=$(orderControlNumber) and O5BLN#=0 ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By O5ORL# ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @OrderEntry_Linked_PO(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(DTW_SQL) OrderEntry_Linked_PO(IN CHAR(64)     profileHandle,
+				            CHAR(2)      dataBaseID,
+                                           CHAR(32000)  stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "OrderEntryTabs.icl"
+      @dtw_assign(recCnt, @dtw_radd(sql_Record_Count, "1"))
+      <form class="formClass" METHOD=POST name="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/UPDATE$(d2wVarBase)&amp;recCnt=@dtw_rurlescseq(recCnt)&amp;autoAssignPO=@dtw_rurlescseq(autoAssignPO)">
+      <table $(contentTable)>
+          <tr>	
+              %if (autoAssignPO != "Y")
+                  <th class="colhdr">P/O<br>Number</th>
+              %endif
+              <th class="colhdr">Ln</th>
+              <th class="colhdr">Item<br>Number</th>
+              %if (oe_sec_10 == "Y")
+                  <th class="colhdr">Whs</th>
+              %endif
+              <th class="colhdr">Description</th>
+              <th class="colhdr">Vendor<br>Number</th>
+              <th class="colhdr">Name</th>
+              %if (genPOType == "P")
+                  <th class="colhdr">Drop<br>Ship</th>
+              %endif
+              <th class="colhdr">Quantity<br>Ordered</th>
+              <th class="colhdr">Cost</th>
+              <th class="colhdr">Pur<br>UOM</th>
+              <th>&nbsp; &nbsp; <a href="javascript:check(document.Chg)">$(acceptImageLrg)</a></th>
+          </tr>
+
+
+          %ROW {
+              %INCLUDE "SetRowClass.icl"
+              @Format_Nbr(V_O5QORD, F_O5QORD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_O5COST, F_O5COST, $(cstNbrDec), $(cstEditCode), "Y", "", "")
+
+              <tr class="$(rowClass)">
+                  %if (autoAssignPO != "Y")
+                      <td class="colnmbr"><input name="po$(ROW_NUM)" value="$(V_O5PO#)" type="text" size="4" maxlength="7"></td>
+                  %endif
+                  <td class="colnmbr"><input name="ln$(ROW_NUM)" value="$(V_O5ORL#)" type="hidden">$(V_O5ORL#)</td>
+                  <td class="colalph"><input name="it$(ROW_NUM)" type="hidden" value="$(V_O5ITEM)"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_O5ITEM))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_O5ITEM)</a></td>
+                  %if (oe_sec_10 == "Y")
+                      @RtvFldDesc("WHWHS=$(V_O5WH)", "HDWHSM", "WHWHNM", whsName)
+                      <td class="colnmbr" $(helpCursor)><span title="$(whsName)">$(V_O5WH)</span></td>
+                  %endif
+                  <td class="colalph">$(V_IMIMDS)</td>
+                  <td class="inputnmbr"><input name="vn$(ROW_NUM)" type="text" value="$(V_O5VEND)" size="4" maxlength="7"><a href="$(homeURL)$(phpPath)VendorSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=vn$(ROW_NUM)&amp;fldDesc=nm$(ROW_NUM)" onclick="$(searchWinVar)"> $(searchImage) </a>
+                                        <input name="fv$(ROW_NUM)" type="hidden" value="$(V_O5VEND)">
+                  </td>
+                  <td class="colalph"><input name="nm$(ROW_NUM)" value="$(V_VMVNA1)" type="text" size="20" disabled></td>
+                  %if (genPOType == "P")
+                      <td class="colalph">
+                          @RtvFldDesc("VCVCF='C' and VCVNCS=$(V_O5SHTO) and VCITEM='$(V_O5ITEM)'", "HDVCIT", "coalesce(VCADS,' ')", CIADS)
+                          %if ((V_IMDSHP == "Y" && CIADS !="N" && V_VCADS != "N") ||
+                              (V_IMDSHP == "N" && CIADS =="Y" && V_VCADS != "N"))
+                              %if (V_O5DSHP == "Y")
+                                  @dtw_assign(dsChecked, "CHECKED")
+                              %else
+                                  @dtw_assign(dsChecked, "")
+                              %endif
+                              <input type="checkbox" name="ds$(ROW_NUM)" value='Y' $(dsChecked)>
+                          %else
+                              &nbsp;
+                          %endif
+                      </td>
+                  %endif
+                  <td class="colnmbr">$(F_O5QORD)</td>
+                  <td class="colnmbr">
+                      %if (oe_sec_08 == "Y")
+                          <input name="cs$(ROW_NUM)" type="text" value="$(V_O5COST)" size="5" maxlength="13">
+                      %else
+                          <input name="cs$(ROW_NUM)" type="hidden" value="$(V_O5COST)" size="5" maxlength="13">$(F_O5COST)
+                      %endif
+                      <input name="cf$(ROW_NUM)" type="hidden" value="$(V_O5COST)">
+                      <input name="co$(ROW_NUM)" type="hidden" value="$(V_O5CSTO)">
+                  </td>
+                  <td class="colnmbr">$(V_IWUOMB)</td>
+              </tr>
+              %if (autoAssignPO != "Y")
+                  @dtw_assign(poStatus, "")
+                  %if (V_O5PO# > "0")
+                      @RtvFldDesc("POPO=$(V_O5PO#)", "POPOMS", "POSTAT", poStatus)
+                  %endif
+                  %if (poStatus == "")
+                      @RtvFldDesc("O5PO#=$(V_O5PO#) and O5ORL#<>$(V_O5ORL#) and O5VEND<>$(V_O5VEND)", "OEPOWK", "char(count(*))", dupPOCnt)
+                  %endif
+                  %if (V_O5PO# == "0" || poStatus != "" || V_VMVNA1 == "" || dupPOCnt > "0")
+                      <tr><td class="error" colspan="5">
+                              %if (poStatus != "")
+                                  P/O Number Already Exists
+                              %elif (V_O5PO# == "0")
+                                  Invalid P/O Number
+                              %elif (dupPOCnt > "0")
+                                  P/O Number Is Already Assigned To Another Line
+                              %else
+                                  &nbsp;
+                              %endif
+                          </td>
+                          <td class="error" colspan="10">
+                              %if (V_VMVNA1 == "")
+                                  Invalid Vendor Number
+                              %else
+                                  &nbsp;
+                              %endif
+                          </td>
+                      </tr>
+                  %endif
+              %elif (V_VMVNA1 == "")
+                  <tr><td colspan="4">&nbsp;</td><td class="error" colspan="10">Invalid Vendor Number</td></tr>
+              %endif
+          %}
+      </table>
+      </form>
+      %INCLUDE "EndTabs.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Update_OEPOWK(INOUT DECIMAL(8,0) orderControlNumber,
+				      	       DECIMAL(3,0) lineNumber)
+{%EXEC {HOEPOW_W.PGM %}
+%}
+
+%HTML(REVIEW) {
+  %INCLUDE "setLibraryList.icl"
+  <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)">
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From OEPOWK ", stmtSQL)
+  @dtw_concat(stmtSQL, " Where Not Exists (Select * From OEDTWK Where O1OCTL=O5OCTL and O1ORL#=O5ORL#) @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(UPDATE) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(x, "1")
+  %while(x != recCnt){
+      %if (autoAssignPO != "Y")
+          @dtw_assign(po, "$(po$(x))")
+      %endif
+      @dtw_assign(ln, "$(ln$(x))")
+      @dtw_assign(it, "$(it$(x))")
+      @dtw_assign(vn, "$(vn$(x))")
+      @dtw_assign(fv, "$(fv$(x))")
+      @dtw_assign(ds, "$(ds$(x))")
+      @dtw_assign(cs, "$(cs$(x))")
+      @dtw_assign(cf, "$(cf$(x))")
+      @dtw_assign(co, "$(co$(x))")
+      %if (ds == "Y")
+          @RtvFldDesc("VCVCF='V' and VCVNCS=$(vn) and VCITEM='$(it)'", "HDVCIT", "VCADS", VCADS)
+          %if (VCADS == "N")
+              @dtw_assign(ds, "N")
+          %endif
+      %endif
+      @dtw_assign(costUpd, "")
+      %if ((cs != cf && cs != "") || (cs != "" && cs == cf && co == "Y"))
+          @dtw_assign(costOvr, ", O5CSTO='Y'")
+      %else
+          %if (co != "Y" || cs == "")
+              @dtw_assign(costUpd, "Y")
+          %endif
+          @dtw_assign(costOvr, ", O5CSTO=' '")
+      %endif
+      %if (cs == "")
+          @dtw_assign(cs, "0")
+      %endif
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Update OEPOWK Set O5VEND=$(vn), O5DSHP='$(ds)', O5COST=$(cs) $(costOvr) ", stmtSQL)
+      %if (autoAssignPO != "Y")
+          @dtw_concat(stmtSQL, " , O5PO#=$(po) ", stmtSQL)
+      %endif
+      @dtw_concat(stmtSQL, " Where O5OCTL=$(orderControlNumber) and O5ORL#=$(ln) @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+      %if (costUpd == "Y")
+          @Update_OEPOWK(orderControlNumber, ln)
+      %endif
+
+      @dtw_add(x, "1", x)
+  %}
+
+  @Set_SQL(stmtSQL)
+%}

@@ -1,0 +1,201 @@
+%{
+*********************************************************************
+* Copr 1979 2005 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  			                             *
+*  Job: Manufacturing Order Hold Maintenance                        *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Manufacturing Order Hold Maintenance"
+  d2wName                 = "MfgOrderHoldMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;mfgOrder=@dtw_rurlescseq(mfgOrder)&amp;parentItem=@dtw_rurlescseq(parentItem)&amp;parentItemDesc=@dtw_rurlescseq(parentItemDesc)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;holdCode=@dtw_rurlescseq(holdCode)&amp;maintenanceCode=D"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @PlantUserView(profileHandle, dataBaseID, userPass, plantNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(chgForm) {
+                      if (document.Chg.holdCode.value =="")
+                          {alert("$(reqFieldError)"); return false;}
+                           return true;
+                  }
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "MFGORDERHOLDMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, "Select MHHLCD", stmtSQL)
+                              @dtw_concat(stmtSQL, " From HDOHLD", stmtSQL)
+                              @dtw_concat(stmtSQL, " Where MHPLT=$(plantNumber)", stmtSQL)
+                              @dtw_concat(stmtSQL, " and MHORD='$(mfgOrder)'", stmtSQL)
+                              @dtw_concat(stmtSQL, " and MHHLCD='$(holdCode)'", stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      %INCLUDE "MaintainTop.icl"
+      <table $(contentTable)>
+          @Format_Header("Plant", $(plantName), $(plantNumber))
+          @Format_Header("Mfg Order", $(mfgOrder), "")
+          @Format_Header("Parent Item", $(parentItemDesc), $(parentItem))
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+			
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "holdCode")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@hlcd", "holdCode")     @dtw_assign(Err_MHHLCD, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@hlcd")   @dtw_assign(V_MHHLCD, fieldValue)
+
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(focusField, "holdCode")
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %else
+                      @dtw_assign(focusField, "holdCode")
+                  %endif
+
+                  @RtvFldDesc("HCHLCD='$(V_MHHLCD)' and HCTYPE='M'", "HDHLCD", "HCDESC", hlcdDesc)
+                  @SetTextOvr(Err_MHHLCD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Hold Code</span></td>
+                      %if (maintenanceCode == "A")
+                          <td class="inputalph"><input name="holdCode" value="$(V_MHHLCD)" type="text" size="5" maxlength="4"> $(reqFieldChar) <a href="$(homeURL)$(phpPath)HoldCodeSearch.php$(altVarBase)&amp;fldType=M&amp;docName=Chg&amp;fldName=holdCode&amp;fldDesc=hlcdDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="hlcdDesc" value="$(hlcdDesc)"  type="text" size="30"></td>
+                      %else
+                          <td class="inputalph"><input name="holdCode" value="$(V_MHHLCD)" type="hidden" size="5" maxlength="4">$(V_MHHLCD) &nbsp; $(hlcdDesc)</td>
+                      %endif
+                  </tr>
+                  @DspErrMsg(Err_MHHLCD)
+
+              %}	
+          </table>
+
+          <script TYPE="text/javascript">
+              %if (focusField != "")
+                  document.Chg.$(focusField).focus();
+              %endif
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,
+                                        INOUT CHAR(32000) optVar,
+                                        INOUT CHAR(32000) errVar,
+                                        INOUT CHAR(10)    SUBR)
+{%EXEC {HSI205_W.PGM %}
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(mfgOrder)
+  @dtw_mUPPERCASE(holdCode)
+
+  @dtw_assign(plantNumber,   @dtw_rstrip(plantNumber))
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@plt@", plantNumber)
+  @Concat_Field("@@ord@", mfgOrder)
+  @Concat_Field("@@hlcd", holdCode)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @dtw_assign(SUBR, "SRHLCD")
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, optVar, errVar, SUBR)
+
+  @RtvFldDesc("HCHLCD='$(holdCode)' and HCTYPE='M'", "HDHLCD", "HCDESC", hlcdDesc)
+  %if (errFound == "")
+      @Format_ConfMsg_Desc(maintenanceCode, $(hlcdDesc), $(holdCode), "", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)MfgOrderHold.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %elif (maintenanceCode == "D")
+      @DecatErr_Field("@@hlcd", "holdCode")
+      @Format_ConfMsg_Desc("", $(hlcdDesc), $(holdCode), "<br>$(fieldValue)", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)MfgOrderHold.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;mfgOrder=@dtw_rurlescseq(mfgOrder)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

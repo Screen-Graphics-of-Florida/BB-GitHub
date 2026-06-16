@@ -1,0 +1,260 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Employee Time                                               *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title 	       = "Employee Time"
+  d2wName             = "EmployeeTime.d2w"
+  d2wVarBase          = "$(genericVarBase)$(employeeVarBase)&amp;backHome=@dtw_rurlescseq(backHome)"
+  DATABASE            = "*LOCAL"
+  DTW_DEFAULT_REPORT  = "NO"
+  DTW_HTML_TABLE      = "YES"
+  DTW_PAD_PGM_PARMS   = "YES"
+  employeeTable       = %table
+  timeTable	       = %table
+ 
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+%}
+
+%MACRO_FUNCTION Set_SQL () {	
+  @dtw_assign(applicationID, "ET")
+  %INCLUDE "EmplUV.icl"
+  @dtw_assign(prUserPass, userPass)
+
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+                  <!-- Start Of Banner Code -->
+                  %INCLUDE "banner.icl"
+                  <!-- End Of Banner Code -->
+                      <table $(baseTable)>
+                          <tr valign="top">
+                              %if (formatToPrint == "")
+                                  @dtw_assign(pageID, "EMPLOYEETIME")
+                                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                              %endif
+                              <td class="content">
+                                  @time_Query(profileHandle, dataBaseID, prCompany, prFacility, prEmployee, employeeTable, timeTable)
+                              </td>
+                          </tr>
+                      </table>
+                  <!-- Start Of Trailer Code -->
+                  %INCLUDE "trailer.icl"
+                  <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(DTW_directcall) Get_Start_Stop_Emp (INOUT CHAR(64)     profileHandle,
+				      	 	     INOUT CHAR(2)      dataBaseID,
+				      		     INOUT CHAR(851) 	  rsDds)
+				      		     
+{%EXEC {HETRSD_W.PGM %}
+
+	
+%}
+
+%FUNCTION(DTW_SQL) time_Query(INOUT CHAR(64)      profileHandle,
+				     CHAR(2)       dataBaseID,
+				     DECIMAL(2,0)  prCompany,	
+				     DECIMAL(4,0)  prFacility,	
+				     DECIMAL(5,0)  prEmployee,	
+				OUT  employeeTable,
+				OUT  timeTable)
+
+{call $(pgmLibrary)HETTAI_W
+
+  %REPORT(employeeTable){
+
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %if ((backHome != "$(d2wName)/REPORT") && (backHome != ""))
+                          <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="BackHome">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+
+          @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+          <tr><td><h2>$(F_EmpName)</h2></td></tr>
+
+      </table>
+
+      $(hrTagAttr)
+		
+		
+        @dtw_assign(wrkzeros, "000")
+		@dtw_insert(@dtw_rpad("L", prCompany, @dtw_rsubtract("2",@dtw_rlength(prCompany)),"0"), rsDds, "2", rsDds)
+		@dtw_insert(@dtw_rpad("L", prFacility, @dtw_rsubtract("4",@dtw_rlength(prFacility)),"0"), rsDds, "4", rsDds)
+		@dtw_insert(@dtw_rpad("L", prEmployee, @dtw_rsubtract("5",@dtw_rlength(prEmployee)),"0"), rsDds, "34", rsDds)
+		@dtw_insert(@dtw_rpad("L", scheduleDate, @dtw_rsubtract("6",@dtw_rlength(scheduleDate)),"0"), rsDds, "50", rsDds)
+		@dtw_insert(@dtw_rpad("L", startTime, @dtw_rsubtract("4",@dtw_rlength(startTime)),"0"), rsDds, "823", rsDds)
+		@dtw_insert(@dtw_rpad("L", stopTime, @dtw_rsubtract("4",@dtw_rlength(stopTime)),"0"), rsDds, "827", rsDds)
+		@dtw_insert(wrkzeros, rsDds, "64", "3", rsDds)
+			
+      @Get_Start_Stop_Emp(profileHandle, dataBaseID, rsDds)
+            	
+      	@dtw_substr($(rsDds),"51","7",xscheduleDate)
+      	@dtw_substr($(rsDds),"86","9",dayOfWeek)
+      	@dtw_substr($(rsDds),"824","4",xstartTime)
+      	@dtw_substr($(rsDds),"828","4",xstopTime)
+       
+		@Format_Date(xscheduleDate, "1", scheduleDate)
+		@Format_Decmin(xstartTime, startTime)
+		@Format_Decmin(xstopTime, stopTime)
+		
+      %if (startTime > "0")
+          %if (@dtw_rlength(startTime) == "6")
+              @dtw_insert(":", startTime, "2", "1", startTime)
+              @dtw_insert(":", startTime, "5", "1", startTime)
+          %elif (@dtw_rlength(startTime) == "5")
+              @dtw_insert(":", startTime, "1", "1", startTime)
+              @dtw_insert(":", startTime, "4", "1", startTime)
+          %elif (@dtw_rlength(startTime) == "4")
+              @dtw_insert(":", startTime, "2", "1", startTime)
+          %elif (@dtw_rlength(startTime) == "3")
+              @dtw_insert(":", startTime, "1", "1", startTime)
+          %endif
+      %endif
+		
+      %if (stopTime > "0")
+          %if (@dtw_rlength(stopTime) == "6")
+              @dtw_insert(":", stopTime, "2", "1", stopTime)
+              @dtw_insert(":", stopTime, "5", "1", stopTime)
+          %elif (@dtw_rlength(stopTime) == "5")
+              @dtw_insert(":", stopTime, "1", "1", stopTime)
+              @dtw_insert(":", stopTime, "4", "1", stopTime)
+          %elif (@dtw_rlength(stopTime) == "4")
+              @dtw_insert(":", stopTime, "2", "1", stopTime)
+          %elif (@dtw_rlength(stopTime) == "3")
+              @dtw_insert(":", stopTime, "1", "1", stopTime)
+          %endif
+      %endif
+	
+      <table $(contentTable)>
+          %ROW {
+              @RtvFldDesc("SMSCHD=$(V_EMSCHD) ", "HDSCHM", "SMDESC", scheduleDesc)
+	       <tr><td class="dsphdr">Schedule</td>
+                  <td class="dspnmbr">$(V_EMSCHD)</td>
+                  <td class="dspalph">$(scheduleDesc)</td>
+              </tr>
+              @Format_HRCoFac("$(V_EMCOMP)", "$(V_EMFACL)", "", F_CoFac)
+	       <tr><td class="dsphdr">Company/Facility</td>
+                  <td class="dspnmbr">$(F_CoFac)</td>
+              </tr>
+                  @RtvFldDesc("EADEPT='$(V_EMDEPT)' ", "PREXAC", "EANAME", deptName)
+	      	   <tr><td class="dsphdr">Department</td>
+                  <td class="dspnmbr">$(V_EMDEPT)</td>
+                  <td class="dspalph">$(deptName)</td>
+              </tr>
+	      	   <tr><td class="dsphdr">Employee</td>
+                  <td class="dspnmbr">$(V_EMEMPL)</td>
+              </tr>
+              %if (V_EMPLNT != "0")
+                  @RtvFldDesc("PLPLNT=$(V_EMPLNT) ", "HDPLNT", "PLNAME", plantName)
+                  <tr><td class="dsphdr">Plant</td>
+                      <td class="dspnmbr">$(V_EMPLNT)</td>
+                      <td class="dspalph">$(plantName)</td>
+                  </tr>
+              %endif
+              %if (V_EMMDPT != "" || V_EMWC != "")
+                  <tr><td class="dsphdr">Dept/Work Center</td>
+                      <td class="dspnmbr">$(V_EMMDPT)/$(V_EMWC)</td>
+                  </tr>
+              %endif
+	       <tr><td class="dsphdr">Schedule Date</td>
+                  <td class="dspnmbr">$(scheduleDate)</td>
+                  <td class="dspalph">$(dayOfWeek)</td>
+              </tr>
+	      	   <tr><td class="dsphdr">Schedule Start - Stop</td>
+                  <td class="dspnmbr">$(startTime) - $(stopTime)</td>
+              </tr>
+          %}
+      </table>
+  %}
+
+  %REPORT(timeTable){
+
+      <table $(contentTable)>
+	   <tr>   		
+              <th class="colhdr">Data<br>Code</th>
+    	       <th class="colhdr">Description</th>
+              <th class="colhdr">Order</th>
+    	       <th class="colhdr">Seq</th>
+              <th class="colhdr">Start<br>Time</th>
+              <th class="colhdr">Stop<br>Time</th>
+              <th class="colhdr">Elapsed<br>Time</th>
+              <th class="colhdr">Plant</th>
+          </tr>
+
+          %ROW {
+
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(x, "1")
+              @dtw_tb_getv(dataCollectTable, x, "1", transCode)
+              %while(transCode != V_EHTRAN){
+                  @dtw_add(x, "1", x)
+                  @dtw_tb_getv(dataCollectTable, x, "1", transCode)
+              %}
+              @dtw_tb_getv(dataCollectTable, x, "2", tranDesc)
+
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_EHTRAN)</td>
+                  <td class="colalph">$(tranDesc)</td>
+                  <td class="colalph">$(V_EHORD)</td>
+                  <td class="colnmbr">$(V_EHSEQN)</td>
+                  <td class="colnmbr">$(V_EHSTRT)</td>
+                  <td class="colnmbr">$(V_EHSTOP)</td>
+                  <td class="colnmbr">$(V_EHELAP)</td>
+                  <td class="colnmbr">$(V_EHPLNT)</td>
+	      </tr>
+          %}
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @DataCollect_Query(profileHandle, dataBaseID, dataCollectTable)
+      @dtw_tb_insertrow(dataCollectTable, "0", "1")
+      @dtw_tb_setv(dataCollectTable, "", "1", "2")
+  @Set_SQL()
+%}

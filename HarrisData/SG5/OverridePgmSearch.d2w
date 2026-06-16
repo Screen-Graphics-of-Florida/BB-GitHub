@@ -1,0 +1,345 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Environment Override Program Search                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Environment Override Program Search"
+  d2wName                 = "OverridePgmSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;pgmFld=@dtw_rurlescseq(pgmFld)&amp;prtfFld=@dtw_rurlescseq(prtfFld)&amp;descFld=@dtw_rurlescseq(descFld)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  pgmFld                  = ""
+  prtfFld                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL)  {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectOvrPgm(pgmID, prtf, desc){
+                  window.opener.document.$(docName).$(pgmFld).value = pgmID;
+                  window.opener.document.$(docName).$(prtfFld).value = prtf;
+                  window.opener.document.$(docName).$(descFld).value = desc;
+                  window.opener.document.$(docName).$(pgmFld).focus();
+                  window.close();
+                  return false;
+              }
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select SYOVPG.*, upper(OVPGDS) as OVPGDSU ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYOVPG ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, "OVPGID='$(programID)' and OVPRTF='$(printerFile)'", selectSQL)
+                      %elif (wildCardSearch!="")
+                          @dtw_concat(selectSQL, "OVPGID>' ' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Select_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+%FUNCTION(dtw_sql) Select_Search (IN  CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Description</th>
+                      <th class="colhdr">Program</th>
+                      <th class="colhdr">Printer File</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchDesc" size="20" maxlength="20">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchProgram" size="10" maxlength="10">
+                          <input type="hidden" name="operProgram" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchPrinter" size="10" maxlength="10">
+                          <input type="hidden" name="operPrinter" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @OrderBy_Sort("OVPGID", sortVar)
+                  <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Program" title="Sequence By Program, Printer File">Program</a></th>
+                  @OrderBy_Sort("OVPRTF", sortVar)
+                  <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Printer" title="Sequence By Printer File, Program">Printer File</a></th>
+                  @OrderBy_Sort("OVPGDSU", sortVar)
+                  <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description" title="Sequence By Description, Program, Printer File">Description</a></th>
+                  @OrderBy_Sort("OVUSJD", sortVar)
+                  <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=JobParm" title="Sequence By Uses Job Parameters, Program, Printer File">Uses Job Parameters</a></th>
+                  @OrderBy_Sort("OVUSOQ", sortVar)
+                  <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PrinterParm" title="Sequence By Uses Printer Parameters, Program, Printer File">Uses Printer Parameters</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif		
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Quote(V_OVPGID, F_OVPGID)
+                  @Format_Quote(V_OVPRTF, F_OVPRTF)
+                  @Format_Quote(V_OVPGDS, F_OVPGDS)
+
+                  %if (moreInfo != "Y")	
+                      <tr class="$(rowClass)">
+                          <td class="colalph">$(V_OVPGID)</td>
+                          <td class="colalph">$(V_OVPRTF)</td>
+                          <td class="colalph"><a href="javascript:selectOvrPgm('$(V_OVPGID)','$(V_OVPRTF)','$(F_OVPGDS)')" title="Select Override Program">$(V_OVPGDS)</a></td>
+                          <td class="colcode">$(V_OVUSJD)</td>
+                          <td class="colcode">$(V_OVUSOQ)</td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)$(orderByVarBase)&amp;programID=@dtw_rurlescseq(V_OVPGID)&amp;printerFile=@dtw_rurlescseq(V_OVPRTF)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      <tr><td><a href="javascript:selectOvrPgm('$(V_OVPGID)','$(V_OVPRTF)','$(F_OVPGDS)')" title="Select Override Program">$(selectImageLrg)</a>
+                          </td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Program</td>
+                          <td class="dspalph">$(V_OVPGID)</td></tr>
+    			
+                      <tr><td class="dsphdr">Printer File</td>
+                          <td class="dspalph">$(V_OVPRTF)</td></tr>
+    			
+                      <tr><td class="dsphdr">Description</td>
+                          <td class="dspalph">$(V_OVPGDS)</td></tr>
+
+                      <tr><td class="dsphdr">Uses Job Parameters</td>
+                          <td class="dspalph">$(V_OVUSJD)</td></tr>
+
+                      <tr><td class="dsphdr">Uses Printer Parameters</td>
+                          <td class="dspalph">$(V_OVUSOQ)</td></tr>
+                  %endif
+              %}
+          </table>
+	   %if (moreInfo != "Y")	
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+	   %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "OVPGDSU,OVPGID,OVPRTF")
+      @DTW_ASSIGN(orderByDisplay, "Description, Program, Printer File")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+
+  %if (sequence == "Program")
+      %if (orderBy == "OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderBy, "OVPGID DESC,OVPRTF")
+          @DTW_ASSIGN(orderByDisplay, "Program (descending), Printer File")
+      %else
+          @DTW_ASSIGN(orderBy, "OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderByDisplay, "Program, Printer File")
+      %endif
+  %elif (sequence == "Printer")
+      %if (orderBy == "OVPRTF,OVPGID")
+          @DTW_ASSIGN(orderBy, "OVPRTF DESC,OVPGID")
+          @DTW_ASSIGN(orderByDisplay, "Printer File (descending), Program")
+      %else
+          @DTW_ASSIGN(orderBy, "OVPRTF,OVPGID")
+          @DTW_ASSIGN(orderByDisplay, "Printer File, Program")
+      %endif
+  %elif (sequence == "Description")
+      %if (orderBy == "OVPGDSU,OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderBy, "OVPGDSU DESC,OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Program, Printer File")
+      %else
+          @DTW_ASSIGN(orderBy, "OVPGDSU,OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderByDisplay, "Description, Program, Printer File")
+      %endif
+  %elif (sequence == "JobParm")
+      %if (orderBy == "OVUSJD,OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderBy, "OVUSJD DESC,OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderByDisplay, "Uses Job Parameters (descending), Program, Printer File")
+      %else
+          @DTW_ASSIGN(orderBy, "OVUSJD,OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderByDisplay, "Uses Job Parameters, Program, Printer File")
+      %endif
+  %elif (sequence == "PrinterParm")
+      %if (orderBy == "OVUSOQ,OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderBy, "OVUSOQ DESC,OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderByDisplay, "Uses Printer Parameters (descending), Program, Printer File")
+      %else
+          @DTW_ASSIGN(orderBy, "OVUSOQ,OVPGID,OVPRTF")
+          @DTW_ASSIGN(orderByDisplay, "Uses Printer Parameters, Program, Printer File")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "OVERRIDEPROGRAMSEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+                          <tr><td class="dsphdr">Program</td>
+                              @dtw_assign(operNbr, "operProgram")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchProgram" size="10" maxlength="10"></td></tr>
+        			
+                          <tr><td class="dsphdr">Printer File</td>
+                              @dtw_assign(operNbr, "operPrinter")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchPrinter" size="10" maxlength="10"></td></tr>
+        			
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="30" maxlength="30"></td></tr>
+
+                          <tr><td class="dsphdr">Uses Job Parameters</td>
+                              @dtw_assign(operNbr, "operJobParm")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchJobParm" size="1" maxlength="1"></td></tr>
+
+                          <tr><td class="dsphdr">Uses Printer Parameters</td>
+                              @dtw_assign(operNbr, "operPrinterParm")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchPrinterParm" size="1" maxlength="1"></td></tr>
+                      %INCLUDE "SearchBottom.icl"
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("OVPGID", "Program", $(srchProgram), "U", operProgram, "A")
+  @Build_WildCard ("OVPRTF", "Printer File", $(srchPrinter), "U", operPrinter, "A")
+  @Build_WildCard ("Upper(OVPGDS)", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("OVUSJD", "Uses Job Parameters", $(srchJobParm), "U", operJobParm, "A")
+  @Build_WildCard ("OVUSOQ", "Uses Printer Parameters", $(srchPrinterParm), "U", operPrinterParm, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

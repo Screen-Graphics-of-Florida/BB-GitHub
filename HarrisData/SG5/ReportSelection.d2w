@@ -1,0 +1,341 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Report Selection                                            *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Report Selection"
+  d2wName                 = "ReportSelection.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;reportSelType=@dtw_rurlescseq(reportSelType)&amp;reportDesc=@dtw_rurlescseq(reportDesc)&amp;reportSelD2W=@dtw_rurlescseq(reportSelD2W)&amp;rtvSelection=@dtw_rurlescseq(rtvSelection)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=D"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  advanceSearch           = "N"
+  saveImageTitle          = "Save Row"
+  HTTP_USER_AGENT = %ENVVAR
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          %INCLUDE "$(genericHead)"
+          <script TYPE="text/javascript">
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              function confirmSave(text) {return confirm("$(saveRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+      </head>
+
+      <body $(bodyTagAttr) onLoad="if (window.focus) self.focus()" onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      @dtw_mUPPERCASE(reportSelD2W)
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select SYD2WR.*, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(USDESC,' ') as USDESC, coalesce(USDESCU,' ') as USDESCU  ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYD2WR left join SYUSER on DRUSER=USUSER ", fileSQL)
+                      @dtw_concat(selectSQL, "DRD2WN>' ' and DRD2WN='$(reportSelD2W)' and DRTYPE='$(reportSelType)' ", selectSQL)
+                      %if (rtvSelection != "Y")
+                          @dtw_concat(selectSQL, " and DRUSER='$(userProfile)' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Report_Selection_Inquiry(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Report_Selection_Inquiry (IN CHAR(64)    profileHandle,
+				                 CHAR(2)     dataBaseID,
+                                                CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count == "0" && rtvSelection !="Y" && wildCardSearch == "")
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/ADD$(d2wVarBase)&amp;reportSelUser=@dtw_rurlescseq(reportSelUser)&amp;maintenanceCode=A">
+      %else
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="80%">
+                  <col width="15%">
+              <tr><td><h1>$(reportDesc) Selections</h1></td>
+                  %if (formatToPrint != "Y" && rtvSelection != "Y")
+                      <td class="toolbar">
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/ADD$(d2wVarBase)&amp;reportSelUser=@dtw_rurlescseq(reportSelUser)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                          %INCLUDE "HelpPage.icl"
+                      </td>
+                  %endif
+              </tr>
+          </table>
+
+          $(hrTagAttr)
+
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)&amp;reportSelUser=@dtw_rurlescseq(reportSelUser)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Description</th>
+                      <th class="colhdr">User</th>
+                  </tr>
+                  <tr><td class="inputalph">
+                          <input type="text" name="srchDesc" size="20" maxlength="100">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchUser" size="20" maxlength="30">
+                          <input type="hidden" name="operUser" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>
+
+          <table $(contentTable)>
+              <tr><td > %INCLUDE "AssignPageValue.icl" </td></tr>
+          </table>
+
+          <table $(contentTable)>
+              <tr>	
+                  %if (formatToPrint != "Y" && rtvSelection != "Y")
+                      <th class="colhdr">$(optionHeading)</th>
+                  %endif
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)&amp;reportSelUser=@dtw_rurlescseq(reportSelUser)")
+                  @OrderBy_Sort("DRDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=description" title="Sequence By Description, Attachment Name"> Description</a></th>
+                  @OrderBy_Sort("USDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=user" title="Sequence By User, Description"> User</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %endif
+
+      %ROW{
+          %if (sql_Record_Count > "0")
+              %INCLUDE "SetRowClass.icl"
+              @Format_Confirm_Desc($(V_DRDESC), "", "", "", "", "", confirmDesc)
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;reportSelUser=@dtw_rurlescseq(V_DRUSER)&amp;reportSelSeq=@dtw_rurlescseq(V_DRSEQN)&amp;reportSelDesc=@dtw_rurlescseq(V_DRDESC)")
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && rtvSelection != "Y" && reportSelUser == "$(V_DRUSER)")
+                      <td class="opticon">
+                          <a onClick="return confirmSave('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(maintainVar)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">$(saveImageSml)</a>
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(maintainVar)$(searchVarBase)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                      </td>
+                  %endif
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(maintainVar)&amp;maintenanceCode=R" title="Click here retrieve report selection">$(V_DRDESC)</a></td>
+                  <td class="colalph">$(V_USDESC)</td>
+              </tr>
+          %endif
+      %}
+      %if (sql_Record_Count > "0")
+          </table>
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+          $(hrTagAttr)
+          %INCLUDE "Copyright.icl"
+      %endif
+  %}
+%}
+
+%HTML(ADD) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              function validate(chgForm) {
+                  if (document.Chg.reportSelDesc.value =="")
+                     {alert("$(reqFieldError)"); return false;}
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      <table $(contentTable)>
+                          <colgroup>
+                              <col width="80%">
+                              <col width="15%">
+                          <tr><td align="justify"><h1>Save $(reportDesc) Selection</h1></td>
+                              <td class="toolbar">
+                                  %INCLUDE "MaintainTopNoTable.icl"
+                              </td>
+                          </tr>
+                      </table>
+                      $(hrTagAttr)
+                      %INCLUDE "RequiredField.icl"
+
+                      <form class="formClass" NAME="Chg" METHOD=POST ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;reportSelUser=@dtw_rurlescseq(reportSelUser)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+                          <table $(contentTable)>
+                                  <tr><td class="dsphdr">Description</td>
+                                      <td class="inputalph"><input name="reportSelDesc" type="text" size="50" maxlength="100"> $(reqFieldChar) </td>
+                                  </tr>
+                          </table>
+                	
+                          <script TYPE="text/javascript">
+                              document.Chg.reportSelDesc.focus();
+                          </script>
+                      </form>
+                      %INCLUDE "MaintainBottom.icl"
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) reportSelVar)
+{%EXEC {HSYD2R_W.PGM %}
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(edtVar, "")
+  @dtw_assign(reportSelVar, "")
+  @Concat_Field("@@d2wn", reportSelD2W)
+  @Concat_Field("@@user", reportSelUser)
+  @Concat_Field("@@type", reportSelType)
+  @Concat_Field("@@seqn", reportSelSeq)
+  @Concat_Field("@@desc", reportSelDesc)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  %if (maintenanceCode == "A" || maintenanceCode == "C")
+      @EdtVarErr(profileHandle, typeValue, reportSelVar)
+  %endif
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, reportSelVar)
+
+  %if (maintenanceCode == "D")
+      @Set_SQL(stmtSQL)
+  %else
+      <script TYPE="text/javascript">
+          %if (maintenanceCode == "R" || maintenanceCode == "A")
+              %if (@dtw_rpos("MSIE", HTTP_USER_AGENT) > "0")
+                  %if (@dtw_rpos(".PHP", reportSelD2W) > "0")
+                      opener.location.href='$(homeURL)$(phpPath)$(reportSelD2W)$(altVarBase)&amp;reportSelType=@dtw_rurlescseq(reportSelType)&amp;errFound=Y&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';
+                  %else
+                      opener.location.href='$(homeURL)$(cGIPath)$(reportSelD2W)/REPORT$(genericVarBase)&amp;reportSelType=@dtw_rurlescseq(reportSelType)&amp;errFound=Y&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';
+                  %endif
+              %else
+                  %if (@dtw_rpos(".PHP", reportSelD2W) > "0")
+                      @dtw_replace(altVarBase, "&amp;", "&", altVarBase)
+                      opener.location.href='$(homeURL)$(phpPath)$(reportSelD2W)$(altVarBase)&reportSelType=@dtw_rurlescseq(reportSelType)&errFound=Y&timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';
+                  %else
+                      @dtw_replace(genericVarBase, "&amp;", "&", genericVarBase)
+                      opener.location.href='$(homeURL)$(cGIPath)$(reportSelD2W)/REPORT$(genericVarBase)&reportSelType=@dtw_rurlescseq(reportSelType)&errFound=Y&timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))';
+                  %endif
+              %endif
+          %endif
+          opener.focus();
+          window.close();
+      </script>
+  %endif
+
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "DRDESCU,USDESCU")
+      @DTW_ASSIGN(orderByDisplay, "Description, User")
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "description")
+      %if (orderBy == "DRDESCU, USDESCU")
+          @DTW_ASSIGN(orderBy, "DRDESCU DESC, USDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), User")
+      %else
+          @DTW_ASSIGN(orderBy, "DRDESCU, USDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Description, User")
+      %endif
+  %elif (sequence == "user")
+      %if (orderBy == "USDESCU, DRDESCU")
+          @DTW_ASSIGN(orderBy, "USDESCU DESC")
+          @DTW_ASSIGN(orderByDisplay, "User (descending), Description")
+      %else
+          @DTW_ASSIGN(orderBy, "USDESCU, DRDESCU")
+          @DTW_ASSIGN(orderByDisplay, "User, Description")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("DRDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("USDESCU", "User", $(srchUser), "U", operUser, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

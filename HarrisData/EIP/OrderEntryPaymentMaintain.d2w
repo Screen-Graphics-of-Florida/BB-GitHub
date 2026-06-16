@@ -1,0 +1,152 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  				                     *
+*  Job: Order Entry Payment Maintain                                *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Order Entry Payment Maintain"
+  d2wName                 = "OrderEntryPaymentMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;paySeq=@dtw_rurlescseq(paySeq)&amp;ccType=@dtw_rurlescseq(ccType)&amp;rowNum=@dtw_rurlescseq(rowNum)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  paySelect               = ""
+%}
+
+%FUNCTION(dtw_sql) Build_Payment_Select (IN CHAR(64)    profileHandle,
+				             CHAR(2)     dataBaseID,
+                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @dtw_assign(paySelect, "<select name=""payType"">")
+      %ROW {
+          %if (fpayType == V_OMPC)
+              @dtw_assign(paySel, "SELECTED")
+          %else
+              @dtw_assign(paySel, "")
+          %endif
+          @dtw_concat(paySelect, "<option value=""$(V_OMPC)"" $(paySel)>$(V_OMPD)", paySelect)
+      %}
+      @dtw_concat(paySelect, "</select>", paySelect)
+  %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  <html>
+      <head>
+          %INCLUDE "headcmt.icl"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "NumZero.icl"
+              %INCLUDE "CheckEnterChg.icl"
+
+              function validate(chgForm) {
+                  %if (ccType == "")
+                      if (editZero(document.Chg.amount, 9, 2))
+                  %endif
+                  return true;
+              }
+              %INCLUDE "NumZero.icl"
+          </script>
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <table $(contentTable)>
+              <colgroup>
+                  <col width="80%">
+                  <col width="15%">
+              <tr><td><h1>$(page_title)</h1></td>
+                  <td class="toolbar">
+                      <a href="javascript:check(document.Chg)">$(selectAcceptImage)</a>
+                      %INCLUDE "CloseWindow.icl"
+                  </td>
+              </tr>
+          </table>
+
+          %if (ccType == "")
+              @dtw_concat(stmtSQL, " Select OMPC,OMPD,' ' as OMCC ", stmtSQL)
+              @dtw_concat(fileSQL, " OEPYMT ", fileSQL)
+              @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "H1ORTY", orderType)
+              %if (orderType != "I" && orderType != "C")
+                  @dtw_concat(selectSQL, "OMPC='1' ", selectSQL)
+              %endif
+              %INCLUDE "stmtSQLSelect.icl"
+              @dtw_concat(stmtSQL, " Order By OMPD", stmtSQL)
+              %INCLUDE "stmtSQLEnd.icl"
+              @Build_Payment_Select(profileHandle, dataBaseID, stmtSQL)
+          %endif
+
+          $(hrTagAttr)
+          %INCLUDE "RequiredField.icl"
+
+              <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/ACCEPT$(d2wVarBase)" onSubmit="return false;">
+                  <table $(contentTable)>
+                      <tr><td class="dsphdr">Payment Type</td>
+                          %if (ccType != "")
+                              <td class="dspalph">$(payDesc)</td>
+                          %else
+                              <td class="inputalph">$(paySelect) $(reqFieldChar)</td>
+                          %endif
+                      </tr>
+                      <tr><td class="dsphdr">Amount</td>
+                          %if (ccType != "")
+                              <td class="dspalph">$(fAmount)</td>
+                          %else
+                              <td class="inputnmbr"><input type="text" name="amount" value="$(fAmount)" size="15" maxlength="15"> $(reqFieldChar)</td>
+                          %endif
+                      </tr>
+                      <tr><td class="dsphdr">Document</td>
+                          <td class="inputnmbr"><input type="text" name="check" value="$(fCheck)" size="15" maxlength="15"></td>
+                      </tr>
+                      <tr><td class="dsphdr">Memo</td>
+                          <td class="inputnmbr"><input type="text" name="memo" value="$(fMemo)" size="15" maxlength="15"></td>
+                      </tr>
+                  </table>
+              </form>
+          <script TYPE="text/javascript">
+              %if (ccType != "")
+                  document.Chg.check.focus();
+              %else
+                  document.Chg.payType.focus();
+              %endif
+          </script>
+          $(hrTagAttr)
+          <a href="javascript:check(document.Chg)">$(selectAcceptImage)</a>
+          %INCLUDE "CloseWindow.icl"
+      </body>
+  </html>
+%}
+
+
+%HTML(ACCEPT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Update OEPAYW Set WPCHK=upper('$(check)'), WPMEMO=upper('$(memo)') ", stmtSQL)
+  %if (ccType == "")
+      @dtw_concat(stmtSQL, " ,WPPAYT='$(payType)', WPPAYA=$(amount), ", stmtSQL)
+      @dtw_concat(stmtSQL, " WPDESC=(Select coalesce(OMPD,' ') From OEPYMT Where OMPC='$(payType)') ", stmtSQL)
+  %endif
+  @dtw_concat(stmtSQL, " Where WPOCTL=$(orderControlNumber) and WPPSEQ=$(paySeq)  @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+  @Format_Nbr(amount, F_amount, $(amtNbrDec), "2", "Y", "", "")
+
+  <script TYPE="text/javascript">
+      opener.location.href=opener.location.href;
+      window.close();
+  </script>
+%}

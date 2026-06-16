@@ -1,0 +1,318 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Stock Location Search                                       *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Stock Location Search"
+  d2wName                 = "StockLocSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;forWhs=@dtw_rurlescseq(forWhs)&amp;fldStkr=@dtw_rurlescseq(fldStkr)&amp;fldAisle=@dtw_rurlescseq(fldAisle)&amp;fldLoc=@dtw_rurlescseq(fldLoc)&amp;fldStkID=@dtw_rurlescseq(fldStkID)&amp;touchScreen=@dtw_rurlescseq(touchScreen)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  novcf                   = ""
+  docName                 = ""
+  fldStkr                 = ""
+  fldAisle                = ""
+  fldLoc                  = ""
+  fldStkID                = ""
+  advanceSearch           = "N"
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              %if (touchScreen == "Y")
+                  <link rel=stylesheet type="text/css" href="$(homeURL)$(homePath)HDSTouchScreen.css">
+              %endif
+              <script TYPE="text/javascript">
+                  function selectStkLoc(stockRoom, aisle, location, stockID){
+                      window.opener.document.$(docName).$(fldStkr).value = stockRoom;
+                      window.opener.document.$(docName).$(fldAisle).value = aisle;
+                      window.opener.document.$(docName).$(fldLoc).value = location;
+                      window.opener.document.$(docName).$(fldStkID).value = stockID;
+                      %if (touchScreen != "Y")
+                          window.opener.document.$(docName).$(fldStkr).focus();
+                      %endif
+                      window.close();
+                  }
+    	           %INCLUDE "NumEdit.icl"
+                  %INCLUDE "CheckEnterSearch.icl"
+                  function validate(searchForm) {
+                      if (%if (forWhs == "")
+                              editNum(document.Search.srchWhs, 3, 0) &&
+                          %endif
+                          editNum(document.Search.srchPriority, 1, 0)
+                         )
+                         return true;
+                  }
+                  %if (touchScreen == "Y")
+                      %INCLUDE "KeyboardFunctionsTS.icl"
+                  %endif
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "$(searchBanner)"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDSTLC ", fileSQL)
+                          %if (forWhs > "0")
+                              @dtw_concat(selectSQL, " SLWHS=$(forWhs) ", selectSQL)
+                          %elseif (wildCardSearch!="")
+                              @dtw_concat(selectSQL, " SLWHS<>0 ", selectSQL)
+                          %endif
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @StockLoc_Search(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "$(searchTrailer)"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) StockLoc_Search (IN CHAR(64)    profileHandle,
+     	                                CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (touchScreen == "Y")
+          @dtw_assign(displayCloseIcon, "Y")
+      %endif
+      %INCLUDE "PageTitle.icl"
+      %if (forWhs > "0")
+          @RtvFldDesc("WHWHS=$(forWhs)", "HDWHSM", "WHWHNM", warehouseName)
+          <table $(contentTable)>
+              @Format_Header("Warehouse", $(warehouseName), $(forWhs))
+          </table>
+      %endif
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr>
+                      %if (forWhs == "")
+                          <th class="colhdr">Whs</th>
+                      %endif
+                      <th class="colhdr" colspan="3">Stock Location</th>
+                      <th class="colhdr">Priority</th>
+                  </tr>
+                  <tr>
+                      %if (forWhs == "")
+                          <td class="inputalph">
+                              %if (touchScreen == "Y")
+                                  <input class="input" id="srchWhs" onfocus="kbActive(this, 'numericKeyboard');" name="srchWhs" type="text" size="3" maxlength="3">
+                                  <input type="hidden" id="submitSearch">
+                              %else
+                                  <input type="text" name="srchWhs" size="3" maxlength="3">
+                              %endif
+                              <input type="hidden" name="operWhs" value="=">
+                          </td>
+                      %endif
+                      <td class="inputalph">
+                          %if (touchScreen == "Y")
+                              <input class="input" id="srchStkr" onfocus="kbActive(this, 'keyboard');" name="srchStkr" type="text" size="3" maxlength="3">
+                          %else
+                              <input type="text" name="srchStkr" size="3" maxlength="3">
+                          %endif
+                          <input type="hidden" name="operStkr" value="LIKE">
+                      </td>
+                      <td class="inputalph">
+                          %if (touchScreen == "Y")
+                              <input class="input" id="srchAisle" onfocus="kbActive(this, 'keyboard');" name="srchAisle" type="text" size="4" maxlength="4">
+                          %else
+                              <input type="text" name="srchAisle" size="4" maxlength="4">
+                          %endif
+                          <input type="hidden" name="operAisle" value="LIKE">
+                      </td>
+                      <td class="inputalph">
+                          %if (touchScreen == "Y")
+                              <input class="input" id="srchLoc" onfocus="kbActive(this, 'keyboard');" name="srchLoc" type="text" size="8" maxlength="8">
+                          %else
+                              <input type="text" name="srchLoc" size="3" maxlength="3">
+                          %endif
+                          <input type="hidden" name="operLoc" value="LIKE">
+                      </td>
+                      <td>
+                          %if (touchScreen == "Y")
+                              <input class="input" id="srchPriority" onfocus="kbActive(this, 'numericKeyboard');" name="srchLoc" type="text" size="5" maxlength="1">
+                          %else
+                              <input type="text" name="srchPriority" size="5" maxlength="1">
+                          %endif
+                          <input type="hidden" name="operPriority" value="=">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              %if (touchScreen != "Y")
+                  <script TYPE="text/javascript">
+                      %if (forWhs == "")
+                          document.Search.srchWhs.focus();
+                      %else
+                          document.Search.srchStkr.focus();
+                      %endif
+                  </script>
+              %endif
+          </form>
+	
+          %if (touchScreen == "Y")
+             @dtw_assign(pageSelectList, "N")
+             @dtw_assign(wildCardDefault, "N")
+             @dtw_assign(advanceSearch, "N")
+          %endif
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  %if (forWhs == "")
+                      @OrderBy_Sort("SLWHS", sortVar)
+                      <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=warehouse" title="Sequence By Warehouse, Stock Location"> Whs</a></th>
+                  %endif
+                  @OrderBy_Sort("SLSTKR", sortVar)
+                  <th class="colhdr$(sortVar)" colspan="3"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=stockLoc" title="Sequence By Stock Location"> Stock Location</a></th>
+                  @OrderBy_Sort("SLRATE", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=rate" title="Sequence By Priority, Stock Location"> Priority</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif		
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Quote(V_SLSTKR, F_SLSTKR)
+                  @Format_Quote(V_SLAILE, F_SLAILE)
+                  @Format_Quote(V_SLSLOC, F_SLSLOC)
+
+                  <tr class="$(rowClass)">
+                      %if (forWhs == "")
+                          <td class="colnmbr">$(V_SLWHS)</td>
+                      %endif
+                      <td class="colalph"><a href="javascript:selectStkLoc('$(F_SLSTKR)','$(F_SLAILE)','$(F_SLSLOC)',$(V_SLSTID))" title="Select Stock Location">$(V_SLSTKR)</a></td>
+                      <td class="colalph"><a href="javascript:selectStkLoc('$(F_SLSTKR)','$(F_SLAILE)','$(F_SLSLOC)',$(V_SLSTID))" title="Select Stock Location">$(V_SLAILE)</a></td>
+                      <td class="colalph"><a href="javascript:selectStkLoc('$(F_SLSTKR)','$(F_SLAILE)','$(F_SLSLOC)',$(V_SLSTID))" title="Select Stock Location">$(V_SLSLOC)</a></td>
+                      <td class="colcode">$(V_SLRATE)</td>
+                  </tr>
+              %}
+          </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+      %if (touchScreen == "Y")
+         %INCLUDE "KeyboardTS.icl"
+      %endif
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "SLWHS,SLSTKR,SLAILE,SLSLOC")
+      @DTW_ASSIGN(orderByDisplay, "Warehouse, Stockroom, Aisle, Location")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY)
+{
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "warehouse")
+      %if (orderBy == "SLWHS,SLSTKR,SLAILE,SLSLOC")
+          @DTW_ASSIGN(orderBy, "SLWHS DESC,SLSTKR,SLAILE,SLSLOC")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse (descending), Stock Location")
+      %else
+          @DTW_ASSIGN(orderBy, "SLWHS,SLSTKR,SLAILE,SLSLOC")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse, Stock Location")
+      %endif
+  %elseif (sequence == "stockLoc")
+      %if (orderBy == "SLSTKR,SLAILE,SLSLOC")
+          @DTW_ASSIGN(orderBy, "SLSTKR DESC,SLAILE,SLSLOC")
+          @DTW_ASSIGN(orderByDisplay, "Stock Location (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "SLSTKR,SLAILE,SLSLOC")
+          @DTW_ASSIGN(orderByDisplay, "Stock Location")
+      %endif
+  %elseif (sequence == "rate")
+      %if (orderBy == "SLRATE,SLSTKR,SLAILE,SLSLOC")
+          @DTW_ASSIGN(orderBy, "SLRATE DESC,SLSTKR,SLAILE,SLSLOC")
+          @DTW_ASSIGN(orderByDisplay, "Priority (descending), Stock Location")
+      %else
+          @DTW_ASSIGN(orderBy, "SLRATE,SLSTKR,SLAILE,SLSLOC")
+          @DTW_ASSIGN(orderByDisplay, "Priority, Stock Location")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(WILDCARD)
+{
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("SLWHS", "Warehouse", $(srchWhs), "", operWhs, "N")
+  @Build_WildCard ("SLSTKR", "Stockroom", $(srchStkr), "U", operStkr, "A")
+  @Build_WildCard ("SLAILE", "Aisle", $(srchAisle), "U", operAisle, "A")
+  @Build_WildCard ("SLSLOC", "Location", $(srchLoc), "U", operLoc, "A")
+  @Build_WildCard ("SLRATE", "Priority", $(srchPriority), "", operPriority, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

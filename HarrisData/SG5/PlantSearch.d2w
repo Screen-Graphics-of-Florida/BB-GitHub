@@ -1,0 +1,1145 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Plant Search                                                *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "PlantMaintain.icl"
+%INCLUDE "QuickLink.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Plant Search"
+  d2wName                 = "PlantSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName      	     = ""
+  fldName      	     = ""
+  fldDesc                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              function selectPlant(plant, desc){
+                  window.opener.document.$(docName).$(fldName).value = plant;
+                  window.opener.document.$(docName).$(fldDesc).value = desc;
+                  window.opener.document.$(docName).$(fldName).focus();
+                  window.close();
+              }
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchPlant, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      @dtw_assign(uv_PlantName, "PLPLNT")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select HDPLNT.*, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " upper(PLNAME) as PLNAMEU, " , stmtSQL)
+                      @dtw_concat(stmtSQL, " upper(PLADR1) as PLADR1U, " , stmtSQL)
+                      @dtw_concat(stmtSQL, " upper(PLCITY) as PLCITYU " , stmtSQL)
+                      @dtw_concat(fileSQL, " HDPLNT ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, " PLPLNT=$(plantNumber)", selectSQL)
+                      %elseif (wildCardSearch!="" || uv_Sql!="")
+                          @dtw_concat(selectSQL, " PLPLNT<>0 ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Plant_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+%FUNCTION(dtw_sql) Plant_Search (IN  CHAR(64)    profileHandle,
+                                     CHAR(2)     dataBaseID,
+                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a NAME="top"></a>
+      %INCLUDE "PageTitle.icl"
+
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr"> Plant</th>
+                      <th class="colhdr"> Name</th>
+                  </tr>
+                  <tr><td class="inputnmbr">
+                          <input type="text" name="srchPlant" size="3" maxlength="3">
+                          <input type="hidden" name="operPlant" value="=">
+                      </td>
+                      <td class="inputalph">
+                          <input type="text" name="srchName" size="26" maxlength="26">
+                          <input type="hidden" name="operName" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchPlant.focus();
+              </script>
+          </form>
+	
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @OrderBy_Sort("PLPLNT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=number" title="Sequence By Plant"> Plant</a></th>
+                  @OrderBy_Sort("PLNAMEU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=name"  title="Sequence By Name, Plant" onmouseover="status='$(homeURL)$(cGIPath)plant.d2w/ORDERBY...';return true" onmouseout="window.status=' ';return true"> Name</a></th>
+                  @OrderBy_Sort("PLCO#", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=coFac" title="Sequence By Company/Facility, Name, Plant"> Co/Fac</a></th>
+                  @OrderBy_Sort("PLADR1U", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=address" title="Sequence By Address, Name, Plant"> Address</a></th>
+                  @OrderBy_Sort("PLCITYU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=city" title="Sequence By City, Name, Plant"> City</a></th>
+                  @OrderBy_Sort("PLST", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=state" title="Sequence By State, Name, Plant"> State</a></th>
+                  @OrderBy_Sort("PLZIP", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=zipCode" title="Sequence By Zip, Name, Plant"> Zip</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif		
+
+          %ROW{
+
+              @Format_Quote(V_PLNAME, F_PLNAME)
+              @Format_CoFac("$(V_PLCO#)", "$(V_PLFAC#)", "", F_CoFac)
+
+	       %if (moreInfo != "Y")	
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colnmbr">$(V_PLPLNT)</td>                                      	
+                      <td class="colalph"><a href="javascript:selectPlant($(V_PLPLNT),'$(F_PLNAME)')" title="Select Plant">$(V_PLNAME)</a></td>
+                      <td class="colalph">$(F_CoFac)</td>
+                      <td class="colalph">$(V_PLADR1)</td>
+                      <td class="colalph">$(V_PLCITY)</td>
+                      <td class="colcode">$(V_PLST)</td>
+                      <td class="colalph">$(V_PLZIP)</td>
+                      <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)$(wildCardVarBase)&amp;plantNumber=@dtw_rurlescseq(V_PLPLNT)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                  </tr>
+
+              %else
+                  %{ More Information Screen %}
+
+                  <tr><td><a href="javascript:selectPlant($(V_PLPLNT),'$(F_PLNAME)')" title="Select Plant">$(selectImageLrg)</a>
+                  </td></tr>
+                  </table>
+
+                  <table $(quickLinkTable)>
+                      <tr>
+                          <td class="quickLinkTabs"><a href="#generalData">General Data</a></td>
+                          <td class="quickLinkTabs"><a href="#productDataBase">Product Data Base</a></td>
+                          <td class="quickLinkTabs"><a href="#costManagement">Cost Management</a></td>
+                          <td class="quickLinkTabs"><a href="#MPSMRP">MPS/MRP</a></td>
+                      </tr>
+                      <tr>
+                          <td class="quickLinkTabs"><a href="#shopFloor">Shop Floor Control</a></td>
+                          <td class="quickLinkTabs"><a href="#cycleCount">Cycle Count</a></td>
+                          <td class="quickLinkTabs"><a href="#accountNumbers">Accounts</a></td>
+                          <td class="quickLinkTabs"><a href="#userDefined">User-Defined</a></td>
+                      </tr>
+                  </table>
+
+                  <a name="generalData"></a>
+                  <fieldset class="legendBody">
+                      <legend class="legendTitle">General Data</legend>
+                      <table $(contentTable)>
+                          <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                      </table>
+                      <table $(contentTable)>
+                      <tr><td class="dsphdr">Plant Number</td>
+                          <td class="dspalph">$(V_PLPLNT)</td>
+                      </tr>
+    	   		
+                      <tr><td class="dsphdr">Plant Name</td>
+                          <td class="dspalph">$(V_PLNAME)</td>
+                      </tr>
+    	   	
+    	               @RtvFldDesc("CFCO#=$(V_PLCO#) and CFFAC#=$(V_PLFAC#)", "HDCFAC", "CFCFNM", fieldDesc)
+                      <tr><td class="dsphdr">Company/Facility</td>
+                          <td class="dspalph">$(fieldDesc)</td></tr>
+
+
+                      %if (V_PLADR1!="")		
+                          <tr><td class="dsphdr">Address Line One</td>
+                              <td class="dspalph">$(V_PLADR1)</td></tr>
+                      %endif
+
+                      %if (V_PLADR2!="")		
+                          <tr><td class="dsphdr">Address Line Two</td>
+                              <td class="dspalph">$(V_PLADR2)</td></tr>
+                      %endif
+        				
+                      %if (V_PLCITY!="")		
+                          <tr><td class="dsphdr">City</td>
+                              <td class="dspalph">$(V_PLCITY)</td></tr>
+                      %endif
+
+                      %if (V_PLST!="")
+    		       @RtvFldDesc("STID='$(V_PLST)'", "HDSTID", "STDESC", fieldDesc)
+                          <tr><td class="dsphdr">State</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+
+                      %if (V_PLZIP!="")		
+                          <tr><td class="dsphdr">Zip</td>
+                              <td class="dspalph">$(V_PLZIP)</td></tr>
+                      %endif
+
+                      %if (V_PLCTRY!="")
+    		       @RtvFldDesc("CNCTCD='$(V_PLCTRY)'", "HDCTRY", "CNCDES", fieldDesc)
+                          <tr><td class="dsphdr">Country</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>			
+                      %endif
+
+                      %if (V_PLCTRY!="")		
+                          <tr><td class="dsphdr">Alpha Sequence</td>
+                              <td class="dspalph">$(V_PLALPH)</td> </tr>
+                      %endif
+        			
+                      %if (V_PLSCHD!="")
+    		       @RtvFldDesc("SMSCHD=$(V_PLSCHD)", "HDSCHM", "SMDESC", fieldDesc)
+                          <tr><td class="dsphdr">Schedule</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+                      </table>
+                  </fieldset>
+
+                  <a name="productDataBase"></a>
+                  <fieldset class="legendBody">
+                      <legend class="legendTitle">Product Data Base</legend>
+                      <table $(contentTable)>
+                          <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                      </table>
+                      <table $(contentTable)>
+
+                      %if (V_PLRSEQ!="0")		
+                          <tr><td class="dsphdr">Default Product Structure Routing Sequence</td>
+                              <td class="dspnmbr">$(V_PLRSEQ)</td></tr>
+                      %endif
+    	   		        		
+                      %if (V_PLRSF!="")
+                          @RtvYNDesc($(V_PLRSF), fieldDesc)
+                          <tr><td class="dsphdr">Product Structure Interfaces With Routing Master</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+                      </table>
+                  </fieldset>
+
+                  <a name="costManagement"></a>
+                  <fieldset class="legendBody">
+                      <legend class="legendTitle">Cost Management</legend>
+                      %if (V_HDSCRL>"0")		
+                          <table $(contentTable)>
+                              <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                          </table>
+                          <table $(contentTable)>
+                              %if (V_PLCC1D!="" || V_PLC1LD!="" || V_PLCC2D!="" || V_PLC2LD!="" || V_PLCC3D!="" || V_PLC3LD!="" || V_PLCC4D!="" || V_PLC4LD!="" || V_PLCC5D!="" || V_PLC5LD!="")		
+                                  <tr><td class="dsphdr">Cost Category:</td>
+                                      <td class="dsphdr">Short Description</td>
+                                      <td class="dsphdr">Long Description</td></tr>
+                              %endif
+
+                              %if (V_PLCC1D!="" || V_PLC1LD!="")		
+                                  <tr><td class="dsphdr">One</td>
+                                      <td class="dspalph">$(V_PLCC1D)</td>
+                                      <td class="dspalph">$(V_PLC1LD)</td></tr>
+                              %endif
+
+                              %if (V_PLCC2D!="" || V_PLC2LD!="")		
+                                  <tr><td class="dsphdr">Two</td>
+                                      <td class="dspalph">$(V_PLCC2D)</td>
+                                      <td class="dspalph">$(V_PLC2LD)</td></tr>
+                              %endif
+
+                              %if (V_PLCC3D!="" || V_PLC3LD!="")		
+                                  <tr><td class="dsphdr">Three</td>
+                                      <td class="dspalph">$(V_PLCC3D)</td>
+                                      <td class="dspalph">$(V_PLC3LD)</td></tr>
+                              %endif
+
+                              %if (V_PLCC4D!="" || V_PLC4LD!="")		
+                                  <tr><td class="dsphdr">Four</td>
+                                      <td class="dspalph">$(V_PLCC4D)</td>
+                                      <td class="dspalph">$(V_PLC4LD)</td></tr>
+                              %endif
+
+                              %if (V_PLCC5D!="" || V_PLC5LD!="")		
+                                  <tr><td class="dsphdr">Five</td>
+                                      <td class="dspalph">$(V_PLCC5D)</td>
+                                      <td class="dspalph">$(V_PLC5LD)</td></tr>
+                              %endif
+                          </table>
+
+                          <table $(contentTable)>
+                              %if (V_PLDOL1!="" || V_PLDOL2!="" || V_PLPCT1!="" || V_PLPCA1!=".00" || V_PLPCT2!="" || V_PLPCA2!=".00" || V_PLPCT3!="" || V_PLPCA3!=".00" || V_PLPCT4!="" || V_PLPCA4!=".00" || V_PLSPCT!=".00" || V_PLGPCT!=".00")		
+                                  <tr><td class="dsphdr">Cost Simulation Variables:</td>
+                                      <td class="dsphdr"></td>
+                                      <td class="dsphdr">% Value</td></tr>
+                              %endif
+
+                              %if (V_PLDOL1!="")		
+                                  <tr><td class="dsphdr">Dollar One</td>
+                                      <td class="dspalph">$(V_PLDOL1)</td>
+                              %endif
+
+                              %if (V_PLDOL2!="")		
+                                  <tr><td class="dsphdr">Dollar Two</td>
+                                      <td class="dspalph">$(V_PLDOL2)</td>
+                              %endif
+
+                              %if (V_PLPCT1!="" || V_PLPCA1!=".00")		
+                                  <tr><td class="dsphdr">Percent One</td>
+                                      <td class="dspalph">$(V_PLPCT1)</td>
+                                      <td class="dspnmbr">$(V_PLPCA1)</td></tr>
+                              %endif
+
+                              %if (V_PLPCT2!="" || V_PLPCA2!=".00")		
+                                  <tr><td class="dsphdr">Percent Two</td>
+                                      <td class="dspalph">$(V_PLPCT2)</td>
+                                      <td class="dspnmbr">$(V_PLPCA2)</td></tr>
+                              %endif
+
+                              %if (V_PLPCT3!="" || V_PLPCA3!=".00")		
+                                  <tr><td class="dsphdr">Percent Three</td>
+                                      <td class="dspalph">$(V_PLPCT3)</td>
+                                      <td class="dspnmbr">$(V_PLPCA3)</td></tr>
+                              %endif
+
+                              %if (V_PLPCT4!="" || V_PLPCA4!=".00")		
+                                  <tr><td class="dsphdr">Percent Four</td>
+                                      <td class="dspalph">$(V_PLPCT4)</td>
+                                      <td class="dspnmbr">$(V_PLPCA4)</td></tr>
+                              %endif
+
+                              %if (V_PLSPCT!=".00")		
+                                  <tr><td class="dsphdr">S&M % Mfg Cost</td>
+                                      <td class="dspalph"></td>
+                                      <td class="dspnmbr">$(V_PLSPCT)</td></tr>
+                              %endif
+
+                              %if (V_PLGPCT!=".00")		
+                                  <tr><td class="dsphdr">G&A % Mfg Cost</td>
+                                      <td class="dspalph"></td>
+                                      <td class="dspnmbr">$(V_PLGPCT)</td></tr>
+                              %endif
+
+                              %if (V_PLFXEL!="")		
+    		               @RtvFldDesc("FLTYPE='FIXOVERHD' and FLVALU='$(V_PLFXEL)'", "SYFLAG", "FLDESC", fieldDesc)
+                                  <tr><td class="dsphdr">Fixed Overhead Category</td>
+                                      <td class="dspalph">$(fieldDesc)</td></tr>
+                              %endif
+                          </table>
+                      %endif
+                  </fieldset>
+
+                  <a name="MPSMRP"></a>
+                  <fieldset class="legendBody">
+                      <legend class="legendTitle">MPS/MRP</legend>
+                      %if (V_HDMPRL>"0")		
+                          <table $(contentTable)>
+                              <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                          </table>
+                          <table $(contentTable)>
+                              %if (V_PLDCP > "0")
+                                  @Format_Date_ISO(V_PLDCP, "H", F_PLDCP)
+                                  <tr><td class="dsphdr">Planning Horizon Date</td>
+                                      <td class="dspdate">$(F_PLDCP)</td></tr>
+                              %endif
+
+                              %if (V_PLFCM > "0")
+                                  @PeriodFromCYP(V_PLFCM)
+                                  <tr><td class="dsphdr">Current Fiscal Period</td>
+                                  <td class="dspnmbr">$(V_PLFCM)</td></tr> 		
+                              %endif
+
+                              %if (V_PL#WDD!="0")		
+                                  <tr><td class="dsphdr"># Weeks Of Daily Periods</td>
+                                      <td class="dspnmbr">$(V_PL#WDD)</td></tr>
+                              %endif
+
+                              %if (V_PL#WWD!="0")		
+                                  <tr><td class="dsphdr"># Weeks Of Weekly Periods</td>
+                                      <td class="dspnmbr">$(V_PL#WWD)</td></tr>
+                              %endif
+
+                              %if (V_PLSHR!=".00")		
+                                  <tr><td class="dsphdr">Standard Hours/Day</td>
+                                      <td class="dspnmbr">$(V_PLSHR)</td></tr>
+                              %endif
+
+                              %if (V_PLPL!="0")		
+                                  <tr><td class="dsphdr">Period Length In Days</td>
+                                      <td class="dspnmbr">$(V_PLPL)</td></tr>
+                              %endif
+
+                              %if (V_PLNTP!="0")		
+                                  <tr><td class="dsphdr">Fixed Time Periods Weeks</td>
+                                      <td class="dspnmbr">$(V_PLNTP)</td></tr>
+                              %endif
+
+                              %if (V_PLSSS!="")
+                                  @RtvYNDesc($(V_PLSSS), fieldDesc)
+                                  <tr><td class="dsphdr">Include Safety Stock</td>
+                                      <td class="dspalph">$(fieldDesc)</td></tr>
+                              %endif
+
+                              %if (V_PLSCS!="")
+                                  @RtvYNDesc($(V_PLSCS), fieldDesc)
+                                  <tr><td class="dsphdr">Include Scrap Percent</td>
+                                      <td class="dspalph">$(fieldDesc)</td></tr>
+                              %endif
+
+                              %if (V_PLSPS!="")
+                                  @RtvYNDesc($(V_PLSPS), fieldDesc)
+                                  <tr><td class="dsphdr">Increase Order Quantities By Shrinkage Percentage</td>
+                                      <td class="dspalph">$(fieldDesc)</td></tr>
+                              %endif
+
+                              %if (V_PLPEGR!="")
+                                  @RtvYNDesc($(V_PLPEGR), fieldDesc)
+                                  <tr><td class="dsphdr">Create Pegged Requirements For Non MRP Items</td>
+                                      <td class="dspalph">$(fieldDesc)</td></tr>
+                              %endif
+
+                          </table>
+
+                          <table $(contentTable)>
+                              %if (V_PLMOA!="0" || V_PLPOA!="0" || V_PLMDD!="0" || V_PLPDD!="0")		
+                                  <tr><td class="dsphdr"></td>
+                                      <td class="dsphdr">Mfg</td>
+                                      <td class="dsphdr">Purchasing</td></tr>
+                              %endif
+
+                              %if (V_PLMOA!="0" || V_PLPOA!="0")		
+                                  <tr><td class="dsphdr">Order Action Periods</td>
+                                      <td class="dspnmbr">$(V_PLMOA)</td>
+                                      <td class="dspnmbr">$(V_PLPOA)</td></tr>
+                              %endif
+
+                              %if (V_PLMDD!="0" || V_PLPDD!="0")		
+                                  <tr><td class="dsphdr">Defer Damper Periods</td>
+                                      <td class="dspnmbr">$(V_PLMDD)</td>
+                                      <td class="dspnmbr">$(V_PLPDD)</td></tr>
+                              %endif
+                          </table>
+
+                          <table $(contentTable)>
+
+                              %if (V_PLMRPF!="")
+                                  @RtvYNDesc($(V_PLMRPF), fieldDesc)
+                                  <tr><td class="dsphdr">Use Prod Plan As MRP Input</td>
+                                      <td class="dspalph">$(fieldDesc)</td></tr>
+                              %endif
+
+                              %if (V_PLFDTF!="")
+                              @RtvFldDesc("FLTYPE='FORECASTDF' AND FLVALU='$(V_PLFDTF)'", "SYFLAG", "FLDESC", fieldDesc)
+                                  <tr><td class="dsphdr">Forecast Date Format</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                              %endif
+
+                              %if (V_PLFSPR!="")
+                              @RtvFldDesc("FLTYPE='FORECASTSP' AND FLVALU='$(V_PLFSPR)'", "SYFLAG", "FLDESC", fieldDesc)
+                                  <tr><td class="dsphdr">Forecast Spreaders</td>
+                                      <td class="dspalph">$(fieldDesc)</td></tr>
+                              %endif
+
+                              %if (V_PLTFND!="")
+                              @RtvFldDesc("TFDEF='$(V_PLTFND)'", "HDMTFM", "TFDESC", fieldDesc)
+                                  <tr><td class="dsphdr">Time Fence Definition</td>
+                                      <td class="dspalph">$(fieldDesc)</td></tr>
+                              %endif
+
+                              %if (V_PLPFCT!="")
+                                  <tr><td class="dsphdr">Periods To Retain Forecast</td>
+                                      <td class="dspalph">$(V_PLPFCT)</td></tr>
+                              %endif
+
+                              %if (V_PLCFCT!="")
+                                  <tr><td class="dsphdr">Periods To Consume Forecast</td>
+                                      <td class="dspalph">$(V_PLCFCT)</td></tr>
+                              %endif
+                          </table>
+                      %endif
+                  </fieldset>
+
+                  <a name="shopFloor"></a>
+                  <fieldset class="legendBody">
+                      <legend class="legendTitle">Shop Floor Control</legend>
+                      <table $(contentTable)>
+                          <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                      </table>
+                      <table $(contentTable)>
+                          %if (V_PLBKOP!="")		
+                              @RtvYNDesc($(V_PLBKOP), fieldDesc)
+                              <tr><td class="dsphdr">Backflush Components By Operation</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLLESQ!="0")		
+                              <tr><td class="dsphdr">Next Labor Sequence</td>
+                                  <td class="dspnmbr">$(V_PLLESQ)</td></tr>
+                          %endif
+
+                          %if (V_PLNMO!="0")		
+                              <tr><td class="dsphdr">Last Mfg Order Number</td>
+                                  <td class="dspnmbr">$(V_PLNMO)</td></tr>
+                          %endif
+
+                          %if (V_PLORCL!="")		
+                              @RtvYNDesc($(V_PLORCL), fieldDesc)
+                              <tr><td class="dsphdr">Close Orders At Receipt Entry (OR)</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLDPRW!="")
+	   	               @RtvFldDesc("FLTYPE='PIECEREWRK' and FLVALU='$(V_PLDPRW)'", "SYFLAG", "FLDESC", fieldDesc)
+                              <tr><td class="dsphdr">Display Pieces To Rework Field</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLHWKF!="")
+	   	               @RtvFldDesc("FLTYPE='HOURWRKFMT' and FLVALU='$(V_PLHWKF)'", "SYFLAG", "FLDESC", fieldDesc)
+                              <tr><td class="dsphdr">Hours Worked Format</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLCPDF!="")
+	   	               @RtvFldDesc("FLTYPE='COMPLPIECE' and FLVALU='$(V_PLCPDF)'", "SYFLAG", "FLDESC", fieldDesc)
+                              <tr><td class="dsphdr">Completed Pieces Default</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLRCPP!="")		
+                              @RtvYNDesc($(V_PLRCPP), fieldDesc)
+                              <tr><td class="dsphdr">Recalculate Completed Pieces</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLBCDC!="")		
+                              @RtvYNDesc($(V_PLBCDC), fieldDesc)
+                              <tr><td class="dsphdr">Bar Code/Data Collection</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLPRCD!="")		
+                              @RtvYNDesc($(V_PLPRCD), fieldDesc)
+                              <tr><td class="dsphdr">Add Order Process Day</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLACPO!="")
+	   	               @RtvFldDesc("FLTYPE='AUTOEXPLPO' and FLVALU='$(V_PLACPO)'", "SYFLAG", "FLDESC", fieldDesc)
+                              <tr><td class="dsphdr">Auto Explode Purchase Orders</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLAELV!="")
+                              @RtvYNDesc($(V_PLAELV), fieldDesc)
+                              <tr><td class="dsphdr">Auto Explode All Levels</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLAENT!="")
+                              @RtvYNDesc($(V_PLAENT), fieldDesc)
+                              <tr><td class="dsphdr">Activate Auto Explode Netting</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLKPOC!="")
+	   	               @RtvFldDesc("FLTYPE='KANBANPO' and FLVALU='$(V_PLKPOC)'", "SYFLAG", "FLDESC", fieldDesc)
+                              <tr><td class="dsphdr">Kanban Purchase Order Code</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLKBDD!="")		
+	   	               @RtvFldDesc("FLTYPE='KANBANDOC' and FLVALU='$(V_PLKBDD)'", "SYFLAG", "FLDESC", fieldDesc)
+                              <tr><td class="dsphdr">Kanban Document Definition</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLSFLG!="")		
+                              @RtvYNDesc($(V_PLSFLG), fieldDesc)
+                              <tr><td class="dsphdr">Place Order With Shortage On Hold</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLHRSF!="")
+	   	                   @RtvFldDesc("FLTYPE='STDMILITRY' and FLVALU='$(V_PLHRSF)'", "SYFLAG", "FLDESC", fieldDesc)
+                              <tr><td class="dsphdr">Standard Or Military Hours</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLTEF!="")
+	   	                   @RtvFldDesc("FLTYPE='TIMEENTFMT' and FLVALU='$(V_PLTEF)'", "SYFLAG", "FLDESC", fieldDesc)
+                              <tr><td class="dsphdr">Time Entry Format</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLJCC!="")		
+                              @RtvFldDesc("FLTYPE='LBRRATEUSG' and FLVALU='$(V_PLJCC)'", "SYFLAG", "FLDESC", fieldDesc)
+                              <tr><td class="dsphdr">WIP Labor Rate Usage Code</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLCNVS!="")		
+                              @RtvYNDesc($(V_PLCNVS), fieldDesc)
+                              <tr><td class="dsphdr">Convert Labor Entry Shift</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+                      </table>
+
+                      <table $(contentTable)>
+                          %if (V_PLRSO1!="" || V_PLPS01!="" || V_PLRSO2!="" || V_PLPS02!="" || V_PLRSO3!="" || V_PLPS03!="")		
+                              <tr><td class="dsphdr">Labor Entry Shift Override</td>
+                                  <td class="dsphdr">Regular</td>
+                                  <td class="dsphdr">Piece Rate</td></tr>
+                          %endif
+
+                          %if (V_PLRSO1!="" || V_PLPS01!="")		
+                              <tr><td class="dsphdr">Shift Code 1</td>
+                                  <td class="dspalph">$(V_PLRSO1)</td>
+                                  <td class="dspalph">$(V_PLPSO1)</td></tr>
+                          %endif
+
+                          %if (V_PLRSO2!="" || V_PLPS02!="")		
+                              <tr><td class="dsphdr">Shift Code 2</td>
+                                  <td class="dspalph">$(V_PLRSO2)</td>
+                                  <td class="dspalph">$(V_PLPSO2)</td></tr>
+                          %endif
+
+                          %if (V_PLRSO3!="" || V_PLPS03!="")		
+                              <tr><td class="dsphdr">Shift Code 3</td>
+                                  <td class="dspalph">$(V_PLRSO3)</td>
+                                  <td class="dspalph">$(V_PLPSO3)</td></tr>
+                          %endif
+                      </table>
+
+                      <table $(contentTable)>
+                          %if (V_PLPRPC!="")		
+                              @RtvFldDesc("C2CODE='$(V_PLPRPC)'", "PRCODE", "C2DESC", fieldDesc)
+                              <tr><td class="dsphdr">Piece Rate Pay Code Default</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLPRHC!="")		
+                              @RtvFldDesc("C2CODE='$(V_PLPRHC)'", "PRCODE", "C2DESC", fieldDesc)
+                              <tr><td class="dsphdr">Piece Rate Hours Pay Code</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLRLCD!="")		
+                              @RtvYNDesc($(V_PLRLCD), fieldDesc)
+                              <tr><td class="dsphdr">Restrict Labor Code Usage</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLHLDH!="")		
+                              @RtvFldDesc("FLTYPE='HALTERROR' and FLVALU='$(V_PLHLDH)'", "SYFLAG", "FLDESC", fieldDesc)
+                              <tr><td class="dsphdr">Place Halt Errors On Hold</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+
+                          %if (V_PLSUPA!="")		
+                              @RtvFldDesc("EVTYPE='X' and EVCODE='$(V_PLSUPA)'", "HDEVNT", "EVDESC", fieldDesc)
+                              <tr><td class="dsphdr">Supervisor Approval Code</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+                      </table>
+                  </fieldset>
+
+                  <a name="cycleCount"></a>
+                  <fieldset class="legendBody">
+                      <legend class="legendTitle">Cycle Count</legend>
+                      <table $(contentTable)>
+                          <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                      </table>
+                      <table $(contentTable)>
+                          %if (V_PLABCI!="")		
+                              @RtvYNDesc($(V_PLABCI), fieldDesc)
+                              <tr><td class="dsphdr">ABC Analysis By Inventory Type</td>
+                                  <td class="dspalph">$(fieldDesc)</td></tr>
+                          %endif
+                      </table>
+
+                      <table $(contentTable)>
+                          %if (V_PLVLA!=".000" || V_PLVLB!=".000" || V_PLVLC!=".000" || V_PLCAW!="0" || V_PLCBW!="0" || V_PLCCW!="0" || V_PLPCA!="0" || V_PLPCB!="0")		
+                              <tr><td class="dsphdr"></td>
+                                  <td class="dsphdr">Class<br>"A"</td>
+                                  <td class="dsphdr">Class<br>"B"</td>
+                                  <td class="dsphdr">Class<br>"C"</td></tr>
+                          %endif
+
+                          %if (V_PLVLA!=".000" || V_PLVLB!=".000" || V_PLVLC!=".000")		
+                              @Format_Nbr("@dtw_rMultiply(V_PLVLA, "100")", F_PLVLA, "1", $(pctEditCode), "Y", "", "")
+                              @Format_Nbr("@dtw_rMultiply(V_PLVLB, "100")", F_PLVLB, "1", $(pctEditCode), "Y", "", "")
+                              @Format_Nbr("@dtw_rMultiply(V_PLVLC, "100")", F_PLVLC, "1", $(pctEditCode), "Y", "", "")
+                              <tr><td class="dsphdr">Acceptance Limit Percentage</td>
+                                  <td class="dspnmbr">$(F_PLVLA)</td>
+                                  <td class="dspnmbr">$(F_PLVLB)</td>
+                                  <td class="dspnmbr">$(F_PLVLC)</td></tr>
+                          %endif
+
+                          %if (V_PLCAW!="0" || V_PLCBW!="0" || V_PLCCW!="0")		
+                              <tr><td class="dsphdr">Cycle Days</td>
+                                  <td class="dspnmbr">$(V_PLCAW)</td>
+                                  <td class="dspnmbr">$(V_PLCBW)</td>
+                                  <td class="dspnmbr">$(V_PLCCW)</td></tr>
+                          %endif
+
+                          %if (V_PLPCA!="0" || V_PLPCB!="0")		
+                              <tr><td class="dsphdr">Percentage For</td>
+                                  <td class="dspnmbr">$(V_PLPCA)</td>
+                                  <td class="dspnmbr">$(V_PLPCB)</td></tr>
+                          %endif
+                      </table>
+                  </fieldset>
+
+                  <a NAME="accountNumbers"></a>
+                  <fieldset class="legendBody">
+                      <legend class="legendTitle">Accounts</legend>
+                      <table $(contentTable)>
+                          <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                      </table>
+                      <table $(contentTable)>
+                          %if (V_PLFSIA!="0")		
+                              @Format_Acct("$(V_PLFSIA)", "$(V_PLFSIS)", "", F_AcctSub)
+                              <tr><td class="dsphdr">Floorstock Inventory</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif
+
+                          %if (V_PLUVRA!="0")		
+                              @Format_Acct("$(V_PLUVRA)", "$(V_PLUVRS)", "", F_AcctSub)
+                              <tr><td class="dsphdr">Unvouchered Receipts</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif
+
+                          %if (V_PLVSVA!="0")		
+                              @Format_Acct("$(V_PLVSVA)", "$(V_PLVSVS)", "", F_AcctSub)
+                              <tr><td class="dsphdr">Vendor Services Variance</td>
+                                  <td class="dspnmbr">$(F_AcctSub)</td></tr>
+                          %endif
+                      </table>
+
+                      <table $(contentTable)>
+                          %if (V_PLWP1A!="0" || V_PLWV1A!="0" || V_PLMA1A!="0" || V_PLPA1A!="0" || V_PLWP2A!="0" || V_PLWV2A!="0" || V_PLMA2A!="0" || V_PLPA2A!="0" || V_PLWP3A!="0" || V_PLWV3A!="0" || V_PLMA3A!="0" || V_PLPA3A!="0" || V_PLWP4A!="0" || V_PLWV4A!="0" || V_PLMA4A!="0" || V_PLPA4A!="0" || V_PLWP5A!="0" || V_PLWV5A!="0" || V_PLMA5A!="0" || V_PLPA5A!="0")		
+                              <tr><td class="dsphdr"></td>
+                                  <td class="dsphdr">WIP</td>
+                                  <td class="dsphdr">WIP Variance</td>
+                                  <td class="dsphdr">Manufactured<br>Cost Absorption</td>
+                                  <td class="dsphdr">Purchased<br>Cost Absorption</td></tr>
+                          %endif
+
+                          %if (V_PLWP1A!="0" || V_PLWV1A!="0" || V_PLMA1A!="0" || V_PLPA1A!="0")		
+                              <tr><td class="dsphdr">Cost Category 1</td>
+                                  @Format_Acct("$(V_PLWP1A)", "$(V_PLWP1S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLWV1A)", "$(V_PLWV1S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLMA1A)", "$(V_PLMA1S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLPA1A)", "$(V_PLPA1S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                              </tr>
+                          %endif
+
+                          %if (V_PLWP2A!="0" || V_PLWV2A!="0" || V_PLMA2A!="0" || V_PLPA2A!="0")		
+                              <tr><td class="dsphdr">Cost Category 2</td>
+                                  @Format_Acct("$(V_PLWP2A)", "$(V_PLWP2S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLWV2A)", "$(V_PLWV2S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLMA2A)", "$(V_PLMA2S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLPA2A)", "$(V_PLPA2S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                              </tr>
+                          %endif
+
+                          %if (V_PLWP3A!="0" || V_PLWV3A!="0" || V_PLMA3A!="0" || V_PLPA3A!="0")		
+                              <tr><td class="dsphdr">Cost Category 3</td>
+                                  @Format_Acct("$(V_PLWP3A)", "$(V_PLWP3S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLWV3A)", "$(V_PLWV3S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLMA3A)", "$(V_PLMA3S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLPA3A)", "$(V_PLPA3S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                              </tr>
+                          %endif
+
+                          %if (V_PLWP4A!="0" || V_PLWV4A!="0" || V_PLMA4A!="0" || V_PLPA4A!="0")		
+                              <tr><td class="dsphdr">Cost Category 4</td>
+                                  @Format_Acct("$(V_PLWP4A)", "$(V_PLWP4S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLWV4A)", "$(V_PLWV4S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLMA4A)", "$(V_PLMA4S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLPA4A)", "$(V_PLPA4S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                              </tr>
+                          %endif
+
+                          %if (V_PLWP5A!="0" || V_PLWV5A!="0" || V_PLMA5A!="0" || V_PLPA5A!="0")		
+                              <tr><td class="dsphdr">Cost Category 5</td>
+                                  @Format_Acct("$(V_PLWP5A)", "$(V_PLWP5S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLWV5A)", "$(V_PLWV5S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLMA5A)", "$(V_PLMA5S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                                  @Format_Acct("$(V_PLPA5A)", "$(V_PLPA5S)", "", F_AcctSub)
+                                  <td class="dspnmbr">$(F_AcctSub)</td>
+                              </tr>
+                          %endif
+                      </table>
+                  </fieldset>
+
+                  <a NAME="userDefined"></a>
+                  <fieldset class="legendBody">
+                      <legend class="legendTitle">User-Defined Data</legend>
+                      <table $(contentTable)>
+                          <tr><td><a href="#top">$(topOfFormImage)</a></td></tr>
+                      </table>
+                      <table $(contentTable)>
+                          %if (V_PLPAS1!="" || V_PLPA11!="" || V_PLPA12!="" || V_PLPAS2!="" || V_PLPA21!="" || V_PLPA22!="" || V_PLPAS3!="" || V_PLPA31!="" || V_PLPA32!="" || V_PLPNS1!="" || V_PLPN11!="" || V_PLPN12!="" || V_PLPNS2!="" || V_PLPN21!="" || V_PLPN22!="" || V_PLPNS3!="" || V_PLPN31!="" || V_PLPN32!="")		
+                              <tr><td class="dsphdr"></td>
+                                  <td class="dsphdr">Description</td>
+                                  <td class="dsphdr" colspan="2">Report Heading</td></tr>
+                          %endif
+
+                          %if (V_PLPAS1!="" || V_PLPA11!="" || V_PLPA12!="")		
+                              <tr><td class="dsphdr">Plant Alpha 1</td>
+                                  <td class="dspalph">$(V_PLPAS1)</td>
+                                  <td class="dspalph">$(V_PLPA11)</td>
+                                  <td class="dspalph">$(V_PLPA12)</td></tr>
+                          %endif
+
+                          %if (V_PLPAS2!="" || V_PLPA21!="" || V_PLPA22!="")		
+                              <tr><td class="dsphdr">Plant Alpha 2</td>
+                                  <td class="dspalph">$(V_PLPAS2)</td>
+                                  <td class="dspalph">$(V_PLPA21)</td>
+                                  <td class="dspalph">$(V_PLPA22)</td></tr>
+                          %endif
+
+                          %if (V_PLPAS3!="" || V_PLPA31!="" || V_PLPA32!="")		
+                              <tr><td class="dsphdr">Plant Alpha 3</td>
+                                  <td class="dspalph">$(V_PLPAS3)</td>
+                                  <td class="dspalph">$(V_PLPA31)</td>
+                                  <td class="dspalph">$(V_PLPA32)</td></tr>
+                          %endif
+
+                          %if (V_PLPNS1!="" || V_PLPN11!="" || V_PLPN12!="")		
+                              <tr><td class="dsphdr">Plant Numeric 1</td>
+                                  <td class="dspalph">$(V_PLPNS1)</td>
+                                  <td class="dspalph">$(V_PLPN11)</td>
+                                  <td class="dspalph">$(V_)</td></tr>
+                          %endif
+
+                          %if (V_PLPNS2!="" || V_PLPN21!="" || V_PLPN22!="")		
+                              <tr><td class="dsphdr">Plant Numeric 2</td>
+                                  <td class="dspalph">$(V_PLPNS2)</td>
+                                  <td class="dspalph">$(V_PLPN21)</td>
+                                  <td class="dspalph">$(V_PLPN22)</td></tr>
+                          %endif
+
+                          %if (V_PLPNS3!="" || V_PLPN31!="" || V_PLPN32!="")		
+                              <tr><td class="dsphdr">Plant Numeric 3</td>
+                                  <td class="dspalph">$(V_PLPNS3)</td>
+                                  <td class="dspalph">$(V_PLPN31)</td>
+                                  <td class="dspalph">$(V_PLPN32)</td></tr>
+                          %endif
+                      </table>
+                  </fieldset>
+              %endif
+          %}
+      %if (moreInfo != "Y")	
+          </table>
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+      %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "PLNAMEU,PLPLNT")
+      @DTW_ASSIGN(orderByDisplay, "Name, Plant")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(orderBy, "PLPLNT")
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "number")
+      %if (orderBy == "PLPLNT")
+          @DTW_ASSIGN(orderBy, "PLPLNT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Plant (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "Plant")
+      %endif
+  %elseif (sequence == "name")
+      %if (orderBy == "PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderBy, "PLNAMEU DESC,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "Name (descending), Plant")
+      %else
+          @DTW_ASSIGN(orderBy, "PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "Name, Plant")
+      %endif
+  %elseif (sequence == "coFac")
+      %if (orderBy == "PLCO#,PLFAC#,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderBy, "PLCO# DESC,PLFAC# DESC,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility (descending), Name, Plant")
+      %else
+          @DTW_ASSIGN(orderBy, "PLCO#,PLFAC#,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility, Name, Plant")
+      %endif
+  %elseif (sequence == "address")
+      %if (orderBy == "PLADR1U,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderBy, "PLADR1U DESC,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "Address (descending), Name, Plant")
+      %else
+          @DTW_ASSIGN(orderBy, "PLADR1U,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "Address, Name, Plant")
+      %endif
+  %elseif (sequence == "city")
+      %if (orderBy == "PLCITYU,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderBy, "PLCITYU DESC,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "City (descending), Name, Plant")
+      %else
+          @DTW_ASSIGN(orderBy, "PLCITYU,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "City, Name, Plant")
+      %endif
+  %elseif (sequence == "state")
+      %if (orderBy == "PLST,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderBy, "PLST DESC,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "State (descending), Name, Plant")
+      %else
+          @DTW_ASSIGN(orderBy, "PLST,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "State, Name, Plant")
+      %endif
+  %elseif (sequence == "zipCode")
+      @DTW_ASSIGN(orderBy, "PLZIP,PLNAMEU,PLPLNT")
+      %if (orderBy == "PLZIP,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderBy, "PLZIP DESC,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "Zip (descending), Name, Plant")
+      %else
+          @DTW_ASSIGN(orderBy, "PLZIP,PLNAMEU,PLPLNT")
+          @DTW_ASSIGN(orderByDisplay, "Zip, Name, Plant")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchCo, 2, 0) &&
+                      editNum(document.Search.srchFac, 4, 0) &&
+                      editNum(document.Search.srchSchedule, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "PLANTSEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Company</td>
+                              @dtw_assign(operNbr, "operCo")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchCo" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Facility</td>
+                              @dtw_assign(operNbr, "operFac")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchFac" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Name</td>
+                              @dtw_assign(operNbr, "operName")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchName" size="26" maxlength="26"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Address</td>
+                              <td>&nbsp;</td>
+                              <td class="inputalph"> <input type="text" name="srchAddress" size="26" maxlength="26"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">State</td>
+                              @dtw_assign(operNbr, "operState")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchState" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Zip</td>
+                              @dtw_assign(operNbr, "operZip")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchZip" size="14" maxlength="14"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Country</td>
+                              @dtw_assign(operNbr, "operCountry")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCountry" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Schedule</td>
+                              @dtw_assign(operNbr, "operSchedule")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchSchedule" size="3" maxlength="3"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchCo.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("PLPLNT", "Plant", $(srchPlant), "", operPlant, "N")
+  @Build_WildCard ("upper(PLNAME)", "Name", $(srchName), "U", operName, "A")
+  @Build_WildCard ("PLCO#", "Company", $(srchCo), "", operCo, "N")
+  @Build_WildCard ("PLFAC#", "Facility", $(srchFac), "", operFac, "N")
+
+  @dtw_assign(srchAddress,@dtw_rstrip(srchAddress))
+  %if (srchAddress != "")
+      @Build_WildCard ("PLADR1", "Address", $(srchAddress), "U", "LIKE", "V")
+      @dtw_mUPPERCASE(srchAddress)
+      @dtw_replace(srchAddress, "?", "_", "1", "a", srchAddress)
+      @dtw_replace(srchAddress, "*", "%", "1", "a", srchAddress)
+      @dtw_concat(wildCardTemp, " (trim(upper(PLADR1)) LIKE '$(srchAddress)'", wildCardTemp)
+      @dtw_concat(wildCardTemp, " OR   trim(upper(PLADR2)) LIKE '$(srchAddress)'", wildCardTemp)
+      @dtw_concat(wildCardTemp, " OR   trim(upper(PLCITY)) LIKE '$(srchAddress)')", wildCardTemp)
+  %endif
+		
+  @Build_WildCard ("PLST", "State", $(srchState), "U", operState, "A")
+  @Build_WildCard ("PLZIP", "Zip", $(srchZip), "U", operZip, "A")
+  @Build_WildCard ("PLCTRY", "Country", $(srchCountry), "U", operCountry, "A")
+  @Build_WildCard ("PLSCHD", "Schedule", $(srchSchedule), "", operSchedule, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

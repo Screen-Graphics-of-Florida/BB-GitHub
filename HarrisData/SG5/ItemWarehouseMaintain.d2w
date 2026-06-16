@@ -1,0 +1,1060 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Item/Warehouse Maintenance                                  *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "ItemWarehouseMaintain.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "Item/Warehouse Maintenance"
+  d2wName                 = "ItemWarehouseMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromItemNumber=@dtw_rurlescseq(fromItemNumber)&amp;fromWarehouse=@dtw_rurlescseq(fromWarehouse)&amp;fromD2w=@dtw_rurlescseq(fromD2w)&amp;noMenu=@dtw_rurlescseq(noMenu)&amp;fromSel=@dtw_rurlescseq(fromSel)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;maintenanceCode=D"
+  programName             = "HHDIWU"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  returnPlant             = "000"
+  subr                    = "RetPltNbr"
+  itemDescription         = ""
+  warehouseName           = ""
+  stockUOM                = ""
+  partType                = ""
+  kitItem                 = ""
+  editFields              = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @WarehouseUserView(profileHandle, dataBaseID, userPass, warehouseNumber)
+  %if (userPass == "Y")
+      @ItemUserView(profileHandle, dataBaseID, userPass, itemNumber)
+  %endif
+  %if (userPass == "Y")
+      @ItemWarehouseUserView(profileHandle, dataBaseID, userPass, warehouseNumber, itemNumber)
+  %endif
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "calendar.icl"
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "dateedit.icl"
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "numedit.icl"
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+                  function validate(chgForm) {
+                      if ($(editFields)
+                          editNum(document.Chg.piecesPerPrice, 5, 4) &&
+                          editNum(document.Chg.piecesPerPurchase, 5, 4) &&
+                          editNum(document.Chg.piecesPerCase, 5, 4) &&
+                          editNum(document.Chg.listPrice, 8, 5) &&
+                          editNum(document.Chg.vendor, 7, 0) &&
+                          editNum(document.Chg.buyer, 7, 0) &&
+                          editNum(document.Chg.leadTime, 3, 0) &&
+                          editNum(document.Chg.minimumOnHand, 9, 4) &&
+                          editNum(document.Chg.maximumOnHand, 9, 4) &&
+                          editNum(document.Chg.overrideCycleDays, 3, 0) &&
+                          editNum(document.Chg.averageCost, 8, 5) &&
+                          editNum(document.Chg.standardCost, 8, 5) &&
+                          editNum(document.Chg.replacementCost, 8, 5) &&
+                          editNum(document.Chg.baseYearCost, 8, 5) &&
+                          editNum(document.Chg.dutyPercent, 3, 2) &&
+                          editNum(document.Chg.lastPONumber, 8, 0) &&
+                          editNum(document.Chg.lastPOLine, 3, 0) &&
+                          editNum(document.Chg.lastPOCost, 8, 5) &&
+                          %if (dspSuggPOFields == "Y")	
+                              editNum(document.Chg.periodAvgShipped, 2, 0) &&
+                          %endif
+                          editdate(document.Chg.lastPODate) &&
+                          editNum(document.Chg.economicQty, 9, 4))
+                          return true;
+                  }
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "" && noMenu !="Y")
+                          @dtw_assign(pageID, "ITEMWAREHOUSEMAINTAN")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, " Select * From HDIWHS ", stmtSQL)
+                              @dtw_concat(stmtSQL, " Where IWWHS=$(fromWarehouse) and IWITEM='$(fromItemNumber)'", stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{ 
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=225")
+      %endif
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+        <table $(contentTable)>
+	       <colgroup>
+	           <col width="80%">
+	           <col width="15%">
+        <tr><td><h1>$(page_title)</h1></td>
+            <td class="toolbar">
+                %if ((sec_01 != "N" && (maintenanceCode == "A" || maintenanceCode == "Z")) || (sec_02 != "N" && maintenanceCode == "C") || (maintenanceCode != "A" && maintenanceCode != "C" && maintenanceCode != "D" && maintenanceCode != "Z"))
+                    <a href="javascript:check(document.Chg)">$(acceptImageMed)</a>
+                %endif
+                %if (wfInstance > "0")
+                    <a onClick="return confirmCancelWF()" href="$(cancelWFURL)">$(cancelImageMed)</a>
+                %elif (noMenu == "Y")
+                    <a href="javascript:window.close()">$(cancelImageMed)</a>
+                %elif (backURL != "")
+                    <a href="$(backURL)">$(cancelImageMed)</a>
+                %else
+                    <a href="javascript:history.back()">$(cancelImageMed)</a>
+                %endif
+                %if (sec_03 != "N" && maintenanceCode == "C")
+                    <a onClick="return confirmDelete()" href="$(deleteURL)">$(deleteImageMed)</a>
+                %endif
+
+                @dtw_assign(medIcon, "Y")
+                %INCLUDE "HelpPage.icl"
+            </td>
+        </tr>
+  </table>
+      
+      
+      <table $(contentTable)>
+          @Format_Header("Item", $(itemDescription), $(itemNumber))
+          @Format_Header("Warehouse", $(warehouseName), $(warehouseNumber))
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+
+          %ROW {
+              @dtw_assign(focusField, "priceUOM")
+              %if (errFound != "" || maintenanceCode == "A")
+                  %if (errFound == "" && maintenanceCode == "A")
+                      @dtw_assign(edtVar, "")
+                  %else
+                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                      @dtw_assign(focusField, "")
+                      @ErrVarErr(profileHandle, typeError, errVar)
+                      @DecatErr_Field("@@iwac", "status")             @dtw_assign(Err_IWIWAC, fieldValue)
+                      @DecatErr_Field("@@whs@", "warehouseNumber")    @dtw_assign(Err_IWWHS,  fieldValue)
+                      @DecatErr_Field("@@item", "itemNumber")         @dtw_assign(Err_IWITEM, fieldValue)
+                      @DecatErr_Field("@@uomp", "priceUOM")           @dtw_assign(Err_IWUOMP, fieldValue)
+                      @DecatErr_Field("@@uomb", "purchaseUOM")        @dtw_assign(Err_IWUOMB, fieldValue)
+                      @DecatErr_Field("@@pcpp", "piecesPerPrice")     @dtw_assign(Err_IWPCPP, fieldValue)
+                      @DecatErr_Field("@@pcpb", "piecesPerPurchase")  @dtw_assign(Err_IWPCPB, fieldValue)
+                      @DecatErr_Field("@@pcpc", "piecesPerCase")      @dtw_assign(Err_IWPCPC, fieldValue)
+                      @DecatErr_Field("@@stkl", "stockLocActive")     @dtw_assign(Err_IWSTKL, fieldValue)
+                      @DecatErr_Field("@@list", "listPrice")          @dtw_assign(Err_IWLIST, fieldValue)
+                      @DecatErr_Field("@@avcs", "averageCost")        @dtw_assign(Err_IWAVCS, fieldValue)
+                      @DecatErr_Field("@@stcs", "standardCost")       @dtw_assign(Err_IWSTCS, fieldValue)
+                      @DecatErr_Field("@@rpcs", "replacementCost")    @dtw_assign(Err_IWRPCS, fieldValue)
+                      @DecatErr_Field("@@bycs", "baseYearCost")       @dtw_assign(Err_IWBYCS, fieldValue)
+                      @DecatErr_Field("@@minq", "minimumOnHand")      @dtw_assign(Err_IWMINQ, fieldValue)
+                      @DecatErr_Field("@@maxq", "maximumOnHand")      @dtw_assign(Err_IWMAXQ, fieldValue)
+                      @DecatErr_Field("@@txcd", "taxable")            @dtw_assign(Err_IWTXCD, fieldValue)
+                      @DecatErr_Field("@@lpo@", "lastPONumber")       @dtw_assign(Err_IWLPO#, fieldValue)
+                      @DecatErr_Field("@@lpol", "lastPOLine")         @dtw_assign(Err_IWLPOL, fieldValue)
+                      @DecatErr_Field("@@pocs", "lastPOCost")         @dtw_assign(Err_IWPOCS, fieldValue)
+                      @DecatErr_Field("@@lpdt", "lastPODate")         @dtw_assign(Err_IWLPDT, fieldValue)
+                      @DecatErr_Field("@@eoq@", "economicQty")        @dtw_assign(Err_IWEOQ,  fieldValue)
+                      @DecatErr_Field("@@kitc", "kitAddlCost")        @dtw_assign(Err_IWKITC, fieldValue)
+                      @DecatErr_Field("@@pgrp", "productGroup")       @dtw_assign(Err_IWPGRP, fieldValue)
+                      @DecatErr_Field("@@cycl", "countGroup")         @dtw_assign(Err_IWCYCL, fieldValue)
+                      @DecatErr_Field("@@uda1", "alpha01")            @dtw_assign(Err_IWUDA1, fieldValue)
+                      @DecatErr_Field("@@uda2", "alpha02")            @dtw_assign(Err_IWUDA2, fieldValue)
+                      @DecatErr_Field("@@uda3", "alpha03")            @dtw_assign(Err_IWUDA3, fieldValue)
+                      @DecatErr_Field("@@udn1", "numeric01")          @dtw_assign(Err_IWUDN1, fieldValue)
+                      @DecatErr_Field("@@udn2", "numeric02")          @dtw_assign(Err_IWUDN2, fieldValue)
+                      @DecatErr_Field("@@udn3", "numeric03")          @dtw_assign(Err_IWUDN3, fieldValue)
+                      @DecatErr_Field("@@buyr", "buyer")              @dtw_assign(Err_IWBUYR, fieldValue)
+                      @DecatErr_Field("@@vend", "vendor")             @dtw_assign(Err_IWVEND, fieldValue)
+                      @DecatErr_Field("@@pult", "leadTime")           @dtw_assign(Err_IWPULT, fieldValue)
+                      @DecatErr_Field("@@btnd", "buildToDays")        @dtw_assign(Err_IWBTND, fieldValue)
+                      @DecatErr_Field("@@sitm", "seasonalItem")       @dtw_assign(Err_IWSITM, fieldValue)
+                      @DecatErr_Field("@@npus", "periodAvgShipped")   @dtw_assign(Err_IWNPUS, fieldValue)
+                      @DecatErr_Field("@@rtod", "roundDecimals")      @dtw_assign(Err_IWRTOD, fieldValue)
+                      @DecatErr_Field("@@duty", "dutyPercent")        @dtw_assign(Err_IWDUTY, fieldValue)
+                      @DecatErr_Field("@@abcc", "abcClass")           @dtw_assign(Err_IWABCC, fieldValue)
+                      @DecatErr_Field("@@abco", "abcOverride")        @dtw_assign(Err_IWABCO, fieldValue)
+                      @DecatErr_Field("@@onc@", "overrideCycleDays")  @dtw_assign(Err_IWONC,  fieldValue)
+                      @DecatErr_Field("@@ftcl", "freightClass")       @dtw_assign(Err_IWFTCL, fieldValue)
+                  %endif
+
+                  @Decat_Field("@@iwac")   @dtw_assign(V_IWIWAC, fieldValue)
+                  @Decat_Field("@@whs@")   @dtw_assign(V_IWWHS,  fieldValue)
+                  @Decat_Field("@@item")   @dtw_assign(V_IWITEM, fieldValue)
+                  @Decat_Field("@@uomp")   @dtw_assign(V_IWUOMP, fieldValue)
+                  @Decat_Field("@@uomb")   @dtw_assign(V_IWUOMB, fieldValue)
+                  @Decat_Field("@@pcpp")   @dtw_assign(V_IWPCPP, fieldValue)
+                  @Decat_Field("@@pcpb")   @dtw_assign(V_IWPCPB, fieldValue)
+                  @Decat_Field("@@pcpc")   @dtw_assign(V_IWPCPC, fieldValue)
+                  @Decat_Field("@@stkl")   @dtw_assign(V_IWSTKL, fieldValue)
+                  @Decat_Field("@@swrn")   @dtw_assign(stkLocWrn, fieldValue)
+                  @Decat_Field("@@list")   @dtw_assign(V_IWLIST, fieldValue)
+                  @Decat_Field("@@avcs")   @dtw_assign(V_IWAVCS, fieldValue)
+                  @Decat_Field("@@stcs")   @dtw_assign(V_IWSTCS, fieldValue)
+                  @Decat_Field("@@rpcs")   @dtw_assign(V_IWRPCS, fieldValue)
+                  @Decat_Field("@@bycs")   @dtw_assign(V_IWBYCS, fieldValue)
+                  @Decat_Field("@@minq")   @dtw_assign(V_IWMINQ, fieldValue)
+                  @Decat_Field("@@maxq")   @dtw_assign(V_IWMAXQ, fieldValue)
+                  @Decat_Field("@@txcd")   @dtw_assign(V_IWTXCD, fieldValue)
+                  @Decat_Field("@@lpo@")   @dtw_assign(V_IWLPO#, fieldValue)
+                  @Decat_Field("@@lpol")   @dtw_assign(V_IWLPOL, fieldValue)
+                  @Decat_Field("@@pocs")   @dtw_assign(V_IWPOCS, fieldValue)
+                  @Decat_Field("@@lpdt")   @dtw_assign(V_IWLPDT, fieldValue)
+                  @DateToCYMD(V_IWLPDT)
+                  @Decat_Field("@@eoq@")   @dtw_assign(V_IWEOQ,  fieldValue)
+                  @Decat_Field("@@kitc")   @dtw_assign(V_IWKITC, fieldValue)
+                  @Decat_Field("@@pgrp")   @dtw_assign(V_IWPGRP, fieldValue)
+                  @Decat_Field("@@cycl")   @dtw_assign(V_IWCYCL, fieldValue)
+                  @Decat_Field("@@uda1")   @dtw_assign(V_IWUDA1, fieldValue)
+                  @Decat_Field("@@uda2")   @dtw_assign(V_IWUDA2, fieldValue)
+                  @Decat_Field("@@uda3")   @dtw_assign(V_IWUDA3, fieldValue)
+                  @Decat_Field("@@udn1")   @dtw_assign(V_IWUDN1, fieldValue)
+                  @Decat_Field("@@udn2")   @dtw_assign(V_IWUDN2, fieldValue)
+                  @Decat_Field("@@udn3")   @dtw_assign(V_IWUDN3, fieldValue)
+                  @Decat_Field("@@buyr")   @dtw_assign(V_IWBUYR, fieldValue)
+                  @Decat_Field("@@vend")   @dtw_assign(V_IWVEND, fieldValue)
+                  @Decat_Field("@@pult")   @dtw_assign(V_IWPULT, fieldValue)
+                  @Decat_Field("@@btnd")   @dtw_assign(V_IWBTND, fieldValue)
+                  @Decat_Field("@@sitm")   @dtw_assign(V_IWSITM, fieldValue)
+                  @Decat_Field("@@npus")   @dtw_assign(V_IWNPUS, fieldValue)
+                  @Decat_Field("@@rtod")   @dtw_assign(V_IWRTOD, fieldValue)
+                  @Decat_Field("@@duty")   @dtw_assign(V_IWDUTY, fieldValue)
+                  @Decat_Field("@@abcc")   @dtw_assign(V_IWABCC, fieldValue)
+                  @Decat_Field("@@abco")   @dtw_assign(V_IWABCO, fieldValue)
+                  @Decat_Field("@@onc@")   @dtw_assign(V_IWONC,  fieldValue)
+                  @Decat_Field("@@ftcl")   @dtw_assign(V_IWFTCL, fieldValue)
+
+                  %if (errFound == "" && maintenanceCode == "A")
+                      @dtw_assign(V_IWUOMP, stockUOM)
+                      @dtw_assign(V_IWUOMB, stockUOM)
+                      @dtw_assign(V_IWPCPP, "1")
+                      @dtw_assign(V_IWPCPB, "1")
+                      @dtw_assign(V_IWABCC, "C")
+                      @dtw_assign(V_IWABCO, "S")
+                      @dtw_assign(V_IWSTKL, WHSTKL)
+                      @dtw_assign(V_IWDUTY, "0")
+                      @dtw_assign(V_IWBUYR, "0")
+                      @dtw_assign(V_IWVEND, "0")
+                      @dtw_assign(stkLocWrn, "")
+                      %if (V_HDPORL>"0")
+                          @dtw_assign(V_IWSITM, V_COSITM)
+                          @dtw_assign(V_IWNPUS, V_CONPUS)
+                          @dtw_assign(V_IWRTOD, "4")
+                      %endif
+                  %endif
+
+                  @dtw_assign(errFound, "")
+              %endif
+
+              <table $(contentTable)>
+                  %if (sec_05=="Y")
+                      %if (V_IWIWAC=="I")
+                          @dtw_assign(active, "")
+                          @dtw_assign(inactive, "CHECKED")
+                      %else
+                          @dtw_assign(active, "CHECKED")
+                          @dtw_assign(inactive, "")
+                      %endif
+                      %if (maintenanceCode!="A" && maintenanceCode!="Z")
+                          <tr><td class="dsphdr">Status</td>
+                              <td class="inputcode"><input name="status" type="radio" VALUE=' ' $(active)>Active &nbsp; <input name="status" type="radio" VALUE='I' $(inactive)>Inactive</td>
+                          </tr>
+                      %endif
+                  %else
+                      <tr><td><input name="status" type="hidden" VALUE="$(V_IWIWAC)"></td></tr>
+                  %endif
+
+                  <tr><td class="dsphdr">Stocking Unit Of Measure</td>
+                      <td class="inputalph">$(stockUOM)</td>
+                  </tr>
+	   		
+                  %if (V_HDPDRL>"0")		
+                      <tr><td class="dsphdr">Part Type</td>
+                          <td class="inputalph">$(partType)</td>
+                      </tr>
+                  %endif	
+              </table>
+
+              <table $(contentTable)>
+                  %if (Err_IWWHS != "")
+                      @DspErrMsg(Err_IWWHS)
+                  %endif
+                  %if (Err_IWITEM != "")
+                      @DspErrMsg(Err_IWITEM)
+                  %endif
+
+                  <tr><td>&nbsp;</td>
+                      <td class="colhdr">Pricing</td>
+                      <td class="colhdr">Purchasing</td>
+                      <td class="colhdr">Case Pack</td>
+                  </tr>
+
+                  @RtvFldDesc("UMUOM='$(V_IWUOMP)'", "HDUOM", "UMUMLD", fieldDesc)
+                  @SetTextOvr(Err_IWUOMP)
+                  %if (textOvr == "")
+                      @SetTextOvr(Err_IWUOMB)
+                  %endif
+                  <tr><td class="dsphdr"><span $(textOvr)>Unit Of Measure</span></td>
+                      <td class="inputalph"><input name="priceUOM" type="text" value="$(V_IWUOMP)" size="2" maxlength="2"><a href="$(homeURL)$(cGIPath)UnitOfMeasureSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=priceUOM&amp;fldDesc=priceUOMDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="priceUOMDesc" value="$(fieldDesc)" type="text" size="15" disabled></td>
+
+                      @RtvFldDesc("UMUOM='$(V_IWUOMB)'", "HDUOM", "UMUMLD", fieldDesc)
+                      <td class="inputalph"><input name="purchaseUOM" type="text" value="$(V_IWUOMB)" size="2" maxlength="2"><a href="$(homeURL)$(cGIPath)UnitOfMeasureSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=purchaseUOM&amp;fldDesc=purchaseUOMDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="purchaseUOMDesc" value="$(fieldDesc)" type="text" size="15" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IWUOMP)
+                  @DspErrMsg(Err_IWUOMB)
+
+                  @SetTextOvr(Err_IWPCPP)
+                  %if (textOvr == "")
+                      @SetTextOvr(Err_IWPCPB)
+                  %endif
+                  %if (textOvr == "")
+                      @SetTextOvr(Err_IWPCPC)
+                  %endif
+                  <tr><td class="dsphdr"><span $(textOvr)>Pieces Per Stocking U/M</span></td>
+                      <td class="inputnmbr"><input type="text" name="piecesPerPrice" value="$(V_IWPCPP)" size="11" maxlength="11"> $(reqFieldChar) </td>
+                      <td class="inputnmbr"><input type="text" name="piecesPerPurchase" value="$(V_IWPCPB)" size="11" maxlength="11"> $(reqFieldChar) </td>
+                      <td class="inputnmbr"><input type="text" name="piecesPerCase" value="$(V_IWPCPC)" size="11" maxlength="11"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWPCPP)
+                  @DspErrMsg(Err_IWPCPB)
+                  @DspErrMsg(Err_IWPCPC)
+              </table>
+
+              <table $(contentTable)>
+                  @SetTextOvr(Err_IWLIST)
+                  <tr><td class="dsphdr"><span $(textOvr)>List Price</span></td>
+                      <td class="inputnmbr"><input type="text" name="listPrice" value="$(V_IWLIST)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWLIST)
+
+                  @SetTextOvr(Err_IWTXCD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Taxable</span></td>
+                      @dtw_tb_rows(yn01Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_IWTXCD) && (x < maxRows)) {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn01Table, "taxable", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_IWTXCD)
+
+                  @RtvFldDesc("PGPGRP='$(V_IWPGRP)'", "HDPRGM", "PGDESC", fieldDesc)
+                  @SetTextOvr(Err_IWPGRP)
+                  <tr><td class="dsphdr"><span $(textOvr)>Product Group</span></td>
+                      <td class="inputalph"><input name="productGroup" type="text" value="$(V_IWPGRP)" size="5" maxlength="4"><a href="$(homeURL)$(cGIPath)productgroupsearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=productGroup&amp;fldDesc=productGroupDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="productGroupDesc" value="$(fieldDesc)" type="text" size="40" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IWPGRP)
+
+                  @RtvFldDesc("FTCLAS='$(V_IWFTCL)'", "HDFTCL", "FTLD01", fieldDesc)
+                  @SetTextOvr(Err_IWFTCL)
+                  <tr><td class="dsphdr"><span $(textOvr)>Freight Class</span></td>
+                      <td class="inputnmbr"><input name="freightClass" type="text" value="$(V_IWFTCL)" size="5" maxlength="5"><a href="$(homeURL)$(cGIPath)FreightClassSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=freightClass&amp;fldDesc=freightClassDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="freightClassDesc" value="$(fieldDesc)" type="text" size="40" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IWFTCL)
+
+                  @RtvFldDesc("PCCYCL='$(V_IWCYCL)'", "IVPHCY", "PCDESC", fieldDesc)
+                  @SetTextOvr(Err_IWCYCL)
+                  <tr><td class="dsphdr"><span $(textOvr)>Count Group</span></td>
+                      <td class="inputalph"><input name="countGroup" type="text" value="$(V_IWCYCL)" size="5" maxlength="4"><a href="$(homeURL)$(cGIPath)PhyInvCountGroupSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=countGroup&amp;fldDesc=countGroupDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="countGroupDesc" value="$(fieldDesc)" type="text" size="40" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IWCYCL)
+
+                  @Default_Zero(V_IWVEND)
+                  @RtvFldDesc("VMVEND=$(V_IWVEND)", "HDVEND", "VMVNA1", fieldDesc)
+                  @SetTextOvr(Err_IWVEND)
+                  <tr><td class="dsphdr"><span $(textOvr)>Primary Vendor Number</span></td>
+                      <td class="inputnmbr"><input name="vendor" type="text" value="$(V_IWVEND)" size="5" maxlength="7"><a href="$(homeURL)$(phpPath)VendorSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=vendor&amp;fldDesc=vendorName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="vendorName" value="$(fieldDesc)" type="text" size="40" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IWVEND)
+
+                  @Default_Zero(V_IWBUYR)
+                  @RtvFldDesc("BMBUYR=$(V_IWBUYR)", "HDBUYR", "BMBNA1", fieldDesc)
+                  @SetTextOvr(Err_IWBUYR)
+                  <tr><td class="dsphdr"><span $(textOvr)>Buyer Number</span></td>
+                      <td class="inputnmbr"><input name="buyer" type="text" value="$(V_IWBUYR)" size="5" maxlength="7"><a href="$(homeURL)$(cGIPath)BuyerSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=buyer&amp;fldDesc=buyerName&amp;buyerAnalyst=Buyer" onclick="$(searchWinVar)"> $(searchImage) </a><input name="buyerName" value="$(fieldDesc)" type="text" size="40" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IWBUYR)
+
+                  @SetTextOvr(Err_IWPULT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Purchase Lead Time</span></td>
+                      <td class="inputnmbr"><input type="text" name="leadTime" value="$(V_IWPULT)" size="3" maxlength="3"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWPULT)
+
+                  @SetTextOvr(Err_IWMINQ)
+                  <tr><td class="dsphdr"><span $(textOvr)>Minimum Quantity On Hand</span></td>
+                      <td class="inputnmbr"><input type="text" name="minimumOnHand" value="$(V_IWMINQ)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWMINQ)
+
+                  @SetTextOvr(Err_IWMAXQ)
+                  <tr><td class="dsphdr"><span $(textOvr)>Maximum Quantity On Hand</span></td>
+                      <td class="inputnmbr"><input type="text" name="maximumOnHand" value="$(V_IWMAXQ)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWMAXQ)
+
+                  %if (V_HDINRL>"0")		
+                      @SetTextOvr(Err_IWSTKL)
+                      <tr><td class="dsphdr"><span $(textOvr)>Stock Locator Active</span></td>
+                          @dtw_tb_rows(yn02Table, maxRows)
+                          @dtw_assign(x, "1")
+                          %while((@dtw_tb_rgetv(yn02Table, x, "1") != V_IWSTKL) && (x < maxRows)) {@dtw_add(x, "1", x)%}
+                          <td>@dtw_tb_select(yn02Table, "stockLocActive", "2", "1", "N", "", x, "1")</td>
+                      </tr>
+                      @DspErrMsg(Err_IWSTKL)
+                      <tr><td><input name="stockLocWarning" type="hidden" value="$(stkLocWrn)"></td></tr>
+                  %else
+                      <tr><td><input name="stockLocActive" type="hidden" value="$(V_IWSTKL)"></td></tr>
+                  %endif
+
+                  @SetTextOvr(Err_IWABCC)
+                  <tr><td class="dsphdr"><span $(textOvr)>ABC Class Code</span></td>
+                      @dtw_tb_rows(abcClassTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(abcClassTable, x, "1") != V_IWABCC) && (x < maxRows)) {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(abcClassTable, "abcClass", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_IWABCC)
+
+                  @SetTextOvr(Err_IWABCO)
+                  <tr><td class="dsphdr"><span $(textOvr)>ABC Class Code Override</span></td>
+                      @dtw_tb_rows(abcOverrideTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(abcOverrideTable, x, "1") != V_IWABCO) && (x < maxRows)) {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(abcOverrideTable, "abcOverride", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_IWABCO)
+
+                  @SetTextOvr(Err_IWONC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Override Cycle Days</span></td>
+                      <td class="inputnmbr"><input type="text" name="overrideCycleDays" value="$(V_IWONC)" size="3" maxlength="3"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWONC)
+
+                  <tr><td class="dsphdr">Cost Per Stocking U/M - $(stockUOM)</td>
+
+                  @SetTextOvr(Err_IWAVCS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Average</span></td>
+                      <td class="inputnmbr"><input type="text" name="averageCost" value="$(V_IWAVCS)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWAVCS)
+
+                  @SetTextOvr(Err_IWSTCS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Standard</span></td>
+                      <td class="inputnmbr"><input type="text" name="standardCost" value="$(V_IWSTCS)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWSTCS)
+
+                  @SetTextOvr(Err_IWRPCS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Replacement</span></td>
+                      <td class="inputnmbr"><input type="text" name="replacementCost" value="$(V_IWRPCS)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWRPCS)
+
+                  @SetTextOvr(Err_IWBYCS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Base Year</span></td>
+                      <td class="inputnmbr"><input type="text" name="baseYearCost" value="$(V_IWBYCS)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWBYCS)
+
+                  %if (kitItem == "K" && V_HDTCV != "S")		
+                      @SetTextOvr(Err_IWKITC)
+                      <tr><td class="dsphdr"><span $(textOvr)>Kit Additional Cost</span></td>
+                          <td class="inputnmbr"><input type="text" name="kitAddlCost" value="$(V_IWKITC)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_IWKITC)
+                  %else
+                      <tr><td><input name="kitAddlCost" type="hidden" value="$(V_IWKITC)"></td></tr>
+                  %endif
+
+                  @SetTextOvr(Err_IWDUTY)
+                  <tr><td class="dsphdr"><span $(textOvr)>Duty Percent</span></td>
+                      <td class="inputnmbr"><input type="text" name="dutyPercent" value=@dtw_rformat(@dtw_rMultiply(V_IWDUTY, "100"),"","2") size="6" maxlength="6"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWDUTY)
+
+                  <tr><td class="dsphdr">Last Received Purchase Order:</td></tr>
+
+                  @SetTextOvr(Err_IWLPO#)
+                  <tr><td class="dsphdr"><span $(textOvr)>Number</span></td>
+                      <td class="inputnmbr"><input type="text" name="lastPONumber" value="$(V_IWLPO#)" size="8" maxlength="8"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWLPO#)
+
+                  @SetTextOvr(Err_IWLPOL)
+                  <tr><td class="dsphdr"><span $(textOvr)>Line Number</span></td>
+                      <td class="inputnmbr"><input type="text" name="lastPOLine" value="$(V_IWLPOL)" size="3" maxlength="3"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWLPOL)
+
+                  @SetTextOvr(Err_IWPOCS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Cost</span></td>
+                      <td class="inputnmbr"><input type="text" name="lastPOCost" value="$(V_IWPOCS)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWPOCS)
+
+                  @DateInputFromCYMD(V_IWLPDT)
+                  @SetTextOvr(Err_IWLPDT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Date</span></td>
+                      <td class="inputnmbr"><input type="text" name="lastPODate" value="$(V_IWLPDT)" size="6" maxlength="6"> 		
+                          <a href="javascript:calWindow('lastPODate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_IWLPDT)
+
+                  @SetTextOvr(Err_IWEOQ)
+                  <tr><td class="dsphdr"><span $(textOvr)>Economic Order Quantity</span></td>
+                      <td class="inputnmbr"><input type="text" name="economicQty" value="$(V_IWEOQ)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_IWEOQ)
+
+                  %if (dspSuggPOFields == "Y")		
+                      @SetTextOvr(Err_IWBTND)
+                      <tr><td class="dsphdr"><span $(textOvr)>Build To Number Days</span></td>
+                          <td class="inputnmbr"><input type="text" name="buildToDays" value="$(V_IWBTND)" size="7" maxlength="7"></td>
+                      </tr>
+                      @DspErrMsg(Err_IWBTND)
+
+                      @SetTextOvr(Err_IWSITM)
+                      <tr><td class="dsphdr"><span $(textOvr)>Seasonal Item</span></td>
+                          @dtw_tb_rows(yn03Table, maxRows)
+                          @dtw_assign(x, "1")
+                          %while((@dtw_tb_rgetv(yn03Table, x, "1") != V_IWSITM) && (x < maxRows)) {@dtw_add(x, "1", x)%}
+                          <td>@dtw_tb_select(yn03Table, "seasonalItem", "2", "1", "N", "", x, "1")</td>
+                      </tr>
+                      @DspErrMsg(Err_IWSITM)
+
+                      @SetTextOvr(Err_IWNPUS)
+                      <tr><td class="dsphdr"><span $(textOvr)># Of Periods For Avg Qty Shipped</span></td>
+                          <td class="inputnmbr"><input type="text" name="periodAvgShipped" value="$(V_IWNPUS)" size="2" maxlength="2"></td>
+                      </tr>
+                      @DspErrMsg(Err_IWNPUS)
+
+                      @SetTextOvr(Err_IWRTOD)
+                      <tr><td class="dsphdr"><span $(textOvr)>Round Sug Order Qty To # Decimals</span></td>
+                          @dtw_tb_rows(roundDecimalTable, maxRows)
+                          @dtw_assign(x, "1")
+                          %while((@dtw_tb_rgetv(roundDecimalTable, x, "1") != V_IWRTOD) && (x < maxRows)) {@dtw_add(x, "1", x)%}
+                          <td>@dtw_tb_select(roundDecimalTable, "roundDecimals", "2", "1", "N", "", x, "1")</td>
+                      </tr>
+                      @DspErrMsg(Err_IWRTOD)
+                  %else
+                      <tr><td><input name="buildToDays" type="hidden" value="$(V_IWBTND)"></td>
+                          <td><input name="seasonalItem" type="hidden" value="$(V_IWSITM)"></td>
+                          <td><input name="periodAvgShipped" type="hidden" value="$(V_IWNPUS)"></td>
+                          <td><input name="roundDecimal" type="hidden" value="$(V_IWRTOD)"></td>
+                      </tr>
+                  %endif
+
+                  %if (V_CIWAS1 != "")		
+                      @SetTextOvr(Err_IWUDA1)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CIWAS1)</span></td>
+                          <td class="inputalph"><input type="text" name="alpha01" value="$(V_IWUDA1)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_IWUDA1)
+                  %else
+                      <tr><td><input name="alpha01" type="hidden" value="$(V_IWUDA1)"></td></tr>
+                  %endif
+
+                  %if (V_CIWAS2 != "")		
+                      @SetTextOvr(Err_IWUDA2)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CIWAS2)</span></td>
+                          <td class="inputalph"><input type="text" name="alpha02" value="$(V_IWUDA2)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_IWUDA2)
+                  %else
+                      <tr><td><input name="alpha02" type="hidden" value="$(V_IWUDA2)"></td></tr>
+                  %endif
+
+                  %if (V_CIWAS3 != "")		
+                      @SetTextOvr(Err_IWUDA3)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CIWAS3)</span></td>
+                          <td class="inputalph"><input type="text" name="alpha03" value="$(V_IWUDA3)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_IWUDA3)
+                  %else
+                      <tr><td><input name="alpha03" type="hidden" value="$(V_IWUDA3)"></td></tr>
+                  %endif
+
+                  %if (V_CIWNS1 != "")		
+                      @SetTextOvr(Err_IWUDN1)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CIWNS1)</span></td>
+                          <td class="inputnmbr"><input type="text" name="numeric01" value="$(V_IWUDN1)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_IWUDN1)
+                  %else
+                      <tr><td><input name="numeric01" type="hidden" value="$(V_IWUDN1)"></td></tr>
+                  %endif
+
+                  %if (V_CIWNS2 != "")		
+                      @SetTextOvr(Err_IWUDN2)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CIWNS2)</span></td>
+                          <td class="inputnmbr"><input type="text" name="numeric02" value="$(V_IWUDN2)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_IWUDN2)
+                  %else
+                      <tr><td><input name="numeric02" type="hidden" value="$(V_IWUDN2)"></td></tr>
+                  %endif
+
+                  %if (V_CIWNS3 != "")		
+                      @SetTextOvr(Err_IWUDN3)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CIWNS3)</span></td>
+                          <td class="inputnmbr"><input type="text" name="numeric03" value="$(V_IWUDN3)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_IWUDN3)
+                  %else
+                      <tr><td><input name="numeric03" type="hidden" value="$(V_IWUDN3)"></td></tr>
+                  %endif
+              </table>
+          %}	
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      <table $(contentTable)>
+        <tr>
+            <td class="toolbar">
+                %if ((sec_01 != "N" && (maintenanceCode == "A" || maintenanceCode == "Z")) || (sec_02 != "N" && maintenanceCode == "C") || (maintenanceCode != "A" && maintenanceCode != "C" && maintenanceCode != "D" && maintenanceCode != "Z"))
+                    <a href="javascript:check(document.Chg)">$(acceptImageMed)</a>
+                %endif
+                %if (wfInstance > "0")
+                    <a onClick="return confirmCancelWF()" href="$(cancelWFURL)">$(cancelImageMed)</a>
+                %elif (noMenu == "Y")
+                    <a href="javascript:window.close()">$(cancelImageMed)</a>
+                %elif (backURL != "")
+                    <a href="$(backURL)">$(cancelImageMed)</a>
+                %else
+                    <a href="javascript:history.back()">$(cancelImageMed)</a>
+                %endif
+                %if (sec_03 != "N" && maintenanceCode == "C")
+                    <a onClick="return confirmDelete()" href="$(deleteURL)">$(deleteImageMed)</a>
+                %endif
+                @dtw_assign(medIcon, "Y")
+                %INCLUDE "HelpPage.icl"
+            </td>
+        </tr>
+  	  </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HHDIWU_W.PGM %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Warehouse(INOUT CHAR(64)    profileHandle,
+                                             INOUT CHAR(2)     dataBaseID,
+                                             INOUT CHAR(1)     maintCode,
+                                             INOUT CHAR(1)     errFound,
+                                             INOUT CHAR(32000) edtVar,                             	
+                                             INOUT CHAR(32000) errVar)
+{%EXEC {HHDIWU_W1.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @RtvFldDesc("WHWHS=$(warehouseNumber)", "HDWHSM", "WHWHNM", warehouseName)
+      @RtvFldDesc("WHWHS=$(warehouseNumber)", "HDWHSM", "WHSTKL", WHSTKL)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMUOMS", stockUOM)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMPTYP", partType)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMKIT", kitItem)
+
+      @dtw_assign(editFields, "")
+      %if (kitItem == "K" && V_HDTCV != "S")		
+          @dtw_concat(editFields, " editNum(document.Chg.kitAddlCost, 8, 5) && ", editFields)
+      %endif
+      %if (dspSuggPOFields == "Y")		
+          @dtw_concat(editFields, " editNum(document.Chg.buildToDays, 7, 0) && ", editFields)
+          @dtw_concat(editFields, " editNum(document.Chg.periodAvgShipped, 2, 0) && ", editFields)
+      %endif
+      %if (V_CIWNS1 != "")		
+          @dtw_concat(editFields, " editNum(document.Chg.numeric01, 8, 5) && ", editFields)
+      %endif
+      %if (V_CIWNS2 != "")		
+          @dtw_concat(editFields, " editNum(document.Chg.numeric02, 8, 5) && ", editFields)
+      %endif
+      %if (V_CIWNS3 != "")		
+          @dtw_concat(editFields, " editNum(document.Chg.numeric03, 8, 5) && ", editFields)
+      %endif
+
+      %if (V_HDPORL>"0")
+          @RtvFldDesc("COSITM<>' '", "POCTRL", "COSITM", V_COSITM)
+          @RtvFldDesc("CONPUS<>' '", "POCTRL", "CONPUS", V_CONPUS)
+          @dtw_assign(dspSuggPOFields, "Y")
+          %if (V_HDPDRL>"0" && (V_HDMPRL>"0" || partType != "P"))
+              @dtw_assign(dspSuggPOFields, "")
+          %endif
+      %endif
+
+      @RetPltNbr(profileHandle, dataBaseID, subr, warehouseNumber, itemNumber, returnPlant)
+
+      @ABCClass_Query(profileHandle, dataBaseID, "ABCCLASS  ", abcClassTable)
+      @ABCOverride_Query(profileHandle, dataBaseID, "ABCOVERRID", abcOverrideTable)
+      @RoundDecimal_Query(profileHandle, dataBaseID, "ROUNDDECML", roundDecimalTable)
+
+      @yn01_Table_Query(profileHandle, dataBaseID, "YORN      ", yn01Table)
+      @yn02_Table_Query(profileHandle, dataBaseID, "YORN      ", yn02Table)
+      @yn03_Table_Query(profileHandle, dataBaseID, "YORN      ", yn03Table)
+
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(ADD) {
+  @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+  %if (backURL == "")
+      @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=225")
+  %endif
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "numedit.icl"
+                  function validate(chgForm) {
+                      if (editNum(document.Chg.warehouseNumber, 3, 0))
+                          return true;
+                  }
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "ITEMWAREHOUSEMAINTAIN")
+                      %if (noMenu !="Y")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          <table $(contentTable)>
+                              <colgroup>
+                                  <col width="80%">
+                                  <col width="15%">
+                              <tr><td><h1>Add Item/Warehouse</h1></td>
+                                  <td class="toolbar">
+                                      %INCLUDE "MaintainTopNoTable.icl"
+                                  </td>
+                              </tr>
+                          </table>
+
+                          $(hrTagAttr)
+                          %INCLUDE "RequiredField.icl"
+                          %INCLUDE "ErrorDisplay.icl"
+
+                          <form class="formClass" METHOD=POST name=Chg ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Warehouse$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+                              <table $(contentTable)>
+
+                                  %if (errFound != "" || maintenanceCode == "A")
+                                      %if (errFound == "" && maintenanceCode == "A")
+                                          @dtw_assign(edtVar, "")
+                                          @dtw_assign(focusField, "itemNumber")
+                                      %else
+                                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                                          @ErrVarErr(profileHandle, typeError, errVar)
+                                          @DecatErr_Field("@@whs@", "warehouseNumber")   @dtw_assign(Err_IWWHS,  fieldValue)
+                                          @DecatErr_Field("@@item", "itemNumber")        @dtw_assign(Err_IWITEM,  fieldValue)
+                                      %endif
+
+                                      @Decat_Field("@@whs@")   @dtw_assign(V_IWWHS,  fieldValue)
+                                      @Decat_Field("@@item")   @dtw_assign(V_IWITEM,  fieldValue)
+                                      %if (V_IWWHS == "")
+                                          @dtw_assign(V_IWWHS, "0")
+                                      %endif
+
+                                      %if (errFound == "")
+                                         @dtw_assign(focusField, "itemNumber")
+                                         %if (fKey1 != "")
+                                             %if (fKey1 == "IWWHS")
+                                                 @dtw_assign(V_IWWHS,  fVal1)
+                                             %else
+                                                 @dtw_assign(focusField, "warehouseNumber")
+                                                 @dtw_assign(V_IWITEM,  fVal1)
+                                             %endif
+                                         %else
+                                             %if (addItem != "")
+                                                 @dtw_assign(V_IWITEM,  addItem)
+                                             %endif
+                                             %if (addWhs != "")
+                                                 @dtw_assign(V_IWWHS,  addWhs)
+                                             %endif
+                                         %endif
+                                      %endif
+
+                                      @dtw_assign(errFound, "")
+
+                                  %elif (maintenanceCode == "Z")
+                                      @dtw_assign(V_IWITEM, "")
+                                      @dtw_assign(V_IWWHS, "0")
+                                      @dtw_assign(focusField, "itemNumber")
+                                      %if (fKey1 != "")
+                                          %if (fKey1 == "IWWHS")
+                                              @dtw_assign(V_IWWHS,  fVal1)
+                                          %else
+                                              @dtw_assign(focusField, "warehouseNumber")
+                                              @dtw_assign(V_IWITEM,  fVal1)
+                                          %endif
+                                      %endif
+                                  %endif
+
+                                  @RtvFldDesc("IMITEM='$(V_IWITEM)'", "HDIMST", "IMIMDS", fieldDesc)
+                                  @SetTextOvr(Err_IWITEM)
+                                  <tr><td class="dsphdr"><span $(textOvr)>Item Number</span></td>
+                                      <td class="inputalph"><input name="itemNumber" value="$(V_IWITEM)"  type="text" size="15" maxlength="15"><a href="$(homeURL)$(phpPath)ItemSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=itemNumber&amp;fldDesc=itemDescription" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a> <input name="itemDescription" value="$(fieldDesc)" type="text" size="30" maxlength="30"></td>
+                                  </tr>
+                                  @DspErrMsg(Err_IWITEM)
+
+                                  @RtvFldDesc("WHWHS=$(V_IWWHS)", "HDWHSM", "WHWHNM", fieldDesc)
+                                  @SetTextOvr(Err_IWWHS)
+                                  <tr><td class="dsphdr"><span $(textOvr)>Warehouse Number</span></td>
+                                      <td class="inputnmbr"><input name="warehouseNumber" value="$(V_IWWHS)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)WarehouseSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=warehouseNumber&amp;fldDesc=warehouseName" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a> <input name="warehouseName" value="$(fieldDesc)" type="text" size="30" maxlength="30"></td>
+                                  </tr>
+                                  @DspErrMsg(Err_IWWHS)
+                              </table>
+
+                              <script TYPE="text/javascript">
+                                  document.Chg.$(focusField).focus();
+                              </script>
+
+                          </form>
+                          %INCLUDE "MaintainBottom.icl"
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%HTML(Edit_Warehouse) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(itemNumber)
+  @dtw_assign(warehouseNumber,@dtw_rstrip(warehouseNumber))
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintCode, "A")
+  %else
+      @dtw_assign(maintCode, maintenanceCode)
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@whs@", warehouseNumber)
+  @Concat_Field("@@item", itemNumber)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Validate_Warehouse(profileHandle, dataBaseID, maintCode, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/ADD$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(itemNumber)
+  @dtw_mUPPERCASE(priceUOM)
+  @dtw_mUPPERCASE(purchaseUOM)
+  @dtw_mUPPERCASE(productGroup)
+  @dtw_mUPPERCASE(freightClass)
+  @dtw_mUPPERCASE(countGroup)
+  @dtw_mUPPERCASE(alpha01)
+  @dtw_mUPPERCASE(alpha02)
+  @dtw_mUPPERCASE(alpha03)
+
+  @dtw_assign(piecesPerPrice,@dtw_rstrip(piecesPerPrice))
+  @dtw_assign(piecesPerPurchase,@dtw_rstrip(piecesPerPurchase))
+  @dtw_assign(piecesPerCase,@dtw_rstrip(piecesPerCase))
+  @dtw_assign(listPrice,@dtw_rstrip(listPrice))
+  @dtw_assign(vendor,@dtw_rstrip(vendor))
+  @dtw_assign(buyer,@dtw_rstrip(buyer))
+  @dtw_assign(leadTime,@dtw_rstrip(leadTime))
+  @dtw_assign(minimumOnHand,@dtw_rstrip(minimumOnHand))
+  @dtw_assign(maximumOnHand,@dtw_rstrip(maximumOnHand))
+  @dtw_assign(overrideCycleDays,@dtw_rstrip(overrideCycleDays))
+  @dtw_assign(averageCost,@dtw_rstrip(averageCost))
+  @dtw_assign(standardCost,@dtw_rstrip(standardCost))
+  @dtw_assign(replacementCost,@dtw_rstrip(replacementCost))
+  @dtw_assign(baseYearCost,@dtw_rstrip(baseYearCost))
+  @dtw_assign(kitAddlCost,@dtw_rstrip(kitAddlCost))
+  @dtw_assign(dutyPercent,@dtw_rstrip(dutyPercent))
+  @dtw_assign(lastPONumber,@dtw_rstrip(lastPONumber))
+  @dtw_assign(lastPOLine,@dtw_rstrip(lastPOLine))
+  @dtw_assign(lastPOCost,@dtw_rstrip(lastPOCost))
+  @dtw_assign(lastPODate,@dtw_rstrip(lastPODate))
+  @dtw_assign(economicQty,@dtw_rstrip(economicQty))
+  @dtw_assign(buildToDays,@dtw_rstrip(buildToDays))
+  @dtw_assign(periodAvgShipped,@dtw_rstrip(periodAvgShipped))
+  @dtw_assign(numeric01,@dtw_rstrip(numeric01))
+  @dtw_assign(numeric02,@dtw_rstrip(numeric02))
+  @dtw_assign(numeric03,@dtw_rstrip(numeric03))
+
+  %if (dutyPercent != "")
+      @dtw_Divide(dutyPercent, "100", dutyPercent)
+  %endif
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@iwac", status)
+  @Concat_Field("@@whs@", warehouseNumber)
+  @Concat_Field("@@item", itemNumber)
+  @Concat_Field("@@uomp", priceUOM)
+  @Concat_Field("@@uomb", purchaseUOM)
+  @Concat_Field("@@pcpp", piecesPerPrice)
+  @Concat_Field("@@pcpb", piecesPerPurchase)
+  @Concat_Field("@@pcpc", piecesPerCase)
+  @Concat_Field("@@stkl", stockLocActive)
+  @Concat_Field("@@swrn", stockLocWarning)
+  @Concat_Field("@@list", listPrice)
+  @Concat_Field("@@avcs", averageCost)
+  @Concat_Field("@@stcs", standardCost)
+  @Concat_Field("@@rpcs", replacementCost)
+  @Concat_Field("@@bycs", baseYearCost)
+  @Concat_Field("@@minq", minimumOnHand)
+  @Concat_Field("@@maxq", maximumOnHand)
+  @Concat_Field("@@txcd", taxable)
+  @Concat_Field("@@lpo@", lastPONumber)
+  @Concat_Field("@@lpol", lastPOLine)
+  @Concat_Field("@@pocs", lastPOCost)
+  @Concat_Field("@@lpdt", lastPODate)
+  @Concat_Field("@@eoq@", economicQty)
+  @Concat_Field("@@kitc", kitAddlCost)
+  @Concat_Field("@@pgrp", productGroup)
+  @Concat_Field("@@cycl", countGroup)
+  @Concat_Field("@@uda1", alpha01)
+  @Concat_Field("@@uda2", alpha02)
+  @Concat_Field("@@uda3", alpha03)
+  @Concat_Field("@@udn1", numeric01)
+  @Concat_Field("@@udn2", numeric02)
+  @Concat_Field("@@udn3", numeric03)
+  @Concat_Field("@@buyr", buyer)
+  @Concat_Field("@@vend", vendor)
+  @Concat_Field("@@pult", leadTime)
+  @Concat_Field("@@btnd", buildToDays)
+  @Concat_Field("@@sitm", seasonalItem)
+  @Concat_Field("@@npus", periodAvgShipped)
+  @Concat_Field("@@rtod", roundDecimals)
+  @Concat_Field("@@duty", dutyPercent)
+  @Concat_Field("@@abcc", abcClass)
+  @Concat_Field("@@abco", abcOverride)
+  @Concat_Field("@@onc@", overrideCycleDays)
+  @Concat_Field("@@ftcl", freightClass)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "" || maintenanceCode == "D")
+      %if (formatToPrint == "" && noMenu == "Y")
+         <script TYPE="text/javascript">
+             opener.location.href=opener.location.href;
+             window.close()
+         </script>
+      %endif
+      %if (errFound == "")
+          @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+          @RtvFldDesc("WHWHS=$(warehouseNumber)", "HDWHSM", "WHWHNM", warehouseName)
+          @Format_ConfMsg_Desc(maintenanceCode, $(itemDescription), $(itemNumber), "", "", "", "", confMessage)
+      %else
+          @DecatErr_Field("@@whs@", "warehouseNumber")
+          %if (fieldValue == "")
+              @DecatErr_Field("@@item", "itemNumber")
+          %endif
+          @Format_ConfMsg_Desc("", $(itemDescription), $(itemNumber), "", "", "<br>$(fieldValue)", "", confMessage)
+      %endif
+      %if (fromSel == "Y" && maintenanceCode != "D")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)ItemWarehouseSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;warehouseName=@dtw_rurlescseq(warehouseName)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+          %if (backURL == "")
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=225&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %endif
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;warehouseNumber=@dtw_rurlescseq(warehouseNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

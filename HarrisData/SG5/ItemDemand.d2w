@@ -1,0 +1,357 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Item Demand                                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Item Demand"
+  d2wName                 = "ItemDemand.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;plantName=@dtw_rurlescseq(plantName)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  currentURL              = "$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;START_ROW_NUM=@dtw_rurlescseq(START_ROW_NUM)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  advanceSearch           = "N"
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@plantNumber", "@dtw_rurlescseq(plantNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@itemNumber", "@dtw_rurlescseq(itemNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %if (plantNumber != "")
+      @PlantUserView(profileHandle, dataBaseID, userPass, plantNumber)
+      @dtw_assign(userPass, "Y")
+  %else
+      @dtw_assign(userPass, "Y")
+  %endif
+
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Search")
+              <script TYPE="text/javascript">
+                  %INCLUDE "AJAXRequest.icl"
+                  %INCLUDE "SaveCurrentURL.icl"
+                  %INCLUDE "dateedit.icl"
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "numedit.icl"
+                  %INCLUDE "calendar.icl"
+                  %INCLUDE "CheckEnterSearch.icl"
+                  function validate(searchForm) {
+                      if (editNum(document.Search.srchOrder, 8, 0) &&
+                          editdate(document.Search.srchReqDate))
+                          return true;
+                  }
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          @dtw_assign(pageID, "ITEMDEMAND")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select ODITEM,ODPLT,ODBLKT,ODORD#,ODORL#,ODRQDT,ODMORD,ODQOPK,ODQSTC, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " ODQORD,ODQSTD,ODQORD-ODQSTD-ODQSTC as ODQTY, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " OEORTY,OESHTO, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " CMCNA1,CMCNA1U ", stmtSQL)
+                          @dtw_concat(fileSQL, " OEORDT ", fileSQL)
+                          @dtw_concat(fileSQL, " inner join OEORHD on OEORD#=ODORD# ", fileSQL)
+                          @dtw_concat(fileSQL, " inner join HDCUST on CMCUST=OESHTO ", fileSQL)
+                          @dtw_concat(selectSQL, " ODITEM='$(itemNumber)' and ODPLT=$(plantNumber) ", selectSQL)
+                          @dtw_concat(selectSQL, " and ODORST='O' and ODBLKT<>'Y' and OEORTY<>'Q' and OEORTY<>'X' ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @Item_Demand_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Item_Demand_Query (IN CHAR(64)    profileHandle,
+                                         CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+	       <colgroup>
+	           <col width="80%">
+	           <col width="15%">
+          <tr><td ><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+                      %if (backURL != "")
+                          <a href="$(backURL)" title="BackHome">$(portalHome)</a>
+                      %else
+                          <a href="$(homeURL)$(cGIPath)ItemPlantSelect.d2w/REPORT$(d2wVarBase)" title="BackHome">$(portalHome)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      @RtvFldDesc("$(selectSQL)", "OEORDT inner join OEORHD on OEORD#=ODORD#", "char(SUM(ODQORD-ODQSTD-ODQSTC))", demandTotal)
+      <table $(contentTable)>
+          @Format_Header_URL("Plant", $(plantName), $(plantNumber), "$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(d2wVarBase)")
+          @Format_Header_URL("Item", $(itemDescription), $(itemNumber), "$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(d2wVarBase)")
+          @Format_Nbr(demandTotal, F_demandTotal, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+          @Format_Header_URL("Total Demand", $(F_demandTotal), "", "")
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr"> Order <br> Number</th>
+                      <th class="colhdr"> Customer Name</th>
+                      <th class="colhdr"> Required <br> Date</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputnmbr" name="srchOrder" size="8" maxlength="8">
+                          <input type="hidden" name="operOrder" value="=">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchName" size="26" maxlength="26">
+                          <input type="hidden" name="operName" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputnmbr" name="srchReqDate" size="6" maxlength="6">
+                          <a href="javascript:calWindow('srchReqDate');">$(calendarImage)</a>
+                          <input type="hidden" name="operReqDate" value="=">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchOrder.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+          <tr>
+              @OrderBy_Sort("ODORD#", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=orderNumber" title="Sequence By Order Number">Order <br> Number</a></th>
+              <th class="colhdr"> Line </th>
+              @OrderBy_Sort("OESHTO", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=shipTo" title="Sequence By Ship-To Customer, Order Number">Ship <br> To</a></th>
+              @OrderBy_Sort("CMCNA1U", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=customerName" title="Sequence By Customer Name, Ship-To Customer, Order Number">Customer <br> Name</a></th>
+              @OrderBy_Sort("ODRQDT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=requireDate" title="Sequence By Require Date, Order Number">Required <br> Date</a></th>
+              @OrderBy_Sort("ODQORD", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=qtyOrdered" title="Sequence By Quantity Ordered, Order Number">Quantity<br>Ordered</a></th>
+              @OrderBy_Sort("ODQTY", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=qtyOpen" title="Sequence By Quantity Open, Order Number">Quantity<br>Open</a></th>
+              @OrderBy_Sort("ODQOPK", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=qtyPicked" title="Sequence By Quantity Picked, Order Number">Quantity<br>Picked</a></th>
+              @OrderBy_Sort("ODQSTC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=qtyShipped" title="Sequence By Quantity Shipped, Order Number">Quantity<br>Shipped</a></th>
+              @OrderBy_Sort("ODMORD", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=mfgOrder" title="Sequence By Mfg Order, Order Number">Mfg<br>Order</a></th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+
+              %INCLUDE "SetRowClass.icl"
+              @Format_Nbr(V_ODQORD, F_ODQORD, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr("@DTW_rSUBTRACT($(V_ODQORD),@DTW_rADD($(V_ODQSTD),$(V_ODQSTC)))", qtyOpen, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+              @Format_Nbr(V_ODQOPK, F_ODQOPK, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr(V_ODQSTC, F_ODQSTC, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Date(V_ODRQDT, "D", F_ODRQDT)
+              %if (V_ODMORD != "")
+                  @RtvFldDesc("OHPLT=$(plantNumber) and OHORD='$(V_ODMORD)'", "HDMOHM", "CHAR(COUNT(OHORD))", mfgOrderCnt)
+              %else
+                  @dtw_assign(mfgOrderCnt, "0")
+              %endif
+
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrder.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_ODORD#)" title="View Order Detail">$(V_ODORD#)</a></td>
+                  <td class="colnmbr">$(V_ODORL#)</td>
+                  <td class="colnmbr">$(V_OESHTO)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_OESHTO)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(V_CMCNA1)</a></td>
+                  <td class="coldate">$(F_ODRQDT)</td>
+                  <td class="colnmbr">$(F_ODQORD)</td>
+                  <td class="colnmbr">$(qtyOpen)</td>
+                  <td class="colnmbr">$(F_ODQOPK)</td>
+                  <td class="colnmbr">$(F_ODQSTC)</td>
+                  %if (mfgOrderCnt > "0")
+                      <td class="colcode"><a href="$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;plantName=@dtw_rurlescseq(plantName)&amp;mfgOrder=@dtw_rurlescseq(V_ODMORD)" onclick="$(inquiryWinVar)" title="View Manufacturing Order">$(V_ODMORD)</a></td>
+                  %else
+                      <td class="colcode">$(V_ODMORD)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+  @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "CMCNA1U,OESHTO,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Customer Name, Ship-To Customer, Order Number")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "orderNumber")
+      %if (orderBy == "ODORD#,ODORL#")
+          @DTW_ASSIGN(orderBy, "ODORD# DESC,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Order Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Order Number")
+      %endif
+  %elif (sequence == "shipTo")
+      %if (orderBy == "OESHTO,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderBy, "OESHTO DESC,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Ship-To Customer (descending), Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "OESHTO,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Ship-To Customer, Order Number")
+      %endif
+  %elif (sequence == "customerName")
+      %if (orderBy == "CMCNA1U,OESHTO,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderBy, "CMCNA1U DESC,OESHTO,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Customer Name (descending), Ship-To Customer, Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "CMCNA1U,OESHTO,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Customer Name, Ship-To Customer, Order Number")
+      %endif
+  %elif (sequence == "requireDate")
+      %if (orderBy == "ODRQDT,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderBy, "ODRQDT DESC,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Required Date (descending), Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "ODRQDT,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Required Date, Order Number")
+      %endif
+  %elif (sequence == "qtyOrdered")
+      %if (orderBy == "ODQORD,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderBy, "ODQORD DESC,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Ordered (descending), Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "ODQORD,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Ordered, Order Number")
+      %endif
+  %elif (sequence == "qtyOpen")
+      %if (orderBy == "ODQTY,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderBy, "ODQTY DESC,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Open (descending), Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "ODQTY,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Open, Order Number")
+      %endif
+  %elif (sequence == "qtyPicked")
+      %if (orderBy == "ODQOPK,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderBy, "ODQOPK DESC,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Picked (descending), Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "ODQOPK,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Picked, Order Number")
+      %endif
+  %elif (sequence == "qtyShipped")
+      %if (orderBy == "ODQSTC,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderBy, "ODQSTC DESC,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Shipped (descending), Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "ODQSTC,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Quantity Shipped, Order Number")
+      %endif
+  %elif (sequence == "mfgOrder")
+      %if (orderBy == "ODMORD,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderBy, "ODMORD DESC,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Mfg Order (descending), Order Number")
+      %else
+          @DTW_ASSIGN(orderBy, "ODMORD,ODORD#,ODORL#")
+          @DTW_ASSIGN(orderByDisplay, "Mfg Order, Order Number")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("ODORD#", "Order Number", $(srchOrder), "", operOrder, "N")
+  @Build_WildCard ("CMCNA1U", "Customer Name", $(srchName), "U", operName, "A")
+  @Build_WildCard ("ODRQDT", "Required Date", $(srchReqDate), "", operReqDate, "D")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

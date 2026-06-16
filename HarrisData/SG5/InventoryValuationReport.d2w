@@ -1,0 +1,786 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Inventory Valuation Report (Detail and Summary)             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "BuildSortSeqSel.icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SubmitScheduleVar.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Inventory Valuation Report"
+  d2wName                 = "InventoryValuationReport.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;reportSelType=@dtw_rurlescseq(reportSelType)&amp;backHome=@dtw_rurlescseq(backHome)&amp;reportPrintSelection=@dtw_rurlescseq(reportPrintSelection)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  reportPrintSelection    = ""
+  sortSeqMax              = "11"
+  sortPlantNumber         = "1"
+  dash                    = "-"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL () {
+  %INCLUDE "$(docType)"	
+  %if (reportPrintSelection == "1")
+      @dtw_assign(page_title, "Inventory Valuation Detail Report")
+  %else
+      @dtw_assign(page_title, "Inventory Valuation Summary Report")
+  %endif
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "Calendar.icl"
+              %INCLUDE "DateEdit.icl"
+              %INCLUDE "EditFromToAll.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterChg.icl"
+
+              function validate(chgForm) {
+                  if ((document.Chg.costSet.value =="") || (document.Chg.costSet.value =="0"))
+                     {alert("$(reqFieldError)");
+                      document.Chg.costSet.focus();
+                      document.Chg.costSet.select();
+                      return false;}
+
+                  if (document.Chg.negativeOH.checked == false &&
+                      document.Chg.positiveOH.checked == false &&
+                      document.Chg.zeroOH.checked == false &&
+                      document.Chg.inReceiving.checked == false)
+                      {alert("Must make at least one 'Include On Hand Items' selection");
+                      return false;}
+
+                  if (editNum(document.Chg.fromPlantNumber, 3, 0) &&
+                      editNum(document.Chg.toPlantNumber, 3, 0) &&
+                      editNum(document.Chg.fromAccountNumber, 4, 0) &&
+                      editNum(document.Chg.toAccountNumber, 4, 0) &&
+                      editNum(document.Chg.fromSubaccountNumber, 4, 0) &&
+                      editNum(document.Chg.toSubaccountNumber, 4, 0) &&
+                      editNum(document.Chg.fromAnalystNumber, 7, 0) &&
+                      editNum(document.Chg.toAnalystNumber, 7, 0) &&
+                      editFromToAll(document.Chg.fromPlantNumber, document.Chg.toPlantNumber, document.Chg.allPlantNumber, 3) &&
+                      editFromToAll(document.Chg.fromItemNumber, document.Chg.toItemNumber, document.Chg.allItemNumber, "A") &&
+                      editFromToAll(document.Chg.fromProductClass, document.Chg.toProductClass, document.Chg.allProductClass, "A") &&
+                      editFromToAll(document.Chg.fromInventoryType, document.Chg.toInventoryType, document.Chg.allInventoryType, "A") &&
+                      editFromToAll(document.Chg.fromPartClassCode, document.Chg.toPartClassCode, document.Chg.allPartClassCode, "A") &&
+                      editFromToAll(document.Chg.fromAnalystNumber, document.Chg.toAnalystNumber, document.Chg.allAnalystNumber, 7) &&
+                      editFromToAll(document.Chg.fromMaterialCode, document.Chg.toMaterialCode, document.Chg.allMaterialCode, "A") &&
+                      editFromToAll(document.Chg.fromABCClassCode, document.Chg.toABCClassCode, document.Chg.allABCClassCode, "A") &&
+                      editFromToAll(document.Chg.fromPartType, document.Chg.toPartType, document.Chg.allPartType, "A") &&
+                      editFromToAll(document.Chg.fromBackflushCode, document.Chg.toBackflushCode, document.Chg.allBackflushCode, "A")
+                      )
+                      return true;
+              }
+
+              function returndate9() {
+                       document.Chg.schDate.value = '' + padout(month - 0 + 1) + padout(day) + yr2(year);
+                       date9win.close();
+               }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "Banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "INVENTORYVALUATIONREPORT")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SubmitScheduleTop.icl"
+                      %INCLUDE "ConfMessageDisplayNoTable.icl"
+                      $(hrTagAttr)
+                      %INCLUDE "RequiredField.icl"
+            			
+                      <form class="formClass" METHOD=POST NAME="Chg"  onSubmit="return validate(document.Chg)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)">
+                          <table $(contentTable)>
+                              @dtw_assign(focusField, "fromPlantNumber")
+                              %if (errFound != "" || scheduleJobSwitch == "Y")
+                                  @dtw_assign(scheduleJobSwitch, "")
+                                  @EdtVarErr(profileHandle, typeValue, edtVar)
+                                  @dtw_assign(focusField, "")
+                                  @ErrVarErr(profileHandle, typeError, errVar)
+                                  @Decat_Field("@@sbjb")   @dtw_assign(submitSchedule,  fieldValue)
+                                  @DecatErr_Field("@@set@", "costSet") @dtw_assign(Err_N2SET,  fieldValue)
+                                  @DecatErr_Field("@@fplt", "fromPlantNumber") @dtw_assign(Err_N5FPLT,  fieldValue)
+                                  @DecatErr_Field("@@splt", "sortPlantNumber") @dtw_assign(Err_N5SPLT,  fieldValue)
+                                  @DecatErr_Field("@@fitm", "fromItemNumber") @dtw_assign(Err_N5FITM,  fieldValue)
+                                  @DecatErr_Field("@@sitm", "sortItemNumber") @dtw_assign(Err_N5SITM,  fieldValue)
+                                  @DecatErr_Field("@@fpcl", "fromProductClass") @dtw_assign(Err_N5FPCL,  fieldValue)
+                                  @DecatErr_Field("@@spcl", "sortProductClass") @dtw_assign(Err_N5SPCL,  fieldValue)
+                                  @DecatErr_Field("@@fitc", "fromInventoryType") @dtw_assign(Err_N5FITC,  fieldValue)
+                                  @DecatErr_Field("@@sitc", "sortInventoryType") @dtw_assign(Err_N5SITC,  fieldValue)
+                                  @DecatErr_Field("@@facc", "fromAccountNumber") @dtw_assign(Err_N5FACC,  fieldValue)
+                                  @DecatErr_Field("@@sacc", "sortAccountNumber") @dtw_assign(Err_N5SACC,  fieldValue)
+                                  @DecatErr_Field("@@fsub", "fromSubaccountNumber") @dtw_assign(Err_N5FSUB,  fieldValue)
+                                  @DecatErr_Field("@@ficl", "fromPartClassCode") @dtw_assign(Err_N5FICL,  fieldValue)
+                                  @DecatErr_Field("@@sicl", "sortPartClassCode") @dtw_assign(Err_N5SICL,  fieldValue)
+                                  @DecatErr_Field("@@fbac", "fromAnalystNumber") @dtw_assign(Err_N5FBAC,  fieldValue)
+                                  @DecatErr_Field("@@sbac", "sortAnalystNumber") @dtw_assign(Err_N5SBAC,  fieldValue)
+                                  @DecatErr_Field("@@fmat", "fromMaterialCode") @dtw_assign(Err_N5FMAT,  fieldValue)
+                                  @DecatErr_Field("@@smat", "sortMaterialCode") @dtw_assign(Err_N5SMAT,  fieldValue)
+                                  @DecatErr_Field("@@fabc", "fromABCClassCode") @dtw_assign(Err_N5FABC,  fieldValue)
+                                  @DecatErr_Field("@@sabc", "sortABCClassCode") @dtw_assign(Err_N5SABC,  fieldValue)
+                                  @DecatErr_Field("@@ftyp", "fromPartType") @dtw_assign(Err_N5FTYP,  fieldValue)
+                                  @DecatErr_Field("@@styp", "sortPartType") @dtw_assign(Err_N5STYP,  fieldValue)
+                                  @DecatErr_Field("@@fstw", "fromBackflushCode") @dtw_assign(Err_N5FSTW,  fieldValue)
+                                  @DecatErr_Field("@@sstw", "sortBackflushCode") @dtw_assign(Err_N5SSTW,  fieldValue)
+
+                                  %INCLUDE "ScheduleJobErr.icl"    %{ Schedule Entries Errors %}
+                                  @Decat_Field("@@set@")  @dtw_assign(V_N2SET,   fieldValue)
+                                  @Decat_Field("@@hneg")  @dtw_assign(V_N4HNEG,  fieldValue)
+                                  @Decat_Field("@@hpos")  @dtw_assign(V_N4HPOS,  fieldValue)
+                                  @Decat_Field("@@hzro")  @dtw_assign(V_N4HZRO,  fieldValue)
+                                  @Decat_Field("@@hrcv")  @dtw_assign(V_N4HRCV,  fieldValue)
+                                  @Decat_Field("@@fplt")  @dtw_assign(V_N5FPLT,  fieldValue)
+                                  @Decat_Field("@@tplt")  @dtw_assign(V_N5TPLT,  fieldValue)
+                                  @Decat_Field("@@aplt")  @dtw_assign(V_N5APLT,  fieldValue)
+                                  @Decat_Field("@@splt")  @dtw_assign(V_N5SPLT,  fieldValue)
+                                  @Decat_Field("@@pplt")  @dtw_assign(V_N5PPLT,  fieldValue)
+                                  @Decat_Field("@@fitm")  @dtw_assign(V_N5FITM,  fieldValue)
+                                  @Decat_Field("@@titm")  @dtw_assign(V_N5TITM,  fieldValue)
+                                  @Decat_Field("@@aitm")  @dtw_assign(V_N5AITM,  fieldValue)
+                                  @Decat_Field("@@sitm")  @dtw_assign(V_N5SITM,  fieldValue)
+                                  @Decat_Field("@@pitm")  @dtw_assign(V_N5PITM,  fieldValue)
+                                  @Decat_Field("@@fpcl")  @dtw_assign(V_N5FPCL,  fieldValue)
+                                  @Decat_Field("@@tpcl")  @dtw_assign(V_N5TPCL,  fieldValue)
+                                  @Decat_Field("@@apcl")  @dtw_assign(V_N5APCL,  fieldValue)
+                                  @Decat_Field("@@spcl")  @dtw_assign(V_N5SPCL,  fieldValue)
+                                  @Decat_Field("@@ppcl")  @dtw_assign(V_N5PPCL,  fieldValue)
+                                  @Decat_Field("@@fitc")  @dtw_assign(V_N5FITC,  fieldValue)
+                                  @Decat_Field("@@titc")  @dtw_assign(V_N5TITC,  fieldValue)
+                                  @Decat_Field("@@aitc")  @dtw_assign(V_N5AITC,  fieldValue)
+                                  @Decat_Field("@@sitc")  @dtw_assign(V_N5SITC,  fieldValue)
+                                  @Decat_Field("@@pitc")  @dtw_assign(V_N5PITC,  fieldValue)
+                                  @Decat_Field("@@facc")  @dtw_assign(V_N5FACC,  fieldValue)
+                                  @Decat_Field("@@tacc")  @dtw_assign(V_N5TACC,  fieldValue)
+                                  @Decat_Field("@@aacc")  @dtw_assign(V_N5AACC,  fieldValue)
+                                  @Decat_Field("@@sacc")  @dtw_assign(V_N5SACC,  fieldValue)
+                                  @Decat_Field("@@pacc")  @dtw_assign(V_N5PACC,  fieldValue)
+                                  @Decat_Field("@@fsub")  @dtw_assign(V_N5FSUB,  fieldValue)
+                                  @Decat_Field("@@tsub")  @dtw_assign(V_N5TSUB,  fieldValue)
+                                  @Decat_Field("@@ficl")  @dtw_assign(V_N5FICL,  fieldValue)
+                                  @Decat_Field("@@ticl")  @dtw_assign(V_N5TICL,  fieldValue)
+                                  @Decat_Field("@@aicl")  @dtw_assign(V_N5AICL,  fieldValue)
+                                  @Decat_Field("@@sicl")  @dtw_assign(V_N5SICL,  fieldValue)
+                                  @Decat_Field("@@picl")  @dtw_assign(V_N5PICL,  fieldValue)
+                                  @Decat_Field("@@fbac")  @dtw_assign(V_N5FBAC,  fieldValue)
+                                  @Decat_Field("@@tbac")  @dtw_assign(V_N5TBAC,  fieldValue)
+                                  @Decat_Field("@@abac")  @dtw_assign(V_N5ABAC,  fieldValue)
+                                  @Decat_Field("@@sbac")  @dtw_assign(V_N5SBAC,  fieldValue)
+                                  @Decat_Field("@@pbac")  @dtw_assign(V_N5PBAC,  fieldValue)
+                                  @Decat_Field("@@fmat")  @dtw_assign(V_N5FMAT,  fieldValue)
+                                  @Decat_Field("@@tmat")  @dtw_assign(V_N5TMAT,  fieldValue)
+                                  @Decat_Field("@@amat")  @dtw_assign(V_N5AMAT,  fieldValue)
+                                  @Decat_Field("@@smat")  @dtw_assign(V_N5SMAT,  fieldValue)
+                                  @Decat_Field("@@pmat")  @dtw_assign(V_N5PMAT,  fieldValue)
+                                  @Decat_Field("@@fabc")  @dtw_assign(V_N5FABC,  fieldValue)
+                                  @Decat_Field("@@tabc")  @dtw_assign(V_N5TABC,  fieldValue)
+                                  @Decat_Field("@@aabc")  @dtw_assign(V_N5AABC,  fieldValue)
+                                  @Decat_Field("@@sabc")  @dtw_assign(V_N5SABC,  fieldValue)
+                                  @Decat_Field("@@pabc")  @dtw_assign(V_N5PABC,  fieldValue)
+                                  @Decat_Field("@@ftyp")  @dtw_assign(V_N5FTYP,  fieldValue)
+                                  @Decat_Field("@@ttyp")  @dtw_assign(V_N5TTYP,  fieldValue)
+                                  @Decat_Field("@@atyp")  @dtw_assign(V_N5ATYP,  fieldValue)
+                                  @Decat_Field("@@styp")  @dtw_assign(V_N5STYP,  fieldValue)
+                                  @Decat_Field("@@ptyp")  @dtw_assign(V_N5PTYP,  fieldValue)
+                                  @Decat_Field("@@fstw")  @dtw_assign(V_N5FSTW,  fieldValue)
+                                  @Decat_Field("@@tstw")  @dtw_assign(V_N5TSTW,  fieldValue)
+                                  @Decat_Field("@@astw")  @dtw_assign(V_N5ASTW,  fieldValue)
+                                  @Decat_Field("@@sstw")  @dtw_assign(V_N5SSTW,  fieldValue)
+                                  @Decat_Field("@@pstw")  @dtw_assign(V_N5PSTW,  fieldValue)
+                                  %INCLUDE "ScheduleJobValue.icl"    %{ Schedule Entries Values %}
+                                  %if (V_N4HNEG == "01")
+                                      @dtw_assign(checkedNegativeOH, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedNegativeOH, "")
+                                  %endif
+                                  %if (V_N4HPOS == "01")
+                                      @dtw_assign(checkedPositiveOH, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedPositiveOH, "")
+                                  %endif
+                                  %if (V_N4HZRO == "01")
+                                      @dtw_assign(checkedZeroOH, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedZeroOH, "")
+                                  %endif
+                                  %if (V_N4HRCV == "01")
+                                      @dtw_assign(checkedInReceiving, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedInReceiving, "")
+                                  %endif
+
+                                  %if (V_N5APLT == "ALL")
+                                      @dtw_assign(checkedAllPlantNumber, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllPlantNumber, "")
+                                  %endif
+                                  %if (V_N5AITM == "ALL")
+                                      @dtw_assign(checkedAllItemNumber, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllItemNumber, "")
+                                  %endif
+                                  %if (V_N5APCL == "ALL")
+                                      @dtw_assign(checkedAllProductClass, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllProductClass, "")
+                                  %endif
+                                  %if (V_N5AITC == "ALL")
+                                      @dtw_assign(checkedAllInventoryType, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllInventoryType, "")
+                                  %endif
+                                  %if (V_N5AACC == "ALL")
+                                      @dtw_assign(checkedAllAccountNumber, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllAccountNumber, "")
+                                  %endif
+                                  %if (V_N5AICL == "ALL")
+                                      @dtw_assign(checkedAllPartClassCode, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllPartClassCode, "")
+                                  %endif
+                                  %if (V_N5ABAC == "ALL")
+                                      @dtw_assign(checkedAllAnalystNumber, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllAnalystNumber, "")
+                                  %endif
+                                  %if (V_N5AMAT == "ALL")
+                                      @dtw_assign(checkedAllMaterialCode, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllMaterialCode, "")
+                                  %endif
+                                  %if (V_N5AABC == "ALL")
+                                      @dtw_assign(checkedAllABCClassCode, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllABCClassCode, "")
+                                  %endif
+                                  %if (V_N5ATYP == "ALL")
+                                      @dtw_assign(checkedAllPartType, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllPartType, "")
+                                  %endif
+                                  %if (V_N5ASTW == "ALL")
+                                      @dtw_assign(checkedAllBackflushCode, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAllBackflushCode, "")
+                                  %endif
+
+                                  %if (V_N5PPLT == "Y")
+                                      @dtw_assign(checkedPlantNumberTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedPlantNumberTotals, "")
+                                  %endif
+                                  %if (V_N5PITM == "Y")
+                                      @dtw_assign(checkedItemNumberTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedItemNumberTotals, "")
+                                  %endif
+                                  %if (V_N5PPCL == "Y")
+                                      @dtw_assign(checkedProductClassTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedProductClassTotals, "")
+                                  %endif
+                                  %if (V_N5PITC == "Y")
+                                      @dtw_assign(checkedInventoryTypeTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedInventoryTypeTotals, "")
+                                  %endif
+                                  %if (V_N5PACC == "Y")
+                                      @dtw_assign(checkedAccountNumberTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAccountNumberTotals, "")
+                                  %endif
+                                  %if (V_N5PICL == "Y")
+                                      @dtw_assign(checkedPartClassCodeTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedPartClassCodeTotals, "")
+                                  %endif
+                                  %if (V_N5PBAC == "Y")
+                                      @dtw_assign(checkedAnalystNumberTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedAnalystNumberTotals, "")
+                                  %endif
+                                  %if (V_N5PMAT == "Y")
+                                      @dtw_assign(checkedMaterialCodeTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedMaterialCodeTotals, "")
+                                  %endif
+                                  %if (V_N5PABC == "Y")
+                                      @dtw_assign(checkedABCClassCodeTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedABCClassCodeTotals, "")
+                                  %endif
+                                  %if (V_N5PTYP == "Y")
+                                      @dtw_assign(checkedPartTypeTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedPartTypeTotals, "")
+                                  %endif
+                                  %if (V_N5PSTW == "Y")
+                                      @dtw_assign(checkedBackflushCodeTotals, "CHECKED")
+                                  %else
+                                      @dtw_assign(checkedBackflushCodeTotals, "")
+                                  %endif
+                              %else
+                                  @dtw_assign(V_N2SET, "1")
+                                  @dtw_assign(checkedNegativeOH, "")
+                                  @dtw_assign(checkedPositiveOH, "CHECKED")
+                                  @dtw_assign(checkedZeroOH, "")
+                                  @dtw_assign(checkedInReceiving, "")
+                                  @RtvDftPlant(plantNumber, plantName)
+                                  %if (plantNumber == "0")
+                                      @dtw_assign(checkedAllPlantNumber, "CHECKED")
+                                  %else
+                                      @dtw_assign(V_N5FPLT, plantNumber)
+                                      @dtw_assign(V_N5TPLT, plantNumber)
+                                      @dtw_assign(checkedAllPlantNumber, "")
+                                      @dtw_assign(focusField, "fromItemNumber")
+                                  %endif
+                                  @dtw_assign(checkedPlantNumberTotals, "CHECKED")
+                                  @dtw_assign(checkedAllItemNumber, "CHECKED")
+                                  @dtw_assign(checkedItemNumberTotals, "")
+                                  @dtw_assign(checkedAllProductClass, "CHECKED")
+                                  @dtw_assign(checkedProductClassTotals, "")
+                                  @dtw_assign(checkedAllInventoryType, "CHECKED")
+                                  @dtw_assign(checkedInventoryTypeTotals, "")
+                                  @dtw_assign(checkedAllAccountNumber, "CHECKED")
+                                  @dtw_assign(checkedAccountNumberTotals, "")
+                                  @dtw_assign(checkedAllPartClassCode, "CHECKED")
+                                  @dtw_assign(checkedPartClassCodeTotals, "")
+                                  @dtw_assign(checkedAllAnalystNumber, "CHECKED")
+                                  @dtw_assign(checkedAnalystNumberTotals, "")
+                                  @dtw_assign(checkedAllMaterialCode, "CHECKED")
+                                  @dtw_assign(checkedMaterialCodeTotals, "")
+                                  @dtw_assign(checkedAllABCClassCode, "CHECKED")
+                                  @dtw_assign(checkedABCClassCodeTotals, "")
+                                  @dtw_assign(checkedAllPartType, "CHECKED")
+                                  @dtw_assign(checkedPartTypeTotals, "")
+                                  @dtw_assign(checkedAllBackflushCode, "CHECKED")
+                                  @dtw_assign(checkedBackflushCodeTotals, "")
+                              %endif
+
+                              @RtvFldDesc("STCSET=$(V_N2SET)", "SCMSTM", "(STCSLD)", fldDesc)
+                              @SetTextOvr(Err_N2SET)
+                              <tr><td class="dsphdr"><span $(textOvr)>Cost Set</span></td>
+                                  <td class="inputnmbr"><input name="costSet" value="$(V_N2SET)" type="text" size="2" maxlength="2"><a href="$(homeURL)$(cGIPath)CostSetDefinitionSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=costSet&amp;fldDesc=tcostSetDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="tcostSetDesc" value="$(fldDesc)" type="text"  size="25" disabled</td>
+                              </tr>
+                              @DspErrMsg(Err_N2SET)
+
+                              @SetTextOvr(Err_N4HNEG)
+                              <tr><td class="dsphdr"><span $(textOvr)>Include On Hand Items</span></td>
+                                  <td class="inputnmbr"><input name="negativeOH" type="checkbox" VALUE='01' $(checkedNegativeOH)>Negative On Hand</td>
+                              </tr>
+                              @DspErrMsg(Err_N4HNEG)
+
+                              <tr><td>&nbsp;</td>
+                                  <td class="inputnmbr"><input name="positiveOH" type="checkbox" VALUE='01' $(checkedPositiveOH)>Positive On Hand</td>
+                              </tr>
+
+                              <tr><td>&nbsp;</td>
+                                  <td class="inputnmbr"><input name="zeroOH" type="checkbox" VALUE='01' $(checkedZeroOH)>Zero On Hand</td>
+                              </tr>
+
+                              <tr><td>&nbsp;</td>
+                                  <td class="inputnmbr"><input name="inReceiving" type="checkbox" VALUE='01' $(checkedInReceiving)>On Order</td>
+                              </tr>
+                          </table>
+
+                          <table $(contentTable)>
+
+                              <tr><td>&nbsp;</td>
+                                  <td class="colhdr">From</td>
+                                  <td class="colhdr">To</td>
+                                  <td class="colhdr">All</td>
+                                  %if (reportPrintSelection == "1")
+                                      <td class="colhdr">Sort<br>Sequence</td>
+                                      <td class="colhdr">Print<br>Totals</td>
+                                  %endif
+                              </tr>
+
+                              @SetTextOvr(Err_N5FPLT)
+                              %if (textOvr == "") @SetTextOvr(Err_N5SPLT) %endif
+                              <tr><td class="dsphdr"><span $(textOvr)>Plant Number</span></td>
+                                  <td class="inputnmbr"><input name="fromPlantNumber" value="$(V_N5FPLT)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)PlantSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=fromPlantNumber&amp;fldDesc=fplantName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fplantName"  type="hidden"></td>
+                                  <td class="inputnmbr"><input name="toPlantNumber" value="$(V_N5TPLT)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)PlantSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=toPlantNumber&amp;fldDesc=tplantName" onclick="$(searchWinVar)">  $(searchImage) </a><input name="tplantName"  type="hidden"></td>
+                                  <td class="inputalph"><input name="allPlantNumber" value='ALL' $(checkedAllPlantNumber) type="checkbox" onClick="if (this.checked) this.form.fromPlantNumber.value='', this.form.toPlantNumber.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      <td class="colcode"><input &name="sortPlantNumber" type="hidden"  Value="$(sortPlantNumber)" size="1" maxlength="1">$(sortPlantNumber)</td>
+                                      <td align=center ><input name="totalPlantNumber" type="checkbox" $(checkedPlantNumberTotals) disabled VALUE='Y'>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FPLT)
+                              @DspErrMsg(Err_N5SPLT)
+
+                              @SetTextOvr(Err_N5FITM)
+                              %if (textOvr == "") @SetTextOvr(Err_N5SITM) %endif
+                              <tr><td class="dsphdr"><span $(textOvr)>Item Number</span></td>
+                                  <td class="inputalph"><input name="fromItemNumber" value="$(V_N5FITM)" type="text" size="15" maxlength="15"><a href="$(homeURL)$(phpPath)ItemSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=fromItemNumber&amp;fldDesc=fitemDescription" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fitemDescription" type="hidden"></td>
+                                  <td class="inputalph"><input name="toItemNumber" value="$(V_N5TITM)" type="text" size="15" maxlength="15"><a href="$(homeURL)$(phpPath)ItemSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=toItemNumber&amp;fldDesc=toitemDescription" onclick="$(searchWinVar)"> $(searchImage) </a><input name="toitemDescription" type="hidden"></td>
+                                  <td class="inputalph"><input name="allItemNumber" value='ALL' $(checkedAllItemNumber) type="checkbox" onClick="if (this.checked) this.form.fromItemNumber.value='', this.form.toItemNumber.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      @Build_Sort_Select("sortItemNumber", "$(V_N5SITM)")
+                                      <td align=center ><input name="totalItemNumber" type="checkbox" $(checkedItemNumberTotals) VALUE='Y'></td>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FITM)
+                              @DspErrMsg(Err_N5SITM)
+
+                              @SetTextOvr(Err_N5FPCL)
+                              %if (textOvr == "") @SetTextOvr(Err_N5SPCL) %endif
+                              <tr><td class="dsphdr"><span $(textOvr)>Product Class</span></td>
+                                  <td class="inputalph"><input name="fromProductClass" value="$(V_N5FPCL)" type="text" size="8" maxlength="4"><a href="$(homeURL)$(cGIPath)ProdClassSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=fromProductClass&amp;fldDesc=fproductClassDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fproductClassDesc" type="hidden"></td>
+                                  <td class="inputalph"><input name="toProductClass" value="$(V_N5TPCL)" type="text" size="8" maxlength="4"><a href="$(homeURL)$(cGIPath)ProdClassSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=toProductClass&amp;fldDesc=tproductClassDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="tproductClassDesc" type="hidden"></td>
+                                  <td class="inputalph"><input name="allProductClass" value='ALL' $(checkedAllProductClass) type="checkbox" onClick="if (this.checked) this.form.fromProductClass.value='', this.form.toProductClass.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      @Build_Sort_Select("sortProductClass", "$(V_N5SPCL)")
+                                      <td align=center ><input name="totalProductClass" type="checkbox" $(checkedProductClassTotals) VALUE='Y'></td>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FPCL)
+                              @DspErrMsg(Err_N5SPCL)
+
+                              @SetTextOvr(Err_N5FITC)
+                              %if (textOvr == "") @SetTextOvr(Err_N5SITC) %endif
+                              <tr><td class="dsphdr"><span $(textOvr)>Inventory Type</span></td>
+                                  <td class="inputalph"><input name="fromInventoryType" value="$(V_N5FITC)" type="text" size="6" maxlength="4"><a href="$(homeURL)$(cGIPath)invtypesearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=fromInventoryType&amp;fldDesc=finventoryTypeDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="finventoryTypeDesc"  type="hidden"></td>
+                                  <td class="inputalph"><input name="toInventoryType" value="$(V_N5TITC)" type="text" size="6" maxlength="4"><a href="$(homeURL)$(cGIPath)invtypesearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=toInventoryType&amp;fldDesc=tinventoryTypeDesc" onclick="$(searchWinVar)">$(searchImage) </a><input name="tinventoryTypeDesc"  type="hidden"></td>
+                                  <td class="inputalph"><input name="allInventoryType" value='ALL' $(checkedAllInventoryType) type="checkbox" onClick="if (this.checked) this.form.fromInventoryType.value='', this.form.toInventoryType.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      @Build_Sort_Select("sortInventoryType", "$(V_N5SITC)")
+                                      <td align=center ><input name="totalInventoryType" type="checkbox" $(checkedInventoryTypeTotals) VALUE='Y'></td>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FITC)
+                              @DspErrMsg(Err_N5SITC)
+
+                              @SetTextOvr(Err_N5FACC)
+                              %if (textOvr == "") @SetTextOvr(Err_N5SACC) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>Inv Asset Acct</span></td>
+                                  <td class="inputalph"><input name="fromAccountNumber" value="$(V_N5FACC)" type="text" size="4" maxlength="4"> $(dash) <input name="fromSubaccountNumber" value="$(V_N5FSUB)" type="text" size="4" maxlength="4"><a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=fromAccountNumber&amp;subFld=fromSubaccountNumber&amp;descFld=accDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="accDesc" type="hidden"></td>
+                                  <td class="inputalph"><input name="toAccountNumber" value="$(V_N5TACC)" type="text" size="4" maxlength="4"> $(dash) <input name="toSubaccountNumber" value="$(V_N5TSUB)" type="text" size="4" maxlength="4"><a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=toAccountNumber&amp;subFld=toSubaccountNumber&amp;descFld=accDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input name="accDesc" type="hidden"></td>
+                                  <td class="inputalph"><input name="allAccountNumber" value='ALL' $(checkedAllAccountNumber) type="checkbox" onClick="if (this.checked) this.form.fromAccountNumber.value='', this.form.toAccountNumber.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      @Build_Sort_Select("sortAccountNumber", "$(V_N5SACC)")
+                                      <td align=center ><input name="totalAccountNumber" type="checkbox" $(checkedAccountNumberTotals) VALUE='Y'>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FACC)
+                              @DspErrMsg(Err_N5SACC)
+
+                              @SetTextOvr(Err_N5FICL)
+                              %if (textOvr == "") @SetTextOvr(Err_N5SICL) %endif
+                              <tr><td class="dsphdr"><span $(textOvr)>Part Class Code</span></td>
+                              <td class="inputnmbr"><input name="fromPartClassCode" type="text" value="$(V_N5FICL)" size="2" maxlength="2"><a href="$(homeURL)$(cGIPath)PartClassSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=fromPartClassCode&amp;fldDesc=fpartClassDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fpartClassDesc"  type="hidden" ></td>
+                              <td class="inputnmbr"><input name="toPartClassCode" type="text" value="$(V_N5TICL)" size="2" maxlength="2"><a href="$(homeURL)$(cGIPath)PartClassSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=toPartClassCode&amp;fldDesc=tpartClassDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="tpartClassDesc"  type="hidden" ></td>
+                                  <td class="inputalph"><input name="allPartClassCode" value='ALL' $(checkedAllPartClassCode) type="checkbox" onClick="if (this.checked) this.form.fromPartClassCode.value='', this.form.toPartClassCode.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      @Build_Sort_Select("sortPartClassCode", "$(V_N5SICL)")
+                                      <td align=center ><input name="totalPartClassCode" type="checkbox" $(checkedPartClassCodeTotals) VALUE='Y'></td>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FICL)
+                              @DspErrMsg(Err_N5SICL)
+
+                              @SetTextOvr(Err_N5FBAC)
+                              %if (textOvr == "") @SetTextOvr(Err_N5SBAC) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>Analyst Number</span></td>
+                                  <td class="inputnmbr"><input name="fromAnalystNumber" value="$(V_N5FBAC)" type="text" size="7" maxlength="7"><a href="$(homeURL)$(cGIPath)BuyerSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=fromAnalystNumber&amp;fldDesc=fanalystName&amp;buyerAnalyst=Analyst" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fanalystName" type="hidden"><input name="Analyst" type="hidden"></td>
+                                  <td class="inputnmbr"><input name="toAnalystNumber" value="$(V_N5TBAC)" type="text" size="7" maxlength="7"><a href="$(homeURL)$(cGIPath)BuyerSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=toAnalystNumber&amp;fldDesc=tanalystName&amp;buyerAnalyst=Analyst" onclick="$(searchWinVar)"> $(searchImage) </a><input name="tanalystName" type="hidden"><input name="Analyst" type="hidden"></td>
+                                  <td class="inputalph"><input name="allAnalystNumber" value='ALL' $(checkedAllAnalystNumber) type="checkbox" onClick="if (this.checked) this.form.fromAnalystNumber.value='', this.form.toAnalystNumber.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      @Build_Sort_Select("sortAnalystNumber", "$(V_N5SBAC)")
+                                      <td align=center ><input name="totalAnalystNumber" type="checkbox" $(checkedAnalystNumberTotals) VALUE='Y'></td>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FBAC)
+                              @DspErrMsg(Err_N5SBAC)
+
+                              @SetTextOvr(Err_N5FMAT)
+                              %if (textOvr == "") @SetTextOvr(Err_N5SMAT) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>Material Code</span></td>
+                                  <td class="inputnmbr"><input name="fromMaterialCode" value="$(V_N5FMAT)" type="text" size="4" maxlength="4"></td>
+                                  <td class="inputnmbr"><input name="toMaterialCode" value="$(V_N5TMAT)" type="text" size="4" maxlength="4"></td>
+                                  <td class="inputalph"><input name="allMaterialCode" value='ALL' $(checkedAllMaterialCode) type="checkbox" onClick="if (this.checked) this.form.fromMaterialCode.value='', this.form.toMaterialCode.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      @Build_Sort_Select("sortMaterialCode", "$(V_N5SMAT)")
+                                      <td align=center ><input name="totalMaterialCode" type="checkbox" $(checkedMaterialCodeTotals) VALUE='Y'>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FMAT)
+                              @DspErrMsg(Err_N5SMAT)
+
+                              @SetTextOvr(Err_N5FABC)
+                              %if (textOvr == "") @SetTextOvr(Err_N5SABC) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>ABC Class Code</span></td>
+                                  <td class="inputnmbr"><input name="fromABCClassCode" value="$(V_N5FABC)" type="text" size="1" maxlength="1"></td>
+                                  <td class="inputnmbr"><input name="toABCClassCode" value="$(V_N5TABC)" type="text" size="1" maxlength="1"></td>
+                                  <td class="inputalph"><input name="allABCClassCode" value='ALL' $(checkedAllABCClassCode) type="checkbox" onClick="if (this.checked) this.form.fromABCClassCode.value='', this.form.toABCClassCode.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      @Build_Sort_Select("sortABCClassCode", "$(V_N5SABC)")
+                                      <td align=center ><input name="totalABCClassCode" type="checkbox" $(checkedABCClassCodeTotals) VALUE='Y'>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FABC)
+                              @DspErrMsg(Err_N5SABC)
+
+                              @SetTextOvr(Err_N5FTYP)
+                              %if (textOvr == "") @SetTextOvr(Err_N5STYP) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>Part Type</span></td>
+                                  <td class="inputnmbr"><input name="fromPartType" value="$(V_N5FTYP)" type="text" size="1" maxlength="1"></td>
+                                  <td class="inputnmbr"><input name="toPartType" value="$(V_N5TTYP)" type="text" size="1" maxlength="1"></td>
+                                  <td class="inputalph"><input name="allPartType" value='ALL' $(checkedAllPartType) type="checkbox" onClick="if (this.checked) this.form.fromPartType.value='', this.form.toPartType.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      @Build_Sort_Select("sortPartType", "$(V_N5STYP)")
+                                      <td align=center ><input name="totalPartType" type="checkbox" $(checkedPartTypeTotals) VALUE='Y'>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FTYP)
+                              @DspErrMsg(Err_N5STYP)
+
+                              @SetTextOvr(Err_N5FSTW)
+                              %if (textOvr == "") @SetTextOvr(Err_N5SSTW) %endif
+                              <tr><td  class="dsphdr"><span $(textOvr)>Backflush Code</span></td>
+                                  <td class="inputalph"><input name="fromBackflushCode" value="$(V_N5FSTW)" type="text" size="1" maxlength="1"></td>
+                                  <td class="inputalph"><input name="toBackflushCode" value="$(V_N5TSTW)" type="text" size="1" maxlength="1"></td>
+                                  <td class="inputalph"><input name="allBackflushCode" value='ALL' $(checkedAllBackflushCode) type="checkbox" onClick="if (this.checked) this.form.fromBackflushCode.value='', this.form.toBackflushCode.value='';"></td>
+                                  %if (reportPrintSelection == "1")
+                                      @Build_Sort_Select("sortBackflushCode", "$(V_N5SSTW)")
+                                      <td align=center ><input name="totalBackflushCode" type="checkbox" $(checkedBackflushCodeTotals) VALUE='Y'>
+                                  %endif
+                              </tr>
+                              @DspErrMsg(Err_N5FSTW)
+                              @DspErrMsg(Err_N5SSTW)
+
+                          </table>
+
+                          @dtw_assign(envProgram, "HSC089")
+                          @dtw_assign(envPrinter, "QSYSPRT")
+                          %INCLUDE "ScheduleJob.icl"
+                          %INCLUDE "SubmitScheduleBottom.icl"
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                          %if (focusField != "")
+                              <script TYPE="text/javascript">
+                                  document.Chg.$(focusField).focus();
+                              </script>
+                          %endif
+                      </form>
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "Trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     submitSchedule,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,            	
+                                        INOUT CHAR(32000) errVar)
+  {%EXEC {HSC900_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "SetLibraryList.icl"
+  @Set_SQL()
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "SetLibraryList.icl"
+  @dtw_mUPPERCASE(allPlantNumber)
+  @dtw_mUPPERCASE(fromItemNumber)
+  @dtw_mUPPERCASE(toItemNumber)
+  @dtw_mUPPERCASE(allItemNumber)
+  @dtw_mUPPERCASE(fromProductClass)
+  @dtw_mUPPERCASE(toProductClass)
+  @dtw_mUPPERCASE(allProductClass)
+  @dtw_mUPPERCASE(fromInventoryType)
+  @dtw_mUPPERCASE(toInventoryType)
+  @dtw_mUPPERCASE(allInventoryType)
+  @dtw_mUPPERCASE(allAccountNumber)
+  @dtw_mUPPERCASE(allSubaccountNumber)
+  @dtw_mUPPERCASE(fromPartClassCode)
+  @dtw_mUPPERCASE(toPartClassCode)
+  @dtw_mUPPERCASE(allPartClassCode)
+  @dtw_mUPPERCASE(allAnalystNumber)
+  @dtw_mUPPERCASE(fromMaterialCode)
+  @dtw_mUPPERCASE(toMaterialCode)
+  @dtw_mUPPERCASE(allMaterialCode)
+  @dtw_mUPPERCASE(fromABCClassCode)
+  @dtw_mUPPERCASE(toABCClassCode)
+  @dtw_mUPPERCASE(allABCClassCode)
+  @dtw_mUPPERCASE(fromPartType)
+  @dtw_mUPPERCASE(toPartType)
+  @dtw_mUPPERCASE(allPartType)
+  @dtw_mUPPERCASE(fromBackflushCode)
+  @dtw_mUPPERCASE(toBackflushCode)
+  @dtw_mUPPERCASE(allBackflushCode)
+
+  %if (allPlantNumber != "ALL")
+      @dtw_assign(allPlantNumber, "")
+  %endif
+  %if (allItemNumber != "ALL")
+      @dtw_assign(allItemNumber, "")
+  %endif
+  %if (allProductClass != "ALL")
+      @dtw_assign(allProductClass, "")
+  %endif
+  %if (allInventoryType != "ALL")
+      @dtw_assign(allInventoryType, "")
+  %endif
+  %if (allAccountNumber != "ALL")
+      @dtw_assign(allAccountNumber, "")
+  %endif
+  %if (allPartClassCode != "ALL")
+      @dtw_assign(allPartClassCode, "")
+  %endif
+  %if (allAnalystNumber != "ALL")
+      @dtw_assign(allAnalystNumber, "")
+  %endif
+  %if (allMaterialCode != "ALL")
+      @dtw_assign(allMaterialCode, "")
+  %endif
+  %if (allABCClassCode != "ALL")
+      @dtw_assign(allABCClassCode, "")
+  %endif
+  %if (allPartType != "ALL")
+      @dtw_assign(allPartType, "")
+  %endif
+  %if (allBackflushCode != "ALL")
+      @dtw_assign(allBackflushCode, "")
+  %endif
+
+  @dtw_assign(totalPlantNumber, "Y")
+
+  %if (totalItemNumber != "Y")
+      @dtw_assign(totalItemNumber, "N")
+  %endif
+  %if (totalProductClass != "Y")
+      @dtw_assign(totalProductClass, "N")
+  %endif
+  %if (totalInventoryType != "Y")
+      @dtw_assign(totalInventoryType, "N")
+  %endif
+  %if (totalAccountNumber != "Y")
+      @dtw_assign(totalAccountNumber, "N")
+  %endif
+  %if (totalPartClassCode != "Y")
+      @dtw_assign(totalPartClassCode, "N")
+  %endif
+  %if (totalAnalystNumber != "Y")
+      @dtw_assign(totalAnalystNumber, "N")
+  %endif
+  %if (totalMaterialCode != "Y")
+      @dtw_assign(totalMaterialCode, "N")
+  %endif
+  %if (totalABCClassCode != "Y")
+      @dtw_assign(totalABCClassCode, "N")
+  %endif
+  %if (totalPartType != "Y")
+      @dtw_assign(totalPartType, "N")
+  %endif
+  %if (totalBackflushCode != "Y")
+      @dtw_assign(totalBackflushCode, "N")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  %if (reportPrintSelection == "1")
+      @Concat_Field("@@sel@", "01")
+  %endif
+  %if (reportPrintSelection == "2")
+      @Concat_Field("@@sel@", "02")
+  %endif
+  @Concat_Field("@@set@", costSet)
+  @Concat_Field("@@hneg", negativeOH)
+  @Concat_Field("@@hpos", positiveOH)
+  @Concat_Field("@@hzro", zeroOH)
+  @Concat_Field("@@hrcv", inReceiving)
+  @Concat_Field("@@fplt", fromPlantNumber)
+  @Concat_Field("@@tplt", toPlantNumber)
+  @Concat_Field("@@aplt", allPlantNumber)
+  @Concat_Field("@@splt", sortPlantNumber)
+  @Concat_Field("@@pplt", totalPlantNumber)
+  @Concat_Field("@@fitm", fromItemNumber)
+  @Concat_Field("@@titm", toItemNumber)
+  @Concat_Field("@@aitm", allItemNumber)
+  @Concat_Field("@@sitm", sortItemNumber)
+  @Concat_Field("@@pitm", totalItemNumber)
+  @Concat_Field("@@fpcl", fromProductClass)
+  @Concat_Field("@@tpcl", toProductClass)
+  @Concat_Field("@@apcl", allProductClass)
+  @Concat_Field("@@spcl", sortProductClass)
+  @Concat_Field("@@ppcl", totalProductClass)
+  @Concat_Field("@@fitc", fromInventoryType)
+  @Concat_Field("@@titc", toInventoryType)
+  @Concat_Field("@@aitc", allInventoryType)
+  @Concat_Field("@@sitc", sortInventoryType)
+  @Concat_Field("@@pitc", totalInventoryType)
+  @Concat_Field("@@facc", fromAccountNumber)
+  @Concat_Field("@@tacc", toAccountNumber)
+  @Concat_Field("@@aacc", allAccountNumber)
+  @Concat_Field("@@sacc", sortAccountNumber)
+  @Concat_Field("@@pacc", totalAccountNumber)
+  @Concat_Field("@@fsub", fromSubaccountNumber)
+  @Concat_Field("@@tsub", toSubaccountNumber)
+  @Concat_Field("@@ficl", fromPartClassCode)
+  @Concat_Field("@@ticl", toPartClassCode)
+  @Concat_Field("@@aicl", allPartClassCode)
+  @Concat_Field("@@sicl", sortPartClassCode)
+  @Concat_Field("@@picl", totalPartClassCode)
+  @Concat_Field("@@fbac", fromAnalystNumber)
+  @Concat_Field("@@tbac", toAnalystNumber)
+  @Concat_Field("@@abac", allAnalystNumber)
+  @Concat_Field("@@sbac", sortAnalystNumber)
+  @Concat_Field("@@pbac", totalAnalystNumber)
+  @Concat_Field("@@fmat", fromMaterialCode)
+  @Concat_Field("@@tmat", toMaterialCode)
+  @Concat_Field("@@amat", allMaterialCode)
+  @Concat_Field("@@smat", sortMaterialCode)
+  @Concat_Field("@@pmat", totalMaterialCode)
+  @Concat_Field("@@fabc", fromABCClassCode)
+  @Concat_Field("@@tabc", toABCClassCode)
+  @Concat_Field("@@aabc", allABCClassCode)
+  @Concat_Field("@@sabc", sortABCClassCode)
+  @Concat_Field("@@pabc", totalABCClassCode)
+  @Concat_Field("@@ftyp", fromPartType)
+  @Concat_Field("@@ttyp", toPartType)
+  @Concat_Field("@@atyp", allPartType)
+  @Concat_Field("@@styp", sortPartType)
+  @Concat_Field("@@ptyp", totalPartType)
+  @Concat_Field("@@fstw", fromBackflushCode)
+  @Concat_Field("@@tstw", toBackflushCode)
+  @Concat_Field("@@astw", allBackflushCode)
+  @Concat_Field("@@sstw", sortBackflushCode)
+  @Concat_Field("@@pstw", totalBackflushCode)
+
+  %INCLUDE "ScheduleJobConcat.icl"    %{ Schedule Entries Values %}
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, submitSchedule, errFound, edtVar, errVar)
+
+  %INCLUDE "SubmitScheduleUpdate.icl"
+%}

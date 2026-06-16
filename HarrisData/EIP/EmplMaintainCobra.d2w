@@ -1,0 +1,255 @@
+%{
+*********************************************************************
+* Copr 1979 2004 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Employee COBRA Maintenance                                  *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "Employee.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "Employee COBRA Maintenance"
+  d2wName                 = "EmplMaintainCOBRA.d2w"
+  d2wVarBase              = "$(genericVarBase)$(employeeVarBase)&amp;backHome=@dtw_rurlescseq(backHome)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  programName             = "HHREMU"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+  @dtw_replace(workURL, "@@fromD2w", "@dtw_rurlescseq(fromD2w)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "EmplUV.icl"
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(chgForm) {
+                          if (document.Chg.manualGenNotice.value =="" ||
+                              document.Chg.manualContNotice.value =="" ||
+                              document.Chg.manualConvNotice.value =="")
+                              {alert("$(reqFieldError)"); return false;}
+                              return true;
+                  }
+                  %INCLUDE "dateedit.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "EMPLMAINTAINCBR")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          @dtw_concat(stmtSQL, "SELECT EMCOMP, EMFACL, EMEMPL, EMPECP, EMPEMP, EMGNID, EMCBAC, EMMGN, EMMCN, EMMVN, EMTSTP ", stmtSQL)
+                          @dtw_concat(stmtSQL, " FROM HREMPL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " WHERE EMCOMP=$(prCompany) and EMFACL=$(prFacility) and EMPECP=$(hrCompany) and EMEMPL=$(prEmployee) and EMPEMP=$(hrEmployee)", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @MaintainCobra_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) MaintainCobra_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      @dtw_assign(sec_03, "N")
+      %INCLUDE "MaintainTop.icl"
+      <table $(contentTable)>
+	   <colgroup>
+	       <col width="80%">
+	       <col width="15%">
+          @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+          <tr><td><h2>$(F_EmpName)</h2></td></tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"		
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          %ROW {
+              %if (errFound != "")
+                  @dtw_assign(focusField, "")
+                  @EdtVarErr(profileHandle, typeValue, edtVar)
+                  @ErrVarErr(profileHandle, typeError, errVar)
+
+                  @DecatErr_Field("@@mgn@", "manualGenNotice")   @dtw_assign(Err_EMMGN, fieldValue)
+                  @DecatErr_Field("@@mcn@", "manualContNotice")  @dtw_assign(Err_EMMCN, fieldValue)
+                  @DecatErr_Field("@@mvn@", "manualConvNotice")  @dtw_assign(Err_EMMVN, fieldValue)
+                  @DecatErr_Field("@@tstp", "timeStamp")         @dtw_assign(Err_TSTP, fieldValue)
+
+                  @Decat_Field("@@mgn@")    @dtw_assign(V_EMMGN, fieldValue)
+                  @Decat_Field("@@mcn@")    @dtw_assign(V_EMMCN, fieldValue)
+                  @Decat_Field("@@mvn@")    @dtw_assign(V_EMMVN, fieldValue)
+                  @Decat_Field("@@tstp")    @dtw_assign(V_EMTSTP, fieldValue)
+
+                  @dtw_assign(errFound, "")
+
+              %else
+                  @dtw_assign(focusField, "manualGenNotice")
+                  @Format_Date(V_EMGNID, "H", F_EMGNID)
+              %endif
+
+              <table $(contentTable)>
+              
+              	  @SetTextOvr(Err_TSTP)
+                  <tr><td class="dsphdr"><span $(textOvr)>.</span></td>
+                      <td><input name="timeStamp" type="hidden" value="$(V_EMTSTP)"></td>
+                  </tr>
+                  @DspErrMsg(Err_TSTP)	
+              
+                  <tr><td class="dsphdr"><span $(textOvr)>General Notice Issue Date</span></td>
+                     <td class="dspdate">$(F_EMGNID)</td>
+                  </tr>
+
+                  %if(V_EMCBAC == "")
+                      @dtw_assign(V_EMCBAC, "N")
+                  %endif
+
+                  <tr><td class="dsphdr">COBRA Active</td>
+                      @RtvFldDesc("FLTYPE='BYN' and FLVALU='$(V_EMCBAC)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspalph">$(syFlagDesc)</td></tr>
+
+                  @SetTextOvr(Err_EMMGN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Manual General Notice</span></td>
+                      @dtw_tb_rows(yn01Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_EMMGN) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn01Table, "manualGenNotice", "2", "1", "N", "", x, "1") $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_EMMGN)
+
+                  @SetTextOvr(Err_EMMCN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Manual Continuation Notice</span></td>
+                      @dtw_tb_rows(yn02Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn02Table, x, "1") != V_EMMCN) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn02Table, "manualContNotice", "2", "1", "N", "", x, "1") $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_EMMCN)
+
+                  @SetTextOvr(Err_EMMVN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Manual Conversion Notice</span></td>
+                      @dtw_tb_rows(yn03Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn03Table, x, "1") != V_EMMVN) && (x < maxRows))
+                          {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn03Table, "manualConvNotice", "2", "1", "N", "", x, "1") $(reqFieldChar)</td>
+                  </tr>
+                  @DspErrMsg(Err_EMMVN)
+                                                      
+              </table>
+          %}
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HHREMB_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if ((sec_02 == "N") || (sec_09 == "N"))
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @dtw_assign(sec_03, "")
+      @yn01_Table_Query(profileHandle, dataBaseID, "YORN      ", yn01Table)
+          @dtw_tb_insertrow(yn01Table, "0", "1")
+	   @dtw_tb_setv(yn01Table, "", "1", "2")
+      @yn02_Table_Query(profileHandle, dataBaseID, "YORN      ", yn02Table)
+          @dtw_tb_insertrow(yn02Table, "0", "1")
+	   @dtw_tb_setv(yn02Table, "", "1", "2")
+      @yn03_Table_Query(profileHandle, dataBaseID, "YORN      ", yn03Table)
+          @dtw_tb_insertrow(yn03Table, "0", "1")
+	   @dtw_tb_setv(yn03Table, "", "1", "2")
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@comp", prCompany)
+  @Concat_Field("@@facl", prFacility)
+  @Concat_Field("@@empl", prEmployee)
+  @Concat_Field("@@pecp", hrCompany)
+  @Concat_Field("@@pemp", hrEmployee)
+  @Concat_Field("@@mgn@", manualGenNotice)
+  @Concat_Field("@@mcn@", manualContNotice)
+  @Concat_Field("@@mvn@", manualConvNotice)
+  @Concat_Field("@@tstp", timeStamp)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "")
+      @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+      @Format_ConfMsg_Desc(maintenanceCode, $(F_EmpName), $(prEmployee), "COBRA", "", "", "", confMessage)
+      %if (fromD2w != "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)EmployeeMaintainSelect.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

@@ -1,0 +1,550 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Work Center Master                                          *
+*********************************************************************
+%}
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Work Center"
+  d2wName                 = "WorkCenter.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;plantName=@dtw_rurlescseq(plantName)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HPD016"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  plantNumber             = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@plantNumber", "@dtw_rurlescseq(plantNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @dtw_assign(userPass, "")
+  %if (plantNumber > "0")
+      @PlantUserView(profileHandle, dataBaseID, userPass, plantNumber)
+  %endif
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script type="text/javascript">
+                  function confirmDelete(text) {return confirm("$(delRecordConf)" + "\r" + "\r" + text);}
+                  %INCLUDE "NewWindowOpen.icl"
+                  %INCLUDE "CheckEnterSearch.icl"
+                  %INCLUDE "NoFormValidate.icl"
+               </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          @dtw_assign(pageID, "WORKCENTER")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          @dtw_assign(uv_PlantName, "WCPLT")
+                          @dtw_assign(uv_MfgDepartmentName, "WCDEPT")
+                          @dtw_assign(uv_WorkCenterName, "WCWC")
+                          @dtw_assign(uv_CompanyName, "WCCO")
+                          @dtw_assign(uv_FacilityName, "WCFAC")
+                          @dtw_assign(uv_ScheduleName, "WCSCHD")
+                          %INCLUDE "userview.icl"
+
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select HDMWCM.* ", stmtSQL)
+                          %if (plantNumber == "")
+                              @dtw_concat(stmtSQL, " , coalesce(PLNAME,' ') as PLNAME, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " coalesce(upper(PLNAME),' ') as PLNAMEU ", stmtSQL)
+                          %endif
+                          @dtw_concat(fileSQL, " HDMWCM ", fileSQL)
+                          %if (plantNumber == "")
+                              @dtw_concat(fileSQL, " left join HDPLNT on WCPLT=PLPLNT ", fileSQL)
+                          %endif
+                          %if (wildCardSearch!="" || plantNumber>"0" || uv_Sql!="")
+                              @dtw_concat(selectSQL, "WCDEPT>' ' ", selectSQL)
+                          %endif
+                          %if (plantNumber > "0")
+                              @dtw_concat(selectSQL, " and WCPLT=$(plantNumber) ", selectSQL)
+                          %endif
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @WorkCenter_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) WorkCenter_Query (IN  CHAR(64)    profileHandle,
+                                         CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (plantNumber > "0")
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      %endif
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+                  <td class="toolbar">
+                      %if (sec_01 == "Y")
+                         <a href="$(homeURL)$(cGIPath)WorkCenterMaintain.d2w/MAINTAIN$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(plantNumber)&amp;fromName=@dtw_rurlescseq(plantName)&amp;fromD2w=@dtw_rurlescseq(d2wName)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      %if (plantNumber > "0")
+          <table $(contentTable)>
+              @Format_Header_URL("Plant", $(plantName), $(plantNumber), "$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(d2wVarBase)")
+          </table>
+      %endif
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Dept</th>
+                      <th class="colhdr">Work<br>Center</th>
+                      %if (plantNumber == "")
+                          <th class="colhdr">Plant</th>
+                      %endif
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchDept" size="5" maxlength="5">
+                          <input type="hidden" name="operDept" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchWc" size="5" maxlength="5">
+                          <input type="hidden" name="operWc" value="LIKE">
+                      </td>
+                      %if (plantNumber == "")
+                          <td><input type="text" class="inputnmbr" name="srchPlant" size="5" maxlength="3">
+                              <input type="hidden" name="operPlant" value="=">
+                          </td>
+                      %endif
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDept.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_04 == "Y"))
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("WCDEPT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Department" title="Sequence By Department"> Dept</a></th>
+              @OrderBy_Sort("WCWC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=WorkCenter" title="Sequence By Work Center"> Work<br>Center</a></th>
+              @OrderBy_Sort("WCDESC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description" title="Sequence By Description"> Description</a></th>
+              @OrderBy_Sort("WCKLCD", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=KeyLoadCode" title="Sequence By Key Load Code"> Key<br>Load</a></th>
+              @OrderBy_Sort("WCSCHD", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Schedule" title="Sequence By Schedule"> Schedule</a></th>
+              %if (plantNumber == "")
+                  @OrderBy_Sort("WCPLT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlantNumber" title="Sequence By Plant">Plant</a></th>
+                  @OrderBy_Sort("PLNAMEU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlantName" title="Sequence By Plant Name">Plant Name</a></th>
+              %endif
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @dtw_assign(maintainVar, "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(plantNumber)&amp;fromName=@dtw_rurlescseq(plantName)&amp;plantNumber=@dtw_rurlescseq(V_WCPLT)&amp;department=@dtw_rurlescseq(V_WCDEPT)&amp;workCenter=@dtw_rurlescseq(V_WCWC)&amp;description=@dtw_rurlescseq(V_WCDESC)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+              %INCLUDE "SetRowClass.icl"
+              @Format_Confirm_Desc($(V_WCDESC), "$(V_WCDEPT) - $(V_WCWC)", "", "", "", "", confirmDesc)
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y" && (sec_02 == "Y" || sec_03 == "Y" || sec_04 == "Y"))
+                      <td class="opticon">
+                          %if (sec_02 == "Y" || sec_03 == "Y")
+                              <a href="$(homeURL)$(cGIPath)WorkCenterMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          %endif
+                          %if (sec_04 == "Y")
+                              <a href="$(homeURL)$(cGIPath)WorkCenterMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=Z">$(copyImageSml)</a>
+                          %endif
+                          %if (sec_03 == "Y")
+                              <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)WorkCenterMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                          %endif
+                      </td>
+                  %endif
+                  <td class="colalph">$(V_WCDEPT)</td>
+                  <td class="colalph">$(V_WCWC)</td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)WorkCenterselect.d2w/REPORT$(maintainVar)" title="View Work Center">$(V_WCDESC)</a></td>
+                  %if (V_WCKLCD == "N")
+                      @dtw_assign(V_WCKLCD, " ")
+                  %endif
+                  <td class="colcode">$(V_WCKLCD)</td>
+                  <td class="colnmbr">$(V_WCSCHD)</td>
+                  %if (plantNumber == "")
+                      <td class="colnmbr">$(V_WCPLT)</td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(V_WCPLT)&amp;plantName=@dtw_rurlescseq(V_PLNAME)" title="View Plant">$(V_PLNAME)</a></td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  @dtw_assign(uv_PlantName, "WCPLT")
+  @dtw_assign(uv_MfgDepartmentName, "WCDEPT")
+  @dtw_assign(uv_WorkCenterName, "WCWC")
+  @dtw_assign(uv_CompanyName, "WCCO")
+  @dtw_assign(uv_FacilityName, "WCFAC")
+  @dtw_assign(uv_ScheduleName, "WCSCHD")
+  %INCLUDE "userview.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select HDMWCM.* ", stmtSQL)
+  %if (plantNumber == "")
+      @dtw_concat(stmtSQL, " , coalesce(PLNAME,' ') as PLNAME, ", stmtSQL)
+      @dtw_concat(stmtSQL, " coalesce(upper(PLNAME),' ') as PLNAMEU ", stmtSQL)
+  %endif
+  @dtw_concat(fileSQL, " HDMWCM ", fileSQL)
+  %if (plantNumber == "")
+      @dtw_concat(fileSQL, " left join HDPLNT on WCPLT=PLPLNT ", fileSQL)
+  %endif
+  %if (wildCardSearch!="" || plantNumber>"0" || uv_Sql!="")
+      @dtw_concat(selectSQL, "WCDEPT>' ' ", selectSQL)
+  %endif
+  %if (plantNumber > "0")
+      @dtw_concat(selectSQL, " and WCPLT=$(plantNumber) ", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @WorkCenter_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+%}
+
+%FUNCTION(dtw_sql) WorkCenter_XMLQuery (IN  CHAR(64)    profileHandle,
+			                     CHAR(2)     dataBaseID,
+                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @XMLBeginTag("WorkCenterList")
+      %if (plantNumber > "0")
+	   @XMLIDTag(plantNumber, "Plant ID")
+              @XMLTag(plantNumber, "PlantNumber")
+              @XMLTag(plantName, "PlantName")
+      %endif		
+
+      %ROW{
+          @XMLIDTag("$(V_WCDEPT)/$(V_WCWC)",   "WorkCenter ID")
+              @XMLTag(V_WCDEPT, "Department")
+              @XMLTag(V_WCWC,   "WorkCenter")
+              @XMLTag(V_WCDESC, "Description")
+              @XMLTag(V_WCLAUT, "LaborUtilization")
+              @XMLTag(V_WCLAEF, "LaborEfficiency")
+              @XMLTag(V_WCLHRD, "LaborHoursPerDay")
+              @XMLTag(V_WCMAUT, "MachineUtilization")
+              @XMLTag(V_WCMHRD, "MachineHoursPerDay")
+              @XMLTag(V_WCSHRD, "SetupHoursPerDay")
+              @XMLTag(V_WCMTD,  "TransitDays")
+              @XMLTag(V_WCKLCD, "KeyLoadCode")
+              @XMLTag(V_WCCO,   "Company")
+              @XMLTag(V_WCFAC,  "Facility")
+              @XMLTag(V_WCSCHD, "Schedule")
+              %if (plantNumber == "")
+                  @XMLTag(V_WCPLT,  "PlantNumber")
+                  @XMLTag(V_PLNAME, "PlantName")
+              %endif
+          @XMLEndTag("WorkCenter")
+      %}
+      %if (plantNumber > "0")
+          @XMLEndTag("Plant")
+      %endif
+      @XMLEndTag("WorkCenterList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (plantNumber > "0" && orderBy == "PLNAMEU,WCDEPT,WCWC")
+          @dtw_assign(orderBy, "")
+      %endif
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "WCDEPT,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Department, Work Center")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Department")
+      %if (orderBy == "WCDEPT,WCWC")
+          @DTW_ASSIGN(orderBy, "WCDEPT DESC,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Department (descending), Work Center")
+      %else
+          @DTW_ASSIGN(orderBy, "WCDEPT,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Department, Work Center")
+      %endif
+  %elseif (sequence == "WorkCenter")
+      %if (orderBy == "WCWC,WCDEPT")
+          @DTW_ASSIGN(orderBy, "WCWC DESC,WCDEPT")
+          @DTW_ASSIGN(orderByDisplay, "Work Center (descending), Department")
+      %else
+          @DTW_ASSIGN(orderBy, "WCWC,WCDEPT")
+          @DTW_ASSIGN(orderByDisplay, "Work Center, Department")
+      %endif
+  %elseif (sequence == "Description")
+      %if (orderBy == "WCDESC")
+          @DTW_ASSIGN(orderBy, "WCDESC DESC")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "WCDESC")
+          @DTW_ASSIGN(orderByDisplay, "Description")
+      %endif
+  %elseif (sequence == "KeyLoadCode")
+      %if (orderBy == "WCKLCD,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderBy, "WCKLCD DESC,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Key Load Code (descending), Department, Work Center")
+      %else
+          @DTW_ASSIGN(orderBy, "WCKLCD,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Key Load Code, Department, Work Center")
+      %endif
+  %elseif (sequence == "Schedule")
+      %if (orderBy == "WCSCHD,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderBy, "WCSCHD DESC,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Schedule (descending), Department, Work Center")
+      %else
+          @DTW_ASSIGN(orderBy, "WCSCHD,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Schedule, Department, Work Center")
+      %endif
+  %elseif (sequence == "PlantNumber")
+      %if (orderBy == "WCPLT,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderBy, "WCPLT DESC,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number (descending), Department, Work Center")
+      %else
+          @DTW_ASSIGN(orderBy, "WCPLT,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number, Department, Work Center")
+      %endif
+  %elseif (sequence == "PlantName")
+      %if (orderBy == "PLNAMEU,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderBy, "PLNAMEU DESC,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Plant Name (descending), Department, Work Center")
+      %else
+          @DTW_ASSIGN(orderBy, "PLNAMEU,WCDEPT,WCWC")
+          @DTW_ASSIGN(orderByDisplay, "Plant Name, Department, Work Center")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchSchd, 3, 0) &&
+                      editNum(document.Search.srchCo, 2, 0) &&
+                      editNum(document.Search.srchFac, 4, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "WORKCENTERSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Department</td>
+                              @dtw_assign(operNbr, "operDept")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDept" size="5" maxlength="5"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Work Center</td>
+                              @dtw_assign(operNbr, "operWc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchWc" size="5" maxlength="5"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Key Load Code</td>
+                              @dtw_assign(operNbr, "operKlcd")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchKlcd" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Schedule</td>
+                              @dtw_assign(operNbr, "operSchd")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchSchd" size="4" maxlength="3"><a href="$(homeURL)$(cGIPath)ScheduleSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=srchSchd&amp;fldDesc=scheduleDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="scheduleDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Company</td>
+                              @dtw_assign(operNbr, "operCo")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchCo" size="4" maxlength="2"> <a href="$(homeURL)$(cGIPath)CoFacSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldCo=srchCo&amp;fldFac=srchFac&amp;fldDesc=coFacDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="coFacDesc" value="$(fieldDesc)"  type="text" size="35"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Facility</td>
+                              @dtw_assign(operNbr, "operFac")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchFac" size="4" maxlength="4"><a href="$(homeURL)$(cGIPath)CoFacSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldCo=srchCo&amp;fldFac=srchFac&amp;fldDesc=coFacDesc" onclick="$(searchWinVar)"> $(searchImage) </a></td>
+                          </tr>
+
+                          %if (plantNumber == "")
+                              <tr><td class="dsphdr">Plant Number</td>
+                                  @dtw_assign(operNbr, "operPlant")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchPlant" size="4" maxlength="3"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Plant Name</td>
+                                  @dtw_assign(operNbr, "operName")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"> <input type="text" name="srchName" size="30" maxlength="26"></td>
+                              </tr>
+                          %endif
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchDept.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("WCDEPT", "Department", $(srchDept), "U", operDept, "A")
+  @Build_WildCard ("WCWC", "Work Center", $(srchWc), "U", operWc, "A")
+  @Build_WildCard ("WCDESC", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("WCKLCD", "Key Load Code", $(srchKlcd), "U", operKlcd, "A")
+  @Build_WildCard ("WCSCHD", "Schedule", $(srchSchd), "", operSchd, "N")
+  @Build_WildCard ("WCCO", "Company", $(srchCo), "", operCo, "N")
+  @Build_WildCard ("WCFAC", "Facility", $(srchFac), "", operFac, "N")
+  %if (plantNumber == "")
+      @Build_WildCard ("WCPLT", "Plant Number", $(srchPlant), "", operPlant, "N")
+      @Build_WildCard ("upper(PLNAME)", "Plant Name", $(srchName), "U", operName, "A")
+  %endif
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

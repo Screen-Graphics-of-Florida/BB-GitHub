@@ -1,0 +1,273 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: User View Security List                                     *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SubmitScheduleVar.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "User View Security List"
+  d2wName                 = "UserviewSecurityList.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;reportSelType=@dtw_rurlescseq(reportSelType)&amp;compSelection=@dtw_rurlescseq(compSelection)&amp;backHome=@dtw_rurlescseq(backHome)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "9999"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  submitNoSelection       = "N"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL () {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              function confirmSelectAll()   {return confirm("Confirm select all for current row selection");}
+              function confirmDeselectAll() {return confirm("Confirm deselect all for current row selection");}
+              %INCLUDE "EditFromToAll.icl"
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              function validate(chgForm) {
+                  if (editFromToAll(document.Chg.fromUser, document.Chg.toUser, document.Chg.allUser, "A"))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "Banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "USERVIEWSECURITYLIST")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select SYUFLD.*, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(UWFLDN,' ') as UWFLDN ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYUFLD  ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYUFLW on UWXHND='$(profileHandle)' and UWFLDN=UFFLDN ", fileSQL)
+                      @dtw_concat(selectSQL, " UFPART=' ' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By UFSEQ ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Process_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "Trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Process_Query (IN  CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "SubmitScheduleTop.icl"
+      %INCLUDE "ConfMessageDisplayNoTable.icl"
+      $(hrTagAttr)
+    		   	
+      @dtw_assign(focusField, "fromUser")
+      %if (errFound != "" || scheduleJobSwitch == "Y" || compSelection=="Y")
+          @dtw_assign(scheduleJobSwitch, "")
+          @EdtVarErr(profileHandle, typeValue, edtVar)
+          @dtw_assign(focusField, "")
+          @ErrVarErr(profileHandle, typeError, errVar)
+          @Decat_Field("@@sbjb")   @dtw_assign(submitSchedule,  fieldValue)
+          @DecatErr_Field("@@fusr", "fromUser")            @dtw_assign(Err_N1FUSR,  fieldValue)
+          @DecatErr_Field("@@tusr", "toUser")              @dtw_assign(Err_N1TUSR,  fieldValue)
+          @DecatErr_Field("@@ausr", "allUser")             @dtw_assign(Err_N1AUSR,  fieldValue)
+          %INCLUDE "ScheduleJobErr.icl"    %{ Schedule Entries Errors %}
+          @Decat_Field("@@fusr")  @dtw_assign(V_N1FUSR,  fieldValue)
+          @Decat_Field("@@tusr")  @dtw_assign(V_N1TUSR,  fieldValue)
+          @Decat_Field("@@ausr")  @dtw_assign(V_N1AUSR,  fieldValue)
+          %INCLUDE "ScheduleJobValue.icl"    %{ Schedule Entries Values %}
+      %else
+          @dtw_assign(V_N1AUSR, "ALL")
+      %endif
+
+      <form class="formClass" METHOD=POST NAME="Chg"  onSubmit="return validate(document.Chg)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;fieldID=@dtw_rurlescseq(V_UFFLDN)&amp;selected=@dtw_rurlescseq(selected)">
+          <table $(contentTable)>
+              <tr><td>&nbsp;</td>
+                  <td class="colhdr">From</td>
+                  <td class="colhdr">To</td>
+                  <td class="colhdr">All</td>
+              </tr>
+
+              @Field_Checked(V_N1AUSR, "ALL", allChecked)
+              @SetTextOvr(Err_N1FUSR)
+              %if (textOvr == "") @SetTextOvr(Err_N1TUSR) %endif
+              %if (textOvr == "") @SetTextOvr(Err_N1AUSR) %endif
+              <tr><td  class="dsphdr"><span $(textOvr)>User Profile</span></td>
+                  <td class="inputalph"><input type="text" name="fromUser" value="$(V_N1FUSR)" size="10" maxlength="10">
+                                        <a href="$(homeURL)$(phpPath)UserSearch.php$(altVarBase)&amp;docName=Chg&amp;userFld=fromUser&amp;descFld=fromUserDesc" onclick="$(searchWinVar)">$(searchImage)</a>
+                                        <input type="hidden" name="fromUserDesc"></td>
+                  <td class="inputalph"><input type="text" name="toUser" value="$(V_N1TUSR)" size="10" maxlength="10">
+                                        <a href="$(homeURL)$(phpPath)UserSearch.php$(altVarBase)&amp;docName=Chg&amp;userFld=toUser&amp;descFld=toUserDesc" onclick="$(searchWinVar)">$(searchImage)</a>
+                                        <input type="hidden" name="toUserDesc"></td>
+                  <td class="inputalph"><input type="checkbox" name="allUser" value='ALL' $(allChecked) onClick="if (this.checked) this.form.fromUser.value='', this.form.toUser.value='';"></td>
+              </tr>
+              @DspErrMsg(Err_N1FUSR)
+              @DspErrMsg(Err_N1TUSR)
+              @DspErrMsg(Err_N1AUSR)
+          </table>
+
+          <fieldset class="legendBody">
+              <legend class="legendTitle">Select Rows To Include</legend>
+              <div class="quickLinksTop">
+                  <a onClick="return confirmSelectAll()"   href="javascript:document.Chg.updateAll.value='S'; document.Chg.submit()">$(selectAllImage)</a>
+                  <a onClick="return confirmDeselectAll()" href="javascript:document.Chg.updateAll.value='C'; document.Chg.submit()">$(deselectAllImage)</a>
+              </div>
+
+              <table $(contentTable)>
+                  <tr><td><input name="updateAll" type="hidden"></td></tr>
+                  <tr><td><input name="fieldID"   type="hidden"></td></tr>
+                  <tr><td><input name="selected"  type="hidden"></td></tr>
+                  <tr>
+                      <td class="colhdr">Sel</td>
+                      <td class="colhdr">Column</td>
+                      <td class="colhdr">Sel</td>
+                      <td class="colhdr">Column</td>
+                      <td class="colhdr">Sel</td>
+                      <td class="colhdr">Column</td>
+                  </tr>
+
+                  @dtw_assign(tdCount, "1")
+                  %ROW{
+                      @dtw_assign(maintainVar, "$(d2wVarBase)")
+                      %INCLUDE "SetRowClass.icl"
+                      %if (V_UWFLDN == "")
+                          @dtw_assign(selected, "")
+                      %else
+                          @dtw_assign(selected, "CHECKED")
+                      %endif
+
+                      %if (tdCount == "1")
+                          <tr class="$(rowClass)">
+                      %endif
+                          <td class="colcode"><input type="checkbox" name="option" $(selected) onClick="javascript:document.Chg.fieldID.value='$(V_UFFLDN)'; javascript:document.Chg.selected.value='$(selected)'; javascript:document.Chg.updateAll.value='I'; document.Chg.submit()"></td>
+                          <td class="colalph">$(V_UFDESC)</td>
+                      @dtw_add(tdCount, "1", tdCount)
+                      %if (tdCount > "3")
+                          </tr>
+                          @dtw_assign(tdCount, "1")
+                      %endif
+                  %}
+                  %if (tdCount > "1")
+                      </tr>
+                  %endif
+              </table>
+          </fieldset>
+          %if (focusField != "")
+              <script TYPE="text/javascript">
+                  document.Chg.$(focusField).focus();
+              </script>
+          %endif
+          @dtw_assign(envProgram, "HSYUVL")
+          @dtw_assign(envPrinter, "HSYUVLPF")
+          %INCLUDE "ScheduleJob.icl"
+          %INCLUDE "SubmitScheduleBottom.icl"
+      </form>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     submitSchedule,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,            	
+                                        INOUT CHAR(32000) errVar)
+  {%EXEC {HSYUVS_W.PGM %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "SetLibraryList.icl"
+
+  %if (resetSelectionFlag=="Y")
+      @dtw_assign(compSelection, "")
+  %endif
+  %if (compSelection=="")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From SYUFLW  ", stmtSQL)
+      @dtw_concat(stmtSQL, " Where UWXHND='$(profileHandle)' ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %endif
+  @Set_SQL()
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "SetLibraryList.icl"
+  @dtw_assign(edtVar, "")
+  @dtw_mUPPERCASE(fromUser)                                                        @Concat_Field("@@fusr", fromUser)
+  @dtw_mUPPERCASE(toUser)                                                          @Concat_Field("@@tusr", toUser)
+  @dtw_mUPPERCASE(allUser) %if (allUser != "ALL") @dtw_assign(allUser, "") %endif  @Concat_Field("@@ausr", allUser)
+
+  %INCLUDE "ScheduleJobConcat.icl"    %{ Schedule Entries Values %}
+  @dtw_concat(edtVar, "}{", edtVar)
+  @dtw_assign(compSelection, "Y")
+
+  %if (updateAll=="")
+      @Validate_Data(profileHandle, dataBaseID, submitSchedule, errFound, edtVar, errVar)
+      %INCLUDE "SubmitScheduleUpdate.icl"
+  %else
+      %INCLUDE "stmtSQLClear.icl"
+      %if (updateAll=="I" && selected == "CHECKED")
+          @dtw_concat(stmtSQL, " Delete From SYUFLW  ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where UWXHND='$(profileHandle)' and UWFLDN='$(fieldID)' ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql", stmtSQL)
+      %elif (updateAll=="I")
+          @dtw_concat(stmtSQL, " Insert into SYUFLW  ", stmtSQL)
+          @dtw_concat(stmtSQL, " Values('$(profileHandle)', '$(fieldID)') ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql", stmtSQL)
+      %elif (updateAll=="C")
+          @dtw_concat(stmtSQL, " Delete From SYUFLW  ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where UWXHND='$(profileHandle)' ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql", stmtSQL)
+      %elif (updateAll=="S")
+          @dtw_concat(stmtSQL, " Delete From SYUFLW  ", stmtSQL)
+          @dtw_concat(stmtSQL, " Where UWXHND='$(profileHandle)' ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert into SYUFLW  ", stmtSQL)
+          @dtw_concat(stmtSQL, " Select '$(profileHandle)', UFFLDN From SYUFLD ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql", stmtSQL)
+      %endif
+      @SQL_Update(stmtSQL, status)
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;errFound=@dtw_rurlescseq(errFound)&amp;scheduleJobSwitch=Y&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+
+%}

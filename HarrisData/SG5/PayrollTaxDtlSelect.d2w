@@ -1,0 +1,304 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Payroll Tax Liability Detail Select                         *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title		= "Payroll Tax Liability Detail"
+  d2wName              = "PayrollTaxDtlSelect.d2w"
+  d2wVarBase           = "$(genericVarBase)&amp;federalEin=@dtw_rurlescseq(federalEin)&amp;otherEin=@dtw_rurlescseq(otherEin)&amp;taxId=@dtw_rurlescseq(taxId)&amp;detailTaxType=@dtw_rurlescseq(detailTaxType)&amp;datePaid=@dtw_rurlescseq(datePaid)&amp;checkNumber=@dtw_rurlescseq(checkNumber)&amp;sequenceNumber=@dtw_rurlescseq(sequenceNumber)&amp;checkDate=@dtw_rurlescseq(checkDate)&amp;backHome=@dtw_rurlescseq(backHome)"
+  programName          = "HPRTPI"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  RPT_MAX_ROWS 	= "10"
+  ROW_NUM              = "0"
+  START_ROW_NUM        = "1"
+  dspMaxRows           = "$(dspMaxRowsDft)"
+  prtMaxRows           = "$(prtMaxRowsDft)"
+  rowIndexNext		= "1"
+  totalPages		= "0"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@federalEin", "@dtw_rurlescseq(federalEin)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@otherEin", "@dtw_rurlescseq(otherEin)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@taxId", "@dtw_rurlescseq(taxId)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@detailTaxType", "@dtw_rurlescseq(detailTaxType)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@datePaid", "@dtw_rurlescseq(datePaid)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@checkNumber", "@dtw_rurlescseq(checkNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@sequenceNumber", "@dtw_rurlescseq(sequenceNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@checkDate", "@dtw_rurlescseq(checkDate)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+	   %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Trailer Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                           @dtw_assign(pageID, "TAXPAYMENT ")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " PRTXDT ", fileSQL)
+                          @dtw_concat(selectSQL, " XDFEIN = $(federalEin) and XDSEIN = '$(otherEin)' and XDTXID = '$(taxId)' and XDTYPE = $(detailTaxType) and XDDATE = $(checkDate) and XDSEQ = $(sequenceNumber)", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @PaymentDetail_Inquiry(profileHandle, dataBaseID, stmtSQL)
+
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " PRTXDS ", fileSQL)
+                          @dtw_concat(selectSQL, " XSEIN = $(federalEin) and XSSEIN = '$(otherEin)' and XSTXID = '$(taxId)' and XSTYPE = $(detailTaxType) and XSDATE = $(checkDate) and XSSEQ = $(sequenceNumber)", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By XSCOMP, XSFACL ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @PaymentDetail_Inquiry2(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) PaymentDetail_Inquiry (IN CHAR(64)    profileHandle,
+                                        CHAR(2)     dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                  %if ((backHome != "$(d2wName)/report") && (backHome != ""))
+                      <a href="$(homeURL)$(cGIPath)$(backHome)$(d2wVarBase)" title="Return To Company/Facility Select">$(portalHome)</a>
+                  %endif
+                  %INCLUDE "FormatToPrint.icl"
+                  %INCLUDE "HelpPage.icl"
+              %endif
+          </tr>
+
+          @RtvFldDesc("YDEIN=$(federalEin)", "PRYDFL", "YDNAME", einName)
+          <tr><td><h2>$(einName)</h2></td></tr>
+      </table>
+
+      $(hrTagAttr)
+
+      <table $(contentTable)>
+          %ROW {
+              @Format_Date(V_XPDUE, "D", F_XDDUE)
+
+              <tr><td class="dsphdr">Federal EIN</td>
+                  <td class="dspalph">$(V_XDFEIN)</td></tr>
+              %if (V_XDSEIN != "")
+                  <tr><td class="dsphdr">State, SUI Or Local EIN</td>
+                      <td class="dspalph">$(V_XDSEIN)</td></tr>
+              %endif
+              <tr><td class="dsphdr">Tax ID</td>
+                  <td class="dspalph">$(V_XDTXID)</td></tr>
+              <tr><td class="dsphdr">Tax Type</td>
+                  @RtvFldDesc("XTTYPE=$(V_XDTYPE)", "PRTXTY", "XTDESC", taxTypeDesc)
+                  <td class="dspalph">$(taxTypeDesc)</td></tr>
+              <tr><td class="dsphdr">Check Date</td>
+                  @Format_Date(V_XDDATE, "D", F_XDDATE)
+                  <td class="dspalph">$(F_XDDATE)</td></tr>
+
+              %if ((V_XDTYPE == "5") || (V_XDTYPE == "6") || (V_XDTYPE == "15") || (V_XDTYPE == "16"))
+                  @Format_Nbr($(V_XDTWG1), F_XDTWG1, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">Gross SUI Wages</td>
+                      <td class="dspalph">$(F_XDTWG1)</td></tr>
+                  @Format_Nbr($(V_XDTWG2), F_XDTWG2, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">Employer SUI Basis Wages</td>
+                      <td class="dspalph">$(F_XDTWG2)</td></tr>
+                  @Format_Nbr($(V_XDTRT2), F_XDTRT2, "7", $(pctEditCode), "", "", "")
+                  <tr><td class="dsphdr">Employer Tax Rate</td>
+                      <td class="dspalph">$(F_XDTRT2)</td></tr>
+                  %if (V_XDTWG3 != ".00")
+                       @Format_Nbr($(V_XDTWG3), F_XDTWG3, "2", $(amtEditCode), "", "", "")
+                      <tr><td class="dsphdr">Employee SUI Basis Wages</td>
+                          <td class="dspalph">$(F_XDTWG3)</td></tr>
+                      @Format_Nbr($(V_XDTRT3), F_XDTRT3, "7", $(pctEditCode), "", "", "")
+                      <tr><td class="dsphdr">Employee Tax Rate</td>
+                          <td class="dspalph">$(F_XDTRT3)</td></tr>
+                  %endif
+              %elif ((V_XDTYPE == "2") || (V_XDTYPE == "12"))
+                  @Format_Nbr($(V_XDTWG1), F_XDTWG1, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">FICA HI Wages</td>
+                      <td class="dspalph">$(F_XDTWG1)</td></tr>
+              %else
+                  @Format_Nbr($(V_XDTWG1), F_XDTWG1, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">Taxable Wages</td>
+                      <td class="dspalph">$(F_XDTWG1)</td></tr>
+              %endif
+              %if ((V_XDTYPE == "2") || (V_XDTYPE == "12"))
+                  @Format_Nbr($(V_XDTWG2), F_XDTWG2, "2", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">FICA OASDI Wages</td>
+                      <td class="dspalph">$(F_XDTWG2)</td></tr>
+                  %if (V_XDTWG3 != ".00")
+                      @Format_Nbr($(V_XDTWG3), F_XDTWG3, "2", $(amtEditCode), "", "", "")
+                      <tr><td class="dsphdr">FICA OASDI Tips</td>
+                          <td class="dspalph">$(F_XDTWG3)</td></tr>
+                  %endif
+              %endif
+              %if(V_XDRAMT != ".00")
+                  <tr><td class="dsphdr">Employer Tax</td>
+                      @Format_Nbr($(V_XDRAMT), F_XDRAMT, "2", $(amtEditCode), "", "", "")
+                      <td class="dspalph">$(F_XDRAMT)</td></tr>
+              %endif
+              %if(V_XDEAMT != ".00")
+                  <tr><td class="dsphdr">Employee Tax</td>
+                      @Format_Nbr($(V_XDEAMT), F_XDEAMT, "2", $(amtEditCode), "", "", "")
+                      <td class="dspalph">$(F_XDEAMT)</td></tr>
+              %endif
+              %if(V_XDEIC != ".00")
+                  <tr><td class="dsphdr">Earned Income Credit</td>
+                      @Format_Nbr($(V_XDEIC), F_XDEIC, "2", $(amtEditCode), "", "", "")
+                      <td class="dspalph">$(F_XDEIC)</td></tr>
+              %endif
+              %if(V_XDDUE != "0")
+                  <tr><td class="dsphdr">Payment Due Date</td>
+                      @Format_Date(V_XDDUE, "D", F_XDDUE)
+                      <td class="dspalph">$(F_XDDUE)</td></tr>
+              %endif
+              %if(V_XDOPAM != ".00")
+                  <tr><td class="dsphdr">Override Payment Amount</td>
+                      @Format_Nbr($(V_XDOPAM), F_XDOPAM, "2", $(amtEditCode), "", "", "")
+                      <td class="dspalph">$(F_XDOPAM)</td></tr>
+              %endif
+              <tr><td class="dsphdr">Date Paid</td>
+                  @Format_Date(V_XDPAID, "D", F_XDPAID)
+                  <td class="dspalph">$(F_XDPAID)</td></tr>
+              %if(V_XDPAID != ".00")
+                  <tr><td class="dsphdr">Amount Paid</td>
+                      @Format_Nbr($(V_XDPAMT), F_XDPAMT, "2", $(amtEditCode), "", "", "")
+                      <td class="dspalph">$(F_XDPAMT)</td></tr>
+                  <tr><td class="dsphdr">Check Number</td>
+                      %if(V_XDCKNO != "0")
+                          <td class="dspalph">$(V_XDCKNO)</td></tr>
+                      %elif(V_XDEFT == "Y" && V_XDPAID != "0")
+                          <td class="dspalph">EFT</td></tr>
+                      %else
+                          <td class="dspalph">&nbsp;</td></tr>
+                      %endif
+                  <tr><td class="dsphdr">Bank Number</td>
+                          <td class="dspalph">$(V_XDBKNO)</td></tr>
+              %endif
+              %if (V_XDCMN1 != "")
+                  <tr><td class="dsphdr">Comment</td>
+                      <td class="dspalph">$(V_XDCMN1)</td></tr>
+              %endif
+              %if (V_XDCMN2 != "")
+                  <tr><td class="dsphdr">Comment 2</td>
+                      <td class="dspalph">$(V_XDCMN2)</td></tr>
+              %endif
+              %if((V_XDPAID == "0") || (V_XDPAID != "0" && V_XDSLCT != "N"))
+                  <tr><td class="dsphdr">Selected For Processing</td>
+                      @RtvFldDesc("FLTYPE='PAYSELECT' and FLVALU='$(V_XDSLCT)'", "SYFLAG", "FLDESC", syFlagDesc)
+                      <td class="dspalph">$(syFlagDesc)</td></tr>
+              %endif
+              %if(V_XDVDDT != "0")
+                  <tr><td class="dsphdr">Void Date</td>
+                      @Format_Date(V_XDVDDT, "D", F_XDVDDT)
+                      <td class="dspalph">$(F_XDVDDT)</td></tr>
+                  <tr><td class="dsphdr">Reissue Check</td>
+                      @RtvYNDesc($(V_XDREIS), fieldDesc)
+                      <td class="dspalph">$(syFlagDesc)</td></tr>
+              %endif
+
+          %}
+      </table>
+      $(hrTagAttr)
+  %}
+%}
+
+%FUNCTION(dtw_sql) PaymentDetail_Inquiry2 (IN CHAR(64)    profileHandle,
+                                         CHAR(2)     dataBaseID,
+                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+
+      <h3>Tax Liability Detail Distribution</h3>
+      <table $(contentTable)>
+          %if (sql_Record_Count != "0")
+              <tr>
+
+                  <th class="colhdr">Company/Facility</th>
+                  <th class="colhdr">Employer<br>Tax</th>
+                  <th class="colhdr">Employee<br>Tax</th>
+                  %if ((detailTaxType == "1") || (detailTaxType == "11"))
+                      <th class="colhdr">EIC</th>
+                  %endif
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+          %endif
+
+          %ROW{
+
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  @Format_HRCoFac(V_XSCOMP, V_XSFACL, "N", F_CoFac)
+                  <td class="colnmbr">$(F_CoFac)</td>
+                  @Format_Nbr($(V_XSRAMT), F_XSRAMT, "2", $(amtEditCode), "", "", "")
+                  <td class="colnmbr">$(F_XSRAMT)</td>
+                  @Format_Nbr($(V_XSEAMT), F_XSEAMT, "2", $(amtEditCode), "", "", "")
+                  <td class="colnmbr">$(F_XSEAMT)</td>
+                  %if ((V_XSTYPE == "1")  || (V_XDTYPE == "11"))
+                      @Format_Nbr($(V_XSEIC), F_XSEIC, "2", $(amtEditCode), "", "", "")
+                      <td class="colnmbr">$(F_XSEIC)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTestView.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}

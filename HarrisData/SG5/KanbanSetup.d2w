@@ -1,0 +1,301 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Kanban Setup                                                *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Kanban Setup"
+  d2wName                 = "KanbanSetup.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(fromPlant)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;turnaroundNumber=@dtw_rurlescseq(turnaroundNumber)&amp;maintenanceCode=D"
+  programName             = "HSIKBM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @KanbanUserView(profileHandle, dataBaseID, userPass, plantNumber, itemNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+	              %INCLUDE "NumEdit.icl"
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+                  function validate(chgForm) {
+                      if (document.Chg.policyCode.value =="" ||
+                          document.Chg.orderQuantity.value =="")
+                         {alert("$(reqFieldError)"); return false;}
+                      if (editNum(document.Chg.analystNumber, 7, 0) &&
+                          editNum(document.Chg.orderQuantity, 11, 0) &&
+                          editNum(document.Chg.orderPoint, 11, 0) &&
+                          editNum(document.Chg.numberContainers, 5, 0) &&
+                          editNum(document.Chg.vendorNumber, 7, 0))
+                          return true;
+                  }
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "KANBANSETUP")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, "Select * from HDIPLT ", stmtSQL)
+                              @dtw_concat(stmtSQL, "Where IPPLT = $(plantNumber) and IPITEM = '$(itemNumber)' " , stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+                                      CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+      @RtvFldDesc("IPPLT=$(plantNumber) and IPITEM='$(itemNumber)'", "HDIPLT", "IPPTYP", partType)
+      @RtvFldDesc("FLTYPE='PARTTYPE  ' AND FLVALU='$(partType)'", "SYFLAG", "FLDESC", partTypeDescription)
+
+      <table $(contentTable)>
+    	     <colgroup>
+    	         <col width="80%">
+    	         <col width="15%">
+            <tr><td align="justify"><h1>$(page_title)</h1></td>
+                <td class="toolbar">
+                    <a href="javascript:check(document.Chg)">$(acceptImageMed)</a>
+                    <a href="javascript:history.back()">$(cancelImageMed)</a>
+                    %INCLUDE "HelpPage.icl"
+                </td>
+            </tr>
+      </table>
+
+      <table $(contentTable)>
+          @Format_Header("Plant", $(plantName), $(plantNumber))
+          @Format_Header("Item", $(itemDescription), $(itemNumber))
+          @Format_Header("Part Type", $(partTypeDescription), $(partType))
+      </table>
+
+      $(hrTagAttr)
+
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "policyCode")
+                      %else
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@kbpc", "policyCode")          @dtw_assign(Err_IPKBPC, fieldValue)
+                          @DecatErr_Field("@@ctid", "containerID")         @dtw_assign(Err_IPCTID, fieldValue)
+                          @DecatErr_Field("@@bac@", "analystNumber")       @dtw_assign(Err_IPBAC, fieldValue)
+                          @DecatErr_Field("@@vend", "vendorNumber")        @dtw_assign(Err_IPVEND, fieldValue)
+                          @DecatErr_Field("@@kbdd", "documentDefinition")  @dtw_assign(Err_IPKBDD, fieldValue)
+                          @DecatErr_Field("@@foq@", "orderQuantity")       @dtw_assign(Err_IPFOQ, fieldValue)
+                          @DecatErr_Field("@@odpt", "orderPoint")          @dtw_assign(Err_IPODPT, fieldValue)
+                          @DecatErr_Field("@@cqty", "numberContainers")    @dtw_assign(Err_IPCQTY, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@kbpc")   @dtw_assign(V_IPKBPC, fieldValue)
+                      @Decat_Field("@@ctid")   @dtw_assign(V_IPCTID, fieldValue)
+                      @Decat_Field("@@bac@")   @dtw_assign(V_IPBAC, fieldValue)
+                      @Decat_Field("@@vend")   @dtw_assign(V_IPVEND, fieldValue)
+                      @Decat_Field("@@kbdd")   @dtw_assign(V_IPKBDD, fieldValue)
+                      @Decat_Field("@@foq@")   @dtw_assign(V_IPFOQ, fieldValue)
+                      @Decat_Field("@@odpt")   @dtw_assign(V_IPODPT, fieldValue)
+                      @Decat_Field("@@cqty")   @dtw_assign(V_IPCQTY, fieldValue)
+
+                      @dtw_assign(errFound, "")
+                  %else
+                      @dtw_assign(focusField, "policyCode")
+                  %endif
+
+                  @RtvFldDesc("FLTYPE='KANBANPLCY' and FLVALU='$(V_IPKBPC)'", "SYFLAG", "FLDESC", kbpcDesc)
+                  @SetTextOvr(Err_IPKBPC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Kanban Policy Code</span></td>
+                      <td class="inputalph"><input name="policyCode" type="text" value="$(V_IPKBPC)" size="1" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=KANBANPLCY&amp;flagSrchHdr=@dtw_rurlescseq("Kanban Policy Code")&amp;docName=Chg&amp;fldName=policyCode&amp;fldDesc=policyCodeDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a>
+                      <input disabled name="policyCodeDesc" value="$(kbpcDesc)" type="text" size="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_IPKBPC)
+    	
+                  @RtvFldDesc("CTCTID='$(V_IPCTID)'", "HDCNTM", "CTDESC", contDesc)   	
+                  @SetTextOvr(Err_IPCTID)
+                  <tr><td class="dsphdr"><span $(textOvr)>Container ID Code</span></td>
+                      <td class="inputalph"><input name="containerID" type="text" value="$(V_IPCTID)" size="15" maxlength="15"><a href="$(homeURL)$(cGIPath)ContainerIDSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=containerID&amp;fldDesc=containerDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="containerDesc" value="$(contDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IPCTID)
+
+                  @RtvFldDesc("BMBUYR=$(V_IPBAC)", "HDBUYR", "BMBNA1", fieldDesc)    	   		
+                  @SetTextOvr(Err_IPBAC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Analyst Number</span></td>
+                      <td class="inputnmbr"><input name="analystNumber" type="text" value="$(V_IPBAC)" size="7" maxlength="7"><a href="$(homeURL)$(cGIPath)BuyerSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=analystNumber&amp;fldDesc=analystName&amp;buyerAnalyst=Analyst" onclick="$(searchWinVar)"> $(searchImage) </a><input name="analystName" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_IPBAC)
+
+                  %if (partType == "P")
+                      @RtvFldDesc("VMVEND=$(V_IPVEND)", "HDVEND", "VMVNA1", fieldDesc)   	
+                      @SetTextOvr(Err_IPVEND)
+                      <tr><td class="dsphdr"><span $(textOvr)>Vendor Number</span></td>
+                          <td class="inputnmbr"><input name="vendorNumber" type="text" value="$(V_IPVEND)" size="7" maxlength="7"><a href="$(homeURL)$(phpPath)VendorSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=vendorNumber&amp;fldDesc=vendorName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="vendorName" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                      </tr>
+                      @DspErrMsg(Err_IPVEND)
+
+                      <tr><td><input type="hidden" name="documentDefinition" value="P"></td></tr>
+                  %else
+                      <tr><td><input type="hidden" name="vendorNumber" value="$(V_IPVEND)"></td></tr>
+    	
+                      @RtvFldDesc("FLTYPE='KANBANDOCD' and FLVALU='$(V_IPKBDD)'", "SYFLAG", "FLDESC", kbddDesc)
+                      @SetTextOvr(Err_IPKBDD)
+                      <tr><td class="dsphdr"><span $(textOvr)>Kanban Document Defn</span></td>
+                          <td class="inputalph"><input name="documentDefinition" type="text" value="$(V_IPKBDD)" size="1" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=KANBANDOCD&amp;flagSrchHdr=@dtw_rurlescseq("Kanban Document Defn")&amp;docName=Chg&amp;fldName=documentDefinition&amp;fldDesc=documentDefinitionDesc" onclick="$(searchWinVar)"> $(searchImage) </a>
+                          <input disabled name="documentDefinitionDesc" value="$(kbddDesc)" type="text" size="30"></td>
+                      </tr>
+                      @DspErrMsg(Err_IPKBDD)
+                  %endif
+    	   		
+                  @SetTextOvr(Err_IPFOQ)
+                  <tr><td class="dsphdr"><span $(textOvr)>Fixed Order Quantity</span></td>
+                      <td class="inputnmbr"><input name="orderQuantity" type="text" value="$(V_IPFOQ)" size="11" maxlength="11"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_IPFOQ)
+    	   		
+                  @SetTextOvr(Err_IPODPT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Kanban Order Point</span></td>
+                      <td class="inputnmbr"><input name="orderPoint" type="text" value="$(V_IPODPT)" size="11" maxlength="11"></td>
+                  </tr>
+                  @DspErrMsg(Err_IPODPT)
+    	   		
+                  @SetTextOvr(Err_IPCQTY)
+                  <tr><td class="dsphdr"><span $(textOvr)>Number Of Containers</span></td>
+                      <td class="inputnmbr"><input name="numberContainers" type="text" value="$(V_IPCQTY)" size="5" maxlength="5"></td>
+                  </tr>
+                  @DspErrMsg(Err_IPCQTY)
+    	
+              %}	
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+
+      <table $(contentTable)>
+            <tr>
+                <td>
+                    <a href="javascript:check(document.Chg)">$(acceptImageMed)</a>
+                    <a href="javascript:history.back()">$(cancelImageMed)</a>
+                </td>
+            </tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(10)    progCall,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HSIKBM_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(itemNumber)
+  @dtw_mUPPERCASE(policyCode)
+  @dtw_mUPPERCASE(containerID)
+  @dtw_mUPPERCASE(documentDefinition)
+  @dtw_assign(plantNumber,@dtw_rstrip(plantNumber))
+  @dtw_assign(analystNumber,@dtw_rstrip(analystNumber))
+  @dtw_assign(vendorNumber,@dtw_rstrip(vendorNumber))
+  @dtw_assign(orderQuantity,@dtw_rstrip(orderQuantity))
+  @dtw_assign(orderPoint,@dtw_rstrip(orderPoint))
+  @dtw_assign(numberContainers,@dtw_rstrip(numberContainers))
+
+  @dtw_assign(progCall, "Setup")
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@plt@", plantNumber)
+  @Concat_Field("@@item", itemNumber)
+  @Concat_Field("@@kbpc", policyCode)
+  @Concat_Field("@@ctid", containerID)
+  @Concat_Field("@@bac@", analystNumber)
+  @Concat_Field("@@vend", vendorNumber)
+  @Concat_Field("@@kbdd", documentDefinition)
+  @Concat_Field("@@foq@", orderQuantity)
+  @Concat_Field("@@odpt", orderPoint)
+  @Concat_Field("@@cqty", numberContainers)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, progCall, edtVar, errVar)
+
+  @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+  %if (errFound == "")
+      @Format_ConfMsg_Desc("C", $(itemDescription), $(itemNumber), "", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)Kanban.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(fromPlant)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %elif (maintenanceCode == "D")
+      @DecatErr_Field("@@plt@", "plantNumber")
+      @Format_ConfMsg_Desc("", $(itemDescription), $(itemNumber), "<br>$(fieldValue)", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)Kanban.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(fromPlant)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

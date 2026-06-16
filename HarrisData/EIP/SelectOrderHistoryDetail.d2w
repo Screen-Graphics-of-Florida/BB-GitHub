@@ -1,0 +1,468 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Select Order History Detail                                 *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Select Order History"
+  d2wName                 = "SelectOrderHistoryDetail.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;salesmanNumber=@dtw_rurlescseq(salesmanNumber)&amp;salesmanName=@dtw_rurlescseq(salesmanName)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;orderSequence=@dtw_rurlescseq(orderSequence)&amp;noMenu=@dtw_rurlescseq(noMenu)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  userDetailCount         = ""
+  userDetailFields        = ""
+  multShipToCustomer      = ""
+  custType                = "B"
+  releaseNumber           = "000"
+  tabHistory              = "Y"
+  tabID                   = "ITEMDETAIL"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Remove_User_Field (IN CHAR(100) fieldSeq)
+{
+  @dtw_assign(z, "1")
+  %while((@dtw_tb_rgetv(userDetailTable, z, "1") != "$(fieldSeq)") && (z < userDetailCount))
+      {@dtw_add(z, "1", z)%}
+  %if (@dtw_tb_rgetv(userDetailTable, z, "1") == "$(fieldSeq)")
+       @dtw_tb_deleterow(userDetailTable, z, "1")
+       @dtw_subtract(userDetailCount, "1", userDetailCount)
+  %endif
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (fromd2wName == "" && formatToPrint == "" && portalAccess !="N" && noMenu !="Y")
+                          @dtw_assign(pageID, "SELECTORDERHISTORY")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " OEORDH ", fileSQL)
+                          @dtw_concat(selectSQL, "DHORD#=$(orderNumber) and DHSEQ#=$(orderSequence) and DHORL#=$(lineNumber) and DHBLN#=$(releaseNumber)", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By DHORL#", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Select_Order_Detail_History(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Select_Order_Detail_History (IN CHAR(64)    profileHandle,
+                                                   CHAR(2)     dataBaseID,
+                                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      %ROW {
+          %INCLUDE "SelectOrderTabs.icl"
+          %INCLUDE "OrderEntryRetInfo.icl"
+          @RtvFldDesc("DHORD#=$(orderNumber) and DHSEQ#=$(orderSequence) and DHORL#<$(lineNumber)", "OEORDH", "char(max(DHORL#))", prevLine)
+          @RtvFldDesc("DHORD#=$(orderNumber) and DHSEQ#=$(orderSequence) and DHORL#>$(lineNumber)", "OEORDH", "char(min(DHORL#))", nextLine)
+          <table $(contentTable)>
+              %if (orderSequence > "0")
+                  @Format_Nbr(orderSequence, F_orderSequence, "0", "3", "Y", "", "")
+                  <tr>
+    		       <td class="dsphdr">Shipment</td>
+                      <td class="dspnmbr">$(F_orderSequence)</td>
+                  </tr>
+              %endif
+              <tr>
+		   <td class="dsphdr">Line Number</td>
+                  <td class="dspnmbr">
+                  %if (prevLine > "0")
+                      @dtw_assign(previousImageTitle, "View Previous Line Number $(prevLine)")
+                      @RtvFldDesc("DHORD#=$(orderNumber) and DHSEQ#=$(orderSequence) and DHORL#=$(prevLine)", "OEORDH", "char(min(DHBLN#))", prevRelease)
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;lineNumber=@dtw_rurlescseq(prevLine)&amp;releaseNumber=@dtw_rurlescseq(prevRelease)">$(previousImageSml)</a>
+                  %endif
+                      $(V_DHORL#)
+                  %if (nextLine > "0")
+                      @dtw_assign(nextImageTitle, "View Next Line Number $(nextLine)")
+                      @RtvFldDesc("DHORD#=$(orderNumber) and DHSEQ#=$(orderSequence) and DHORL#=$(nextLine)", "OEORDH", "char(min(DHBLN#))", nextRelease)
+                      <a href="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;lineNumber=@dtw_rurlescseq(nextLine)&amp;releaseNumber=@dtw_rurlescseq(nextRelease)">$(nextImageSml)</a>
+                  %endif
+                  </td>
+              </tr>
+
+              @User_Detail_Query(userProfile, H1ORTY, V_DHOREC, userDetailTable)
+              @dtw_tb_rows(userDetailTable, userDetailCount)
+              @dtw_assign(recCnt, "1")
+              %while(recCnt <= userDetailCount) {
+                  @dtw_tb_getv(userDetailTable, recCnt, "1", V_UMFSEQ)
+                  %while(@dtw_rlength(V_UMFSEQ) != "3") {@dtw_insert("0", V_UMFSEQ, V_UMFSEQ)%}
+
+                      %if (V_UMFSEQ == "010")
+                          <tr>
+                              <td class="dsphdr">Warehouse Number</td>
+                              @RtvFldDesc("WHWHS=$(V_DHWH)", "HDWHSM", "WHWHNM", warehouseName)
+                              @Format_Code(V_DHWH, F_DHWH)
+                              <td class="dspalph">$(warehouseName)</td>
+                              <td class="dspalph">$(F_DHWH)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "020")
+                          <tr>
+     		               <td class="dsphdr">Item Number</td>
+                              @Format_Code(V_DHITEM, F_DHITEM)
+                              <td class="dspalph">$(V_DHIMDS)</td>
+                              <td class="dspalph">$(F_DHITEM)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "030")
+                          <tr>@Format_Nbr(V_DHQORD, F_DHQORD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+    		               <td class="dsphdr">Quantity Ordered</td>
+                              <td class="dspnmbr">$(F_DHQORD)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "040")
+                          <tr>@Format_Date(V_DHRQDT, "D", F_DHRQDT)
+                              <td class="dsphdr">Required Date</td>
+                              <td class="dspnmbr">$(F_DHRQDT)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "050")
+                          <tr>@RtvFldDesc("FLTYPE='OEENTCODE' AND FLVALU='$(V_DHOREC)'", "SYFLAG", "FLDESC", fieldDesc)
+    		               <td class="dsphdr">Entry Code</td>
+    		               <td class="dspalph">$(fieldDesc)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "060")
+                          <tr>@Format_Nbr(V_DHSLPR, F_DHSLPR, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+  		               <td class="dsphdr">Unit Price</td>
+                              <td class="dspnmbr">$(F_DHSLPR)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "070")
+                          <tr>@dtw_assign(F_DHLNDS, "@dtw_rformat(@dtw_rmultiply(V_DHLNDS, "100"),"","4")")
+                              <td class="dsphdr">Discount Percent</td>
+                              <td class="dspnmbr">$(F_DHLNDS)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "080")
+                          <tr>
+      		               <td class="dsphdr">Description</td>
+                              <td class="dspalph">$(V_DHIMDS)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "090")
+                          <tr>@dtw_assign(F_DHCMPC, "@dtw_rformat(@dtw_rmultiply(V_DHCMPC, "100"),"","4")")
+        		       <td class="dsphdr">Commission Percent</td>
+                              <td class="dspnmbr">$(F_DHCMPC)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "100")
+                          <tr>@Format_Nbr(V_DHCOST, F_DHCOST, $(cstNbrDec), $(amtEditCode), "Y", "", "")
+        		       <td class="dsphdr">Unit Cost</td>
+                              <td class="dspnmbr">$(F_DHCOST)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "110")
+                          <tr>
+                              @RtvFldDesc("UMUOM='$(V_DHSTUM)'", "HDUOM", "UMUMLD", fieldDesc)
+                              @Format_Code(V_DHSTUM, F_DHSTUM)
+        		       <td class="dsphdr">Stocking U/M</td>
+                              <td class="dspalph">$(fieldDesc)</td>
+                              <td class="dspalph">$(F_DHSTUM)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "120")
+                          <tr>
+                              @RtvFldDesc("UMUOM='$(V_DHPRUM)'", "HDUOM", "UMUMLD", fieldDesc)
+                              @Format_Code(V_DHPRUM, F_DHPRUM)
+        		       <td class="dsphdr">Pricing U/M</td>
+                              <td class="dspalph">$(fieldDesc)</td>
+                              <td class="dspalph">$(F_DHPRUM)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "130")
+                          <tr>
+                              @RtvFldDesc("PCPCLS='$(V_DHPCLS)'", "HDPCLS", "PCPCDS", fieldDesc)
+                              @Format_Code(V_DHPCLS, F_DHPCLS)
+        		       <td class="dsphdr">Product Class</td>
+                              <td class="dspalph">$(fieldDesc)</td>
+                              <td class="dspalph">$(F_DHPCLS)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "140")
+                          <tr>
+                              @RtvFldDesc("FLTYPE='BACKORDER' and FLVALU='$(V_DHBOAL)'", "SYFLAG", "FLDESC", allowBackordersDesc)
+                              <td class="dsphdr">Allow Backorders</td>
+                              <td class="dspalph">$(allowBackordersDesc)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "150")
+                          <tr>
+                              @RtvYNDesc($(V_DHTAXC), fieldDesc)
+                              <td class="dsphdr">Taxable</td>
+                              <td class="dspalph">$(fieldDesc)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "160")
+                          <tr>
+                              @RtvYNDesc($(V_DHGNPO), fieldDesc)
+                              <td class="dsphdr">P/O</td>
+                              <td class="dspalph">$(fieldDesc)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "180")
+                          <tr>
+        		       <td class="dsphdr">Customer Item Number</td>
+                              <td class="dspalph">$(V_DHORCS)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "200" && userDtlAlphaDesc1 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlAlphaDesc1)</td>
+                              <td class="dspalph">$(V_DHUDA1)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "210" && userDtlAlphaDesc2 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlAlphaDesc2)</td>
+                              <td class="dspalph">$(V_DHUDA2)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "220"  && userDtlAlphaDesc3 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlAlphaDesc3)</td>
+                              <td class="dspalph">$(V_DHUDA3)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "221"  && userDtlAlphaDesc4 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlAlphaDesc4)</td>
+                              <td class="dspalph">$(V_DHUDA4)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "222"  && userDtlAlphaDesc5 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlAlphaDesc5)</td>
+                              <td class="dspalph">$(V_DHUDA5)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "223"  && userDtlAlphaDesc6 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlAlphaDesc6)</td>
+                              <td class="dspalph">$(V_DHUDA6)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "224"  && userDtlAlphaDesc7 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlAlphaDesc7)</td>
+                              <td class="dspalph">$(V_DHUDA7)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "225"  && userDtlAlphaDesc8 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlAlphaDesc8)</td>
+                              <td class="dspalph">$(V_DHUDA8)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "226"  && userDtlAlphaDesc9 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlAlphaDesc9)</td>
+                              <td class="dspalph">$(V_DHUDA9)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "227"  && userDtlAlphaDesc0 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlAlphaDesc0)</td>
+                              <td class="dspalph">$(V_DHUDA0)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "230" && userDtlNumDesc1 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlNumDesc1)</td>
+                              <td class="dspnmbr">$(V_DHUDN1)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "240" && userDtlNumDesc2 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlNumDesc2)</td>
+                              <td class="dspnmbr">$(V_DHUDN2)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "250" && userDtlNumDesc3 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlNumDesc3)</td>
+                              <td class="dspnmbr">$(V_DHUDN3)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "251" && userDtlNumDesc4 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlNumDesc4)</td>
+                              <td class="dspnmbr">$(V_DHUDN4)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "252" && userDtlNumDesc5 !="")
+                          <tr>
+        		       <td class="dsphdr">$(userDtlNumDesc5)</td>
+                              <td class="dspnmbr">$(V_DHUDN5)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "260")
+                          <tr>
+                              @RtvFldDesc("PGPGRP='$(V_DHPGRP)'", "HDPRGM", "PGDESC", fieldDesc)
+                              @Format_Code(V_DHPGRP, F_DHPGRP)
+        		       <td class="dsphdr">Product Group</td>
+                              <td class="dspalph">$(fieldDesc)</td>
+                              <td class="dspalph">$(F_DHPGRP)</td>
+                          </tr>
+
+                      %elif (V_UMFSEQ == "270")
+                          @Format_Code(V_DHSTOR, F_DHSTOR)
+                          @RtvFldDesc("COSHTO=$(V_DHSHTO) and COSTOR='$(V_DHSTOR)'", "HDCSTR", "CONAME", fieldDesc)
+                          <tr><td class="dsphdr">Store</td>
+                              <td class="dspalph">$(fieldDesc)</td>
+                              <td class="dspalph">$(F_DHSTOR)</td>
+                          </tr>
+                      %endif
+                  @dtw_add(recCnt, "1", recCnt)
+              %}
+
+              %if (V_DHBLKT == "N" && multShipTo == "Y")
+                  <tr>
+                      @RtvFldDesc("CMCUST=$(V_DHSHTO)", "HDCUST", "CMCNA1", fieldDesc)
+                      @Format_Code(V_DHSHTO, F_DHSHTO)
+        	       <td class="dsphdr">Ship-To</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DHSHTO)</td>
+                  </tr>
+              %endif
+
+              %if (V_DHBLKT == "N" && multShipVia == "Y")
+                  <tr>
+                      @RtvFldDesc("SVSVSV='$(V_DHSVSV)'", "HDSHPV", "SVSVDS", fieldDesc)
+                      @Format_Code(V_DHSVSV, F_DHSVSV)
+        	       <td class="dsphdr">Ship Via</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_DHSVSV)</td>
+                  </tr>
+              %endif
+ 
+  			  @dtw_assign(dspMaxRows, "9999")
+              %INCLUDE "stmtSQLClear.icl"
+              @dtw_concat(stmtSQL, " Select SYUDFM.*, Coalesce(OUFLDD,'01-01-0001') as OUFLDD, Coalesce(OUFLDR,0) as OUFLDR, Coalesce(OUFLDV,' ') as OUFLDV ", stmtSQL)
+              @dtw_concat(fileSQL, " SYUDFM ", fileSQL)
+              @dtw_concat(fileSQL, " left join OEOUDH on UFFLDN=HUFLDN and HUORD=$(orderNumber) and HUSEQ=$(orderSequence) and HULINE=$(lineNumber)", fileSQL)
+              @dtw_concat(selectSQL, "UFFILN='OEOUDT' and (not exists (Select * From SYUDCC ", selectSQL)
+              @dtw_concat(selectSQL, "Where CCFILN=UFFILN and CCFLDN=UFFLDN) or ", selectSQL)
+              @dtw_concat(selectSQL, "(exists (Select * From SYUDCC Where CCFILN=UFFILN and CCFLDN=UFFLDN and  ", selectSQL)
+              @dtw_concat(selectSQL, "(CCCUST>0 and CCCUST=$(H1SHTO) or CCPCLS<>' ' and CCPCLS='$(V_DHPCLS)')))) ", selectSQL)
+              %INCLUDE "stmtSQLSelect.icl"
+              @dtw_concat(stmtSQL, " Order By UFFSEQ ", stmtSQL)
+              %INCLUDE "stmtSQLEnd.icl"
+              %INCLUDE "stmtSQLTotalRows.icl"
+              @Select_Order_User_Defined(profileHandle, dataBaseID, stmtSQL)
+
+          %}
+          </table>
+      %INCLUDE "EndTabs.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_sql) Select_Order_User_Defined (IN CHAR(64)    profileHandle,
+				                                 CHAR(2)     dataBaseID,
+                                                 CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %ROW{
+	       <tr><td class="dsphdr">$(V_UFDESC)</td>
+              %if (V_UFTYPE == "A")
+                  %if (V_UFFFMT == "U")
+                      <td class="dspalph"><a href="$(V_HUFLDV)" target=_blank>$(V_HUFLDV)</a></td>
+                  %elif (V_UFFFMT == "E")
+                      <td class="dspalph"><a href="mailto:$(V_HUFLDV)" target=_blank title="Click here to send e-mail">$(V_HUFLDV)</a></td>
+                  %else
+                      <td class="dspalph">$(V_HUFLDV)
+                  %endif
+              %elif (V_UFTYPE == "C")
+                  %if (formatToPrint != "Y")
+                      <td><textarea name="$(V_UFFLDN)" readonly ROWS=$(V_UFBOXS) COLS=60 >$(V_HUFLDV)</textarea>
+                  %else
+                      @dtw_chartohex(V_HUFLDV, hexValue)
+                      @dtw_length(hexValue, fldLength)
+                      @dtw_assign(printRows, "1")
+                      @dtw_assign(x, "1")
+                      %while(x <= fldLength){
+                          @dtw_pos("0D25", hexValue, x, y)
+                          %if (y > "0")
+                              @dtw_add(printRows, "1", printRows)
+                              @dtw_add(y, "4", x)
+                          %else
+                              @dtw_add(fldLength, "1", x)
+                          %endif
+                      %}
+                      <td><textarea name="$(V_UFFLDN)" readonly ROWS=$(printRows) COLS=60 WRAP="hard">$(V_HUFLDV)</textarea>
+                  %endif
+              %elif (V_UFTYPE == "N")
+                  @dtw_add(V_UFSIZE, V_UFDECM, V_UFSIZE)
+                  %if (V_UFDECM != "0")
+                      @dtw_add(V_UFSIZE, "2", V_UFSIZE)
+                  %endif
+                  @dtw_assign(Precision, @dtw_radd(V_UFSIZE, V_UFDECM))
+                  @dtw_format(V_HUFLDR, V_UFSIZE, V_UFDECM, "", "", Precision, V_HUFLDR)
+                  %if (V_UFFFMT == "P")
+                      @EditPhoneNumber(V_HUFLDR)
+                  %endif
+                  <td class="dspnmbr">$(V_HUFLDR)
+              %elif (V_UFTYPE == "D")
+                  @Date_FromISO_ToCYMD(V_HUFLDD, F_CYMD)
+                  @Format_Date(F_CYMD, "H", F_HUFLDD)
+                  <td class="dspnmbr">$(F_HUFLDD)
+              %endif
+          </td></tr>
+      %}
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}

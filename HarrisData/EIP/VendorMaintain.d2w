@@ -1,0 +1,665 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Vendor Maintenance                                          *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "VendorMaintain.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%INCLUDE "APControl$(dataBaseID).icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%if (V_HDMCRL == "0")
+    @dtw_assign(V_CPPRMC, "N")
+%endif
+
+%Define {
+  page_title              = "Vendor Maintenance"
+  d2wName                 = "VendorMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromSel=@dtw_rurlescseq(fromSel)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;vendorNumber=@dtw_rurlescseq(vendorNumber)&amp;vendorName=@dtw_rurlescseq(vendorName)&amp;maintenanceCode=D"
+  programName             = "HHDVDU"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %if (maintenanceCode == "A")
+      @dtw_assign(userPass, "Y")
+  %else
+      @VendorUserView(profileHandle, dataBaseID, userPass, vendorNumber)
+  %endif
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "CheckEnterChg.icl"
+                  %INCLUDE "Menu.js"
+                  function validate(chgForm) {
+                      if (document.Chg.vendorNumber.value ==""
+                          || document.Chg.vendorName.value ==""
+                          || document.Chg.addressLineOne.value ==""
+                          || document.Chg.city.value ==""
+                          %if (V_HDFORN == "N")
+                              || document.Chg.state.value ==""
+                              || document.Chg.zip.value ==""
+                          %endif
+                          || document.Chg.termsCode.value ==""
+                          || document.Chg.vendorType.value ==""
+                          )
+                             {alert("$(reqFieldError)"); return false;}
+                      if (editNum(document.Chg.vendorNumber, 7, 0) &&
+                          editNum(document.Chg.phoneNumber, 11, 0) &&
+                          editNum(document.Chg.discountPercent, 3, 2) &&
+                          editNum(document.Chg.accountNumber, 4, 0) &&
+                          editNum(document.Chg.subaccountNumber, 4, 0) &&
+                          editNum(document.Chg.remitToVendor, 7, 0) &&
+                          editNum(document.Chg.leadTime, 3, 0) &&
+                          editNum(document.Chg.minimumOrderQuantity, 9, 4) &&
+                          editNum(document.Chg.minimumValuePerOrder, 8, 5) &&
+                          editNum(document.Chg.minimumOrderWeight, 5, 2) &&
+			  editdate(document.Chg.dateEstablished) &&
+                          editNum(document.Chg.guaranteedForwardRate, 3, 0))
+                          return true;
+                  }
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+                  %INCLUDE "numedit.icl"
+		  %INCLUDE "dateedit.icl"
+		  %INCLUDE "calendar.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "VENDORMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, " Select * From HDVEND", stmtSQL)
+                              @dtw_concat(stmtSQL, " Where VMVEND = $(vendorNumber) ", stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (fromSel == "Y")
+          @dtw_assign(backURL, "$(homeURL)$(cGIPath)VendorSelect.d2w/REPORT$(d2wVarBase)&amp;vendorNumber=@dtw_rurlescseq(vendorNumber)&amp;vendorName=@dtw_rurlescseq(vendorName)")
+      %else
+          @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+          %if (backURL == "")
+              @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=162")
+          %endif
+      %endif
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || maintenanceCode == "A")
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "vendorNumber")
+                      %else
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @dtw_assign(focusField, "")
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@vend", "vendorNumber")          @dtw_assign(Err_VMVEND, fieldValue)
+                          @DecatErr_Field("@@vna1", "vendorName")            @dtw_assign(Err_VMVNA1, fieldValue)
+                          @DecatErr_Field("@@vna2", "addressLineOne")        @dtw_assign(Err_VMVNA2, fieldValue)
+                          @DecatErr_Field("@@vna3", "addressLineTwo")        @dtw_assign(Err_VMVNA3, fieldValue)
+                          @DecatErr_Field("@@vna4", "addressLineThree")      @dtw_assign(Err_VMVNA4, fieldValue)
+                          @DecatErr_Field("@@vcty", "city")                  @dtw_assign(Err_VMVCTY, fieldValue)
+                          @DecatErr_Field("@@st@@", "state")                 @dtw_assign(Err_VMST,   fieldValue)
+                          @DecatErr_Field("@@zip@", "zip")                   @dtw_assign(Err_VMZIP,  fieldValue)
+                          @DecatErr_Field("@@ctry", "country")               @dtw_assign(Err_VMCTRY, fieldValue)
+                          @DecatErr_Field("@@phon", "phoneNumber")           @dtw_assign(Err_VMPHON, fieldValue)
+                          @DecatErr_Field("@@alph", "alphaSequence")         @dtw_assign(Err_VMALPH, fieldValue)
+                          @DecatErr_Field("@@vdsc", "discountPercent")       @dtw_assign(Err_VMVDSC, fieldValue)
+                          @DecatErr_Field("@@t99@", "ten99Code")             @dtw_assign(Err_VMT99,  fieldValue)
+                          @DecatErr_Field("@@fdid", "federalIDNumber")       @dtw_assign(Err_VMFDID, fieldValue)
+                          @DecatErr_Field("@@fdty", "federalIDType")         @dtw_assign(Err_VMFDTY, fieldValue)
+                          @DecatErr_Field("@@ptrm", "termsCode")             @dtw_assign(Err_VMPTRM, fieldValue)
+                          @DecatErr_Field("@@acct", "accountNumber")         @dtw_assign(Err_VMACCT, fieldValue)
+                          @DecatErr_Field("@@sub@", "subaccountNumber")      @dtw_assign(Err_VMSUB,  fieldValue)
+                          @DecatErr_Field("@@rtvd", "remitToVendor")         @dtw_assign(Err_VMRTVD, fieldValue)
+                          @DecatErr_Field("@@vtyp", "vendorType")            @dtw_assign(Err_VMVTYP, fieldValue)
+                          @DecatErr_Field("@@vsts", "vendorStatus")          @dtw_assign(Err_VMVSTS, fieldValue)
+                          @DecatErr_Field("@@svsv", "shipVia")               @dtw_assign(Err_VMSVSV, fieldValue)
+                          @DecatErr_Field("@@fobc", "fOBCode")               @dtw_assign(Err_VMFOBC, fieldValue)
+                          @DecatErr_Field("@@ltme", "leadTime")              @dtw_assign(Err_VMLTME, fieldValue)
+                          @DecatErr_Field("@@moq@", "minimumOrderQuantity")  @dtw_assign(Err_VMMOQ,  fieldValue)
+                          @DecatErr_Field("@@mpa@", "minimumValuePerOrder")  @dtw_assign(Err_VMMPA,  fieldValue)
+                          @DecatErr_Field("@@mow@", "minimumOrderWeight")    @dtw_assign(Err_VMMOW,  fieldValue)
+                          @DecatErr_Field("@@mwrn", "belowMinimumWarning")   @dtw_assign(Err_VMMWRN, fieldValue)
+                          @DecatErr_Field("@@acvi", "autoCreateVendorItem")  @dtw_assign(Err_VMACVI, fieldValue)
+                          @DecatErr_Field("@@curt", "currencyType")          @dtw_assign(Err_VMCURT, fieldValue)
+                          @DecatErr_Field("@@gnte", "guaranteedForwardRate") @dtw_assign(Err_VMGNTE, fieldValue)
+                          @DecatErr_Field("@@udf1", "userDefinedFieldOne")   @dtw_assign(Err_VMUDF1, fieldValue)
+                          @DecatErr_Field("@@udf2", "userDefinedFieldTwo")   @dtw_assign(Err_VMUDF2, fieldValue)
+                          @DecatErr_Field("@@udf3", "userDefinedFieldThree") @dtw_assign(Err_VMUDF3, fieldValue)
+                          @DecatErr_Field("@@udf4", "userDefinedFieldFour")  @dtw_assign(Err_VMUDF4, fieldValue)
+                          @DecatErr_Field("@@udf5", "userDefinedFieldFive")  @dtw_assign(Err_VMUDF5, fieldValue)
+                          @DecatErr_Field("@@edat", "dateEstablished")       @dtw_assign(Err_VMEDAT, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@vend")   @dtw_assign(V_VMVEND, fieldValue)
+                      @Decat_Field("@@vna1")   @dtw_assign(V_VMVNA1, fieldValue)
+                      @Decat_Field("@@vna2")   @dtw_assign(V_VMVNA2, fieldValue)
+                      @Decat_Field("@@vna3")   @dtw_assign(V_VMVNA3, fieldValue)
+                      @Decat_Field("@@vna4")   @dtw_assign(V_VMVNA4, fieldValue)
+                      @Decat_Field("@@vcty")   @dtw_assign(V_VMVCTY, fieldValue)
+                      @Decat_Field("@@st@@")   @dtw_assign(V_VMST,   fieldValue)
+                      @Decat_Field("@@zip@")   @dtw_assign(V_VMZIP,  fieldValue)
+                      @Decat_Field("@@ctry")   @dtw_assign(V_VMCTRY, fieldValue)
+                      @Decat_Field("@@phon")   @dtw_assign(V_VMPHON, fieldValue)
+                      @Decat_Field("@@alph")   @dtw_assign(V_VMALPH, fieldValue)
+                      @Decat_Field("@@vdsc")   @dtw_assign(V_VMVDSC, fieldValue)
+                      @Decat_Field("@@t99@")   @dtw_assign(V_VMT99,  fieldValue)
+                      @Decat_Field("@@fdid")   @dtw_assign(V_VMFDID, fieldValue)
+                      @Decat_Field("@@fdty")   @dtw_assign(V_VMFDTY, fieldValue)
+                      @Decat_Field("@@ptrm")   @dtw_assign(V_VMPTRM, fieldValue)
+                      @Decat_Field("@@acct")   @dtw_assign(V_VMACCT, fieldValue)
+                      @Decat_Field("@@sub@")   @dtw_assign(V_VMSUB,  fieldValue)
+                      @Decat_Field("@@rtvd")   @dtw_assign(V_VMRTVD, fieldValue)
+                      @Decat_Field("@@vtyp")   @dtw_assign(V_VMVTYP, fieldValue)
+                      @Decat_Field("@@vsts")   @dtw_assign(V_VMVSTS, fieldValue)
+                      @Decat_Field("@@svsv")   @dtw_assign(V_VMSVSV, fieldValue)
+                      @Decat_Field("@@fobc")   @dtw_assign(V_VMFOBC, fieldValue)
+                      @Decat_Field("@@ltme")   @dtw_assign(V_VMLTME, fieldValue)
+                      @Decat_Field("@@moq@")   @dtw_assign(V_VMMOQ,  fieldValue)
+                      @Decat_Field("@@mpa@")   @dtw_assign(V_VMMPA,  fieldValue)
+                      @Decat_Field("@@mow@")   @dtw_assign(V_VMMOW,  fieldValue)
+                      @Decat_Field("@@mwrn")   @dtw_assign(V_VMMWRN, fieldValue)
+                      @Decat_Field("@@acvi")   @dtw_assign(V_VMACVI, fieldValue)
+                      @Decat_Field("@@curt")   @dtw_assign(V_VMCURT, fieldValue)
+                      @Decat_Field("@@gnte")   @dtw_assign(V_VMGNTE, fieldValue)
+                      @Decat_Field("@@udf1")   @dtw_assign(V_VMUDF1, fieldValue)
+                      @Decat_Field("@@udf2")   @dtw_assign(V_VMUDF2, fieldValue)
+                      @Decat_Field("@@udf3")   @dtw_assign(V_VMUDF3, fieldValue)
+                      @Decat_Field("@@udf4")   @dtw_assign(V_VMUDF4, fieldValue)
+                      @Decat_Field("@@udf5")   @dtw_assign(V_VMUDF5, fieldValue)
+                      @Decat_Field("@@edat")   @dtw_assign(V_VMEDAT, fieldValue)
+		      
+                      %if (errFound == "" && maintenanceCode == "A")
+                          @dtw_assign(V_VMVDSC, @dtw_rformat(@dtw_rmultiply(V_CPDSPT, "100"),"","2"))
+                          @dtw_assign(V_VMT99, V_CP1099)
+                          @dtw_assign(V_VMPTRM, V_CPTRMS)
+                          @dtw_assign(V_VMACCT, V_CPEXPA)
+                          @dtw_assign(V_VMSUB,  V_CPEXPS)
+                          @dtw_assign(V_VMRTVD, "0000000")
+                          @dtw_assign(V_VMVTYP, V_CPVTYP)
+                          @dtw_assign(V_VMMWRN, "N")
+                          @dtw_assign(V_VMACVI, "N")
+                      %endif
+
+                      @dtw_assign(errFound, "")
+
+                  %elif (maintenanceCode == "Z")
+                      @dtw_assign(V_VMVEND, "")
+                      @dtw_assign(focusField, "vendorNumber")
+                      @dtw_assign(V_VMVDSC, @dtw_rformat(@dtw_rmultiply(V_VMVDSC, "100"),"","2"))
+                  %else
+                      @dtw_assign(focusField, "vendorName")
+                      @dtw_assign(V_VMVDSC, @dtw_rformat(@dtw_rmultiply(V_VMVDSC, "100"),"","2"))
+                  %endif
+
+                  @SetTextOvr(Err_VMVEND)
+                  <tr><td class="dsphdr"><span $(textOvr)>Vendor Number</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputnmbr"><input name="vendorNumber" type="text" value="$(V_VMVEND)" size="7" maxlength="7"> $(reqFieldChar) </td>
+                      %else
+                          <td class="inputnmbr"><input name="vendorNumber" type="hidden" value="$(V_VMVEND)" size="7" maxlength="7">$(V_VMVEND)</td>
+	      		   %endif
+                  </tr>
+                  @DspErrMsg(Err_VMVEND)
+
+                  @SetTextOvr(Err_VMVNA1)
+                  <tr><td class="dsphdr"><span $(textOvr)>Vendor Name</span></td>
+                      <td class="inputalph"><input name="vendorName" type="text" value="$(V_VMVNA1)" size="26" maxlength="26"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_VMVNA1)
+	      		
+                  @SetTextOvr(Err_VMVNA2)
+                  <tr><td class="dsphdr"><span $(textOvr)>Address Line One</span></td>
+                      <td class="inputalph"><input name="addressLineOne" type="text" value="$(V_VMVNA2)" size="26" maxlength="26"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_VMVNA2)
+	      		
+                  @SetTextOvr(Err_VMVNA3)
+                  <tr><td class="dsphdr"><span $(textOvr)>Address Line Two</span></td>
+                      <td class="inputalph"><input type="text" name="addressLineTwo" value="$(V_VMVNA3)" size="26" maxlength="26"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMVNA3)
+	      		
+                  @SetTextOvr(Err_VMVNA4)
+                  <tr><td class="dsphdr"><span $(textOvr)>Address Line Three</span></td>
+                      <td class="inputalph"><input type="text" name="addressLineThree" value="$(V_VMVNA4)" size="19" maxlength="19"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMVNA4)
+	      		
+                  @SetTextOvr(Err_VMVCTY)
+                  <tr><td class="dsphdr"><span $(textOvr)>City</span></td>
+                      <td class="inputalph"><input type="text" name="city" value="$(V_VMVCTY)" size="26" maxlength="26"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_VMVCTY)
+	      		
+                  %if (V_HDFORN == "N")
+                      @dtw_assign(stateZipReq,  "$(reqFieldChar)")
+                  %else
+                      @dtw_assign(stateZipReq,  "")
+                  %endif
+                  @RtvFldDesc("STID='$(V_VMST)'", "HDSTID", "STDESC", fieldDesc)
+                  @SetTextOvr(Err_VMST)
+                  <tr><td class="dsphdr"><span $(textOvr)>State</span></td>
+                      <td class="inputalph"><input name="state" type="text" value="$(V_VMST)" size="3" maxlength="2"><a href="$(homeURL)$(phpPath)StateSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=state&amp;fldDesc=stateDesc" onclick="$(searchWinVar)"> $(stateZipReq) $(searchImage) </a><input name="stateDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_VMST)
+	      		
+                  @SetTextOvr(Err_VMZIP)
+                  <tr><td class="dsphdr"><span $(textOvr)>Zip</span></td>
+                      <td class="inputalph"><input type="text" name="zip" value="$(V_VMZIP)" size="13" maxlength="13"> $(stateZipReq)</td>
+                  </tr>
+                  @DspErrMsg(Err_VMZIP)
+	      		
+                  @RtvFldDesc("CNCTCD='$(V_VMCTRY)'", "HDCTRY", "CNCDES", fieldDesc)
+                  @SetTextOvr(Err_VMCTRY)
+                  <tr><td class="dsphdr"><span $(textOvr)>Country</span></td>
+                      <td class="inputalph"><input name="country" type="text" value="$(V_VMCTRY)" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)CountrySearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=country&amp;fldDesc=countryDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="countryDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_VMCTRY)
+               			
+                  @SetTextOvr(Err_VMPHON)
+                  <tr><td class="dsphdr"><span $(textOvr)>Phone Number</span></td>
+                      <td class="inputnmbr"><input type="text" name="phoneNumber" value="$(V_VMPHON)" size="11" maxlength="11"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMPHON)
+	      		
+                  @SetTextOvr(Err_VMALPH)
+                  <tr><td class="dsphdr"><span $(textOvr)>Alpha Sequence</span></td>
+                      <td class="inputalph"><input type="text" name="alphaSequence" value="$(V_VMALPH)" size="4" maxlength="4"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMALPH)
+	      		
+                  @SetTextOvr(Err_VMVDSC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Discount Percent</span></td>
+                      <td class="inputnmbr"><input type="text" name="discountPercent" value="$(V_VMVDSC)" size="7" maxlength="7"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMVDSC)
+	      		
+                  @RtvFldDesc("PTPTCD='$(V_VMT99)'", "APP109", "PTTPDS", fieldDesc)
+                  @SetTextOvr(Err_VMT99)
+                  <tr><td class="dsphdr"><span $(textOvr)>1099 Code</span></td>
+                      <td class="inputnmbr"><input name="ten99Code" type="text" value="$(V_VMT99)" size="2" maxlength="2"><a href="$(homeURL)$(phpPath)Vendor1099Search.php$(altVarBase)&amp;docName=Chg&amp;fldName=ten99Code&amp;fldDesc=ten99Desc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="ten99Desc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_VMT99)
+	      		
+                  @SetTextOvr(Err_VMFDID)
+                  <tr><td class="dsphdr"><span $(textOvr)>Federal ID Number</span></td>
+                      <td class="inputalph"><input type="text" name="federalIDNumber" value="$(V_VMFDID)" size="9" maxlength="9"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMFDID)
+	      		
+                  @SetTextOvr(Err_VMFDTY)
+                  <tr><td class="dsphdr"><span $(textOvr)>Federal ID Type</span></td>
+                      @dtw_tb_rows(federalIDTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(federalIDTable, x, "1") != V_VMFDTY) && (x < maxRows))
+                            {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(federalIDTable, "federalIDType", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_VMFDTY)
+               			
+                  @RtvFldDesc("VTRMS='$(V_VMPTRM)'", "APVTRM", "VTVTDS", fieldDesc)
+                  @SetTextOvr(Err_VMPTRM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Terms Code</span></td>
+                      <td class="inputnmbr"><input name="termsCode" type="text" value="$(V_VMPTRM)" size="2" maxlength="2"><a href="$(homeURL)$(phpPath)VendorTermsCodeSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=termsCode&amp;fldDesc=termsCodeDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="termsCodeDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_VMPTRM)
+               			
+                  @Default_Zero(V_VMACCT)
+                  @Default_Zero(V_VMSUB)
+                  @RtvFldDesc("CHACCT=$(V_VMACCT) and CHSUB=$(V_VMSUB) ", "HDCHRT", "CHCHDS", acctDesc)
+                  @SetTextOvr(Err_VMACCT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Expense Account</span></td>
+                      <td class="inputnmbr"><input name="accountNumber" value="$(V_VMACCT)" type="text" size="4" maxlength="4">&nbsp;-&nbsp;<input name="subaccountNumber" value="$(V_VMSUB)" type="text" size="4" maxlength="4"> <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=accountNumber&amp;subFld=subaccountNumber&amp;descFld=expenseAcctDesc" onclick="$(searchWinVar)"> $(searchImage) </a> <input disabled name="expenseAcctDesc" value="$(acctDesc)" type="text" size="30" maxlength="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMACCT)
+	      		
+                  @Default_Zero(V_VMRTVD)
+                  @RtvFldDesc("VMVEND=$(V_VMRTVD)", "HDVEND", "VMVNA1", fieldDesc)
+                  @SetTextOvr(Err_VMRTVD)
+                  <tr><td class="dsphdr"><span $(textOvr)>Remit To Vendor</span></td>
+                      <td class="inputnmbr"><input name="remitToVendor" type="text" value="$(V_VMRTVD)" size="7" maxlength="7"><a href="$(homeURL)$(phpPath)VendorSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=remitToVendor&amp;fldDesc=remitToVendorName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="remitToVendorName" value="$(fieldDesc)" type="text" size="30" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_VMRTVD)
+               			
+                  @RtvFldDesc("VTVTYP='$(V_VMVTYP)'", "HDVTYP", "VTDESC", fieldDesc)
+                  @SetTextOvr(Err_VMVTYP)
+                  <tr><td class="dsphdr"><span $(textOvr)>Vendor Type</span></td>
+                      <td class="inputalph"><input name="vendorType" type="text" value="$(V_VMVTYP)" size="2" maxlength="2"><a href="$(homeURL)$(phpPath)VendorTypeSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=vendorType&amp;fldDesc=vendorTypeDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="vendorTypeDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_VMVTYP)
+               			
+                  @SetTextOvr(Err_VMVSTS)
+                  <tr><td class="dsphdr"><span $(textOvr)>Vendor Status</span></td>
+                      @dtw_tb_rows(vendorStatusTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(vendorStatusTable, x, "1") != V_VMVSTS) && (x < maxRows))
+                            {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(vendorStatusTable, "vendorStatus", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_VMVSTS)
+               			
+                  @RtvFldDesc("SVSVSV='$(V_VMSVSV)'", "HDSHPV", "SVSVDS", fieldDesc)
+                  @SetTextOvr(Err_VMSVSV)
+                  <tr><td class="dsphdr"><span $(textOvr)>Ship Via Code</span></td>
+                      <td class="inputnmbr"><input name="shipVia" type="text" value="$(V_VMSVSV)" size="2" maxlength="2"><a href="$(homeURL)$(phpPath)ShipViaSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=shipVia&amp;fldDesc=shipViaDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="shipViaDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_VMSVSV)
+               			
+                  @RtvFldDesc("FBFBCD='$(V_VMFOBC)'", "HDFOBM", "FBFBDS", fieldDesc)
+                  @SetTextOvr(Err_VMFOBC)
+                  <tr><td class="dsphdr"><span $(textOvr)>FOB Code</span></td>
+                      <td class="inputalph"><input name="fOBCode" type="text" value="$(V_VMFOBC)" size="2" maxlength="2"><a href="$(homeURL)$(cGIPath)FOBCodeSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=fOBCode&amp;fldDesc=fOBCodeDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="fOBCodeDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_VMFOBC)
+               			
+                  @SetTextOvr(Err_VMLTME)
+                  <tr><td class="dsphdr"><span $(textOvr)>Purchase Lead Time</span></td>
+                      <td class="inputnmbr"><input type="text" name="leadTime" value="$(V_VMLTME)" size="3" maxlength="3"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMLTME)
+	      		
+                  @SetTextOvr(Err_VMMOQ)
+                  <tr><td class="dsphdr"><span $(textOvr)>Minimum Quantity Per Order</span></td>
+                      <td class="inputnmbr"><input type="text" name="minimumOrderQuantity" value="$(V_VMMOQ)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMMOQ)
+	      	
+                  @SetTextOvr(Err_VMMPA)
+                  <tr><td class="dsphdr"><span $(textOvr)>Minimum Value Per Order</span></td>
+                      <td class="inputnmbr"><input type="text" name="minimumValuePerOrder" value="$(V_VMMPA)" size="15" maxlength="15"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMMPA)
+	      		
+                  @SetTextOvr(Err_VMMOW)
+                  <tr><td class="dsphdr"><span $(textOvr)>Minimum Weight Per Order</span></td>
+                      <td class="inputnmbr"><input type="text" name="minimumOrderWeight" value="$(V_VMMOW)" size="9" maxlength="9"></td>
+                  </tr>
+                  @DspErrMsg(Err_VMMOW)
+               			
+                  @SetTextOvr(Err_VMMWRN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Below Minimum Warning</span></td>
+                      @dtw_tb_rows(yn02Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn02Table, x, "1") != V_VMMWRN) && (x < maxRows))
+                            {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn02Table, "belowMinimumWarning", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_VMMWRN)
+               			
+                  @SetTextOvr(Err_VMACVI)
+                  <tr><td class="dsphdr"><span $(textOvr)>Auto Create Vendor/Item</span></td>
+                      @dtw_tb_rows(yn01Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_VMACVI) && (x < maxRows))
+                            {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn01Table, "autoCreateVendorItem", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_VMACVI)
+               			
+                  %if (V_CPPRMC == "Y")
+                      @RtvFldDesc("CYTYPE='$(V_VMCURT)'", "HDCTYP", "CYDESC", fieldDesc)
+                      @SetTextOvr(Err_VMCURT)
+                      <tr><td class="dsphdr"><span $(textOvr)>Currency Type</span></td>
+                          <td class="inputalph"><input name="currencyType" value="$(V_VMCURT)" type="text" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)CurrencyTypeSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=currencyType&amp;fldDesc=currencyTypeDesc" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a> <input disabled name="currencyTypeDesc" value="$(fieldDesc)"  type="text" size="30" maxlength="30"></td>
+                      </tr>
+                      @DspErrMsg(Err_VMCURT)
+                   			
+                      @SetTextOvr(Err_VMGNTE)
+                      <tr><td class="dsphdr"><span $(textOvr)>Guaranteed Forward Rate</span></td>
+                          <td class="inputnmbr"><input type="text" name="guaranteedForwardRate" value="$(V_VMGNTE)" size="3" maxlength="3"></td>
+                      </tr>
+                      @DspErrMsg(Err_VMGNTE)
+                  %else			
+                      <tr><td class="inputalph"><input type="hidden" name="currencyType" value="$(V_VMCURT)"></td>
+                          <td class="inputnmbr"><input type="hidden" name="guaranteedForwardRate" value="$(V_VMGNTE)"></td>
+                      </tr>
+                  %endif
+
+                  %if (V_CPSCR1 != "")
+                      @SetTextOvr(Err_VMUDF1)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CPSCR1)</span></td>
+                          <td class="inputalph"><input type="text" name="userDefinedFieldOne" value="$(V_VMUDF1)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_VMUDF1)
+                  %endif
+
+                  %if (V_CPSCR2 != "")
+                      @SetTextOvr(Err_VMUDF2)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CPSCR2)</span></td>
+                          <td class="inputalph"><input type="text" name="userDefinedFieldTwo" value="$(V_VMUDF2)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_VMUDF2)
+                  %endif
+
+                  %if (V_CPSCR3 != "")
+                      @SetTextOvr(Err_VMUDF3)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CPSCR3)</span></td>
+                          <td class="inputalph"><input type="text" name="userDefinedFieldThree" value="$(V_VMUDF3)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_VMUDF3)
+                  %endif
+
+                  %if (V_CPSCR4 != "")
+                      @SetTextOvr(Err_VMUDF4)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CPSCR4)</span></td>
+                          <td class="inputalph"><input type="text" name="userDefinedFieldFour" value="$(V_VMUDF4)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_VMUDF4)
+                  %endif
+
+                  %if (V_CPSCR5 != "")
+                      @SetTextOvr(Err_VMUDF5)
+                      <tr><td class="dsphdr"><span $(textOvr)>$(V_CPSCR5)</span></td>
+                          <td class="inputalph"><input type="text" name="userDefinedFieldFive" value="$(V_VMUDF5)" size="15" maxlength="15"></td>
+                      </tr>
+                      @DspErrMsg(Err_VMUDF5)
+                  %endif
+		  
+		  @RtvFldDesc("V2VEND=$(V_VMVEND)", "HDVNDE", "V2VEND", chkVnde)
+                  %if ((maintenanceCode == "C") && (chkVnde == ""))	   
+		      @SetTextOvr(Err_VMEDAT)
+                      <tr><td class="dsphdr"><span $(textOvr)>Date Established</span></td>
+                      <td class="inputnmbr"><input type="text" name="dateEstablished" value="$(V_VMEDAT)" size="6" maxlength="6">
+                      <a href="javascript:calWindow('dateEstablished');">$(calendarImage)</a></td>
+                      </tr>
+                      @DspErrMsg(Err_VMEDAT)
+                  %else
+		     <td class="inputnmbr"><input type="hidden" name="dateEstablished" value="0" size="6" maxlength="6">
+                  %endif
+              %}
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HHDVDU_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @FederalID_Query(profileHandle, dataBaseID, "FEDERALID ", federalIDTable)
+      @VendorStatus_Query(profileHandle, dataBaseID, "VENDORSTAT", vendorStatusTable)
+      @yn01_Table_Query(profileHandle, dataBaseID, "YORN      ", yn01Table)
+      @yn02_Table_Query(profileHandle, dataBaseID, "YORN      ", yn02Table)
+
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(state)
+  @dtw_mUPPERCASE(zip)
+  @dtw_mUPPERCASE(country)
+  @dtw_mUPPERCASE(alphaSequence)
+  @dtw_mUPPERCASE(ten99Code)
+  @dtw_mUPPERCASE(federalIDNumber)
+  @dtw_mUPPERCASE(termsCode)
+  @dtw_mUPPERCASE(vendorType)
+  @dtw_mUPPERCASE(shipVia)
+  @dtw_mUPPERCASE(fOBCode)
+  @dtw_mUPPERCASE(currencyType)
+  @dtw_mUPPERCASE(userDefinedFieldOne)
+  @dtw_mUPPERCASE(userDefinedFieldTwo)
+  @dtw_mUPPERCASE(userDefinedFieldThree)
+  @dtw_mUPPERCASE(userDefinedFieldFour)
+  @dtw_mUPPERCASE(userDefinedFieldFive)
+
+  @dtw_assign(vendorNumber,@dtw_rstrip(vendorNumber))
+  @dtw_assign(phoneNumber,@dtw_rstrip(phoneNumber))
+  @dtw_assign(discountPercent,@dtw_rstrip(discountPercent))
+  @dtw_assign(accountNumber,@dtw_rstrip(accountNumber))
+  @dtw_assign(subaccountNumber,@dtw_rstrip(subaccountNumber))
+  @dtw_assign(remitToVendor,@dtw_rstrip(remitToVendor))
+  @dtw_assign(leadTime,@dtw_rstrip(leadTime))
+  @dtw_assign(minimumOrderQuantity,@dtw_rstrip(minimumOrderQuantity))
+  @dtw_assign(minimumValuePerOrder,@dtw_rstrip(minimumValuePerOrder))
+  @dtw_assign(minimumOrderWeight,@dtw_rstrip(minimumOrderWeight))
+  @dtw_assign(guaranteedForwardRate,@dtw_rstrip(guaranteedForwardRate))
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@vend", vendorNumber)
+  @Concat_Field("@@vna1", vendorName)
+  @Concat_Field("@@vna2", addressLineOne)
+  @Concat_Field("@@vna3", addressLineTwo)
+  @Concat_Field("@@vna4", addressLineThree)
+  @Concat_Field("@@vcty", city)
+  @Concat_Field("@@st@@", state)
+  @Concat_Field("@@zip@", zip)
+  @Concat_Field("@@ctry", country)
+  @Concat_Field("@@phon", phoneNumber)
+  @Concat_Field("@@alph", alphaSequence)
+  @Concat_Field("@@vdsc", discountPercent)
+  @Concat_Field("@@t99@", ten99Code)
+  @Concat_Field("@@fdid", federalIDNumber)
+  @Concat_Field("@@fdty", federalIDType)
+  @Concat_Field("@@ptrm", termsCode)
+  @Concat_Field("@@acct", accountNumber)
+  @Concat_Field("@@sub@", subaccountNumber)
+  @Concat_Field("@@rtvd", remitToVendor)
+  @Concat_Field("@@vtyp", vendorType)
+  @Concat_Field("@@vsts", vendorStatus)
+  @Concat_Field("@@svsv", shipVia)
+  @Concat_Field("@@fobc", fOBCode)
+  @Concat_Field("@@ltme", leadTime)
+  @Concat_Field("@@moq@", minimumOrderQuantity)
+  @Concat_Field("@@mpa@", minimumValuePerOrder)
+  @Concat_Field("@@mow@", minimumOrderWeight)
+  @Concat_Field("@@mwrn", belowMinimumWarning)
+  @Concat_Field("@@acvi", autoCreateVendorItem)
+  @Concat_Field("@@curt", currencyType)
+  @Concat_Field("@@gnte", guaranteedForwardRate)
+  @Concat_Field("@@udf1", userDefinedFieldOne)
+  @Concat_Field("@@udf2", userDefinedFieldTwo)
+  @Concat_Field("@@udf3", userDefinedFieldThree)
+  @Concat_Field("@@udf4", userDefinedFieldFour)
+  @Concat_Field("@@udf5", userDefinedFieldFive)
+  %if ((dateEstablished != "0") && (dateEstablished != ""))
+      @Concat_Field("@@edat", dateEstablished)
+  %endif    
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar)
+
+  %if (errFound == "" || maintenanceCode == "D")
+      %if (errFound == "")
+          @Format_ConfMsg_Desc(maintenanceCode, $(vendorName), $(vendorNumber), "", "", "", "", confMessage)
+      %else
+          @DecatErr_Field("@@vend", "vendorNumber")
+          @Format_ConfMsg_Desc("", $(vendorName), $(vendorNumber), "<br>$(fieldValue)", "", "", "", confMessage)
+      %endif
+      %if (fromSel == "Y" && maintenanceCode != "D")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)VendorSelect.d2w/REPORT$(d2wVarBase)&amp;vendorNumber=@dtw_rurlescseq(vendorNumber)&amp;vendorName=@dtw_rurlescseq(vendorName)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+          %if (backURL == "")
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=162&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %endif
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;vendorNumber=@dtw_rurlescseq(vendorNumber)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

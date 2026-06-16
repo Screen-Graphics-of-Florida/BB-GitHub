@@ -1,0 +1,268 @@
+<?php
+require_once 'ApplCashPaymentIconsJava.php';
+
+// Quick Entry
+print "\n function ARQuickEntry() { ";
+print "\n   if (document.getElementById('addInvoiceNumber').value !=\"\" || ";
+print "\n       document.getElementById('addPmtCode').value !=\"\" || ";
+print "\n       document.getElementById('addDocument').value !=\"\" || ";
+print "\n       document.getElementById('addAmount').value !=\"\" || ";
+print "\n       document.getElementById('addLocation').value !=\"\" || ";
+print "\n       document.getElementById('addCompany').value !=\"\" || ";
+print "\n       document.getElementById('addFacility').value !=\"\" || ";
+print "\n       document.getElementById('addAccount').value !=\"\" || ";
+print "\n       document.getElementById('addSubaccount').value !=\"\" || ";
+print "\n       document.getElementById('addReference').value !=\"\" || ";
+print "\n       document.getElementById('addMemo').value !=\"\") { ";
+print "\n     if (editNum(document.getElementById('addInvoiceNumber').name, 7, 0) && ";
+print "\n         editNum(document.getElementById('addAmount').name, 11, 2) && ";
+print "\n         editNum(document.getElementById('addLocation').name, 3, 0) && ";
+print "\n         editNum(document.getElementById('addCompany').name, 2, 0) && ";
+print "\n         editNum(document.getElementById('addFacility').name, 4, 0) && ";
+print "\n         editNum(document.getElementById('addAccount').name, 4, 0) && ";
+print "\n         editNum(document.getElementById('addSubaccount').name, 4, 0)) { ";
+require 'ApplCashPaymentJavaEdtVarInclude.php';
+print "\n           edtVar += \"}{@@mncd\" + \"Q\"; ";
+print "\n           edtVar += \"}{@@sseq\" + nextPESSEQ.toString() ; ";
+print "\n           edtVar += \"}{@@crtb\" + \"A\"; ";
+print "\n           edtVar += \"}{@@sinv\" + document.getElementById('addInvoiceNumber').value; ";
+print "\n           edtVar += \"}{@@amt@\" + document.getElementById('addAmount').value; ";
+print "\n           edtVar += \"}{@@sbcd\" + document.getElementById('addPmtCode').value.toUpperCase() ; ";
+print "\n           edtVar += \"}{@@mchk\" + document.getElementById('addDocument').value.toUpperCase() ; ";
+print "\n           edtVar += \"}{@@arpo\" + document.getElementById('addReference').value.toUpperCase() ; ";
+print "\n           edtVar += \"}{@@memo\" + document.getElementById('addMemo').value.toUpperCase() ; ";
+print "\n           edtVar += \"}{@@loc@\" + document.getElementById('addLocation').value; ";
+print "\n           edtVar += \"}{@@ofco\" + document.getElementById('addCompany').value; ";
+print "\n           edtVar += \"}{@@offc\" + document.getElementById('addFacility').value; ";
+print "\n           edtVar += \"}{@@ofac\" + document.getElementById('addAccount').value; ";
+print "\n           edtVar += \"}{@@ofsb\" + document.getElementById('addSubaccount').value; ";
+print "\n           edtVar += \"}{\"; ";
+print "\n       var url = \"" . $homeURL . $phpPath . "ApplCashPaymentUpdARPYEN.php" . $scriptVarBase . "&amp;edtVar=\" + escape(edtVar)+ \"&amp;dummy=\" + new Date().getTime(); ";
+print "\n       var ajaxRequest = new ajaxObject(url,ARQuickEntryResponse); ";
+print "\n       ajaxRequest.update();  ";
+require 'ApplCashPaymentJavaUpdatePendingInclude.php';
+print "\n       document.getElementById('addInvoiceNumber').value=''; ";
+print "\n       document.getElementById('addDocument').value=''; ";
+print "\n       document.getElementById('addAmount').value=''; ";
+print "\n       document.getElementById('addPmtCode').value=''; ";
+print "\n       document.getElementById('addMemo').value=''; ";
+print "\n       document.getElementById('addReference').value=''; ";
+print "\n       document.getElementById('addLocation').value=''; ";
+print "\n       document.getElementById('addCompany').value=''; ";
+print "\n       document.getElementById('addFacility').value=''; ";
+print "\n       document.getElementById('addAccount').value=''; ";
+print "\n       document.getElementById('addSubaccount').value=''; ";
+print "\n       setTimeout('document.getElementById(\"addDocument\").focus()',1); ";
+print "\n     } ";
+print "\n   } ";
+print "\n   return false; ";
+print "\n } ";
+
+// Quick Entry Response
+print "\n function ARQuickEntryResponse(responseText, responseStatus) {  ";
+print "\n   if (responseStatus==200) { ";
+print "\n     var response= responseText.split(\"|\"); ";
+print "\n     document.getElementById('depositEntry').innerHTML = response[1]; ";
+print "\n     document.getElementById('depositBalance').innerHTML = response[2]; ";
+print "\n     document.getElementById('CASHCNT').innerHTML = response[3]; ";
+print "\n     document.getElementById('CASHAMT').innerHTML = response[4]; ";
+print "\n   } else  { alert(responseStatus + \" -- Error Processing Request\");  } ";
+require 'ApplCashPaymentJavaUpdateCompleteInclude.php';
+print "\n } ";
+
+// Delete Payment (selected Delete icon)
+print "\n function delARPYENLine(ISEQ,ENID,MNID,IECRTB) { ";
+print "\n   var MnCd='D'; ";
+print "\n   var PRCOLM=''; ";
+print "\n   updARPYEN(ISEQ,ENID,MNID,MnCd,PRCOLM); ";
+print "\n   if (IECRTB==\"A\" || IECRTB==\"R\") { ";
+print "\n     var Rowfld=\"row\"+ISEQ+\"_\"+ENID; ";
+print "\n     document.getElementById('paymentTable').deleteRow(document.getElementById(Rowfld).rowIndex); ";
+print "\n   } else { ";
+print "\n     var PEAMTfld=\"amt\"+ISEQ+\"_\"+ENID; document.getElementById(PEAMTfld).value=''; ";
+print "\n     var PEMCHKfld=\"mchk\"+ISEQ+\"_\"+ENID; document.getElementById(PEMCHKfld).value=''; ";
+print "\n     var PESBCDfld=\"sbcd\"+ISEQ+\"_\"+ENID; document.getElementById(PESBCDfld).value=''; ";
+print "\n     var PEMEMOfld=\"memo\"+ISEQ+\"_\"+ENID; document.getElementById(PEMEMOfld).value=''; ";
+print "\n     var PEARPOfld=\"arpo\"+ISEQ+\"_\"+ENID; document.getElementById(PEARPOfld).value=''; ";
+print "\n     var PELOCfld=\"loc\"+ISEQ+\"_\"+ENID; document.getElementById(PELOCfld).value=''; ";
+print "\n     var PEOFCOfld=\"ofco\"+ISEQ+\"_\"+ENID; document.getElementById(PEOFCOfld).value=''; ";
+print "\n     var PEOFFCfld=\"offc\"+ISEQ+\"_\"+ENID; document.getElementById(PEOFFCfld).value=''; ";
+print "\n     var PEOFACfld=\"ofac\"+ISEQ+\"_\"+ENID; document.getElementById(PEOFACfld).value=''; ";
+print "\n     var PEOFSBfld=\"ofsb\"+ISEQ+\"_\"+ENID; document.getElementById(PEOFSBfld).value=''; ";
+print "\n   } ";
+print "\n } ";
+
+// Update Payment in ARPYEN
+print "\n function updARPYEN(ISEQ,ENID,MNID,MnCd,PRCOLM) { ";
+print "\n   var IVISEQvalue=getHiddenJavaArrayValue(\"ISEQ\",ISEQ,ENID) ; ";
+print "\n   var PEENIDvalue=getHiddenJavaArrayValue(\"ENID\",ISEQ,ENID) ; ";
+print "\n   var PECRTBvalue=getHiddenJavaArrayValue(\"CRTB\",ISEQ,ENID) ; ";
+print "\n   var PESPMTfld=\"spmt\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PESINVfld=\"sinv\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PEAMTfld=\"amt\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PEMCHKfld=\"mchk\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PESBCDfld=\"sbcd\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PEMEMOfld=\"memo\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PEARPOfld=\"arpo\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PELOCfld=\"loc\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PEOFCOfld=\"ofco\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PEOFFCfld=\"offc\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PEOFACfld=\"ofac\"+ISEQ+\"_\"+ENID; ";
+print "\n   var PEOFSBfld=\"ofsb\"+ISEQ+\"_\"+ENID; ";
+
+print "\n   if (MnCd=='D' && PECRTBvalue=='R' || ";
+print "\n       editNum(document.getElementById(PEAMTfld).name, 11, 2) ";
+print "\n    && editNum(document.getElementById(PESINVfld).name, 7, 0) ";
+print "\n    && editNum(document.getElementById(PELOCfld).name, 3, 0) ";
+print "\n    && editNum(document.getElementById(PEOFCOfld).name, 2, 0) ";
+print "\n    && editNum(document.getElementById(PEOFFCfld).name, 4, 0) ";
+print "\n    && editNum(document.getElementById(PEOFACfld).name, 4, 0) ";
+print "\n    && editNum(document.getElementById(PEOFSBfld).name, 4, 0) ";
+print "\n   ) { ";
+
+print "\n     if (PRCOLM==\"PESINV\" || PRCOLM==\"PEAMT\") {var setDisable=\"Y\"} else {setDisable=\"\";} disableEntryFld(PESINVfld,setDisable); ";
+print "\n     if (PRCOLM==\"PEAMT\") {var setDisable=\"Y\"} else {setDisable=\"\";} disableEntryFld(PEAMTfld,setDisable); ";
+print "\n     if (PRCOLM==\"PEMCHK\" || PRCOLM==\"PEAMT\") {var setDisable=\"Y\"} else {setDisable=\"\";} disableEntryFld(PEMCHKfld,setDisable); ";
+print "\n     if (PRCOLM==\"PESBCD\" || PRCOLM==\"PEAMT\") {var setDisable=\"Y\"} else {setDisable=\"\";} disableEntryFld(PESBCDfld,setDisable); ";
+print "\n     if (PRCOLM==\"PEMEMO\" || PRCOLM==\"PEAMT\") {var setDisable=\"Y\"} else {setDisable=\"\";} disableEntryFld(PEMEMOfld,setDisable); ";
+print "\n     if (PRCOLM==\"PEARPO\" || PRCOLM==\"PEAMT\") {var setDisable=\"Y\"} else {setDisable=\"\";} disableEntryFld(PEARPOfld,setDisable); ";
+print "\n     if (PRCOLM==\"PELOC\" || PRCOLM==\"PEAMT\") {var setDisable=\"Y\"} else {setDisable=\"\";} disableEntryFld(PELOCfld,setDisable); ";
+print "\n     if (PRCOLM==\"PEOFCO\" || PRCOLM==\"PEOFFC\" || PRCOLM==\"PEAMT\") {var setDisable=\"Y\"} else {setDisable=\"\";} disableEntryFld(PEOFCOfld,setDisable); disableEntryFld(PEOFFCfld,setDisable); ";
+print "\n     if (PRCOLM==\"PEOFAC\" || PRCOLM==\"PEOFSB\" || PRCOLM==\"PEAMT\") {var setDisable=\"Y\"} else {setDisable=\"\";} disableEntryFld(PEOFACfld,setDisable); disableEntryFld(PEOFSBfld,setDisable); ";
+
+print "\n     if (MnCd!='D') { ";
+print "\n       if (document.getElementById(PEMCHKfld)) {document.getElementById(PEMCHKfld).value=document.getElementById(PEMCHKfld).value.toUpperCase();} ";
+print "\n       if (document.getElementById(PESBCDfld)) {document.getElementById(PESBCDfld).value=document.getElementById(PESBCDfld).value.toUpperCase();} ";
+print "\n       if (document.getElementById(PEMEMOfld)) {document.getElementById(PEMEMOfld).value=document.getElementById(PEMEMOfld).value.toUpperCase();} ";
+print "\n       if (document.getElementById(PEARPOfld)) {document.getElementById(PEARPOfld).value=document.getElementById(PEARPOfld).value.toUpperCase();} ";
+print "\n     } ";
+
+require 'ApplCashPaymentJavaEdtVarInclude.php';
+print "\n         edtVar += \"}{@@mncd\" + MnCd; ";
+print "\n         edtVar += \"}{@@_isq\" + ISEQ ; ";
+print "\n         edtVar += \"}{@@_eid\" + ENID; ";
+print "\n         edtVar += \"}{@@mnid\" + MNID ; ";
+print "\n         edtVar += \"}{@@sseq\" + nextPESSEQ.toString() ; ";
+print "\n         edtVar += \"}{@@iseq\" + IVISEQvalue.toString() ; ";
+print "\n         edtVar += \"}{@@enid\" + PEENIDvalue.toString() ; ";
+print "\n         edtVar += \"}{@@colm\" + PRCOLM ; ";
+print "\n         edtVar += \"}{@@crtb\" + PECRTBvalue; ";
+print "\n         if (document.getElementById(PESINVfld)) {edtVar += \"}{@@sinv\" + document.getElementById(PESINVfld).value;} ";
+print "\n         if (PRCOLM==\"PEAMT\" && document.getElementById(PEAMTfld)) {edtVar += \"}{@@amt@\" + document.getElementById(PEAMTfld).value;} ";
+print "\n         if (PRCOLM==\"PEMCHK\" && document.getElementById(PEMCHKfld)) {edtVar += \"}{@@mchk\" + document.getElementById(PEMCHKfld).value;} ";
+print "\n         if (PRCOLM==\"PESBCD\" && document.getElementById(PESBCDfld)) {edtVar += \"}{@@sbcd\" + document.getElementById(PESBCDfld).value;} ";
+print "\n         if (PRCOLM==\"PEMEMO\" && document.getElementById(PEMEMOfld)) {edtVar += \"}{@@memo\" + document.getElementById(PEMEMOfld).value;} ";
+print "\n         if (PRCOLM==\"PEARPO\" && document.getElementById(PEARPOfld)) {edtVar += \"}{@@arpo\" + document.getElementById(PEARPOfld).value;} ";
+print "\n         if (PRCOLM==\"PELOC\" && document.getElementById(PELOCfld))  {edtVar += \"}{@@loc@\" + document.getElementById(PELOCfld).value;} ";
+print "\n         if (PRCOLM==\"PEOFCO\" || PRCOLM==\"PEOFFC\" && document.getElementById(PEOFCOfld)) {edtVar += \"}{@@ofco\" + document.getElementById(PEOFCOfld).value;} ";
+print "\n         if (PRCOLM==\"PEOFCO\" || PRCOLM==\"PEOFFC\" && document.getElementById(PEOFFCfld)) {edtVar += \"}{@@offc\" + document.getElementById(PEOFFCfld).value;} ";
+print "\n         if (PRCOLM==\"PEOFAC\" || PRCOLM==\"PEOFSB\" && document.getElementById(PEOFACfld)) {edtVar += \"}{@@ofac\" + document.getElementById(PEOFACfld).value;} ";
+print "\n         if (PRCOLM==\"PEOFAC\" || PRCOLM==\"PEOFSB\" && document.getElementById(PEOFSBfld)) {edtVar += \"}{@@ofsb\" + document.getElementById(PEOFSBfld).value;} ";
+print "\n         edtVar += \"}{\"; ";
+print "\n     var url = \"" . $homeURL . $phpPath . "ApplCashPaymentUpdARPYEN.php" . $scriptVarBase . "&amp;edtVar=\" + escape(edtVar)+ \"&amp;dummy=\" + new Date().getTime(); ";
+print "\n     var ajaxRequest = new ajaxObject(url,updARPYENResponse); ";
+print "\n     ajaxRequest.update();  ";
+require 'ApplCashPaymentJavaUpdatePendingInclude.php';
+print "\n   } ";
+print "\n } ";
+
+// Update Payment in ARPYEN Response
+print "\n function updARPYENResponse(responseText, responseStatus) {  ";
+print "\n   if (responseStatus==200) { ";
+print "\n     var response= responseText.split(\"|\"); ";
+print "\n     document.getElementById('depositEntry').innerHTML = response[1]; ";
+print "\n     document.getElementById('depositBalance').innerHTML = response[2]; ";
+print "\n     document.getElementById('CASHCNT').innerHTML = response[3]; ";
+print "\n     document.getElementById('CASHAMT').innerHTML = response[4]; ";
+print "\n     var MnCd=response[5]; ";
+print "\n     var PRCOLM=response[6]; ";
+print "\n     var ISEQ=response[7]; ";
+print "\n     var ENID=response[8]; ";
+print "\n     var MNID=response[9]; ";
+print "\n     var PEAMTfld=\"amt\"+ISEQ+\"_\"+ENID; ";
+print "\n     if (document.getElementById(PEAMTfld)) {";
+print "\n       var PESINVfld=\"sinv\"+ISEQ+\"_\"+ENID; if (document.getElementById(PESINVfld)) {document.getElementById(PESINVfld).value = response[10]; enableEntryFld(PESINVfld);} ";
+print "\n       if (PRCOLM==\"PEAMT\" )                      {var PEAMTfld=\"amt\"+ISEQ+\"_\"+ENID; enableEntryFld(PEAMTfld);} ";
+print "\n       if (PRCOLM==\"PEMCHK\" || PRCOLM==\"PEAMT\") {var PEMCHKfld=\"mchk\"+ISEQ+\"_\"+ENID; enableEntryFld(PEMCHKfld);} ";
+print "\n       if (PRCOLM==\"PESBCD\" || PRCOLM==\"PEAMT\") {var PESBCDfld=\"sbcd\"+ISEQ+\"_\"+ENID; if (document.getElementById(PESBCDfld)) {document.getElementById(PESBCDfld).value = response[11]; enableEntryFld(PESBCDfld);}} ";
+print "\n       if (PRCOLM==\"PEMEMO\" || PRCOLM==\"PEAMT\") {var PEMEMOfld=\"memo\"+ISEQ+\"_\"+ENID; enableEntryFld(PEMEMOfld);} ";
+print "\n       if (PRCOLM==\"PEARPO\" || PRCOLM==\"PEAMT\") {var PEARPOfld=\"arpo\"+ISEQ+\"_\"+ENID; enableEntryFld(PEARPOfld);} ";
+print "\n       if (PRCOLM==\"PELOC\"  || PRCOLM==\"PEAMT\") {var PELOCfld=\"loc\"+ISEQ+\"_\"+ENID; if (document.getElementById(PELOCfld)) {document.getElementById(PELOCfld).value = response[12]; enableEntryFld(PELOCfld);}} ";
+print "\n       if (PRCOLM==\"PEOFCO\" || PRCOLM==\"PEOFFC\" || PRCOLM==\"PEAMT\") {var PEOFCOfld=\"ofco\"+ISEQ+\"_\"+ENID; if (document.getElementById(PEOFCOfld)) {document.getElementById(PEOFCOfld).value = response[13]; enableEntryFld(PEOFCOfld);}} ";
+print "\n       if (PRCOLM==\"PEOFCO\" || PRCOLM==\"PEOFFC\" || PRCOLM==\"PEAMT\") {var PEOFFCfld=\"offc\"+ISEQ+\"_\"+ENID; if (document.getElementById(PEOFFCfld)) {document.getElementById(PEOFFCfld).value = response[14]; enableEntryFld(PEOFFCfld);}} ";
+print "\n       if (PRCOLM==\"PEOFAC\" || PRCOLM==\"PEOFSB\" || PRCOLM==\"PEAMT\") {var PEOFACfld=\"ofac\"+ISEQ+\"_\"+ENID; if (document.getElementById(PEOFACfld)) {document.getElementById(PEOFACfld).value = response[15]; enableEntryFld(PEOFACfld);}} ";
+print "\n       if (PRCOLM==\"PEOFAC\" || PRCOLM==\"PEOFSB\" || PRCOLM==\"PEAMT\") {var PEOFSBfld=\"ofsb\"+ISEQ+\"_\"+ENID; if (document.getElementById(PEOFSBfld)) {document.getElementById(PEOFSBfld).value = response[16]; enableEntryFld(PEOFSBfld);}} ";
+
+print "\n       var ERRS=response[17]; ";
+print "\n       var r=18; ";
+print "\n       if (ERRS > 0) { ";
+print "\n         for (var i=0; i<ERRS; i++) { ";
+print "\n           var PRCOLM=response[r]; ";
+print "\n           var ERRD=response[r+1]; ";
+print "\n           setColumnError(PRCOLM,ERRD,ISEQ,ENID); ";
+print "\n           r=r+2 ; ";
+print "\n         }; ";
+print "\n       }; ";
+print "\n     }; ";
+print "\n   } else  { alert(responseStatus + \" -- Error Processing Request\");  } ";
+require 'ApplCashPaymentJavaUpdateCompleteInclude.php';
+print "\n } ";
+
+// Add Default Icon (icon taken)
+print "\n function defaultARPaymentInfo(ISEQ,ENID,MNID) { ";
+print "\n   var IVISEQvalue=getHiddenJavaArrayValue(\"ISEQ\",ISEQ,ENID) ; ";
+print "\n   var PEENIDvalue=getHiddenJavaArrayValue(\"ENID\",ISEQ,ENID) ; ";
+
+print "\n   var PESINVfld=\"sinv\"+ISEQ+\"_\"+ENID; disableEntryFld(PESINVfld,\"Y\"); ";
+print "\n   var PESBCDfld=\"sbcd\"+ISEQ+\"_\"+ENID; disableEntryFld(PESBCDfld,\"Y\"); ";
+print "\n   var PELOCfld=\"loc\"+ISEQ+\"_\"+ENID; disableEntryFld(PELOCfld,\"Y\"); ";
+print "\n   var PEOFCOfld=\"ofco\"+ISEQ+\"_\"+ENID; disableEntryFld(PEOFCOfld,\"Y\"); ";
+print "\n   var PEOFFCfld=\"offc\"+ISEQ+\"_\"+ENID; disableEntryFld(PEOFFCfld,\"Y\"); ";
+print "\n   var PEOFACfld=\"ofac\"+ISEQ+\"_\"+ENID; disableEntryFld(PEOFACfld,\"Y\"); ";
+print "\n   var PEOFSBfld=\"ofsb\"+ISEQ+\"_\"+ENID; disableEntryFld(PEOFSBfld,\"Y\"); ";
+
+require 'ApplCashPaymentJavaEdtVarInclude.php';
+print "\n       edtVar += \"}{@@mncd\" + \"V\"; ";
+print "\n       edtVar += \"}{@@_isq\" + ISEQ ; ";
+print "\n       edtVar += \"}{@@_eid\" + ENID; ";
+print "\n       edtVar += \"}{@@mnid\" + MNID ; ";
+print "\n       edtVar += \"}{@@sseq\" + nextPESSEQ.toString() ; ";
+print "\n       edtVar += \"}{@@iseq\" + IVISEQvalue.toString() ; ";
+print "\n       edtVar += \"}{@@enid\" + PEENIDvalue.toString() ; ";
+print "\n       edtVar += \"}{\"; ";
+print "\n   var url = \"" . $homeURL . $phpPath . "ApplCashPaymentUpdARPYEN.php" . $scriptVarBase . "&amp;edtVar=\" + escape(edtVar)+ \"&amp;dummy=\" + new Date().getTime(); ";
+print "\n   var ajaxRequest = new ajaxObject(url,defaultARPaymentInfoResponse); ";
+print "\n   ajaxRequest.update();  ";
+require 'ApplCashPaymentJavaUpdatePendingInclude.php';
+print "\n } ";
+
+// Add Default Icon Response (after Add Default icon)
+print "\n function defaultARPaymentInfoResponse(responseText, responseStatus) {  ";
+print "\n   if (responseStatus==200) { ";
+print "\n     var response= responseText.split(\"|\"); ";
+print "\n     var ISEQ=response[1]; ";
+print "\n     var ENID=response[2]; ";
+print "\n     var MNID=response[3]; ";
+print "\n     var PESINVfld=\"sinv\"+ISEQ+\"_\"+ENID; if (document.getElementById(PESINVfld)) {document.getElementById(PESINVfld).value = response[4]; enableEntryFld(PESINVfld);} ";
+print "\n     var PESBCDfld=\"sbcd\"+ISEQ+\"_\"+ENID; if (document.getElementById(PESBCDfld)) {document.getElementById(PESBCDfld).value = response[5]; enableEntryFld(PESBCDfld);} ";
+print "\n     var PELOCfld =\"loc\"+ISEQ+\"_\"+ENID;  if (document.getElementById(PELOCfld))  {document.getElementById(PELOCfld).value = response[6]; enableEntryFld(PELOCfld);} ";
+print "\n     var PEOFCOfld=\"ofco\"+ISEQ+\"_\"+ENID; if (document.getElementById(PEOFCOfld)) {document.getElementById(PEOFCOfld).value = response[7]; enableEntryFld(PEOFCOfld);} ";
+print "\n     var PEOFFCfld=\"offc\"+ISEQ+\"_\"+ENID; if (document.getElementById(PEOFFCfld)) {document.getElementById(PEOFFCfld).value = response[8]; enableEntryFld(PEOFFCfld);} ";
+print "\n     var PEOFACfld=\"ofac\"+ISEQ+\"_\"+ENID; if (document.getElementById(PEOFACfld)) {document.getElementById(PEOFACfld).value = response[9]; enableEntryFld(PEOFACfld);} ";
+print "\n     var PEOFSBfld=\"ofsb\"+ISEQ+\"_\"+ENID; if (document.getElementById(PEOFSBfld)) {document.getElementById(PEOFSBfld).value = response[10]; enableEntryFld(PEOFSBfld);} ";
+
+print "\n     var ERRS=response[11]; ";
+print "\n     var r=12; ";
+print "\n     if (ERRS > 0) { ";
+print "\n       for (var i=0; i<ERRS; i++) { ";
+print "\n         var PRCOLM=response[r]; ";
+print "\n         var ERRD=response[r+1]; ";
+print "\n         setColumnError(PRCOLM,ERRD,ISEQ,ENID); ";
+print "\n         r=r+2 ; ";
+print "\n       }; ";
+print "\n     }; ";
+print "\n   } else  { alert(responseStatus + \" -- Error Processing Request\");  } ";
+require 'ApplCashPaymentJavaUpdateCompleteInclude.php';
+print "\n } ";
+
+?>

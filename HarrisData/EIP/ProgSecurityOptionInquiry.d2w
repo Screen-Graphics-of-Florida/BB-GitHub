@@ -1,0 +1,166 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Program Security Option Inquiry                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Program Option Security Inquiry"
+  d2wName                 = "ProgSecurityOptionInquiry.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;formatToPrint=Y"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  pgmExists               = ""
+  displayCloseIcon        = "Y"
+  formatToPrint			  = "N"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(inquiryBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      @RtvFldDesc("(SPUSER='$(selectProfile)' or SPUSER='HDS') and SPPGID='$(progName)' ", "SYPGMS", "SPPGID", pgmExists)
+                      %if (pgmExists == "")
+                          %INCLUDE "AddRecordSQL.icl"
+                          %INCLUDE "stmtSQLEnd.icl"
+                      %else
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select SYPGMS.*,  ", stmtSQL)
+                          @dtw_concat(stmtSQL, "       case when SPUSER = 'HDS' THEN 'HDS' ", stmtSQL)
+                          @dtw_concat(stmtSQL, "            ELSE ' ' END as SELUSER", stmtSQL)
+                          @dtw_concat(fileSQL, " SYPGMS ", fileSQL)
+                          @dtw_concat(selectSQL, "(SPUSER='$(selectProfile)' or SPUSER='HDS') and SPPGID='$(progName)' ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By SELUSER Fetch First Row Only @@endsql ", stmtSQL)
+                      %endif
+                      @Prog_SecProg_Inquiry(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(inquiryTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Prog_SecProg_Inquiry (IN CHAR(64)    profileHandle,
+                                            CHAR(2)     dataBaseID,
+                                            CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+
+      $(inquiryhrTagAttr)
+
+      <table $(contentTable)>
+          <tr><td>
+              @RtvFldDesc("USUSER='$(selectProfile)'", "SYUSER", "USDESC", userName)
+              <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)">
+                  <table $(contentTable)>
+                      @dtw_assign(dftProfile, selectProfile)
+                      <tr><td class="dsphdr">User Profile </td>
+                          <td class="inputalph"><input name="selectProfile" type="text" value="$(dftProfile)" size="15" maxlength="10"><a href="$(homeURL)$(phpPath)UserSearch.php$(altVarBase)&amp;docName=Search&amp;userFld=selectProfile&amp;descFld=userName&amp;autoSubmit=Y" onclick="$(searchWinVar)"> $(searchImage) </a><input name="userName" value="$(userName)" type="text" size="50" disabled></td>
+                      </tr>
+                      %if (userName == "")
+                          <tr><td>&nbsp;</td><td class="error" colspan="10">Invalid User Profile</td></tr>
+                          <script TYPE="text/javascript">
+                              document.Search.selectProfile.focus();
+                          </script>
+                      %endif
+
+                      @RtvFldDesc("PTPGID='$(progName)'", "SYILET", "PTDESC", progDesc)
+                      <tr><td class="dsphdr">Program Name</td>
+                          <td class="inputalph"><input name="progName" type="text" value="$(progName)" size="15" maxlength="10"><a href="$(homeURL)$(cGIPath)ProgramOptionSeqSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Search&amp;fldName=progName&amp;fldDesc=progDesc&amp;fldSeq=progSeq" onclick="$(searchWinVar)"> $(searchImage) </a><input name="progDesc" value="$(progDesc)" type="text" size="50" disabled><input type="hidden" name="progSeq"></td>
+                      </tr>
+                      %if (progDesc == "")
+                          <tr><td>&nbsp;</td><td class="error" colspan="10">Invalid Program Name</td></tr>
+                          <script TYPE="text/javascript">
+                              document.Search.progName.focus();
+                          </script>
+                      %endif
+
+                      %ROW{
+                          %if (userName != "" && progDesc != "")
+                              %if (V_SPUSER == "HDS" && selectProfile != "HDS")
+                                  <tr><td>&nbsp;</td><td class="error" colspan="10">Default HDS Row Used</td></tr>
+                              %else
+                                  @RtvFldDesc("SOPGID='$(progName)' ", "SYPGMO", "char(count(*))", optCnt)
+                                  %if (optCnt <= "0")
+                                      <tr><td>&nbsp;</td><td class="error" colspan="10">Program Option Security Not Found For Selected Program</td></tr>
+                                  %endif
+                              %endif
+                              @dtw_assign(x, "1")
+                              %while(x <= "15"){
+                                  %while(@dtw_rlength(x) != "2") {@dtw_insert("0", x, x)%}
+                                  @RtvFldDesc("SOPGID='$(progName)' and SOMOPT=$(x)", "SYPGMO", "SOMDES", fieldDesc)
+                                  %if (fieldDesc !="")
+                                      <tr><td class="dsphdr">$(fieldDesc)</td>
+                                          %if (V_HDRPGO == "N" || V_HDRPGO == "L" && pgmExists == "")
+                                              <td class="dspalph">Y</td>
+                                          %elif (pgmExists != "")
+                                              <td class="dspalph">$(V_SPOP$(x))</td>
+                                          %else
+                                              <td class="dspalph">N</td>
+                                          %endif
+                                      </tr>
+                                  %endif
+                                  @dtw_add(x, "1", x)
+                              %}
+                          %endif
+                      %}
+                  </table>
+              </form>
+          </td></tr>
+      </table>
+      $(inquiryhrTagAttr)
+      %INCLUDE "CloseWindow.icl"
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @dtw_muppercase(selectProfile)
+  @dtw_muppercase(progName)
+  @Set_SQL(stmtSQL)
+%}

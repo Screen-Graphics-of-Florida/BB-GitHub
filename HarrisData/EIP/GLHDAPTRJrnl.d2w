@@ -1,0 +1,488 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Drill Down HDAPTR Journal                                   *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "WildCardAcct.icl"
+
+%Define {
+  page_title              = "Unposted Accounts Payable Journal"
+  d2wName                 = "GLHDAPTRJrnl.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;glJournal=@dtw_rurlescseq(glJournal)&amp;glPer=@dtw_rurlescseq(glPer)&amp;glDate=@dtw_rurlescseq(glDate)&amp;glTransType=@dtw_rurlescseq(glTransType)&amp;glFrCur=@dtw_rurlescseq(glFrCur)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  uv_Sql                  = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchCo, 2, 0) &&
+                      editNum(document.Search.srchFac, 4, 0) &&
+                      editNum(document.Search.srchAcct, 4, 0) &&
+                      editNum(document.Search.srchSub, 4, 0) &&
+                      editNum(document.Search.srchAmt, 13, 2))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                       @dtw_assign(pageID, "APSELECT")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      <table $(contentTable)>
+                          <colgroup>
+                              <col width="80%">
+                              <col width="15%">
+                          <tr><td><h1>$(page_title)</h1></td>
+                              %if (formatToPrint != "Y")
+                                  <td class="toolbar">
+                                      <a href="$(homeURL)$(cGIPath)$(d2wName)/ENTRY$(d2wVarBase)&amp;formatToPrint=Y" target=_blank>$(formatPrintDesc)</a>
+                                      %INCLUDE "HelpPage.icl"
+                                  </td>
+                              %endif
+                          </tr>
+
+                          @dtw_assign(uv_CompanyName, "JACO")
+                          @dtw_assign(uv_FacilityName, "JAFAC")
+                          @dtw_assign(uv_AccountName, "JAACC")
+                          @dtw_assign(uv_SubaccountName, "JASUB")
+                          %INCLUDE "userview.icl"
+                          %if (uv_Sql != "")
+                             <tr><td><h3> You may not be authorized to view some transactions </h3></td></tr>
+                          %endif
+                      </table>
+
+                      $(hrTagAttr)
+
+                      @dtw_assign(SAVE_ROW_NUM, START_ROW_NUM)
+                      @dtw_assign(SAVE_MAX_ROWS, RPT_MAX_ROWS)
+                      @dtw_assign(START_ROW_NUM, "1")
+                      @dtw_assign(RPT_MAX_ROWS, "9999")
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_assign(appendUserView, "N")
+                      @dtw_assign(appendWildCard, "N")
+                      @dtw_concat(stmtSQL, "SELECT Distinct JAJRNL,JAPER#,JADATE,JATTYP,JAFCUR, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(a.FLDESC,' ') as typeFLDESC,  upper(coalesce(a.FLDESC,' ')) as typeFLDESCU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(CYDESC,' ') as CYDESC, upper(coalesce(CYDESC,' ')) as CYDESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDAPTR ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYFLAG a on a.FLTYPE='GLTRANTYP' and a.FLVALU=JATTYP ", fileSQL)
+                      @dtw_concat(fileSQL, " left join HDCTYP on CYTYPE=JAFCUR", fileSQL)
+                      @dtw_concat(selectSQL, " JAJRNL='$(glJournal)' and JAPER#=$(glPer) and JADATE=$(glDate) and JATTYP='$(glTransType)' and JAFCUR='$(glFrCur)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @JrnlHdg_Query(profileHandle, dataBaseID, stmtSQL)
+                      @dtw_assign(START_ROW_NUM, SAVE_ROW_NUM)
+                      @dtw_assign(RPT_MAX_ROWS, SAVE_MAX_ROWS)
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_assign(appendUserView, "")
+                      @dtw_assign(appendWildCard, "")
+                      @dtw_concat(stmtSQL, "SELECT HDAPTR.*,RRN(HDAPTR) as RRN, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(CFCFNM,' ') as CFCFNM, coalesce(CFCFNMU,' ') as CFCFNMU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(CHCHDS,' ') as CHCHDS, coalesce(CHCHDSU,' ') as CHCHDSU, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(CYDESC,' ') as CYDESC, upper(coalesce(CYDESC,' ')) as CYDESCU ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDAPTR ", fileSQL)
+                      @dtw_concat(fileSQL, " left join HDCFAC on CFCO#=JACO and CFFAC#=JAFAC", fileSQL)
+                      @dtw_concat(fileSQL, " left join HDCHRT on CHACCT=JAACC and CHSUB=JASUB", fileSQL)
+                      @dtw_concat(fileSQL, " left join HDCTYP on CYTYPE=JATCUR", fileSQL)
+                      @dtw_concat(selectSQL, " JAJRNL='$(glJournal)' and JAPER#=$(glPer) and JADATE=$(glDate) and JATTYP='$(glTransType)' and JAFCUR='$(glFrCur)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " ORDER BY $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) JrnlHdg_Query (IN  CHAR(64) profileHandle,
+                                      CHAR(2)   dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (sql_Record_Count == "0")
+          @DTW_EXIT()
+      %endif
+
+      %ROW{
+          <table $(contentTable)>
+              <tr><th class="colhdr">Journal</th>
+                  <th class="colhdr">Period</th>
+                  <th class="colhdr">Transaction Date</th>
+                  <th class="colhdr">Transaction Type</th>
+                  %if (V_HDMCRL > "0")
+                      <th class="colhdr">Foreign Currency</th>
+                  %endif
+              </tr>
+              %INCLUDE "SetRowClass.icl"
+
+              @PeriodFromCYP(V_JAPER#)
+              @Format_Date(V_JADATE, "D", F_JADATE)
+
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_JAJRNL)</td>
+                  <td class="coldate">$(V_JAPER#)</td>
+                  <td class="coldate">$(F_JADATE)</td>
+                  <td class="colalph" $(helpCursor)><span title="$(V_JATTYP)">$(V_typeFLDESC)</span></td>
+                  %if (V_HDMCRL > "0")
+                      <td class="colalph" $(helpCursor)><span title="$(V_JAFCUR)">$(V_CYDESC)</span></td>
+                  %endif
+              </tr>
+          </table>
+      %}
+  %}
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64) profileHandle,
+                                   CHAR(2)   dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST name="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Reference</th>
+                      <th class="colhdr">Co</th>
+                      <th class="colhdr">Fac</th>
+                      <th class="colhdr">Account</th>
+                      <th class="colhdr">Amount</th>
+                      <th class="colhdr">Description</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchRef" size="7" maxlength="7">
+                          <input type="hidden" name="operRef" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputnmbr"  name="srchCo" size="2" maxlength="2">
+                          <input type="hidden" name="operCo" value="=">
+                      </td>
+                      <td><input type="text" class="inputnmbr"  name="srchFac" size="4" maxlength="4">
+                          <input type="hidden" name="operFac" value="=">
+                      </td>
+                      <td><input type="text" class="inputnmbr"  name="srchAcct" size="4" maxlength="4">
+                          <input type="text" class="inputnmbr"  name="srchSub" size="4" maxlength="4">
+                          <input type="hidden" name="operAcct" value="=">
+                      </td>
+                      <td><input type="text" class="inputnmbr"  name="srchAmt" size="15" maxlength="15">
+                          <input type="hidden" name="operAmt" value="=">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchDesc" size="20" maxlength="20">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchRef.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("JAREF", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Reference" title="Sequence By Reference">Reference</a></th>
+              @OrderBy_Sort("JACO", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CoFac" title="Sequence By Company/Facility">Co/Fac</a></th>
+              @OrderBy_Sort("JAACC", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Account" title="Sequence By Account">Account</a></th>
+              %if (V_HDMCRL > "0")
+                  @OrderBy_Sort("CYDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Currency" title="Sequence By Domestic Currency">Domestic Currency</a></th>
+              %endif
+              @OrderBy_Sort("JAAMT", sortVar)
+              <th class="colhdr$(sortVar)" colspan="2"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Amount" title="Sequence By Amount">Amount</a></th>
+              @OrderBy_Sort("JADESC", sortVar)
+              <th class="colhdr$(sortVar)"> <a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description" title="Sequence By Description">Description</a></th>
+          </tr>
+
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+
+              @Format_Acct("$(V_JAACC)", "$(V_JASUB)", "", F_AcctSub)
+              @Format_Nbr($(V_JAAMT), F_JAAMT, "2", $(amtEditCode), "Y", "", "")
+              @Format_CoFac("$(V_JACO)", "$(V_JAFAC)", "", F_CoFac)
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_JAREF)</td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(V_CFCFNM)">$(F_CoFac)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(V_CHCHDS)">$(F_AcctSub)</span></td>
+                  %if (V_HDMCRL > "0")
+                      <td class="colnmbr" $(helpCursor)><span title="$(V_JATCUR)">$(V_CYDESC)</span></td>
+                  %endif
+                  %if (V_JAAMT<"0")
+                      <td class="colnmbr">&nbsp;</td>
+                  %endif
+                  %if (V_JADDSQ != "0")
+                      @RtvFldDesc("DPAPID='$(V_JAAPID)' and DPDDFL='$(V_JADDFL)'", "GLDDPG", "DPPGM", V_DPPGM)
+                      %if (V_DPPGM != "")
+                          @RtvFldDesc("DPAPID='$(V_JAAPID)' and DPDDFL='$(V_JADDFL)'", "GLDDPG", "DPTITL", V_DPTITL)
+                          <td class="colnmbr"><a href="$(homeURL)$(phpPath)$(V_DPPGM).php$(altVarBase)&amp;unpostedRRN=@dtw_rurlescseq(V_RRN)&amp;glJrnl=@dtw_rurlescseq(V_JAJRNL)&amp;glPer=@dtw_rurlescseq(glPer)&amp;glDate=@dtw_rurlescseq(glDate)&amp;glDDSeq=@dtw_rurlescseq(V_JADDSQ)&amp;glDDAp=@dtw_rurlescseq(V_JAAPID)&amp;glDDFile=@dtw_rurlescseq(V_JADDFL)" onclick="$(drillDownWinVar)" title="$(V_DPTITL)">$(F_JAAMT)</a></td>
+                      %else
+                          <td class="colnmbr">$(F_JAAMT)</td>
+                      %endif
+                  %else
+                      <td class="colnmbr">$(F_JAAMT)</td>
+                  %endif
+                  %if (V_JAAMT>"0")
+                      <td class="colnmbr">&nbsp;</td>
+                  %endif
+                  <td class="colalph">$(V_JADESC)</td>
+                  %if (V_JASEQ != "0")
+                      <td class="colicon"><a href="$(homeURL)$(cGIPath)GLDDAcctJrnlComment.d2w/ENTRY$(genericVarBase)&amp;glJrnl=@dtw_rurlescseq(V_JAJRNL)&amp;glPer=@dtw_rurlescseq(V_JAPER#)&amp;glDate=@dtw_rurlescseq(V_JADATE)&amp;glLdSeq=@dtw_rurlescseq(V_JASEQ)" onclick="$(commentWinVar)">$(commentView)</a></td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "JAREF")
+          @DTW_ASSIGN(orderByDisplay, "Reference")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Reference")
+      %if (orderBy == "JAREF")
+          @DTW_ASSIGN(orderBy, "JAREF DESC")
+          @DTW_ASSIGN(orderByDisplay, "Reference (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "JAREF")
+          @DTW_ASSIGN(orderByDisplay, "Reference")
+      %endif
+  %elif (sequence == "CoFac")
+      %if (orderBy == "JACO,JAFAC")
+          @DTW_ASSIGN(orderBy, "JACO DESC,JAFAC DESC")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "JACO,JAFAC")
+          @DTW_ASSIGN(orderByDisplay, "Company/Facility")
+      %endif
+  %elif (sequence == "Account")
+      %if (orderBy == "JAACC,JASUB")
+          @DTW_ASSIGN(orderBy, "JAACC DESC,JASUB DESC")
+          @DTW_ASSIGN(orderByDisplay, "Account (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "JAACC,JASUB")
+          @DTW_ASSIGN(orderByDisplay, "Account")
+      %endif
+  %elif (sequence == "Currency")
+      %if (orderBy == "CYDESCU")
+          @DTW_ASSIGN(orderBy, "CYDESCU DESC")
+          @DTW_ASSIGN(orderByDisplay, "Domestic Currency (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "CYDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Domestic Currency")
+      %endif
+  %elif (sequence == "Amount")
+      %if (orderBy == "JAAMT")
+          @DTW_ASSIGN(orderBy, "JAAMT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Amount (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "JAAMT")
+          @DTW_ASSIGN(orderByDisplay, "Amount")
+      %endif
+  %elif (sequence == "Description")
+      %if (orderBy == "JADESC")
+          @DTW_ASSIGN(orderBy, "JADESC DESC")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "JADESC")
+          @DTW_ASSIGN(orderByDisplay, "Description")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          @dtw_assign(formName, "Search")
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchCo, 2, 0) &&
+                      editNum(document.Search.srchFac, 4, 0) &&
+                      editNum(document.Search.srchAcct, 4, 0) &&
+                      editNum(document.Search.srchSub, 4, 0) &&
+                      editNum(document.Search.srchAmt, 13, 2))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "ARSELECTSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Reference</td>
+                              @dtw_assign(operNbr, "operRef")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchRef" size="7" maxlength="7"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Company</td>
+                              @dtw_assign(operNbr, "operCo")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchCo" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Facility</td>
+                              @dtw_assign(operNbr, "operFac")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchFac" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Account</td>
+                              @dtw_assign(operNbr, "operAcct")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchAcct" size="4" maxlength="4"><input type="text" name="srchSub" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="20" maxlength="20"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Amount</td>
+                              @dtw_assign(operNbr, "operAmt")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchAmt" size="15" maxlength="15"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchRef.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("JAREF", "Reference", $(srchRef), "U", $(operRef), "A")
+  @Build_WildCard ("JACO", "Company", $(srchCo), "", $(operCo), "N")
+  @Build_WildCard ("JAFAC", "Facility", $(srchFac), "", $(operFac), "N")
+  @Build_WildCard ("JAAMT", "Amount", $(srchAmt), "", $(operAmt), "N")
+  @Build_WildCard ("upper(JADESC)", "Description", $(srchDesc), "U", $(operDesc), "A")
+  @Build_WildCard_Acct ("JAACC", "JASUB", "Account", $(srchAcct), $(srchSub), $(operAcct))
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

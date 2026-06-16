@@ -1,0 +1,311 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Drill Down Program Maintenance                              *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Drill Down Program Maintenance"
+  d2wName                 = "GLDDPgmMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;WFReview=@dtw_rurlescseq(WFReview)&amp;wfInstance=@dtw_rurlescseq(wfInstance)&amp;wfInstanceDate=@dtw_rurlescseq(wfInstanceDate)&amp;wfWorkItem=@dtw_rurlescseq(wfWorkItem)&amp;wfWorkItemSequence=@dtw_rurlescseq(wfWorkItemSequence)&amp;wfParticipantId=@dtw_rurlescseq(wfParticipantId)&amp;fromD2w=@dtw_rurlescseq(fromD2w)&amp;wrnVar=@dtw_rurlescseq(wrnVar)"
+  deleteURL               = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;ddApId=@dtw_rurlescseq(ddApId)&amp;ddFileName=@dtw_rurlescseq(ddFileName)&amp;ddPgm=@dtw_rurlescseq(ddPgm)&amp;maintenanceCode=D"
+  cancelWFURL             = "$(homeURL)$(cGIPath)$(d2wName)/CancelWF$(d2wVarBase)"
+  programName             = "HGLDPU"
+  vldPgmName              = "HGLDPU_E"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  @RtvWFExcptExist(profileHandle, programName, vldPgmName, "E", vldExcptExist)
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "Menu.js"
+              function validate(chgForm) {
+                  %if (vldExcptExist == "N")
+                      if (document.Chg.ddApId.value =="" ||
+                          document.Chg.ddPgm.value =="" ||
+                          document.Chg.ddTitle.value =="")
+                         {alert("$(reqFieldError)"); return false;}
+                  %endif
+                  return true;
+              }
+              function confirmDelete() {return confirm("$(delRecordConf)")}
+              function confirmCancelWF() {return confirm("Cancel Processing of Work Item")}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "GLDDPGMMAINTAIN")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      %if (maintenanceCode == "A" || WFReview=="Y")
+                          %INCLUDE "AddRecordSQL.icl"
+                      %else
+                          @dtw_concat(stmtSQL, "SELECT * ", stmtSQL)
+                          @dtw_concat(fileSQL, " GLDDPG ", fileSQL)
+                          @dtw_concat(selectSQL, " DPAPID='$(ddApId)' and DPDDFL='$(ddFileName)'", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                      %endif
+                      %INCLUDE "stmtSQLEnd.icl"
+                      @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN  CHAR(64) profileHandle,
+                                       CHAR(2)   dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          @dtw_assign(backURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=143")
+      %endif
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              %ROW {
+                  %if (errFound != "" || WFReview=="Y" || maintenanceCode=="A")
+                      %if (errFound=="" && WFReview=="" && maintenanceCode=="A")
+                          @dtw_assign(edtVar, "")
+                          @dtw_assign(focusField, "ddApId")
+                      %elif (errFound=="" && WFReview=="Y")
+                          @dtw_assign(focusField, "ddApId")
+                      %elif (errFound != "")
+                          @dtw_assign(focusField, "")
+                          @EdtVarErr(profileHandle, typeValue, edtVar)
+                          @ErrVarErr(profileHandle, typeError, errVar)
+                          @DecatErr_Field("@@apid", "ddApId")   @dtw_assign(Err_DPAPID, fieldValue)
+                          @DecatErr_Field("@@ddfl", "ddFileName")   @dtw_assign(Err_DPDDFL, fieldValue)
+                          @DecatErr_Field("@@pgm@", "ddPgm")   @dtw_assign(Err_DPPGM, fieldValue)
+                          @DecatErr_Field("@@titl", "ddTitle")   @dtw_assign(Err_DPTITL, fieldValue)
+                          @DecatErr_Field("@@updt", "ddUpdate")   @dtw_assign(Err_DPUPDT, fieldValue)
+                      %endif
+
+                      @Decat_Field("@@apid")   @dtw_assign(V_DPAPID, fieldValue)
+                      @Decat_Field("@@ddfl")   @dtw_assign(V_DPDDFL, fieldValue)
+                      @Decat_Field("@@pgm@")   @dtw_assign(V_DPPGM, fieldValue)
+                      @Decat_Field("@@titl")   @dtw_assign(V_DPTITL, fieldValue)
+                      @Decat_Field("@@updt")   @dtw_assign(V_DPUPDT, fieldValue)
+                      @dtw_assign(errFound, "")
+
+                  %elif (maintenanceCode == "Z")
+                      @dtw_assign(focusField, "ddApId")
+                   %else
+                      @dtw_assign(focusField, "ddPgm")
+                  %endif
+
+                  @SetTextOvr(Err_DPAPID)
+                  <tr><td class="dsphdr"><span $(textOvr)>Application ID</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input type="text" name="ddApId" value="$(V_DPAPID)" size="2" maxlength="2">$(reqFieldChar)</td>
+                      %else
+                          <td class="inputalph"><input type="hidden" name="ddApId" value="$(V_DPAPID)">$(V_DPAPID)</td>
+                      %endif 		
+                  </tr>
+                  @DspErrMsg(Err_DPAPID)
+
+                  @SetTextOvr(Err_DPDDFL)
+                  <tr><td class="dsphdr"><span $(textOvr)>Table</span></td>
+                      %if (maintenanceCode == "A" || maintenanceCode == "Z")
+                          <td class="inputalph"><input type="text" name="ddFileName" value="$(V_DPDDFL)" size="10" maxlength="10"></td>
+                      %else
+                          <td class="inputalph"><input type="hidden" name="ddFileName" value="$(V_DPDDFL)">$(V_DPDDFL)</td>
+                      %endif 		
+                  </tr>
+                  @DspErrMsg(Err_DPDDFL)
+
+                  @SetTextOvr(Err_DPPGM)
+                  <tr><td class="dsphdr"><span $(textOvr)>Program</span></td>
+                      <td class="inputalph"><input type="text" name="ddPgm" value="$(V_DPPGM)" size="50" maxlength="50"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_DPPGM)
+    			
+                  @SetTextOvr(Err_DPTITL)
+                  <tr><td class="dsphdr"><span $(textOvr)>Title</span></td>
+                      <td class="inputalph"><input type="text" name="ddTitle" value="$(V_DPTITL)" size="50" maxlength="50"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_DPTITL)
+    			
+                  @RtvFldDesc("FLTYPE='BN' and FLVALU='$(V_DPUPDT)'", "SYFLAG", "FLDESC", fieldDesc)
+                  @SetTextOvr(Err_DPUPDT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Update In Upgrade</span></td>
+                      <td class="inputalph"><input type="text" name="ddUpdate" value="$(V_DPUPDT)" size="1" maxlength="1">
+                                            <a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=BN&amp;flagSrchHdr=@dtw_rurlescseq("Update In Upgrade")&amp;docName=Chg&amp;fldName=ddUpdate&amp;fldDesc=ddUpdateDesc" onclick="$(searchWinVar)">$(searchImage)</a>
+                                            <input type="text" disabled name="ddUpdateDesc" value="$(fieldDesc)" size="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_DPUPDT)
+              %}	
+          </table>
+
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar,
+                                        INOUT CHAR(32000) wrnVar)
+{%EXEC {HGLDPU_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%FUNCTION(dtw_directcall) SetApprove_Data(IN    CHAR(64)    profileHandle,
+                                                CHAR(2)     dataBaseID,
+                                                CHAR(1)     approveCode,
+                                                CHAR(32000) edtVar)
+{%EXEC {HWFWIA_S.PGM %}
+%}
+
+%HTML(CANCELWF) {
+  %INCLUDE "setLibraryList.icl"
+  @RtvFldDesc("WIINST=$(wfInstance) and WIINDT=$(wfInstanceDate) and WIWITM=$(wfWorkItem) and WIWISQ=$(wfWorkItemSequence)", "WFWITM", "Char(Count(*))", RecCount)
+  %if (RecCount >"0")
+      @dtw_assign(setFlag, "")
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@inst", wfInstance)
+      @Concat_Field("@@indt", wfInstanceDate)
+      @Concat_Field("@@witm", wfWorkItem)
+      @Concat_Field("@@wisq", wfWorkItemSequence)
+      @Concat_Field("@@ptid", wfParticipantId)
+      @dtw_concat(edtVar, "}{", edtVar)
+      @SetApprove_Data(profileHandle, dataBaseID, setFlag, edtVar)
+  %endif
+  <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)WFWorkList.d2w/REPORT$(d2wVarBase)">
+%}
+
+%HTML(WFREVIEW) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %else
+      @dtw_assign(setFlag, "Y")
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@inst", wfInstance)
+      @Concat_Field("@@indt", wfInstanceDate)
+      @Concat_Field("@@witm", wfWorkItem)
+      @Concat_Field("@@wisq", wfWorkItemSequence)
+      @Concat_Field("@@ptid", wfParticipantId)
+      @dtw_concat(edtVar, "}{", edtVar)
+      @SetApprove_Data(profileHandle, dataBaseID, setFlag, edtVar)
+
+      @RtvFldDesc("ADINST=$(wfInstance) and ADINDT=$(wfInstanceDate)", "WFDTAA", "ADVAR", V_ADVAR)
+      @dtw_assign(edtVar, V_ADVAR)
+      @dtw_assign(WFReview, "Y")
+      @Decat_Field("@@mncd")   @dtw_assign(maintenanceCode, fieldValue)
+      @Decat_Field("@@apid")   @dtw_assign(ddApId, fieldValue)
+      @Decat_Field("@@ddfl")   @dtw_assign(ddFileName, fieldValue)
+
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+
+  %if (maintenanceCode == "Z")
+      @dtw_assign(maintenanceCode, "A")
+  %endif
+
+  @dtw_assign(edtVar, "")
+                               @Concat_Field("@@wfid", wfInstance)
+                               @Concat_Field("@@wfdt", wfInstanceDate)
+                               @Concat_Field("@@wfcn", wfWorkItem)
+                               @Concat_Field("@@wfsq", wfWorkItemSequence)
+                               @Concat_Field("@@wfpt", wfParticipantId)
+  @dtw_mUPPERCASE(ddApId)      @Concat_Field("@@apid", ddApId)
+  @dtw_mUPPERCASE(ddFileName)  @Concat_Field("@@ddfl", ddFileName)
+                               @Concat_Field("@@pgm@", ddPgm)
+                               @Concat_Field("@@titl", ddTitle)
+  @dtw_mUPPERCASE(ddUpdate)    @Concat_Field("@@updt", ddUpdate)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar, wrnVar)
+
+  %if (errFound == "")
+      @Format_ConfMsg_Desc(maintenanceCode, $(ddTitle), "$(ddApId) - $(ddFileName) - $(ddPgm)", "", "", "", "", confMessage)
+      %if (WFReview=="Y")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)WFWorkList.d2w/REPORT$(d2wVarBase)">
+      %else
+          @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+          %if (backURL == "")
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=143&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %endif
+      %endif
+  %elif (maintenanceCode == "D")
+      @DecatErr_Field("@@ddfl", "ddFileName")
+      @Format_ConfMsg_Desc("", $(ddTitle), "$(ddApId) - $(ddFileName) - $(ddPgm)", "<br>$(fieldValue)", "", "", "", confMessage)
+      @RtvFldDesc("ERXHND='$(profileHandle)' and ERTYPE='U'", "SYEERR", "EREERR", backURL)
+      %if (backURL == "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=143&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(backURL)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;ddApId=@dtw_rurlescseq(ddApId)&amp;ddFileName=@dtw_rurlescseq(ddFileName)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

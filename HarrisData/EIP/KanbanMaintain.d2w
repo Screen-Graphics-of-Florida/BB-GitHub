@@ -1,0 +1,358 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Kanban Maintenance                                          *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+
+%Define {
+  page_title              = "Kanban Maintenance"
+  d2wName                 = "KanbanMaintain.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(fromPlant)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;plantName=@dtw_rurlescseq(plantName)&amp;itemNumber=@dtw_rurlescseq(itemNumber)&amp;itemDescription=@dtw_rurlescseq(itemDescription)&amp;turnaroundNumber=@dtw_rurlescseq(turnaroundNumber)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HSIKBM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script type="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              function confirmRetire(text) {return confirm("OK to retire?" + "\n" + "\n" + text);}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  %if (formatToPrint == "")
+                      @dtw_assign(pageID, "KANBANMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  %endif
+                  <td class="content">
+                      @dtw_assign(uv_PlantName, "KBPLT")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDKBMS ", fileSQL)
+                      @dtw_concat(selectSQL, "KBPLT = $(plantNumber) and KBITEM = '$(itemNumber)' ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Kanban_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Kanban_Query (IN  CHAR(64)    profileHandle,
+                                     CHAR(2)     dataBaseID,
+                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      @RtvFldDesc("IMITEM='$(itemNumber)'", "HDIMST", "IMIMDS", itemDescription)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPPTYP", partType)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPKBPC", policyCode)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPCQTY)", numberContainer)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPCTID", containerID)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPCADJ)", containerAdjustment)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPCQTS)", containerInUse)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPFOQ)", orderQuantity)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPODPT)", orderPoint)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPVEND)", vendorNumber)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "CHAR(IPBAC)", analystNumber)
+      @RtvFldDesc("IPPLT=$(plantNumber) AND IPITEM='$(itemNumber)'", "HDIPLT", "IPKBDD", documentDefinition)
+      %if (documentDefinition == "")
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLKBDD", documentDefinition)
+      %endif
+      @RtvFldDesc("FLTYPE='PARTTYPE' AND FLVALU='$(partType)'", "SYFLAG", "FLDESC", partTypeDesc)
+      @RtvFldDesc("FLTYPE='KANBANPLCY' AND FLVALU='$(policyCode)'", "SYFLAG", "FLDESC", policyDesc)
+      @RtvFldDesc("CTCTID='$(containerID)'", "HDCNTM", "CTDESC", containerDesc)
+      @RtvFldDesc("VMVEND=$(vendorNumber)", "HDVEND", "VMVNA1", vendorName)
+      @RtvFldDesc("BMBUYR=$(analystNumber)", "HDBUYR", "BMBNA1", analystName)
+      @RtvFldDesc("FLTYPE='KANBANDOC' AND FLVALU='$(documentDefinition)'", "SYFLAG", "FLDESC", documentDesc)
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      <a href="$(homeURL)$(cGIPath)Kanban.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(fromPlant)">$(portalHome)</a>
+                      %if (policyCode == "M" || (policyCode == "S" && containerInUse<"1") || (policyCode == "D" && containerInUse<"2") || (policyCode == "T" && containerInUse<"3"))
+                          <a href="$(homeURL)$(cGIPath)KanbanQtyInput.d2w/REPORT$(d2wVarBase)&amp;adjQuantity=@dtw_rurlescseq(containerAdjustment)&amp;kanbanType=AddKbn" title="Container Adjustment" onclick="$(smallPromptWinVar)">$(addImageLrg)</a>
+                      %endif
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          @Format_Header("Plant", $(plantName), $(plantNumber))
+          @Format_Header("Item", $(itemDescription), $(itemNumber))
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      %INCLUDE "KanbanMaintain.icl"
+
+      %if (formatToPrint != "Y")
+          <table $(contentTable)>
+              <tr><td> %INCLUDE "AssignPageValue.icl" </td>
+              </tr>
+          </table>
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y")
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("KBTURN", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Turnaround" title="Sequence By Kanban Turnaround">Kanban<br>Turnaround</a></th>
+              @OrderBy_Sort("KBFWHS", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Warehouse" title="Sequence By Warehouse, Stock Location">Whs</a></th>
+              @OrderBy_Sort("KBFSTK", sortVar)
+              <th class="colhdr$(sortVar)" colspan="3"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Location" title="Sequence By Stock Location">Stock Location</a></th>
+              @OrderBy_Sort("KBSTAT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Status" title="Sequence By Status">Status</a></th>
+              <th class="colhdr">Order<br>Number</th>
+              @OrderBy_Sort("KBDEPT", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Department" title="Sequence By Department">Dept</a></th>
+              @OrderBy_Sort("KBTTRN", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Traveler" title="Sequence By Traveler Turnaround">Traveler<br>Turnaround</a></th>
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+              %ROW{
+                  @RtvFldDesc("FLTYPE='KANBANSTAT' AND FLVALU='$(V_KBSTAT)'", "SYFLAG", "FLDESC", fieldDesc)
+                  @dtw_assign(orderNumber, "")
+                  %if (partType == "M" && $(V_KBSTAT) == "I")
+                      @RtvFldDesc("DCTURN=$(V_KBTURN)", "HDTRNM", "DCMORD", orderNumber)
+                      @RtvFldDesc("OHPLT=$(plantNumber) and OHORD='$(orderNumber)'", "HDMOHM", "char(count(*))", orderExists)
+                  %elif (partType == "P" && $(V_KBSTAT) == "V")
+                      @RtvFldDesc("DCTURN=$(V_KBTURN)", "HDTRNM", "CHAR(DCORD#)", orderNumber)
+                  %endif
+                  @dtw_assign(maintainVar, "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(fromPlant)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;itemNumber=@dtw_rurlescseq(V_KBITEM)&amp;turnaroundNumber=@dtw_rurlescseq(V_KBTURN)&amp;mfgOrder=@dtw_rurlescseq(orderNumber)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+
+                  %INCLUDE "SetRowClass.icl"
+                  @Format_Confirm_Desc("Kanban Turnaround", $(V_KBTURN), "", "", "", "", confirmDesc)
+                  <tr class="$(rowClass)">
+                      %if (formatToPrint != "Y")
+                          <td class="opticon">
+                              <a href="$(homeURL)$(cGIPath)KanbanCardMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                              %if ($(V_KBSTAT) == "F")
+                                  <a onClick="return confirmRetire('$(confirmDesc)')" href="$(homeURL)$(cGIPath)KanbanCardMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=R">$(kanbanRetireImage)</a>
+                              %else
+                                  &nbsp; &nbsp; &nbsp;
+                              %endif
+                              %if ($(V_KBSTAT) != "I" && $(V_KBSTAT) != "V")
+                                  <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)KanbanCardMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageSml)</a>
+                              %else
+                                  &nbsp; &nbsp; &nbsp;
+                              %endif
+                          </td>
+                      %endif
+                      <td class="colnmbr">$(V_KBTURN)</td>
+                      <td class="colnmbr">$(V_KBFWHS)</td>
+                      <td class="colalph">$(V_KBFSTK)</td>
+                      <td class="colalph">$(V_KBFAIL)</td>
+                      <td class="colalph">$(V_KBFSLC)</td>
+                      <td class="colalph">$(fieldDesc)</td>
+                      <td class="colalph">
+                          %if (partType == "M" && $(V_KBSTAT) == "I" && orderExists > "0")
+                              <a href="$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(maintainVar)" onclick="$(inquiryWinVar)" title="View Mfg Order">$(orderNumber)</a>
+                          %else
+                              $(orderNumber)
+                          %endif
+                      </td>
+                      <td class="colcode">$(V_KBDEPT)</td>
+                      <td class="colnmbr">$(V_KBTTRN)</td>
+                  </tr>
+              %}
+          </table>
+          %INCLUDE "PageBottom.icl"
+          $(hrTagAttr)
+          %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  @dtw_assign(uv_PlantName, "KBPLT")
+  %INCLUDE "userview.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+  @dtw_concat(fileSQL, " HDKBMS ", fileSQL)
+  @dtw_concat(selectSQL, "KBPLT = $(plantNumber) and KBITEM = '$(itemNumber)' ", selectSQL)
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @Kanban_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+
+%}
+
+%FUNCTION(dtw_sql) Kanban_XMLQuery (IN  CHAR(64)    profileHandle,
+			                        CHAR(2)     dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @XMLBeginTag("KanbanList")
+		
+          %ROW{
+              @XMLIDTag(V_KBTURN, "Kanban ID")
+                  @XMLTag(V_KBPLT, "PlantNumber")
+                  @XMLTag(V_KBITEM, "ItemNumber")
+                  @XMLTag(V_KBTURN, "TurnaroundNumber")
+                  @XMLTag(V_KBSTAT, "KanbanStatus")
+                  @XMLTag(V_KBDEPT, "Department")
+                  @XMLTag(V_KBWC, "WorkCenter")
+                  @XMLTag(V_KBFWHS, "Warehouse")
+                  @XMLTag(V_KBFSTK, "StockRoom")
+                  @XMLTag(V_KBFAIL, "Aisle")
+                  @XMLTag(V_KBFSLC, "StockLocation")
+                  @XMLTag(V_KBTTRN, "TravelerTurnaround")
+              @XMLEndTag("Kanban")
+	   %}
+
+      @XMLEndTag("KanbanList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "KBTURN")
+          @DTW_ASSIGN(orderByDisplay, "Kanban Turnaround")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Turnaround")
+      %if (orderBy == "KBTURN")
+          @DTW_ASSIGN(orderBy, "KBTURN DESC")
+          @DTW_ASSIGN(orderByDisplay, "Turnaround Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "KBTURN")
+          @DTW_ASSIGN(orderByDisplay, "Turnaround Number")
+      %endif
+  %elif (sequence == "Warehouse")
+      %if (orderBy == "KBFWHS,KBTURN")
+          @DTW_ASSIGN(orderBy, "KBFWHS DESC,KBTURN")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse (descending), Turnaround Number")
+      %else
+          @DTW_ASSIGN(orderBy, "KBFWHS,KBTURN")
+          @DTW_ASSIGN(orderByDisplay, "Warehouse, Turnaround Number")
+      %endif
+  %elif (sequence == "Location")
+      %if (orderBy == "KBFSTK,KBFAIL,KBFSLC")
+          @DTW_ASSIGN(orderBy, "KBFSTK DESC,KBFAIL,KBFSLC")
+          @DTW_ASSIGN(orderByDisplay, "Stockroom (descending), Location")
+      %else
+          @DTW_ASSIGN(orderBy, "KBFSTK,KBFAIL,KBFSLC")
+          @DTW_ASSIGN(orderByDisplay, "Stockroom, Location")
+      %endif
+  %elif (sequence == "Status")
+      %if (orderBy == "KBSTAT")
+          @DTW_ASSIGN(orderBy, "KBSTAT DESC")
+          @DTW_ASSIGN(orderByDisplay, "Status Code (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "KBSTAT")
+          @DTW_ASSIGN(orderByDisplay, "Status Code")
+      %endif
+  %elif (sequence == "Department")
+      %if (orderBy == "KBDEPT,KBTURN")
+          @DTW_ASSIGN(orderBy, "KBDEPT DESC,KBTURN")
+          @DTW_ASSIGN(orderByDisplay, "Department (descending), Turnaround Number")
+      %else
+          @DTW_ASSIGN(orderBy, "KBDEPT,KBTURN")
+          @DTW_ASSIGN(orderByDisplay, "Department, Turnaround Number")
+      %endif
+  %elif (sequence == "Traveler")
+      %if (orderBy == "KBTTRN,KBTURN")
+          @DTW_ASSIGN(orderBy, "KBTTRN DESC,KBTURN")
+          @DTW_ASSIGN(orderByDisplay, "Traveler Turnaround (descending), Turnaround Number")
+      %else
+          @DTW_ASSIGN(orderBy, "KBTTRN,KBTURN")
+          @DTW_ASSIGN(orderByDisplay, "Traveler Turnaround, Turnaround Number")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}

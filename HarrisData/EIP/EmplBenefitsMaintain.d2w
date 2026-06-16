@@ -1,0 +1,969 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Employee Benefits Maintenance                               *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "EmplBenefitsMaintain.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title 		= "$(emplDep) Benefit Maintenance"
+  d2wName              = "EmplBenefitsMaintain.d2w"
+  d2wVarBase           = "$(genericVarBase)$(employeeVarBase)&amp;dependentNbr=@dtw_rurlescseq(dependentNbr)&amp;backHome=@dtw_rurlescseq(backHome)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  deleteURL            = "$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;benefitCode=@dtw_rurlescseq(benefitCode)&amp;planCode=@dtw_rurlescseq(planCode)&amp;maintenanceCode=D"
+  programName          = "HPEECU"
+  DATABASE             = "*LOCAL"
+  DTW_DEFAULT_REPORT   = "NO"
+  applicationID        = "PE"
+  classcode            = ""
+  classification       = ""
+  cobraBenefit         = ""
+  CVDESC               = ""
+  fsaMaint             = ""
+  updateDeduction      = ""
+  updateError          = ""
+  updsd                = ""
+  BenGrp               = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  %INCLUDE "EmployeeURL.icl"
+  @dtw_replace(workURL, "@@benefitCode", "@dtw_rurlescseq(benefitCode)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@planCode", "@dtw_rurlescseq(planCode)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "EmplUV.icl"
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %if (dependentNbr == "0000000")
+          @dtw_assign(emplDep, "Employee")
+      %else
+          @dtw_assign(emplDep, "Employee")
+      %endif
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script type="text/javascript">
+	           %INCLUDE "numedit.icl"
+                  %INCLUDE "dateedit.icl"
+                  %INCLUDE "calendar.icl"
+                  %INCLUDE "CheckEnterChg.icl"
+                  function validate(chgForm) {
+                      if (document.Chg.planHolderSSN.value =="" ||
+                          document.Chg.dateEffective.value =="")
+                         {alert("$(reqFieldError)"); return false;}
+                      if (editdate(document.Chg.enrollmentDate) &&
+                          editdate(document.Chg.dateEffective) &&
+                          editdate(document.Chg.vestingDate) &&
+                          editNum(document.Chg.amount, 7, 0) &&
+                          editNum(document.Chg.BSS1, 9, 0) &&
+                          editNum(document.Chg.BPC1, 3, 0) &&
+                          editNum(document.Chg.BSS2, 9, 0) &&
+                          editNum(document.Chg.BPC2, 3, 0) &&
+                          editNum(document.Chg.BSS3, 9, 0) &&
+                          editNum(document.Chg.BPC3, 3, 0) &&
+                          editNum(document.Chg.BSS4, 9, 0) &&
+                          editNum(document.Chg.BPC4, 3, 0) &&
+                          editNum(document.Chg.BSS5, 9, 0) &&
+                          editNum(document.Chg.BPC5, 3, 0) &&
+                          editNum(document.Chg.BSS6, 9, 0) &&
+                          editNum(document.Chg.BPC6, 3, 0) &&
+                          editNum(document.Chg.numberOfUnits, 5, 0) &&
+                          editNum(document.Chg.deductionAmount, 5, 2) &&
+                          editNum(document.Chg.deductionPercent, 2, 3) &&
+                          editNum(document.Chg.planHolderSSN, 9, 0) &&
+                          editdate(document.Chg.certificateReceived) &&
+                          editNum(document.Chg.phoneNumber, 10, 0) &&
+                          editNum(document.Chg.monthsOfCoverage, 3, 0) &&
+                          editdate(document.Chg.preexistingCondDate) &&
+                          editdate(document.Chg.coverageTermDate) &&
+                          editdate(document.Chg.certificateRequested) &&
+                          editdate(document.Chg.certificateIssued) &&
+                          editNum(document.Chg.premium, 5, 2) &&
+                          editdate(document.Chg.electronicDoc))
+                          return true;
+                  }
+                  function confirmDelete() {return confirm("$(delRecordConf)")}
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "EMPLBENMAINTAIN")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (maintenanceCode == "A")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, " SELECT * FROM PEJLF15", stmtSQL)
+                              @dtw_concat(stmtSQL, " WHERE (ECCOMP=$(prCompany) and ECFACL=$(prFacility) and ECEMPL=$(hrEmployee) and ECSD#=$(dependentNbr) and ECCOVR='$(benefitCode)' and ECPLAN = '$(planCode)')", stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- Start Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN  CHAR(64) profileHandle,
+                                   CHAR(2)   dataBaseID,
+                                   CHAR(32000) stmtSQL)
+
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      %INCLUDE "MaintainTop.icl"
+      <table $(contentTable)>
+          @Ret_Format_EmplName(prCompany, prFacility, prEmployee, hrCompany, hrEmployee, "H", F_EmpName)
+          %if (dependentNbr == "0000000")
+              <tr><td><h2>$(F_EmpName)</h2></td></tr>
+          %else
+              @RetDepNam(profileHandle, dataBaseID, dependentNbr, F_depName)
+              <tr><td><h2> $(F_depName)</h2></td></tr>
+          %endif
+      </table>
+      $(hrTagAttr)
+
+      <table $(quickLinkTable)>
+           %if (CVEBEN == "Y")
+               %if (genEmplImage != "" && quicklinkDspImage == "Y")
+                  <tr>
+                      <td><a href="#general">$(generalImage)</a></td>
+                      <td><a href="#certificate">$(certificateImage)</a></td>
+                      <td><a href="#bene1">$(bene1Image)</a></td>
+                      <td><a href="#bene2">$(bene2Image)</a></td>
+                  </tr>
+                  <tr><td><a href="#bene3">$(bene3Image)</a></td>
+                      <td><a href="#bene4">$(bene4Image)</a></td>
+                      <td><a href="#bene5">$(bene5Image)</a></td>
+                      <td><a href="#bene6">$(bene5Image)</a></td>
+                  </tr>
+                  <tr><td><a href="#terminate">$(terminateImage)</a></td>
+                  </tr>
+               %else
+                  <tr>
+                      <td class="quickLinkTabs"><a href="#general">General</a></td>
+                      <td class="quickLinkTabs"><a href="#certificate">Certificate Receipt</a></td>
+                      <td class="quickLinkTabs"><a href="#bene1">Beneficiary 1</a></td>
+                      <td class="quickLinkTabs"><a href="#bene2">Beneficiary 2</a></td>
+                  </tr>
+                  <tr>
+                      <td class="quickLinkTabs"><a href="#bene3">Beneficiary 3</a></td>
+                      <td class="quickLinkTabs"><a href="#bene4">Beneficiary 4</a></td>
+                      <td class="quickLinkTabs"><a href="#bene5">Beneficiary 5</a></td>
+                      <td class="quickLinkTabs"><a href="#bene6">Beneficiary 6</a></td>
+                  </tr>
+                  <tr>
+                      <td class="quickLinkTabs"><a href="#terminate">Terminate Benefit</a></td>
+                  </tr>
+               %endif
+           %else
+               %if (genEmplImage != "" && quicklinkDspImage == "Y")
+                  <tr>
+                      <td><a href="#general">$(generalImage)</a></td>
+                      <td><a href="#certificate">$(certificateImage)</a></td>
+                      <td><a href="#terminate">$(terminateImage)</a></td>
+                  </tr>
+               %else
+                  <tr>
+                      <td class="quickLinkTabs"><a href="#general">General</a></td>
+                      <td class="quickLinkTabs"><a href="#certificate">Certificate Receipt</a></td>
+                      <td class="quickLinkTabs"><a href="#terminate">Terminate Benefit</a></td>
+                  </tr>
+               %endif
+           %endif
+
+
+              <tr><td>&nbsp;</td></tr>
+      </table>
+
+
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+      <table $(contentTable)>
+          %ROW {
+              %if (errFound != "" || maintenanceCode == "A")
+                  %if (errFound == "" && maintenanceCode == "A")
+                      @dtw_assign(edtVar, "")
+                      @dtw_assign(focusField, "eligibilityDate")
+                  %else
+                      @dtw_assign(focusField, "")
+                      @EdtVarErr(profileHandle, typeValue, edtVar)
+                      @ErrVarErr(profileHandle, typeError, errVar)
+                      @DecatErr_Field("@@covr", "benefitCode")          @dtw_assign(Err_ECCOVR, fieldValue)
+                      @DecatErr_Field("@@plan", "planCode")             @dtw_assign(Err_ECPLAN, fieldValue)
+                      @DecatErr_Field("@@elig", "eligibilityDate")      @dtw_assign(Err_ECELIG, fieldValue)
+                      @DecatErr_Field("@@elec", "enrollmentDate")       @dtw_assign(Err_ECELEC, fieldValue)
+                      @DecatErr_Field("@@dce@", "dateEffective")        @dtw_assign(Err_ECDCE, fieldValue)
+                      @DecatErr_Field("@@vest", "vestingDate")          @dtw_assign(Err_ECVEST, fieldValue)
+                      @DecatErr_Field("@@amt@", "amount")               @dtw_assign(Err_ECAMT, fieldValue)
+                      @DecatErr_Field("@@unit", "numberOfUnits")        @dtw_assign(Err_ECUNIT, fieldValue)
+                      @DecatErr_Field("@@deda", "deductionAmount")      @dtw_assign(Err_ECDEDA, fieldValue)
+                      @DecatErr_Field("@@dedp", "deductionPercent")     @dtw_assign(Err_ECDEDP, fieldValue)
+
+                      @DecatErr_Field("@@phc@", "planHolder")           @dtw_assign(Err_ECPHC, fieldValue)
+                      @DecatErr_Field("@@phss", "planHolderSSN")        @dtw_assign(Err_ECPHSS, fieldValue)
+                      @DecatErr_Field("@@id@@", "identificationNbr")    @dtw_assign(Err_ECID, fieldValue)
+                      @DecatErr_Field("@@edoc", "electronicDoc")        @dtw_assign(Err_EDOC, fieldValue)
+                      @DecatErr_Field("@@cert", "certificateReceived")  @dtw_assign(Err_ECCERT, fieldValue)
+                      @DecatErr_Field("@@cisu", "certificateIssuer")    @dtw_assign(Err_ECCISU, fieldValue)
+                      @DecatErr_Field("@@phon", "phoneNumber")          @dtw_assign(Err_ECPHON, fieldValue)
+                      @DecatErr_Field("@@mnth", "monthsOfCoverage")     @dtw_assign(Err_ECMNTH, fieldValue)
+                      @DecatErr_Field("@@prec", "preexistingCondDate")  @dtw_assign(Err_ECPREC, fieldValue)
+                      @DecatErr_Field("@@ben1", "BEN1")                 @dtw_assign(Err_ECBEN1, fieldValue)
+                      @DecatErr_Field("@@bss1", "BSS1")                 @dtw_assign(Err_ECBSS1, fieldValue)
+                      @DecatErr_Field("@@bpc1", "BPC1")                 @dtw_assign(Err_ECBPC1, fieldValue)
+                      @DecatErr_Field("@@ben2", "BEN2")                 @dtw_assign(Err_ECBEN2, fieldValue)
+                      @DecatErr_Field("@@bss2", "BSS2")                 @dtw_assign(Err_ECBSS2, fieldValue)
+                      @DecatErr_Field("@@bpc2", "BPC2")                 @dtw_assign(Err_ECBPC2, fieldValue)
+                      @DecatErr_Field("@@ben3", "BEN3")                 @dtw_assign(Err_ECBEN3, fieldValue)
+                      @DecatErr_Field("@@bss3", "BSS3")                 @dtw_assign(Err_ECBSS3, fieldValue)
+                      @DecatErr_Field("@@bpc3", "BPC3")                 @dtw_assign(Err_ECBPC3, fieldValue)
+                      @DecatErr_Field("@@ben4", "BEN4")                 @dtw_assign(Err_ECBEN4, fieldValue)
+                      @DecatErr_Field("@@bss4", "BSS4")                 @dtw_assign(Err_ECBSS4, fieldValue)
+                      @DecatErr_Field("@@bpc4", "BPC4")                 @dtw_assign(Err_ECBPC4, fieldValue)
+                      @DecatErr_Field("@@ben5", "BEN5")                 @dtw_assign(Err_ECBEN5, fieldValue)
+                      @DecatErr_Field("@@bss5", "BSS5")                 @dtw_assign(Err_ECBSS5, fieldValue)
+                      @DecatErr_Field("@@bpc5", "BPC5")                 @dtw_assign(Err_ECBPC5, fieldValue)
+                      @DecatErr_Field("@@ben6", "BEN6")                 @dtw_assign(Err_ECBEN6, fieldValue)
+                      @DecatErr_Field("@@bss6", "BSS6")                 @dtw_assign(Err_ECBSS6, fieldValue)
+                      @DecatErr_Field("@@bpc6", "BPC6")                 @dtw_assign(Err_ECBPC6, fieldValue)
+                      @DecatErr_Field("@@cert", "certificateReceived")  @dtw_assign(Err_ECCERT, fieldValue)
+                      @DecatErr_Field("@@cisu", "certificateIssuer")    @dtw_assign(Err_ECCISU, fieldValue)
+                      @DecatErr_Field("@@phon", "phoneNumber")          @dtw_assign(Err_ECPHON, fieldValue)
+                      @DecatErr_Field("@@mnth", "monthsOfCoverage")     @dtw_assign(Err_ECMNTH, fieldValue)
+                      @DecatErr_Field("@@prec", "preexistingCondDate")  @dtw_assign(Err_ECPREC, fieldValue)
+                      @DecatErr_Field("@@dct@", "coverageTermDate")     @dtw_assign(Err_ECDCT, fieldValue)
+                      @DecatErr_Field("@@trcr", "certificateRequested") @dtw_assign(Err_ECTRCR, fieldValue)
+                      @DecatErr_Field("@@trci", "certificateIssued")    @dtw_assign(Err_ECTRCI, fieldValue)
+                      @DecatErr_Field("@@ackn", "employeeReceipt")      @dtw_assign(Err_ECACKN, fieldValue)
+                      @DecatErr_Field("@@carr", "carrierNotified")      @dtw_assign(Err_ECCARR, fieldValue)
+                      @DecatErr_Field("@@prem", "premium")              @dtw_assign(Err_ECPREM, fieldValue)
+                      @DecatErr_Field("@@autd", "updateDependents")     @dtw_assign(Err_AUTD, fieldValue)
+                      @DecatErr_Field("@@eded", "updateDeduction")      @dtw_assign(Err_EDED, fieldValue)
+                  %endif
+
+                  @Decat_Field("@@covr")   @dtw_assign(V_ECCOVR, fieldValue)
+                  @Decat_Field("@@plan")   @dtw_assign(V_ECPLAN, fieldValue)
+                  @Decat_Field("@@elig")   @dtw_assign(V_ECELIG, fieldValue)
+                  @Decat_Field("@@elec")   @dtw_assign(V_ECELEC, fieldValue)
+                  @Decat_Field("@@dce@")   @dtw_assign(V_ECDCE, fieldValue)
+                  @Decat_Field("@@vest")   @dtw_assign(V_ECVEST, fieldValue)
+                  @Decat_Field("@@amt@")   @dtw_assign(V_ECAMT, fieldValue)
+                  @Decat_Field("@@unit")   @dtw_assign(V_ECUNIT, fieldValue)
+                  @Decat_Field("@@deda")   @dtw_assign(V_ECDEDA, fieldValue)
+                  @Decat_Field("@@dedp")   @dtw_assign(V_ECDEDP, fieldValue)
+                  @Decat_Field("@@phc@")   @dtw_assign(V_ECPHC, fieldValue)
+                  @Decat_Field("@@phss")   @dtw_assign(V_ECPHSS, fieldValue)
+                  @Decat_Field("@@id@@")   @dtw_assign(V_ECID, fieldValue)
+                  @Decat_Field("@@edoc")   @dtw_assign(V_ECEDOC, fieldValue)
+                  @Decat_Field("@@cert")   @dtw_assign(V_ECCERT, fieldValue)
+                  @Decat_Field("@@cisu")   @dtw_assign(V_ECCISU, fieldValue)
+                  @Decat_Field("@@phon")   @dtw_assign(V_ECPHON, fieldValue)
+                  @Decat_Field("@@mnth")   @dtw_assign(V_ECMNTH, fieldValue)
+                  @Decat_Field("@@prec")   @dtw_assign(V_ECPREC, fieldValue)
+                  @Decat_Field("@@ben1")   @dtw_assign(V_ECBEN1, fieldValue)
+                  @Decat_Field("@@bss1")   @dtw_assign(V_ECBSS1, fieldValue)
+                  @Decat_Field("@@bpc1")   @dtw_assign(V_ECBPC1, fieldValue)
+                  @Decat_Field("@@ben2")   @dtw_assign(V_ECBEN2, fieldValue)
+                  @Decat_Field("@@bss2")   @dtw_assign(V_ECBSS2, fieldValue)
+                  @Decat_Field("@@bpc2")   @dtw_assign(V_ECBPC2, fieldValue)
+                  @Decat_Field("@@ben3")   @dtw_assign(V_ECBEN3, fieldValue)
+                  @Decat_Field("@@bss3")   @dtw_assign(V_ECBSS3, fieldValue)
+                  @Decat_Field("@@bpc3")   @dtw_assign(V_ECBPC3, fieldValue)
+                  @Decat_Field("@@ben4")   @dtw_assign(V_ECBEN4, fieldValue)
+                  @Decat_Field("@@bss4")   @dtw_assign(V_ECBSS4, fieldValue)
+                  @Decat_Field("@@bpc4")   @dtw_assign(V_ECBPC4, fieldValue)
+                  @Decat_Field("@@ben5")   @dtw_assign(V_ECBEN5, fieldValue)
+                  @Decat_Field("@@bss5")   @dtw_assign(V_ECBSS5, fieldValue)
+                  @Decat_Field("@@bpc5")   @dtw_assign(V_ECBPC5, fieldValue)
+                  @Decat_Field("@@ben6")   @dtw_assign(V_ECBEN6, fieldValue)
+                  @Decat_Field("@@bss6")   @dtw_assign(V_ECBSS6, fieldValue)
+                  @Decat_Field("@@bpc6")   @dtw_assign(V_ECBPC6, fieldValue)
+                  @Decat_Field("@@dct@")   @dtw_assign(V_ECDCT, fieldValue)
+                  @Decat_Field("@@trcr")   @dtw_assign(V_ECTRCR, fieldValue)
+                  @Decat_Field("@@trci")   @dtw_assign(V_ECTRCI, fieldValue)
+                  @Decat_Field("@@ackn")   @dtw_assign(V_ECACKN, fieldValue)
+                  @Decat_Field("@@carr")   @dtw_assign(V_ECCARR, fieldValue)
+                  @Decat_Field("@@prem")   @dtw_assign(V_ECPREM, fieldValue)
+                  @Decat_Field("@@autd")   @dtw_assign(updateDependents, fieldValue)
+                  @Decat_Field("@@eded")   @dtw_assign(updateDeduction, fieldValue)
+                  %if (updateDependents == "")
+                      @dtw_assign(updateDependents, "N")
+                  %endif
+                  %if (updateDeduction == "")
+                      @dtw_assign(updateDeduction, "N")
+                  %endif
+
+                  %if (errFound == "" && maintenanceCode == "A")
+                      @dtw_assign(V_ECCOVR, "  ")
+                      @dtw_assign(V_ECPLAN, "   ")
+                      @RtvFldDesc("EMCOMP=$(prCompany) and EMFACL=$(prFacility) and EMEMPL=$(prEmployee)", "HREMPL", "char(EMSSNO)", V_ECPHSS)
+                  %endif
+                  @dtw_assign(errFound, "")
+
+              %else
+                  @dtw_assign(V_ECDEDP, "@dtw_rformat(@dtw_rmultiply(V_ECDEDP, "100"),"","3")")
+                  @dtw_assign(focusField, "eligibilityDate")
+                  @DateInputFromCYMD(V_ECELIG)
+                  @DateInputFromCYMD(V_ECELEC)
+                  @DateInputFromCYMD(V_ECDCE)
+                  @DateInputFromCYMD(V_ECVEST)
+                  @DateInputFromCYMD(V_ECCERT)
+                  @DateInputFromCYMD(V_ECPREC)
+                  @DateInputFromCYMD(V_ECDCT)
+                  @DateInputFromCYMD(V_ECTRCR)
+                  @DateInputFromCYMD(V_ECTRCI)
+                  @DateInputFromCYMD(V_ECEDOC)
+              %endif
+        </table>
+              <a name="general"></a>
+              <fieldset class="legendBody">
+              <legend class="legendTitle">General</legend>
+              <div class="quickLinksTop">
+                  <a href="#top">$(topOfFormImage)</a>
+              </div>
+              <table $(contentTable)>
+                  @SetTextOvr(Err_ECCOVR)
+                  %if (maintenanceCode == "A")
+                      @SetTextOvr(Err_ECCOVR)
+                      @RtvFldDesc("CVCOMP=$(prCompany) AND CVFACL=$(prFacility) AND CVCOVR='$(benefitCode)' AND CVPLAN='$(planCode)'", "CBCOVR", "CVDESC", CVDESC)
+                      <tr><td class="dsphdr"><span $(textOvr)>Benefit</span></td>
+                          <td class="inputalph"><input name="benefitCode" type="hidden" value="$(benefitCode)" size="2" maxlength="2">$(CVDESC)</td>
+                      </tr>
+                      @DspErrMsg(Err_ECCOVR)
+
+                      @RtvFldDesc("CCCODE='$(planCode)'", "CBCODE", "CCDESC", CCDESC)
+                      <tr><td class="dsphdr"><span $(textOvr)>Plan</span></td>
+                          <td class="inputalph"><input name="planCode" type="hidden" value="$(planCode)" size="3" maxlength="3">$(CCDESC)</td>
+                      </tr>
+                  %else
+                      @SetTextOvr(Err_ECCOVR)
+                      <tr><td class="dsphdr"><span $(textOvr)>Benefit</span></td>
+                          <td class="inputalph"><input name="benefitCode" type="hidden" value="$(V_ECCOVR)" size="2" maxlength="2">$(V_CVDESC)</td>
+                      </tr>
+                      @DspErrMsg(Err_ECCOVR)
+
+                      <tr><td class="dsphdr"><span $(textOvr)>Plan</span></td>
+                          <td class="inputalph"><input name="planCode" type="hidden" value="$(V_ECPLAN)" size="3" maxlength="3">$(V_CCDESC)</td>
+                      </tr>
+                  %endif
+
+                  @SetTextOvr(Err_ECELIG)
+                  <tr><td class="dsphdr"><span $(textOvr)>Eligibility Date</span></td>
+                      <td class="inputalph"><input name="eligibilityDate" type="text" value="$(V_ECELIG)" size="6" maxlength="6">
+                          <a href="javascript:calWindow('eligibilityDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_ECELIG)
+
+                  @SetTextOvr(Err_ECELEC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Enrollment Date</span></td>
+                      <td class="inputalph"><input name="enrollmentDate" type="text" value="$(V_ECELEC)" size="6" maxlength="6">
+                          <a href="javascript:calWindow('enrollmentDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_ECELEC)
+
+                  @SetTextOvr(Err_ECDCE)
+                  <tr><td class="dsphdr"><span $(textOvr)>Date Effective</span></td>
+                      <td class="inputnmbr"><input name="dateEffective" type="text" value="$(V_ECDCE)" size="6" maxlength="6">
+                          <a href="javascript:calWindow('dateEffective');"> $(reqFieldChar) $(calendarImage) </a></td>
+                  </tr>
+                  @DspErrMsg(Err_ECDCE)
+
+                  @SetTextOvr(Err_ECVEST)
+                  <tr><td class="dsphdr"><span $(textOvr)>Vesting Date</span></td>
+                      <td class="inputnmbr"><input name="vestingDate" type="text" value="$(V_ECVEST)" size="6" maxlength="6">
+                          <a href="javascript:calWindow('vestingDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_ECVEST)
+
+                  @SetTextOvr(Err_ECAMT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Amount</span></td>
+                      <td class="inputnmbr"><input name="amount" type="text" value="$(V_ECAMT)" size="7" maxlength="7"></td>
+                  </tr>
+                  @DspErrMsg(Err_ECAMT)
+
+                  %if (dependentNbr == "0000000")
+                      @SetTextOvr(Err_ECDEDA)
+                      <tr><td class="dsphdr"><span $(textOvr)>Employee Deduction Amount</span></td>
+                          <td class="inputnmbr"><input name="deductionAmount" type="text" value="$(V_ECDEDA)" size="7" maxlength="7"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECDEDA)
+
+                      @SetTextOvr(Err_ECDEDP)
+                      <tr><td class="dsphdr"><span $(textOvr)>Employee Deduction Percent</span></td>
+                          <td class="inputnmbr"><input name="deductionPercent" type="text" value="$(V_ECDEDP)" size="7" maxlength="7"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECDEDP)
+                  %else
+                      <input type="hidden" name="deductionAmount" value="0">
+                      <input type="hidden" name="deductionPercent" value="0">
+                  %endif
+
+                  %if (CVUNIT > "0")
+                      @SetTextOvr(Err_ECUNIT)
+                      <tr><td class="dsphdr"><span $(textOvr)>Number Of Units</span></td>
+                          <td class="inputnmbr"><input name="numberOfUnits" type="text" value="$(V_ECUNIT)" size="7" maxlength="5"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECUNIT)
+                  %else
+                      <input type="hidden" name="numberOfUnits" value="00000">
+                  %endif
+
+                  @SetTextOvr(Err_ECPHSS)
+                  %while(@dtw_rlength(V_ECPHSS) != "9") {@dtw_insert("0", V_ECPHSS, V_ECPHSS)%}
+                  <tr><td class="dsphdr"><span $(textOvr)>Plan Holder SS#</span></td>
+                      <td class="inputnmbr"><input name="planHolderSSN" type="text" value="$(V_ECPHSS)" size="9" maxlength="9"> $(reqFieldChar) </td>
+                  </tr>
+                  @DspErrMsg(Err_ECPHSS)
+
+                  @SetTextOvr(Err_ECPHC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Plan Holder</span></td>
+                      @dtw_tb_rows(planHolderTable, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(planHolderTable, x, "1") != V_ECPHC) && (x < maxRows))
+                           {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(planHolderTable, "planHolder", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_ECPHC)
+
+                  @SetTextOvr(Err_ECID)
+                  <tr><td class="dsphdr"><span $(textOvr)>Identification Number</span></td>
+                      <td class="inputnmbr"><input name="identificationNbr" type="text" value="$(V_ECID)" size="12" maxlength="10"></td>
+                  </tr>
+                  @DspErrMsg(Err_ECID)
+
+                  @SetTextOvr(Err_ECEDOC)
+                  <tr><td class="dsphdr"><span $(textOvr)>Electronic Document Distribution Authorization</span></td>
+                      <td class="inputnmbr"><input name="electronicDoc" type="text" value="$(V_ECEDOC)" size="6" maxlength="6">
+                          <a href="javascript:calWindow('electronicDoc');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_ECEDOC)
+
+                  %if (dependentNbr != "0000000" || CVAUTD == "N")
+                      <input type="hidden" name="updateDependents" value="N">
+                  %else
+                      %if (V_CVTYPE != "FSA ")
+                          @dtw_assign(updateDependents, "Y")
+                      %endif
+                      @SetTextOvr(Err_AUTD)
+                      <tr><td class="dsphdr"><span $(textOvr)>Update Dependent Records</span></td>
+                          @dtw_tb_rows(yn01Table, maxRows)
+                          @dtw_assign(x, "1")
+                          %while((@dtw_tb_rgetv(yn01Table, x, "1") != updateDependents) && (x < maxRows))
+                               {@dtw_add(x, "1", x)%}
+                          <td>@dtw_tb_select(yn01Table, "updateDependents", "2", "1", "N", "", x, "1")</td>
+                      </tr>
+                      @DspErrMsg(Err_AUTD)
+                  %endif
+
+    	           %if (CVDED# != "0" && dependentNbr == "0000000")
+                      @SetTextOvr(Err_EDED)
+                      <tr><td class="dsphdr"><span $(textOvr)>Update Employee Deduction</span></td>
+                          @dtw_tb_rows(yn01Table, maxRows)
+                          @dtw_assign(x, "1")
+                          %while((@dtw_tb_rgetv(yn01Table, x, "1") != updateDeduction) && (x < maxRows))
+                              {@dtw_add(x, "1", x)%}
+                          <td>@dtw_tb_select(yn01Table, "updateDeduction", "2", "1", "N", "", x, "1")</td>
+                      </tr>
+                      @DspErrMsg(Err_EDED)
+                  %else
+                      <input type="hidden" name="updateDeduction" value="N">
+                  %endif
+              </table>
+              </fieldset>
+
+              <a name="certificate"></a>
+              <fieldset class="legendBody">
+              <legend class="legendTitle"> Certificate Receipt </legend>
+              <div class="quickLinksTop">
+                  <a href="#top">$(topOfFormImage)</a>
+              </div>
+              <table $(contentTable)>
+                  @SetTextOvr(Err_ECCERT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Date Received</span></td>
+                      <td class="inputnmbr"><input name="certificateReceived" type="text" value="$(V_ECCERT)" size="6" maxlength="6">
+                          <a href="javascript:calWindow('certificateReceived');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_ECCERT)
+
+                  @SetTextOvr(Err_ECCISU)
+                  <tr><td class="dsphdr"><span $(textOvr)>Issuer</span></td>
+                      <td class="inputalph"><input name="certificateIssuer" type="text" value="$(V_ECCISU)" size="30" maxlength="30"></td>
+                  </tr>
+                  @DspErrMsg(Err_ECCISU)
+
+                  @SetTextOvr(Err_ECPHON)
+                  <tr><td class="dsphdr"><span $(textOvr)>Phone Number Of Issuer</span></td>
+                      <td class="inputnmbr"><input name="phoneNumber" type="text" value="$(V_ECPHON)" size="10" maxlength="10"></td>
+                  </tr>
+                  @DspErrMsg(Err_ECPHON)
+
+                  @SetTextOvr(Err_ECMNTH)
+                  <tr><td class="dsphdr"><span $(textOvr)>Previous Months Of Coverage</span></td>
+                      <td class="inputnmbr"><input name="monthsOfCoverage" type="text" value="$(V_ECMNTH)" size="3" maxlength="3"></td>
+                  </tr>
+                  @DspErrMsg(Err_ECMNTH)
+
+                  @SetTextOvr(Err_dsphdr)
+                  <tr><td class="dsphdr"><span $(textOvr)>Preexisting Condition Expiration Date</span></td>
+                      <td class="inputnmbr"><input name="preexistingCondDate" type="text" value="$(V_ECPREC)" size="6" maxlength="6">
+                          <a href="javascript:calWindow('preexistingCondDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_ECPREC)
+              </table>
+              </fieldset>
+
+              %if (CVEBEN == "Y")
+                  <a name="bene1"></a>
+                  <fieldset class="legendBody">
+                  <legend class="legendTitle"> Beneficiary 1 </legend>
+                  <div class="quickLinksTop">
+                      <a href="#top">$(topOfFormImage)</a>
+                  </div>
+                  <table $(contentTable)>
+                      <tr><td class="dsphdr"><span $(textOvr)>Name</span></td>
+                          <td class="inputalph"><input name="BEN1" type="text" value="$(V_ECBEN1)" size="20" maxlength="20"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBEN1)
+
+                      @SetTextOvr(Err_ECBSS1)
+                      %while(@dtw_rlength(V_ECBSS1) != "9") {@dtw_insert("0", V_ECBSS1, V_ECBSS1)%}
+                      <tr><td class="dsphdr"><span $(textOvr)>Social Security Number</span></td>
+                          <td class="inputnmbr"><input name="BSS1" type="text" value="$(V_ECBSS1)" size="9" maxlength="9"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBSS1)
+
+                      @SetTextOvr(Err_ECBPC1)
+                      <tr><td class="dsphdr"><span $(textOvr)>Percent</span></td>
+                          <td class="inputnmbr"><input name="BPC1" type="text" value="$(V_ECBPC1)" size="3" maxlength="3"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBPC1)
+                  </table>
+                  </fieldset>
+
+                  <a name="bene2"></a>
+                  <fieldset class="legendBody">
+                  <legend class="legendTitle"> Beneficiary 2 </legend>
+                  <div class="quickLinksTop">
+                      <a href="#top">$(topOfFormImage)</a>
+                  </div>
+                  <table $(contentTable)>
+                      <tr><td class="dsphdr"><span $(textOvr)>Name</span></td>
+                          <td class="inputalph"><input name="BEN2" type="text" value="$(V_ECBEN2)" size="20" maxlength="20"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBEN2)
+
+                      @SetTextOvr(Err_ECBSS2)
+                      %while(@dtw_rlength(V_ECBSS2) != "9") {@dtw_insert("0", V_ECBSS2, V_ECBSS2)%}
+                      <tr><td class="dsphdr"><span $(textOvr)>Social Security Number</span></td>
+                          <td class="inputnmbr"><input name="BSS2" type="text" value="$(V_ECBSS2)" size="9" maxlength="9"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBSS2)
+
+                      @SetTextOvr(Err_ECBPC2)
+                      <tr><td class="dsphdr"><span $(textOvr)>Percent</span></td>
+                          <td class="inputnmbr"><input name="BPC2" type="text" value="$(V_ECBPC2)" size="3" maxlength="3"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBPC2)
+                  </table>
+                  </fieldset>
+
+                  <a name="bene3"></a>
+                  <fieldset class="legendBody">
+                  <legend class="legendTitle"> Beneficiary 3 </legend>
+                  <div class="quickLinksTop">
+                      <a href="#top">$(topOfFormImage)</a>
+                  </div>
+                  <table $(contentTable)>
+                      <tr><td class="dsphdr"><span $(textOvr)>Name</span></td>
+                          <td class="inputalph"><input name="BEN3" type="text" value="$(V_ECBEN3)" size="20" maxlength="20"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBEN3)
+
+                      @SetTextOvr(Err_ECBSS3)
+                      %while(@dtw_rlength(V_ECBSS3) != "9") {@dtw_insert("0", V_ECBSS3, V_ECBSS3)%}
+                      <tr><td class="dsphdr"><span $(textOvr)>Social Security Number</span></td>
+                          <td class="inputnmbr"><input name="BSS3" type="text" value="$(V_ECBSS3)" size="9" maxlength="9"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBSS3)
+
+                      @SetTextOvr(Err_ECBPC3)
+                      <tr><td class="dsphdr"><span $(textOvr)>Percent</span></td>
+                          <td class="inputnmbr"><input name="BPC3" type="text" value="$(V_ECBPC3)" size="3" maxlength="3"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBPC3)
+                  </table>
+                  </fieldset>
+
+                  <a name="bene4"></a>
+                  <fieldset class="legendBody">
+                  <legend class="legendTitle"> Beneficiary 4 </legend>
+                  <div class="quickLinksTop">
+                      <a href="#top">$(topOfFormImage)</a>
+                  </div>
+                  <table $(contentTable)>
+                      <tr><td class="dsphdr"><span $(textOvr)>Name</span></td>
+                          <td class="inputnmbr"><input name="BEN4" type="text" value="$(V_ECBEN4)" size="20" maxlength="20"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBEN4)
+
+                      @SetTextOvr(Err_ECBSS4)
+                      %while(@dtw_rlength(V_ECBSS4) != "9") {@dtw_insert("0", V_ECBSS4, V_ECBSS4)%}
+                      <tr><td class="dsphdr"><span $(textOvr)>Social Security Number</span></td>
+                          <td class="inputnmbr"><input name="BSS4" type="text" value="$(V_ECBSS4)" size="9" maxlength="9"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBSS4)
+
+                      @SetTextOvr(Err_ECBPC4)
+                      <tr><td class="dsphdr"><span $(textOvr)>Percent</span></td>
+                          <td class="inputnmbr"><input name="BPC4" type="text" value="$(V_ECBPC4)" size="3" maxlength="3"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBPC4)
+                  </table>
+                  </fieldset>
+
+                  <a name="bene5"></a>
+                  <fieldset class="legendBody">
+                  <legend class="legendTitle"> Beneficiary 5 </legend>
+                  <div class="quickLinksTop">
+                      <a href="#top">$(topOfFormImage)</a>
+                  </div>
+                  <table $(contentTable)>
+                      <tr><td class="dsphdr"><span $(textOvr)>Name</span></td>
+                          <td class="inputalph"><input name="BEN5" type="text" value="$(V_ECBEN5)" size="20" maxlength="20"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBEN5)
+
+                      @SetTextOvr(Err_ECBSS5)
+                      %while(@dtw_rlength(V_ECBSS5) != "9") {@dtw_insert("0", V_ECBSS5, V_ECBSS5)%}
+                      <tr><td class="dsphdr"><span $(textOvr)>Social Security Number</span></td>
+                          <td class="inputnmbr"><input name="BSS5" type="text" value="$(V_ECBSS5)" size="9" maxlength="9"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBSS5)
+
+                      @SetTextOvr(Err_ECBPC5)
+                      <tr><td class="dsphdr"><span $(textOvr)>Percent</span></td>
+                          <td class="inputnmbr"><input name="BPC5" type="text" value="$(V_ECBPC5)" size="3" maxlength="3"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBPC5)
+                  </table>
+                  </fieldset>
+
+                  <a name="bene6"></a>
+                  <fieldset class="legendBody">
+                  <legend class="legendTitle"> Beneficiary 6 </legend>
+                  <div class="quickLinksTop">
+                      <a href="#top">$(topOfFormImage)</a>
+                  </div>
+                  <table $(contentTable)>
+                      <tr><td class="dsphdr"><span $(textOvr)>Name</span></td>
+                          <td class="inputnmbr"><input name="BEN6" type="text" value="$(V_ECBEN6)" size="20" maxlength="20"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBEN6)
+
+                      @SetTextOvr(Err_ECBSS6)
+                      %while(@dtw_rlength(V_ECBSS6) != "9") {@dtw_insert("0", V_ECBSS6, V_ECBSS6)%}
+                      <tr><td class="dsphdr"><span $(textOvr)>Social Security Number</span></td>
+                          <td class="inputnmbr"><input name="BSS6" type="text" value="$(V_ECBSS6)" size="9" maxlength="9"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBSS6)
+
+                      @SetTextOvr(Err_ECBPC6)
+                      <tr><td class="dsphdr"><span $(textOvr)>Percent</span></td>
+                          <td class="inputnmbr"><input name="BPC6" type="text" value="$(V_ECBPC6)" size="3" maxlength="3"></td>
+                      </tr>
+                      @DspErrMsg(Err_ECBPC6)
+                  </table>
+                  </fieldset>
+              %else
+                  <input type="hidden" name="BSS1" value="000000000">
+                  <input type="hidden" name="BPC1" value="000">
+                  <input type="hidden" name="BSS2" value="000000000">
+                  <input type="hidden" name="BPC2" value="000">
+                  <input type="hidden" name="BSS3" value="000000000">
+                  <input type="hidden" name="BPC3" value="000">
+                  <input type="hidden" name="BSS4" value="000000000">
+                  <input type="hidden" name="BPC4" value="000">
+                  <input type="hidden" name="BSS5" value="000000000">
+                  <input type="hidden" name="BPC5" value="000">
+                  <input type="hidden" name="BSS6" value="000000000">
+                  <input type="hidden" name="BPC6" value="000">
+              %endif
+
+              <a name="terminate"></a>
+              <fieldset class="legendBody">
+              <legend class="legendTitle"> Terminate Benefit</legend>
+              <div class="quickLinksTop">
+                  <a href="#top">$(topOfFormImage)</a>
+              </div>
+              <table $(contentTable)>
+
+                  %if(V_ECDCT == "0")
+                      @dtw_assign(V_ECDCT, "")
+                  %endif
+                  @SetTextOvr(Err_ECDCT)
+                  <tr><td class="dsphdr"><span $(textOvr)>Coverage Termination Date</span></td>
+                      <td class="inputnmbr"><input name="coverageTermDate" type="text" value="$(V_ECDCT)" size="6" maxlength="6">
+                          <a href="javascript:calWindow('coverageTermDate');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_ECDCT)
+
+                  @SetTextOvr(Err_ECTRCR)
+                  <tr><td class="dsphdr"><span $(textOvr)>Date Certificate Requested</span></td>
+                      <td class="inputnmbr"><input name="certificateRequested" type="text" value="$(V_ECTRCR)" size="6" maxlength="6">
+                          <a href="javascript:calWindow('certificateRequested');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_ECTRCR)
+
+                  @SetTextOvr(Err_ECTRCI)
+                  <tr><td class="dsphdr"><span $(textOvr)>Date Certificate Issued</span></td>
+                      <td class="inputnmbr"><input name="certificateIssued" type="text" value="$(V_ECTRCI)" size="6" maxlength="6">
+                          <a href="javascript:calWindow('certificateIssued');">$(calendarImage)</a></td>
+                  </tr>
+                  @DspErrMsg(Err_ECTRCI)
+    	   	
+                  @SetTextOvr(Err_ECACKN)
+                  <tr><td class="dsphdr"><span $(textOvr)>Employee Receipt</span></td>
+                      @dtw_tb_rows(yn01Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_ECACKN) && (x < maxRows))
+                           {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn01Table, "employeeReceipt", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_ECACKN)
+    	   	
+                  @SetTextOvr(Err_ECCARR)
+                  <tr><td class="dsphdr"><span $(textOvr)>Provider Notified</span></td>
+                      @dtw_tb_rows(yn01Table, maxRows)
+                      @dtw_assign(x, "1")
+                      %while((@dtw_tb_rgetv(yn01Table, x, "1") != V_ECCARR) && (x < maxRows))
+                           {@dtw_add(x, "1", x)%}
+                      <td>@dtw_tb_select(yn01Table, "carrierNotified", "2", "1", "N", "", x, "1")</td>
+                  </tr>
+                  @DspErrMsg(Err_ECCARR)
+
+                  @SetTextOvr(Err_ECPREM)
+                  <tr><td class="dsphdr"><span $(textOvr)>COBRA Premium Override</span></td>
+                      <td class="inputnmbr"><input name="premium" type="text" value="$(V_ECPREM)" size="9" maxlength="9"></td>
+                  </tr>
+                  @DspErrMsg(Err_ECPREM)
+
+                  @dtw_assign(classcode, V_ECCLAS)
+
+              </table>
+              </fieldset>
+          %}
+
+          %if ((focusField == "benefitCode") || (focusField == "planCode"))
+              @dtw_assign(focusField, "eligibilityDate")
+          %endif
+
+          <script type="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+
+      </form>
+      %INCLUDE "MaintainBottom.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64) profileHandle,
+                                        INOUT CHAR(2) dataBaseID,
+                                        INOUT CHAR(1) maintenanceCode,
+                                        INOUT CHAR(1) errFound,
+                                        INOUT CHAR(32000) edtVar,
+                                        INOUT CHAR(32000) errVar,
+                                        INOUT CHAR(1) editcovrplan)
+  {%EXEC {HPEECU_W.PGM %}
+%}
+
+%HTML(UPDATE) {
+  %INCLUDE "setLibraryList.icl"
+  @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+  %if ((sec_01 == "N" && maintenanceCode == "A") || (sec_04 == "N" && maintenanceCode == "Z"))
+     <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)progOptSecError.d2w/DISPLAY$(genericVarBase)&amp;page_title=@dtw_rurlescseq(page_title)">
+  %else
+     %if (errFound == "" )
+         @dtw_assign(updateDependents, "N")
+         @dtw_assign(updateDeduction, "N")
+     %endif
+
+     @yn01_Table_Query(profileHandle, dataBaseID, "YORN      ", yn01Table)
+         @dtw_tb_insertrow(yn01Table, "0", "1")
+         @dtw_tb_setv(yn01Table, "", "1", "2")
+     @PlanHolder_Query(profileHandle, dataBaseID, "PLANHOLDER", planHolderTable)
+     @RtvFldDesc("CVCOMP=$(prCompany) AND CVFACL=$(prFacility) AND CVCOVR='$(benefitCode)' AND CVPLAN='$(planCode)'", "CBCOVR", "CVEBEN", CVEBEN)
+     @RtvFldDesc("CVCOMP=$(prCompany) AND CVFACL=$(prFacility) AND CVCOVR='$(benefitCode)' AND CVPLAN='$(planCode)'", "CBCOVR", "char(CVUNIT)", CVUNIT)
+     @RtvFldDesc("CVCOMP=$(prCompany) AND CVFACL=$(prFacility) AND CVCOVR='$(benefitCode)' AND CVPLAN='$(planCode)'", "CBCOVR", "CVAUTD", CVAUTD)
+     @RtvFldDesc("CVCOMP=$(prCompany) AND CVFACL=$(prFacility) AND CVCOVR='$(benefitCode)' AND CVPLAN='$(planCode)'", "CBCOVR", "CVCREQ", cobraBenefit)
+     @RtvFldDesc("SDCOMP=$(prCompany) AND SDFACL=$(prFacility) AND SDEMPL=$(hrEmployee)", "HRSPDP", "SDLNAM", SDLNAM)
+     @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  %if (dependentNbr == "0000000")
+      @RtvFldDesc("EMCOMP=$(prCompany) and EMFACL=$(prFacility) and EMEMPL=$(prEmployee)", "HREMPL", "char(EMSSNO)", socSecNo)
+  %else
+      @RtvFldDesc("SDCOMP=$(prCompany) and SDFACL=$(prFacility) and SDEMPL=$(hrEmployee) and SDSD#=$(dependentNbr)", "HRSPDP", "char(SDSS#)", socSecNo)
+  %endif
+
+  @dtw_assign(socSecNo,@dtw_rstrip(socSecNo))
+  @dtw_assign(dependentNbr,@dtw_rstrip(dependentNbr))
+  @dtw_assign(eligibilityDate,@dtw_rstrip(eligibilityDate))
+  @dtw_assign(enrollmentDate,@dtw_rstrip(enrollmentDate))
+  @dtw_assign(dateEffective,@dtw_rstrip(dateEffective))
+  @dtw_assign(vestingDate,@dtw_rstrip(vestingDate))
+  @dtw_assign(amount,@dtw_rstrip(amount))
+  @dtw_assign(BSS1,@dtw_rstrip(BSS1))
+  @dtw_assign(BPC1,@dtw_rstrip(BPC1))
+  @dtw_assign(BSS2,@dtw_rstrip(BSS2))
+  @dtw_assign(BPC2,@dtw_rstrip(BPC2))
+  @dtw_assign(BSS3,@dtw_rstrip(BSS3))
+  @dtw_assign(BPC3,@dtw_rstrip(BPC3))
+  @dtw_assign(BSS4,@dtw_rstrip(BSS4))
+  @dtw_assign(BPC4,@dtw_rstrip(BPC4))
+  @dtw_assign(BSS5,@dtw_rstrip(BSS5))
+  @dtw_assign(BPC5,@dtw_rstrip(BPC5))
+  @dtw_assign(BSS6,@dtw_rstrip(BSS6))
+  @dtw_assign(BPC6,@dtw_rstrip(BPC6))
+  @dtw_assign(numberOfUnits,@dtw_rstrip(numberOfUnits))
+  @dtw_assign(deductionAmount,@dtw_rstrip(deductionAmount))
+  @dtw_assign(deductionPercent,@dtw_rstrip(deductionPercent))
+  @dtw_assign(planHolderSSN,@dtw_rstrip(planHolderSSN))
+  @dtw_assign(certificateReceived,@dtw_rstrip(certificateReceived))
+  @dtw_assign(phoneNumber,@dtw_rstrip(phoneNumber))
+  @dtw_assign(monthsOfCoverage,@dtw_rstrip(monthsOfCoverage))
+  @dtw_assign(preexistingCondDate,@dtw_rstrip(preexistingCondDate))
+  @dtw_assign(coverageTermDate,@dtw_rstrip(coverageTermDate))
+  @dtw_assign(certificateRequested,@dtw_rstrip(certificateRequested))
+  @dtw_assign(certificateIssued,@dtw_rstrip(certificateIssued))
+  @dtw_assign(premium,@dtw_rstrip(premium))
+  @dtw_assign(electronicDoc,@dtw_rstrip(electronicDoc))
+  @dtw_assign(coverageTermDate,@dtw_rstrip(coverageTermDate))
+  @dtw_assign(planHolderSSN,@dtw_rstrip(planHolderSSN))
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@comp", prCompany)
+  @Concat_Field("@@facl", prFacility)
+  @Concat_Field("@@pecp", hrCompany)
+  @Concat_Field("@@empl", hrEmployee)
+  @Concat_Field("@@sd@@", dependentNbr)
+  @Concat_Field("@@ss@@", socSecNo)
+  @Concat_Field("@@covr", benefitCode)
+  @Concat_Field("@@plan", planCode)
+  @Concat_Field("@@clas", classcode)
+  @Concat_Field("@@elig", eligibilityDate)
+  @Concat_Field("@@elec", enrollmentDate)
+  @Concat_Field("@@dce@", dateEffective)
+  @Concat_Field("@@vest", vestingDate)
+  @Concat_Field("@@amt@", amount)
+  @Concat_Field("@@ben1", BEN1)
+  @Concat_Field("@@bss1", BSS1)
+  @Concat_Field("@@bpc1", BPC1)
+  @Concat_Field("@@ben2", BEN2)
+  @Concat_Field("@@bss2", BSS2)
+  @Concat_Field("@@bpc2", BPC2)
+  @Concat_Field("@@ben3", BEN3)
+  @Concat_Field("@@bss3", BSS3)
+  @Concat_Field("@@bpc3", BPC3)
+  @Concat_Field("@@ben4", BEN4)
+  @Concat_Field("@@bss4", BSS4)
+  @Concat_Field("@@bpc4", BPC4)
+  @Concat_Field("@@ben5", BEN5)
+  @Concat_Field("@@bss5", BSS5)
+  @Concat_Field("@@bpc5", BPC5)
+  @Concat_Field("@@ben6", BEN6)
+  @Concat_Field("@@bss6", BSS6)
+  @Concat_Field("@@bpc6", BPC6)
+  @Concat_Field("@@unit", numberOfUnits)
+  @Concat_Field("@@deda", deductionAmount)
+  @Concat_Field("@@dedp", deductionPercent)
+  @Concat_Field("@@phc@", planHolder)
+  @Concat_Field("@@phss", planHolderSSN)
+  @Concat_Field("@@id@@", identificationNbr)
+  @Concat_Field("@@cert", certificateReceived)
+  @Concat_Field("@@cisu", certificateIssuer)
+  @Concat_Field("@@phon", phoneNumber)
+  @Concat_Field("@@mnth", monthsOfCoverage)
+  @Concat_Field("@@prec", preexistingCondDate)
+  @Concat_Field("@@dct@", coverageTermDate)
+  @Concat_Field("@@trcr", certificateRequested)
+  @Concat_Field("@@trci", certificateIssued)
+  @Concat_Field("@@ackn", employeeReceipt)
+  @Concat_Field("@@carr", carrierNotified)
+  @Concat_Field("@@prem", premium)
+  @Concat_Field("@@edoc", electronicDoc)
+  @Concat_Field("@@autd", updateDependents)
+  @Concat_Field("@@eded", updateDeduction)
+  @dtw_concat(edtVar, "}{", edtVar)
+  @dtw_assign(editcovrplan, "N")
+  @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar, editcovrplan)
+
+  @RtvFldDesc("CVCOMP=$(prCompany) AND CVFACL=$(prFacility) AND CVCOVR='$(benefitCode)' AND CVPLAN='$(planCode)'", "CBCOVR", "CVDESC", CVDESC)
+  @RtvFldDesc("CCCODE='$(planCode)'", "CBCODE", "CCDESC", CCDESC)
+  %if (errFound == "")
+      @Format_ConfMsg_Desc(maintenanceCode, $(CVDESC), $(benefitCode), $(CCDESC), $(planCode), "", "", confMessage)
+      %if (maintenanceCode == "D")
+          %if ((fromD2w != "") && (fromD2w != "EmplBenefitSelect.d2w"))
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %else
+              <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)emplBenefits.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+          %endif
+      %elseif (fromD2w != "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;benefitCode=@dtw_rurlescseq(benefitCode)&amp;planCode=@dtw_rurlescseq(planCode)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)emplBenefits.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %elseif (maintenanceCode == "D")
+      @DecatErr_Field("@@covr", "benefitCode")
+      @Format_ConfMsg_Desc("", $(CVDESC), $(benefitCode), $(CCDESC), $(planCode), "<br>$(fieldValue)", "", confMessage)
+      %if (fromD2w != "")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)emplBenefits.d2w/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/UPDATE$(d2wVarBase)&amp;benefitCode=@dtw_rurlescseq(benefitCode)&amp;planCode=@dtw_rurlescseq(planCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+
+%}

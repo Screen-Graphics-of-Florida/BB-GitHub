@@ -1,0 +1,2651 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Customer Select                                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "ARControl$(dataBaseID).icl"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OEControl$(dataBaseID).icl"
+%INCLUDE "StoredProcedureVariables.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "Tracking.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "QuickLink.icl"
+
+%Define {
+  page_title              = "Customer"
+  d2wName                 = "CustomerSelect.d2w"
+  attachFolder            = "Customer"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;noMenu=@dtw_rurlescseq(noMenu)&amp;fromSel=Y"
+  currentURL              = "$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)"
+  programName             = "HHDCUP"
+  programOrderEntry       = "HOEOEM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  rowIndexNext            = "1"
+  totalPages              = "0"	
+  multShipToCustomer      = ""
+  billToCustomer          = ""
+  vendCustFlag            = "C"
+  vendCustURL             = "&amp;vendCustNumber=@dtw_rurlescseq(customerNumber)&amp;vendCustName=@dtw_rurlescseq(customerName)&amp;vendCustFlag=@dtw_rurlescseq(vendCustFlag)"
+  salesTotal              = ""
+  shipToCount             = "0"	
+  billToCount             = "0"	
+  quickLinkByUser         = "Y"
+  oe_01                   = ""
+  fileName                = "HDCUSU"	
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_assign(backHome, "$(d2wName)/REPORT")
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @CustomerUserView(profileHandle, dataBaseID, userPass, customerNumber, "Y")
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+	       @dtw_assign(title, @dtw_rconcat(customerNumber, @dtw_rconcat(" ", customerName)))
+	       %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+              %INCLUDE "AJAXRequest.icl"
+              %INCLUDE "SaveCurrentURL.icl"
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "Menu.js"
+              %INCLUDE "NewWindowOpen.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr)>
+              <!-- Start Of Banner Code -->
+              %if (noMenu =="Y")
+                  %INCLUDE "$(inquiryBanner)"
+              %else
+                  %INCLUDE "banner.icl"
+              %endif
+              <!-- Start Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "" && noMenu !="Y")
+                           @dtw_assign(pageID, "CUSTOMERSELECT")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+
+                      <td class="content">
+
+%{ multShipToCustomer %}  @RtvFldDesc("CMBLTO=$(customerNumber) or CMCUST=$(customerNumber)", "HDCUST", " char(count(CMCUST))", multShipToCustomer)
+
+                          @RtvFldDesc("UFFILN='HDCUSU'", "SYUDFN", " char(count(*))", userDefCnt)
+                          %if (userDefCnt == "0")
+                              @Remove_Quick_Link("userdefined")
+                          %endif
+
+%{ QuickLink Table %}     %INCLUDE "QuickLinkTable.icl"
+
+%{ Remove Quicklinks If No Contact Management %}
+                          %if (V_HDCMRL == "0")
+                              @Remove_Quick_Link("customercontacts")
+                              @Remove_Quick_Link("completedevents")
+                              @Remove_Quick_Link("overdueevents")
+                              @Remove_Quick_Link("openevents")
+                          %endif
+                          %if (V_HDARRL == "0")
+                              @Remove_Quick_Link("accountsreceivableaging")
+                          %endif
+
+%{ QuickLink By User %}   %INCLUDE "QuickLinkByUser.icl"
+
+%{ Customer Heading %}
+                          @dtw_assign(RPT_MAX_ROWS, "99")
+                          @dtw_assign(dspMaxRows, "10")
+                          @dtw_assign(uv_Sql, "")  %{ No user view security. %}
+                          @dtw_assign(wildCardSearch, "")  %{ No wildCardSearch %}
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDCUST ", fileSQL)
+                          @dtw_concat(selectSQL, "CMCUST=$(customerNumber) ", selectSQL)
+                          %INCLUDE "stmtSQLSelect.icl"
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Customer_Select_Header(profileHandle, dataBaseID, stmtSQL)
+
+%{ Quicklink Begin %}     %INCLUDE "QuickLinkBegLoop.icl"
+
+        %{ Demographics %}
+                              %if (quicklinkRef == "demographics")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDCUST ", fileSQL)
+                                  @dtw_concat(selectSQL, "CMCUST=$(customerNumber) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  @Customer_Select_Demographics(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Customer Contacts %}
+                              %elif (quicklinkRef == "customercontacts")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_CustomerName, "CRCUST")
+                                  %INCLUDE "userview.icl"
+                                  @Retrieve_WebReg(userProfile, "", "CustomerContact.d2w", wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(distinctSQL, "CRCONT", distinctSQL)
+                                  @dtw_concat(stmtSQL, " Select distinct CRLNAM, CRFNAM, CRCONT, CRCUST, CRCNAM, CRTITL, CRCITY, CRST, CRZIP, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "                 CRLNAMU, CRFNAMU, CRCNAMU, CRTITLU, CRCITYU, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " CMSLSM, Coalesce(CMCNA1,' ') as CMCNA1, Coalesce(CMCNA1U,' ') as CMCNA1U ", stmtSQL)
+                                  @dtw_concat(fileSQL, " CRCNTM left join HDCUST on CMCUST=CRCUST ", fileSQL)
+                                  @dtw_concat(fileSQL, "        left join CRCNTU on CUCONT=CRCONT ", fileSQL)
+                                  @dtw_concat(selectSQL, "CRCONT>0 and CMCUST = $(customerNumber) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "CRLNAMU, CRFNAMU")
+                                      @dtw_assign(orderByDisplay, "Last Name, First Name")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy)", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Contacts(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Events: Open, Overdue and Completed %}
+                              %elif (quicklinkRef == "completedevents" || quicklinkRef == "overdueevents" || quicklinkRef == "openevents" )
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_date("S", sysDateYYYYMMDD)
+                                  @dtw_insert("-", sysDateYYYYMMDD, "6", sysDateYYYYMMDD)
+                                  @dtw_insert("-", sysDateYYYYMMDD, "4", todayISO)
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(distinctSQL, "EMESEQ", distinctSQL)
+                                  @dtw_concat(stmtSQL, " Select CRLNAM, CRFNAM, EMCONT, EMESEQ, EMEVNT, EMDESC, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " EMUSER, EMEVTD, EMEVTT, EMCMPD, CRLNAMU, CRFNAMU, EMDESCU ", stmtSQL)
+                                  @dtw_concat(fileSQL, " CRCNTM inner join CRCEVM on EMCONT=CRCONT ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join CRCEVU on EUCONT=EMCONT and EUESEQ=EMESEQ ", fileSQL)
+                                  @dtw_concat(selectSQL, " CRCUST=$(customerNumber)", selectSQL)
+                                  %if (quicklinkRef == "completedevents")
+                                      @dtw_concat(selectSQL, " and EMCMPD <> '0001-01-01'", selectSQL)
+                                  %elif  (quicklinkRef == "openevents")
+                                      @dtw_concat(selectSQL, " and EMCMPD = '0001-01-01'", selectSQL)
+                                      @dtw_concat(selectSQL, " and EMEVTD >= '$(todayISO)'", selectSQL)
+                                  %elif  (quicklinkRef == "overdueevents")
+                                      @dtw_concat(selectSQL, " and EMEVTD < '$(todayISO)'", selectSQL)
+                                      @dtw_concat(selectSQL, " and EMEVTD > '0001-01-01' ", selectSQL)
+                                      @dtw_concat(selectSQL, " and EMCMPD = '0001-01-01'", selectSQL)
+                                  %endif
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_concat(stmtSQL, " Group By CRLNAM, CRFNAM, EMCONT, EMESEQ, EMEVNT, EMDESC, EMUSER, EMEVTD, EMEVTT, EMCMPD, CRLNAMU, CRFNAMU, EMDESCU ", stmtSQL)
+                                  %if (quicklinkRef == "completedevents")
+                                      @dtw_assign(orderBy, "EMCMPD Desc, CRLNAMU, CRFNAMU")
+                                      @dtw_assign(orderByDisplay, "Completion Date, Name")
+                                  %elif  (quicklinkRef == "openevents")
+                                      @dtw_assign(orderBy, "EMEVTD, CRLNAMU, CRFNAMU")
+                                      @dtw_assign(orderByDisplay, "Event Date, Name")
+                                  %elif  (quicklinkRef == "overdueevents")
+                                      @dtw_assign(orderBy, "EMEVTD, CRLNAMU, CRFNAMU")
+                                      @dtw_assign(orderByDisplay, "Event Date, Name")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " ORDER BY $(orderBy)", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Events(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Availability %}
+                              %elif (quicklinkRef == "availability")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @Retrieve_WebReg(userProfile, "", "VendCustProdAvail.d2w", wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select VCVCF, VCVNCS, VCITEM, VCVCIT, WIWHS, WILRSQ,", stmtSQL)
+                                  @dtw_concat(stmtSQL, " IMIMDS, IMIMDSU, IMPCLS, VCVCITU, WILORD, WILRSD, WILRSQ ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDVCIT left join HDVCIW on WIID=VCID ", fileSQL)
+                                  @dtw_concat(fileSQL, "        left join HDIMST on IMITEM=VCITEM ", fileSQL)
+                                  @dtw_concat(selectSQL, "VCVNCS = $(customerNumber)  and VCVCF = '$(vendCustFlag)' and IMKIT = ' ' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "WILORD Desc, WILRSQ Desc")
+                                      @dtw_assign(orderByDisplay, "Last Order Date (descending), Last Order Qty (descending)")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " ORDER BY $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Availability(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Open Orders %}
+                              %elif (quicklinkRef == "openorders")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_BillingLocationName, "OELOC#")
+                                  @dtw_assign(uv_CustomerName, "OEBLTO")
+                                  @dtw_assign(uv_SalesmanName, "OESLSM")
+                                  %INCLUDE "userview.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select OEORD#, OEORTY, OEORST, OEBLTO, OESHTO, OECONT, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " OEDSHP, OERQDT, OEDOTS, OETIVA, OEBDTE, OEORRF, OEHOLD, OELOC#", stmtSQL)
+                                  %if (V_HDCMRL > "0")
+                                      @dtw_concat(stmtSQL, ",Coalesce(CRFNAM,' ') as CRFNAM ", stmtSQL)
+                                      @dtw_concat(stmtSQL, ",Coalesce(CRLNAM,' ') as CRLNAM, Coalesce(CRLNAMU,' ') as CRLNAMU ", stmtSQL)
+                                  %endif
+                                  %if (V_HDPDRL>"0")
+                                      @dtw_concat(stmtSQL, ", (Select count(*) From HDMOHM Where OEORD#=OHORD# and (OHQTYR<OHCQTY and OHLATY<>'CL' or OHLATY<>'CL')) as mfgOpen,  ", stmtSQL)
+                                      @dtw_concat(stmtSQL, "(Select count(*) From HDMOHM Where OEORD#=OHORD# and (OHQTYR>=OHCQTY or OHLATY='CL')) as mfgComp ", stmtSQL)
+                                  %endif
+                                  @dtw_concat(fileSQL, " OEORHD ", fileSQL)
+                                  %if (V_HDCMRL > "0")
+                                      @dtw_concat(fileSQL, " left join CRCNTM on OECONT=CRCONT ", fileSQL)
+                                  %endif
+                                  @dtw_concat(selectSQL, "(OEBLTO=$(customerNumber) or OESHTO=$(customerNumber)) and OEORST='O' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "OERQDT DESC,OEORD#")
+                                  @dtw_assign(orderByDisplay, "Required Date (descending), Order Number")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Open_Orders(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Order History %}
+                              %elif (quicklinkRef == "orderhistory")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_BillingLocationName, "HHLOC#")
+                                  @dtw_assign(uv_CustomerName, "HHBLTO")
+                                  @dtw_assign(uv_SalesmanName, "HHSLSM")
+                                  %INCLUDE "userview.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select HHORD#, HHORTY, HHBLTO, HHSHTO, HHCONT, HHDSHP, HHRQDT, HHDOTS, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " HHLIV#, HHLDTI, HHSEQ#,HHSVSV, HHSVDS, HHTIVA, HHORRF, HHLOC# ", stmtSQL)
+                                  %if (V_HDCMRL > "0")
+                                      @dtw_concat(stmtSQL, ",Coalesce(CRFNAM,' ') as CRFNAM ", stmtSQL)
+                                      @dtw_concat(stmtSQL, ",Coalesce(CRLNAM,' ') as CRLNAM, Coalesce(CRLNAMU,' ') as CRLNAMU ", stmtSQL)
+                                  %endif
+                                  @dtw_concat(fileSQL, " OEORHH ", fileSQL)
+                                  %if (V_HDCMRL > "0")
+                                      @dtw_concat(fileSQL, " left join CRCNTM on HHCONT=CRCONT ", fileSQL)
+                                  %endif
+                                  @dtw_concat(selectSQL, "(HHBLTO=$(customerNumber) or HHSHTO=$(customerNumber)) and HHSEQ#>0  ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "HHDOTS Desc, HHORD#")
+                                      @dtw_assign(orderByDisplay, "Date Of Shipment (descending), Order Number")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Order_History(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Invoice %}
+                              %elif (quicklinkRef == "invoices")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_SalesmanName, "IVSLSM")
+                                  @dtw_assign(uv_BillingLocationName, "IVLOC")
+                                  @dtw_assign(uv_CustomerName, "IVBLTO")
+                                  %INCLUDE "userview.icl"
+
+                                  @RtvFldDesc("IVBLTO=$(customerNumber) and IVBLTO<>IVCUST", "HDINVC", "char(count(*))", shipToCount)
+                                  @RtvFldDesc("IVCUST=$(customerNumber) and IVBLTO<>IVCUST", "HDINVC", "char(count(*))", billToCount)
+
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select IVLOC, IVBLTO,IVCUST,IVIVDT,IVDUED,IVAINV,IVSLSM ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,IVIVAM,IVNPOS,IVPPOS,IVORD, IVPLT, IVMORD,IVISEQ,IVARPO ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,IVIVAM-IVNPOS as NETDUE ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(SMSNA1, ' ') as SMSNA1 ", stmtSQL)
+                                  %if (billToCount > "0")
+                                      @dtw_concat(stmtSQL, " ,b.CMCNA1 as BTNAME, b.CMCNA1U as BTNAMEU", stmtSQL)
+                                  %endif
+                                  %if (shipToCount > "0")
+                                      @dtw_concat(stmtSQL, " ,c.CMCNA1 as STNAME, c.CMCNA1U as STNAMEU", stmtSQL)
+                                  %endif
+                                  %if (V_HDPDRL <= "0")
+                                      @dtw_concat(stmtSQL, " ,0 as MFGORDCOUNT  ", stmtSQL)
+                                  %else
+                                      @dtw_concat(stmtSQL, " ,(Select Count(*) From HDMOHM Where (OHPLT,OHORD)=(IVPLT,IVMORD)) as MFGORDCOUNT  ", stmtSQL)
+                                  %endif
+                                  @dtw_concat(fileSQL, " HDINVC ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join HDSLSM on SMSLSM=IVSLSM  ", fileSQL)
+                                  %if (billToCount > "0")
+                                      @dtw_concat(fileSQL, " left join HDCUST b on IVBLTO=b.CMCUST  ", fileSQL)
+                                  %endif
+                                  %if (shipToCount > "0")
+                                      @dtw_concat(fileSQL, " left join HDCUST c on IVCUST=c.CMCUST  ", fileSQL)
+                                  %endif
+                                  @dtw_concat(selectSQL, "(IVBLTO=$(customerNumber) or IVCUST=$(customerNumber))", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "IVIVDT Desc, IVAINV")
+                                      @dtw_assign(orderByDisplay, "Invoice Date (descending), Invoice")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Invoices(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Payments %}
+                              %elif (quicklinkRef == "payments")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_BillingLocationName, "IVLOC")
+                                  @dtw_assign(uv_CustomerName, "YPBLTO")
+                                  @dtw_assign(uv_SalesmanName, "IVSLSM")
+                                  %INCLUDE "userview.icl"
+
+                                  @RtvFldDesc("YPBLTO=$(customerNumber) and YPBLTO<>IVCUST", "ARYPTD inner join HDINVC on IVISEQ=YPISEQ", "char(count(*))", shipToCount)
+                                  @RtvFldDesc("IVCUST=$(customerNumber) and YPBLTO<>IVCUST", "ARYPTD inner join HDINVC on IVISEQ=YPISEQ", "char(count(*))", billToCount)
+
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select YPISEQ,YPBLTO,YPIVDT,YPAINV,YPAMT, YPDAMT,YPBDAT,YPPAYR  ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,YPCHK, YPPYCD,YPSBCD,YPIAMT,YPBCH,YPBANK,YPMEMO ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,upper(YPCHK) as YPCHKU ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,YPCMNT, Case When YPCMNT<>' ' Then 'Y' Else ' ' End HAS_YPCMNT ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,IVLOC,IVSLSM,IVCUST,IVORD,IVPLT,IVMORD,IVDUED ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(PSDESC, ' ') as PSDESC,Coalesce(PSDESCU,' ') as PSDESCU  ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(PYPYDS, ' ') as PYPYDS ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(PYPYNM, ' ') as PYPYNM,Coalesce(PYPYNMU, ' ') as PYPYNMU  ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(BKBKNM, ' ') as BKBKNM ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(SMSNA1, ' ') as SMSNA1 ", stmtSQL)
+                                  %if (billToCount > "0")
+                                      @dtw_concat(stmtSQL, " ,b.CMCNA1 as BTNAME, b.CMCNA1U as BTNAMEU ", stmtSQL)
+                                  %endif
+                                  %if (shipToCount > "0")
+                                      @dtw_concat(stmtSQL, " ,c.CMCNA1 as STNAME, c.CMCNA1U as STNAMEU ", stmtSQL)
+                                  %endif
+                                  %if (V_HDPDRL <= "0")
+                                      @dtw_concat(stmtSQL, " ,0 as MFGORDCOUNT  ", stmtSQL)
+                                  %else
+                                      @dtw_concat(stmtSQL, " ,(Select Count(*) From HDMOHM Where (OHPLT,OHORD)=(IVPLT,IVMORD)) as MFGORDCOUNT  ", stmtSQL)
+                                  %endif
+
+                                  @dtw_concat(fileSQL, " ARYPTD inner join HDINVC on IVISEQ=YPISEQ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join ARPYSB on PSSBCD=YPSBCD  ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join ARPYCD on PYPYCD=YPPYCD  ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join ARPYRH on PYPAYR=YPPAYR  ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join HDBANK on BKBANK=YPBANK  ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join HDSLSM on SMSLSM=IVSLSM  ", fileSQL)
+                                  %if (billToCount > "0")
+                                      @dtw_concat(fileSQL, " left join HDCUST b on YPBLTO=b.CMCUST  ", fileSQL)
+                                  %endif
+                                  %if (shipToCount > "0")
+                                      @dtw_concat(fileSQL, " left join HDCUST c on IVCUST=c.CMCUST  ", fileSQL)
+                                  %endif
+                                  @dtw_concat(selectSQL, "(YPBLTO=$(customerNumber) or IVCUST=$(customerNumber)) and (YPIAMT<>0 or YPPYCD<>'8')", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "YPBDAT Desc, YPAINV")
+                                      @dtw_assign(orderByDisplay, "Date Paid (descending), Invoice")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Payments(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Pending Payments %}
+                              %elif (quicklinkRef == "pendingpmts")
+                                  @RtvFldDesc("Coalesce(IVBLTO,PEBLTO)=$(customerNumber) and Coalesce(IVBLTO,PEBLTO)<>IVCUST", "ARPYEN inner join HDINVC on IVISEQ=PEISEQ", "char(count(*))", shipToCount)
+                                  @RtvFldDesc("IVCUST=$(customerNumber) and Coalesce(IVBLTO,PEBLTO)<>IVCUST", "ARPYEN inner join HDINVC on IVISEQ=PEISEQ", "char(count(*))", billToCount)
+
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_BankName, "PEBCHB")
+                                  @dtw_assign(uv_CustomerName, "@@BLTO")
+                                  @dtw_assign(uv_CustomerClassName, "b.CMCCLS")
+                                  @dtw_assign(uv_RegionName, "b.CMCRGN")
+                                  @dtw_assign(uv_BillingLocationName, "@@LOC")
+                                  @dtw_assign(uv_SalesmanName, "@@SLSM")
+                                  %INCLUDE "userview.icl"
+                                  %if (uv_Sql!="")
+                                      @dtw_replace(uv_Sql, "@@BLTO", "Coalesce(IVBLTO,PEBLTO)", uv_Sql)
+                                      @dtw_replace(uv_Sql, "@@LOC", "Coalesce(IVLOC,PELOC)", uv_Sql)
+                                      @dtw_replace(uv_Sql, "@@SLSM", "Coalesce(IVSLSM,PESLSM)", uv_Sql)
+                                      @dtw_concat(uv_Sql, " or PEUSER='$userProfile'", uv_Sql)
+                                  %endif
+
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select PEBCHN,PEBCHD,PEBCHB,PETYPE,PEID,PECHK,PEPLT,PEMORD,PEMEMO  ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,PEPTYP,PEPMID,PEISEQ,PEENID,PECRTB,PEAMT,PEDAMT,PESBCD ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,PECMNT,Case When PECMNT<>' ' Then 'Y' Else ' ' End HAS_PECMNT ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Case When PEPTYP='M' Then PEMCHK Else PECHK End as PEMCHK ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Case When PETYPE='P' Then PEID Else 0 End as PEPAYR ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(IVBLTO,PEBLTO) as IVBLTO ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(IVAINV,PESINV) as PESINV ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(IVIVDT,PEBCHD) as PEIVDT ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(IVLOC, PELOC ) as PELOC ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(IVSLSM,PESLSM) as PESLSM ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(IVORD ,PEORD ) as PEORD ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(IVARPO,PEARPO) as PEARPO ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(PYPYNM,' ') as PYPYNM ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(PSDESC,' ') as PSDESC, Coalesce(PSDESCU,' ') as PSDESCU ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(BKBKNM,' ') as BKBKNM  ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(LOLNA1,' ') as LOLNA1 ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(SMSNA1,' ') as SMSNA1  ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce(FLDESC,' ') as FLDESC  ", stmtSQL)
+                                  @dtw_concat(stmtSQL, "       ,Coalesce((Select Count(*) from ARPYER Where (PRBCHN,PRBCHD,PRBCHB,PRTYPE,PRID,PRCHK,PRPTYP,PRPMID,PRISEQ,PRENID)=(z.PEBCHN,z.PEBCHD,z.PEBCHB,z.PETYPE,z.PEID,z.PECHK,z.PEPTYP,z.PEPMID,z.PEISEQ,z.PEENID)),0) as ARPYENERROR ", stmtSQL)
+				                  %if (V_HDPDRL<="0")
+                                       @dtw_concat(stmtSQL, "     ,0 as MFGORDCOUNT ", stmtSQL)
+				                  %else
+                                       @dtw_concat(stmtSQL, "     ,(Select Count(*) From HDMOHM Where (OHPLT,OHORD)=(PEPLT,PEMORD)) as MFGORDCOUNT ", stmtSQL)
+				                  %endif
+                                  %if (billToCount > "0")
+                                      @dtw_concat(stmtSQL, " ,b.CMCNA1 as BTNAME, b.CMCNA1U as BTNAMEU ", stmtSQL)
+                                  %endif
+                                  %if (shipToCount > "0")
+                                      @dtw_concat(stmtSQL, " ,c.CMCNA1 as STNAME, c.CMCNA1U as STNAMEU ", stmtSQL)
+                                  %endif
+                                  @dtw_concat(fileSQL, " ARPYEN z ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join HDINVC on IVISEQ=PEISEQ ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join ARPYRH on PYPAYR=Case When PETYPE='P' Then PEID Else 0 End ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join ARPYSB on PSSBCD=PESBCD ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join HDBANK on BKBANK=PEBCHB ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join HDLCTN on LOLOC#=coalesce(IVLOC, PELOC) ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join HDSLSM on SMSLSM=coalesce(IVSLSM,PESLSM) ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join SYFLAG on (FLTYPE,FLVALU)=('ARPMTID',PEPMID) ", fileSQL)
+                                  %if (billToCount > "0")
+                                      @dtw_concat(fileSQL, " left join HDCUST b on Coalesce(IVBLTO,PEBLTO)=b.CMCUST  ", fileSQL)
+                                  %endif
+                                  %if (shipToCount > "0")
+                                      @dtw_concat(fileSQL, " left join HDCUST c on IVCUST=c.CMCUST  ", fileSQL)
+                                  %endif
+                                  @dtw_concat(selectSQL, "(Coalesce(IVBLTO,PEBLTO)=$(customerNumber) or IVCUST=$(customerNumber))", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "PESINV")
+                                      @dtw_assign(orderByDisplay, "Invoice")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_PendingPayments(profileHandle, dataBaseID, stmtSQL)
+
+        %{ A/R Aging %}
+                              %elif (quicklinkRef == "accountsreceivableaging")
+                                  @LoadARAging(profileHandle, customerNumber)
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select AIBCKT, sum(AIIVAM) as IVAMT, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " Coalesce((Select Count(*) from ARAIWK b Where b.AIXHND='$(profileHandle)' and b.AIBCKT=a.AIBCKT and b.AIIVCD<>'U') ,0) as INV_COUNT ", stmtSQL)
+                                  @dtw_concat(fileSQL, " ARAIWK a ", fileSQL)
+                                  @dtw_concat(selectSQL, "AIXHND='$(profileHandle)'", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_concat(stmtSQL, " Group By AIBCKT ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " Order By AIBCKT ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Aging(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Customer Fax %}
+                              %elif (quicklinkRef == "customerfax")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @Retrieve_WebReg(userProfile, "", "VendCustFax.d2w", wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select FMVCF, FMVNCS, FMCONT, FMDOCT, FMFAX, FMEMAL, FMBCC, DODESC, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " upper(FMEMAL) as FMEMALU, upper(DODESC) as DODESCU " , stmtSQL)
+                                  %if (V_HDCMRL > "0")
+                                      @dtw_concat(stmtSQL, " , Coalesce(CRLNAMU,' ') as LNAMU, CRLNAM as LNAM, CRFNAM as FNAM ", stmtSQL)
+                                  %endif
+                                  @dtw_concat(fileSQL, " HDVCFM left join HDDOCT on DODOCT=FMDOCT ", fileSQL)
+                                  %if (V_HDCMRL > "0")
+                                      @dtw_concat(fileSQL, " left join CRCNTM on CRCONT=FMCONT ", fileSQL)
+                                  %endif
+                                  @dtw_concat(selectSQL, "(FMVCF='$(vendCustFlag)' and FMVNCS=$(customerNumber))", selectSQL)
+                                  %if (V_HDCMRL == "0")
+                                       @dtw_concat(selectSQL, " and FMCONT=0 ", selectSQL)
+                                  %endif
+                                  @dtw_concat(selectSQL, " and (DOAPID='OE' or DOAPID='AR' or DOAPID=' ')", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "FMDOCT, FMFAX")
+                                      @dtw_assign(orderByDisplay, "Document, Fax Number")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Fax(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Customer Items %}
+                              %elif (quicklinkRef == "customeritems")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @Retrieve_WebReg(userProfile, "", "VendCustItem.d2w", wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select VCITEM, VCVCIT, VCVCITU, VCID, IMIMDS, IMIMDSU, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " (Select sum(WILRSQ) from HDVCIW Where WIID=VCID) as TOTQTY ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDVCIT inner join HDIMST on IMITEM=VCITEM ", fileSQL)
+                                  @dtw_concat(selectSQL, "VCVCF='$(vendCustFlag)' and VCVNCS=$(customerNumber) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "VCITEM")
+                                      @dtw_assign(orderByDisplay, "Item Number")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Customer_Items(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Comment Detail %}
+                              %elif (quicklinkRef == "commentdetail")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select CXDOCT, CXHT, CXSEQ#, CXCMNT ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDCCMT ", fileSQL)
+                                  @dtw_concat(selectSQL, "CXVCF='$(vendCustFlag)' and CXNMBR=$(customerNumber) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "CXDOCT, CXHT, CXSEQ#")
+                                  @dtw_assign(orderByDisplay, "Document Type")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Comment_Detail(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Comment Summary %}
+                              %elif (quicklinkRef == "commentsummary")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(distinctSQL, "CXDOCT concat CXHT", distinctSQL)
+                                  @dtw_concat(stmtSQL, " Select Distinct CXDOCT, CXHT ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDCCMT ", fileSQL)
+                                  @dtw_concat(selectSQL, " (CXVCF='$(vendCustFlag)' and CXNMBR=$(customerNumber))", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "CXDOCT, CXHT")
+                                  @dtw_assign(orderByDisplay, "Document Type")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Comment_Summary(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Related Customers %}
+                              %elif (quicklinkRef == "relatedcustomers")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_SalesmanName, "CMSLSM")
+                                  @dtw_assign(uv_BillingLocationName, "CMLOC#")
+                                  @dtw_assign(uv_CustomerName, "CMCUST")
+                                  @dtw_assign(uv_WarehouseName, "CMWH#")
+                                  %INCLUDE "userview.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDCUST ", fileSQL)
+                                  %if (billToCustomer == "0" )
+                                      @dtw_concat(selectSQL, "CMBLTO=$(customerNumber)", selectSQL)
+                                  %else
+                                      @dtw_concat(selectSQL, "(CMBLTO=$(billToCustomer) or CMCUST=$(billToCustomer))", selectSQL)
+                                      @dtw_concat(selectSQL, " and CMCUST<>$(customerNumber)", selectSQL)
+                                  %endif
+                                  @dtw_assign(wildCardSearch, "")
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "CMCUST")
+                                  @dtw_assign(orderByDisplay, "Customer Number")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Related_Customers(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Stores %}
+                              %elif (quicklinkRef == "customerstores")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select HDCSTR.*, COST as COSTAT, CMCNA1, CMCNA1U ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDCSTR inner join HDCUST on COSHTO=CMCUST ", fileSQL)
+                                  @dtw_concat(selectSQL, "COSHTO=$(customerNumber)", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "COSTOR")
+                                      @dtw_assign(orderByDisplay, "Store Number")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Stores(profileHandle, dataBaseID, stmtSQL)
+        %{ Top Items %}
+                              %elif (quicklinkRef == "lastyeartopitems" || quicklinkRef == "ytdtopitems")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_date("S", sysDateYYYYMMDD)
+                                  @dtw_substr(sysDateYYYYMMDD,"3","2",sysYearYY)
+                                  %if (quicklinkRef == "lastyeartopitems")
+                                      @dtw_subtract(sysYearYY,"1",yearYY)
+                                  %else
+                                      @dtw_assign(yearYY, sysYearYY)
+                                  %endif
+                                  @Build_Date_Range(yearYY, startCMD, endCMD)
+                                  @RtvFldDesc("DHSEQ# >0 and HHSHTO=$(customerNumber) and (HHLDTI >= $(startCMD) and HHLDTI <= $(endCMD))", "OEORDH inner join OEORHH on HHORD#=DHORD# and HHSEQ#=DHSEQ# ", "char(SUM((DHQSTC*DHSLPR)/DHORUF))", salesTotal)
+
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(distinctSQL, "DHITEM ", distinctSQL)
+                                  @dtw_concat(stmtSQL, " Select DHITEM, SUM((DHQSTC*DHSLPR)/DHORUF) as SALES, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " SUM(DHQSTC) as QTYSHIPPED ", stmtSQL)
+                                  @dtw_concat(fileSQL, " OEORDH inner join OEORHH on HHORD#=DHORD# and HHSEQ#=DHSEQ# ", fileSQL)
+                                  @dtw_concat(selectSQL, "DHSEQ# >0 and HHSHTO=$(customerNumber) and (HHLDTI >= $(startCMD) and HHLDTI <= $(endCMD)) ", selectSQL)
+                                  %{ No wildCardSearch, no default orderBy, no user view security. %}
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_concat(stmtSQL, " GROUP BY DHITEM", stmtSQL)
+                                  @dtw_assign(orderBy, "SALES Desc")
+                                  @dtw_assign(orderByDisplay, "Sales (descending)")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Top_Items(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Open Items %}
+                              %elif (quicklinkRef == "openitems")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select ODITEM, ODWH, ODIMDS, ODORD#, ODORL#,", stmtSQL)
+                                  @dtw_concat(stmtSQL, " ODBLN#, ODRQDT, ODQORD, ODQOPK, ODQSTD,", stmtSQL)
+                                  @dtw_concat(stmtSQL, " ODQOBO, ODMORD, ODQSTC, ODPLT, ", stmtSQL)
+                                  @dtw_concat(stmtSQL, " upper(ODIMDS) as ODIMDSU ", stmtSQL)
+                                  @dtw_concat(fileSQL, " OEORHD inner join OEORDT on ODORD#=OEORD# ", fileSQL)
+                                  @dtw_concat(fileSQL, "        inner join HDCUST on CMCUST=OESHTO ", fileSQL)
+                                  @dtw_concat(selectSQL, "OESHTO=$(customerNumber) and OEORST='O' and ODORST='O'and ODBLKT<>'Y' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "ODITEM, ODORD#, ODBLN#, ODORL# ")
+                                  @dtw_assign(orderByDisplay, "Item Number, Order Number, Line, Release")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Open_Items(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Drop Ship %}
+                              %elif (quicklinkRef == "dropship")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_CustomerName, "DSVNCS")
+                                  %INCLUDE "userview.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDDSHP ", fileSQL)
+                                  @dtw_concat(selectSQL, "DSVCF='C' and DSVNCS=$(customerNumber) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "DSNAMEU")
+                                      @dtw_assign(orderByDisplay, "Name")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Drop_Ship(profileHandle, dataBaseID, stmtSQL)
+
+        %{ Ship Via %}
+                              %elif (quicklinkRef == "customershipvia")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  @dtw_assign(uv_CustomerName, "CSSHTO")
+                                  %INCLUDE "userview.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select HDCUSV.*, SVSVDS, upper(SVSVDS) as SVSVDSU, CMCNA1, CMCNA1U ", stmtSQL)
+                                  @dtw_concat(fileSQL, " HDCUSV ", fileSQL)
+                                  @dtw_concat(fileSQL, " inner join HDSHPV on CSSVSV=SVSVSV ", fileSQL)
+                                  @dtw_concat(fileSQL, " inner join HDCUST on CSSHTO=CMCUST ", fileSQL)
+                                  @dtw_concat(selectSQL, "CSSHTO=$(customerNumber) ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  %if (orderBy == "")
+                                      @dtw_assign(orderBy, "CSSVSV")
+                                      @dtw_assign(orderByDisplay, "Ship Via")
+                                  %endif
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_Ship_Via(profileHandle, dataBaseID, stmtSQL)
+
+        %{ User-Defined %}
+                              %elif (quicklinkRef == "userdefined")
+                              	  @dtw_assign(saveMaxRows, dspMaxRows)
+                              	  @dtw_assign(dspMaxRows, "9999")
+                                  %INCLUDE "QuickLinkClear.icl"
+                                  %INCLUDE "stmtSQLClear.icl"
+                                  @dtw_concat(stmtSQL, " Select SYUDFM.*, Coalesce(CUFLDD,'01-01-0001') as CUFLDD, Coalesce(CUFLDR,0) as CUFLDR, Coalesce(CUFLDV,' ') as CUFLDV ", stmtSQL)
+                                  @dtw_concat(fileSQL, " SYUDFM ", fileSQL)
+                                  @dtw_concat(fileSQL, " left join HDCUSU on UFFLDN=CUFLDN and CUCUST=$(customerNumber)", fileSQL)
+                                  @dtw_concat(selectSQL, "UFFILN='HDCUSU' ", selectSQL)
+                                  %INCLUDE "stmtSQLSelect.icl"
+                                  @dtw_assign(orderBy, "UFFSEQ")
+                                  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                                  %INCLUDE "stmtSQLEnd.icl"
+                                  %INCLUDE "stmtSQLTotalRows.icl"
+                                  @Customer_Select_User_Defined(profileHandle, dataBaseID, stmtSQL)
+                                  @dtw_assign(dspMaxRows, saveMaxRows)
+                              %endif
+
+    %{ Attachments %}     %INCLUDE "AttachmentSQL.icl"
+
+%{ Quicklink End %}       %INCLUDE "QuickLinkEndLoop.icl"
+
+                          %if (noMenu =="Y")
+                              $(inquiryhrTagAttr)
+                          %else
+                              $(hrTagAttr)
+                          %endif
+
+                          %INCLUDE "Copyright.icl"
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %if (noMenu =="Y")
+                  %INCLUDE "$(inquiryTrailer)"
+              %else
+                  %INCLUDE "trailer.icl"
+              %endif
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Header (IN CHAR(64)    profileHandle,
+				               CHAR(2)     dataBaseID,
+                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programOrderEntry, oe_01, oe_02, oe_03, oe_04, oe_05, oe_06, oe_07, oe_08, oe_09, oe_10, oe_11, oe_12, oe_13, oe_14, oe_15)
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              @dtw_assign(attachVarKey, customerNumber)
+              @dtw_assign(attachForDesc, customerName)
+              @dtw_assign(attachPrg1, "HDCUST Where CMCUST=$(customerNumber)")
+              %while(@dtw_rlength(attachVarKey) != "7") {@dtw_insert("0", attachVarKey, attachVarKey)%}
+              %if (formatToPrint != "Y")
+                  @dtw_assign(maintainVar, "$(d2wVarBase)&amp;fromD2w=")
+                  <td class="toolbar">
+                      %if (oe_01 == "Y" && customerNumber != V_CRMSCC)
+                          <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)OrderEntry.d2w/ENTRY$(maintainVar)&amp;orderControlNumber=00000000">$(addOrderImageLrg)</a>
+                      %endif
+                      @RtvFldDesc("SLNAME='SALESINQ' ", "SYUSLM", " char(count(SLNAME))", SalesInqCount)
+                      %if (SalesInqCount > "0")
+                          <a href="$(homeURL)$(cGIPath)SalesInqProcess.d2w/REPORT$(maintainVar)&amp;selectedDesc=@dtw_rurlescseq(customerName)&amp;userSQL=@dtw_rurlescseq("CMCUST=$(customerNumber)")" onclick="$(inquiryWinVar)">$(salesInqImage)</a>
+                      %endif
+                      %INCLUDE "Attachment.icl"
+                      %if (sec_01 == "Y")
+                          <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)CustomerMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=A">$(addImageLrg)</a>
+                      %endif
+                      %if (sec_01=="Y" && sec_04=="Y")
+                          <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)CustomerMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=Z">$(copyImageLrg)</a>
+                      %endif
+                      %if (sec_05 == "Y" && sec_02 != "Y")
+                          <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)CustomerMaintainBasic.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageLrg)</a>
+                      %elif (sec_02 == "Y" || sec_03 == "Y")
+                          <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)CustomerMaintain.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=C">$(changeImageLrg)</a>
+                      %endif
+                      %if (sec_03 == "Y")
+                          @Format_Confirm_Desc($(customerName), $(customerNumber), "", "", "", "", confirmDesc)
+                          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)CustomerMaintain.d2w/Edit_Data$(maintainVar)&amp;maintenanceCode=D">$(deleteImageLrg)</a>
+                      %endif
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      %if (noMenu =="Y")
+          $(inquiryhrTagAttr)
+      %else
+          $(hrTagAttr)
+      %endif
+
+      %ROW{
+          <table $(contentTable)>
+              <colgroup>
+              <col width="60%">
+              <col width="20%">
+
+              @dtw_assign(billToCustomer, V_CMBLTO)  %{ Capture the Bill-To Customer for later use.  %}
+              <tr><td rowspan="5" class="dspalph"> $(V_CMCNA1) <br>
+                      %if (V_CMCNA2 != "")
+                          $(V_CMCNA2) <br>
+                      %endif
+                      %if (V_CMCNA3 != "")
+                          $(V_CMCNA3) <br>
+                      %endif
+                      %if (V_CMCNA4 != "")
+                          $(V_CMCNA4) <br>
+                      %endif
+                      $(V_CMCCTY), $(V_CMST) $(V_CMZIP)
+
+                      %if (V_CMCTRY != V_HDCTCD)
+                          @RtvFldDesc("CNCTCD='$(V_CMCTRY)'", "HDCTRY", "CNCDES", fieldDesc)
+                          <br>$(fieldDesc)
+                      %endif
+                  </td>
+              </tr>
+              <tr>
+                  <td class="dsphdr">Customer Number</td>
+                  <td class="dspnmbr">$(V_CMCUST)</td>
+              </tr>
+
+              %if (V_CMPHON > "0")
+                  @EditPhoneNumber(V_CMPHON)
+                  <tr>
+                      <td class="dsphdr">Phone Number</td>
+                      <td class="dspnmbr">$(V_CMPHON)</td>
+                  </tr>
+              %endif
+
+              %if (V_CMFAX > "0")
+                  @EditPhoneNumber(V_CMFAX)
+                  <tr>
+                      <td class="dsphdr">Fax Number</td>
+                      <td class="dspnmbr">$(V_CMFAX)</td>
+                  </tr>
+              %endif
+          </table>
+
+          %if (noMenu =="Y")
+              $(inquiryhrTagAttr)
+          %else
+              $(hrTagAttr)
+          %endif
+
+          %INCLUDE "QuickLinkDisplay.icl"
+      %}
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Demographics (IN CHAR(64)    profileHandle,
+				                     CHAR(2)     dataBaseID,
+                                                    CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="demographics"></a>
+      @dtw_assign(displayMaxRowsMsg, "N")
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+
+          %ROW{
+              %if (V_CMBLTO > "0")
+                  @RtvFldDesc("CMCUST=$(V_CMBLTO)", "HDCUST", "CMCNA1", billToName)
+              %endif
+
+              @RtvFldDesc("CCCCLS='$(V_CMCCLS)'", "HDCCLS", "CCCCDS", fieldDesc)
+              @Format_Code(V_CMCCLS, F_CMCCLS)
+              <tr><td class="dsphdr">Class</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_CMCCLS)</td>
+              </tr>
+
+              @RtvFldDesc("LOLOC#=$(V_CMLOC#)", "HDLCTN", "LOLNA1", fieldDesc)
+              @Format_Code(V_CMLOC#, F_CMLOC#)
+              <tr><td class="dsphdr">Location</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_CMLOC#)</td>
+              </tr>
+	   		     		
+              @RtvFldDesc("TMCTRM='$(V_CMCTRM)'", "HDTRMS", "TMCTDS", fieldDesc)
+              @Format_Code(V_CMCTRM, F_CMCTRM)
+              <tr><td class="dsphdr">Terms</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_CMCTRM)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Credit Contact</td>
+                  <td class="dspalph">$(V_CMCRCT)</td>
+              </tr>
+
+              @Format_Nbr($(V_CMCCRL), F_CMCCRL, "0", $(amtEditCode), "", "", "")
+              <tr><td class="dsphdr">Credit Limit</td>
+                  <td class="dspalph">$(F_CMCCRL)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Credit Reference Number</td>
+                  <td class="dspalph">$(V_CMCRFN)</td>
+              </tr>
+
+              @RtvFldDesc("PSSBCD='$(V_CMSBCD)'", "ARPYSB", "PSDESC", fieldDesc)
+              @Format_Code(V_CMSBCD, F_CMSBCD)
+              <tr><td class="dsphdr">Preferred Payment Method</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_CMSBCD)</td>
+              </tr>
+
+              @RtvFldDesc("USUSER='$(V_CMCLCT)'", "SYUSER", "USDESC", fieldDesc)
+              @Format_Code(V_CMCLCT, F_CMCLCT)
+              <tr><td class="dsphdr">Collector</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_CMCLCT)</td>
+              </tr>
+
+              %if (V_HDMCRL>"0" && V_CRPRMC=="Y")
+                  @RtvFldDesc("CYTYPE='$(V_CMCURT)'", "HDCTYP", "CYDESC", fieldDesc)
+                  @Format_Code(V_CMCURT, F_CMCURT)
+                  <tr><td class="dsphdr">Currency</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_CMCURT)</td>
+                  </tr>
+              %endif
+
+              @RtvYNDesc($(V_CMCSTC), fieldDesc)
+              <tr><td class="dsphdr">Statement</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+              </tr>
+  		
+              @RtvYNDesc($(V_CMCSCC), fieldDesc)
+              <tr><td class="dsphdr">Service Charge</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+              </tr>
+
+              @RtvFldDesc("SMSLSM=$(V_CMSLSM)", "HDSLSM", "SMSNA1", fieldDesc)
+              @Format_Code(V_CMSLSM, F_CMSLSM)
+              <tr><td class="dsphdr">Salesman</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_CMSLSM)</td>
+              </tr>
+	   		
+              @RtvFldDesc("SMSLSM=$(V_CMALSM)", "HDSLSM", "SMSNA1", fieldDesc)
+              @Format_Code(V_CMALSM, F_CMALSM)
+              <tr><td class="dsphdr">Alternate Salesman</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_CMALSM)</td>
+              </tr>
+
+              @RtvFldDesc("RGCRGN='$(V_CMCRGN)'", "HDCRGN", "RGCRDS", fieldDesc)
+              @Format_Code(V_CMCRGN, F_CMCRGN)
+              <tr><td class="dsphdr">Region</td>
+                  <td class="dspalph">$(fieldDesc)</td>
+                  <td class="dspalph">$(F_CMCRGN)</td>
+              </tr>
+
+              @EditPhoneNumber(V_CMFAX)
+              <tr><td class="dsphdr">Fax Number</td>
+                  <td class="dspalph">$(V_CMFAX)</td>		
+              </tr>
+
+              @Format_Nbr($(V_CMHCBL), F_CMHCBL, "2", $(amtEditCode), "", "", "")
+              <tr><td class="dsphdr">Highest Balance</td>
+                  <td class="dspalph">$(F_CMHCBL)</td>		
+              </tr>
+
+              @Format_Nbr($(V_CMCPDS), F_CMCPDS, "2", $(amtEditCode), "", "", "")
+              <tr><td class="dsphdr">Period-To-Date Invoice</td>
+                  <td class="dspalph">$(F_CMCPDS)</td>		
+              </tr>
+
+              @Format_Nbr($(V_CMCYDS), F_CMCYDS, "2", $(amtEditCode), "", "", "")
+              <tr><td class="dsphdr">Year-To-Date Invoice</td>
+                  <td class="dspalph">$(F_CMCYDS)</td>		
+              </tr>
+
+              @Format_Nbr($(V_CMCPOB), F_CMCPOB, "2", $(amtEditCode), "", "", "")
+              <tr><td class="dsphdr">Picked Order Balance</td>
+                  <td class="dspalph">$(F_CMCPOB)</td>		
+              </tr>
+
+              @Format_Nbr($(V_CMSNIV), F_CMSNIV, "2", $(amtEditCode), "", "", "")
+              <tr><td class="dsphdr">Shipped/Not Invoiced</td>
+                  <td class="dspalph">$(F_CMSNIV)</td>		
+              </tr>
+
+              %if (V_CMT#IV > "0")
+                  @dtw_assign(avgDays, @dtw_rdivide(V_CMT#DY, V_CMT#IV))
+              %else
+                  @dtw_assign(avgDays, "0")
+              %endif
+              @Format_Nbr($(avgDays), F_avgDays, "0", "K", "", "", "")
+              <tr><td class="dsphdr">Average Days To Pay</td>
+                  <td class="dspalph">$(F_avgDays)</td>		
+              </tr>
+
+              @Format_Nbr($(V_CMT#IV), F_CMT#IV, "0", "1", "", "", "")
+              <tr><td class="dsphdr">Total Number Of Payments</td>
+                  <td class="dspalph">$(F_CMT#IV)</td>		
+              </tr>
+
+              @Format_Date(V_CMDLPY, "D", F_CMDLPY)
+              <tr><td class="dsphdr">Last Payment</td>
+                  <td class="dspalph">$(F_CMDLPY)</td>		
+              </tr>
+
+              @Format_Date(V_CMDFPO, "D", F_CMDFPO)
+              <tr><td class="dsphdr">First Purchase</td>
+                  <td class="dspalph">$(F_CMDFPO)</td>		
+              </tr>
+
+              @Format_Date(V_CMDLPO, "D", F_CMDLPO)
+              <tr><td class="dsphdr">Last Purchase</td>
+                  <td class="dspalph">$(F_CMDLPO)</td>		
+              </tr>
+
+              @Format_Date(V_CMDFES, "D", F_CMDFES)
+              <tr><td class="dsphdr">Date Established</td>
+                  <td class="dspalph">$(F_CMDFES)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Management Priority</td>
+                  <td class="dspalph">$(V_CMMPTY)</td>
+              </tr>
+
+              %if (V_CRPARF == "Y")
+                  <tr><td class="dsphdr">Factor Customer Number</td>
+                      <td class="dspalph">$(V_CMFCUS)</td>
+                  </tr>
+
+                  @Format_Nbr($(V_CMFCRL), F_CMFCRL, "0", $(amtEditCode), "", "", "")
+                  <tr><td class="dsphdr">Factor Credit Limit</td>
+                      <td class="dspalph">$(F_CMFCRL)</td>
+                  </tr>
+              %endif
+
+              %if (V_CRSCR1 != "")
+                  <tr><td class="dsphdr">$(V_CRSCR1)</td>
+                      <td class="dspalph">$(V_CMUDF1)</td>
+                  </tr>
+              %endif
+
+              %if (V_CRSCR2 != "")
+                  <tr><td class="dsphdr">$(V_CRSCR2)</td>
+                      <td class="dspalph">$(V_CMUDF2)</td>
+                  </tr>
+              %endif
+
+              %if (V_CRSCR3 != "")
+                  <tr><td class="dsphdr">$(V_CRSCR3)</td>
+                      <td class="dspalph">$(V_CMUDF3)</td>
+                  </tr>
+              %endif
+
+              %if (V_CRSCR4 != "")
+                  <tr><td class="dsphdr">$(V_CRSCR4)</td>
+                      <td class="dspalph">$(V_CMUDF4)</td>
+                  </tr>
+              %endif
+
+              %if (V_CRSCR5 != "")
+                  <tr><td class="dsphdr">$(V_CRSCR5)</td>
+                      <td class="dspalph">$(V_CMUDF5)</td>
+                  </tr>
+              %endif
+
+              %if (V_HDOERL > "0")
+                  %if (V_CEUCD1 != "")
+                      <tr><td class="dsphdr">$(V_CEUCD1)</td>
+                          <td class="dspalph">$(V_CMUCA1)</td>
+                      </tr>
+                  %endif
+
+                  %if (V_CEUCD2 != "")
+                      <tr><td class="dsphdr">$(V_CEUCD2)</td>
+                          <td class="dspalph">$(V_CMUCA2)</td>
+                      </tr>
+                  %endif
+
+                  %if (V_CEUCD3 != "")
+                      <tr><td class="dsphdr">$(V_CEUCD3)</td>
+                          <td class="dspalph">$(V_CMUCA3)</td>
+                      </tr>
+                  %endif
+
+                  %if (V_CEUCD4 != "")
+                      <tr><td class="dsphdr">$(V_CEUCD4)</td>
+                          <td class="dspalph">$(V_CMUCA4)</td>
+                      </tr>
+                  %endif
+
+                  %if (V_CEUCD5 != "")
+                      <tr><td class="dsphdr">$(V_CEUCD5)</td>
+                          <td class="dspalph">$(V_CMUCA5)</td>
+                      </tr>
+                  %endif
+
+                  @RtvYNDesc($(V_CMIBPK), fieldDesc)
+                  <tr><td class="dsphdr">Invoice By Packing List</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                  </tr>
+
+                  @RtvYNDesc($(V_CMSTRQ), fieldDesc)
+                  <tr><td class="dsphdr">Store Required On Orders</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                  </tr>
+
+                  @RtvFldDesc("COSHTO=$(customerNumber) and COSTOR='$(V_CMSTOR)'", "HDCSTR", "CONAME", fieldDesc)
+                  @Format_Code(V_CMSTOR, F_CMSTOR)
+                  <tr><td class="dsphdr">Store</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_CMSTOR)</td>
+                  </tr>
+
+                  @RtvFldDesc("OTAPID='OE' and OTOTCD='$(V_CMORTY)'", "HDOTYP", "OTDESC", fieldDesc)
+                  @Format_Code(V_CMORTY, F_CMORTY)
+                  <tr><td class="dsphdr">Default Order Type</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_CMORTY)</td>
+                  </tr>
+
+                  @RtvFldDesc("WHWHS=$(V_CMWH#)", "HDWHSM", "WHWHNM", fieldDesc)
+                  @Format_Code(V_CMWH#, F_CMWH#)
+                  <tr><td class="dsphdr">Warehouse</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_CMWH#)</td>
+                  </tr>
+
+                  @RtvFldDesc("FLTYPE='BACKORDER' and FLVALU='$(V_CMBOAL)'", "SYFLAG", "FLDESC", allowBackorderDesc)
+                  <tr><td class="dsphdr">Allow Backorders</td>
+                      <td class="dspalph">$(allowBackorderDesc)</td>
+                  </tr>
+    	   		
+                  @RtvFldDesc("SVSVSV='$(V_CMSV)'", "HDSHPV", "SVSVDS", fieldDesc)
+                  @Format_Code(V_CMSV, F_CMSV)
+                  <tr><td class="dsphdr">Ship Via</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_CMSV)</td>
+                  </tr>
+
+                  @RtvFldDesc("FBFBCD='$(V_CMFOBC)'", "HDFOBM", "FBFBDS", fieldDesc)
+                  @Format_Code(V_CMFOBC, F_CMFOBC)
+                  <tr><td class="dsphdr">FOB</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_CMFOBC)</td>
+                  </tr>
+
+                  @RtvFldDesc("TCCODE='$(V_CMCTXC)'", "HDTAXC", "TCDESC", fieldDesc)
+                  @Format_Code(V_CMCTXC, F_CMCTXC)
+                  <tr><td class="dsphdr">Tax</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_CMCTXC)</td>
+                  </tr>
+    	   	
+                  @RtvFldDesc("TDSTCD='$(V_CMST)' and TDCNYC=$(V_CMCNTC) and TDCTYC=$(V_CMCTTC) and TDLOC1=$(V_CMLOC1) and TDLOC2=$(V_CMLOC2) and TDLOC3=$(V_CMLOC3)", "HDTAXD", "TDTDSC", fieldDesc)
+                  <tr><td class="dsphdr">Tax Definition</td>
+                      <td class="dspalph"><a href="$(homeURL)$(phpPath)TaxDefinitionInquiry.php$(altVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;fromState=@dtw_rurlescseq(V_CMST)&amp;fromCounty=@dtw_rurlescseq(V_CMCNTC)&amp;fromCity=@dtw_rurlescseq(V_CMCTTC)&amp;fromLocal1=@dtw_rurlescseq(V_CMLOC1)&amp;fromLocal2=@dtw_rurlescseq(V_CMLOC2)&amp;fromLocal3=@dtw_rurlescseq(V_CMLOC3)" onclick="$(inquiryWinVar)" title="View Tax Definition">$(fieldDesc)</a></td>
+                  </tr>
+
+                  @RtvFldDesc("HCTYPE='O' and HCHLCD='$(V_CMCHLD)'", "HDHLCD", "HCDESC", fieldDesc)
+                  @Format_Code(V_CMCHLD, F_CMCHLD)
+                  <tr><td class="dsphdr">Hold</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_CMCHLD)</td>
+                  </tr>
+
+                  @RtvFldDesc("BCBCDE='$(V_CMBCDE)'", "OEBCDE", "BCDESC", fieldDesc)
+                  @Format_Code(V_CMBCDE, F_CMBCDE)
+                  <tr><td class="dsphdr">Billing</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_CMBCDE)</td>
+                  </tr>
+
+                  @RtvFldDesc("FLTYPE='INVMETHOD' AND FLVALU='$(V_CMIMTH)'", "SYFLAG", "FLDESC", fieldDesc)
+                  @Format_Code(V_CMIMTH, F_CMIMTH)
+                  <tr><td class="dsphdr">Invoice Method</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                      <td class="dspalph">$(F_CMIMTH)</td>
+                  </tr>
+    	   		
+                  @RtvFldDesc("FLTYPE='DORS' AND FLVALU='$(V_CMIDOS)'", "SYFLAG", "FLDESC", fieldDesc)
+                  <tr><td class="dsphdr">Print Detail Or Summary</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                  </tr>
+    	   		
+                  @RtvYNDesc($(V_CMRREF), fieldDesc)
+                  <tr><td class="dsphdr">Require Reference Number</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Minimum Quantity Per Order</td>
+                      <td class="dspalph">$(V_CMMOQ)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Minimum Value Per Order</td>
+                      <td class="dspalph">$(V_CMMOA)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Minimum Weight Per Order</td>
+                      <td class="dspalph">$(V_CMMOW)</td>
+                  </tr>
+
+                  @RtvYNDesc($(V_CMMWRN), fieldDesc)
+                  <tr><td class="dsphdr">Below Minimum Warning</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                  </tr>
+
+                  @RtvYNDesc($(V_CMACCI), fieldDesc)
+                  <tr><td class="dsphdr">Auto Create Customer/Item</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                  </tr>
+    	   		
+                  @RtvYNDesc($(V_CMAOVS), fieldDesc)
+                  <tr><td class="dsphdr">Allow Over Shipments</td>
+                      <td class="dspalph">$(fieldDesc)</td>
+                  </tr>
+
+                  @Format_Nbr("@dtw_rMultiply(V_CMOVSH, "100")", F_CMOVSH, "2", $(pctEditCode), "Y", "", "%")
+                  <tr><td class="dsphdr">Over Shipment</td>
+                      <td class="dspalph">$(F_CMOVSH)</td>
+                  </tr>
+
+                  <tr><td class="dsphdr">Transit Days</td>
+                      <td class="dspalph">$(V_CMTRDY)</td>
+                  </tr>
+              %endif
+          %}
+    </table>
+    </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Contacts (IN CHAR(64)    profileHandle,
+				                 CHAR(2)     dataBaseID,
+                                                CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="customercontacts"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)CustomerContact.d2w/REPORT$(d2wVarBase)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  %if (oe_01 == "Y" && customerNumber != V_CRMSCC)
+                      @Format_Column_Header("xxxx", "$(optionHeading)")
+                  %endif
+                  @Format_Column_Header("CRCONT", "Contact Number")
+                  @Format_Column_Header("CRLNAMU", "Name")
+                  @Format_Column_Header("CRCNAMU", "Company")
+                  @Format_Column_Header("CRTITLU", "Title")
+                  @Format_Column_Header("CRCITYU", "City")
+                  @Format_Column_Header("CRST", "State")
+                  @Format_Column_Header("CRZIP", "Zip")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  %if (oe_01 == "Y" && customerNumber != V_CRMSCC)
+                      <td class="opticon"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)OrderEntry.d2w/ENTRY$(d2wVarBase)&amp;contactNumber=@dtw_rurlescseq(V_CRCONT)&amp;orderControlNumber=00000000">$(addOrderImageSml)</a></td>
+                  %endif
+                  <td class="colnmbr"> $(V_CRCONT)</td>
+                  @Format_EmplName(V_CRFNAM, V_CRLNAM, "", "", "", "D", F_Name)
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerContactselect.d2w/REPORT$(d2wVarBase)&amp;contactNumber=@dtw_rurlescseq(V_CRCONT)" title="View Contact">$(F_Name)</a></td>
+                  <td class="colalph">$(V_CRCNAM)</td>
+                  <td class="colalph">$(V_CRTITL)</td>
+                  <td class="colalph">$(V_CRCITY)</td>
+                  <td class="colcode">$(V_CRST)</td>
+                  <td class="colalph">$(V_CRZIP)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Events (IN CHAR(64)    profileHandle,
+				               CHAR(2)     dataBaseID,
+                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (quicklinkRef == "completedevents" )
+          <a name="completedevents"></a>
+          @dtw_assign(includeVar, "&amp;inclOpen=&amp;inclComp=Y&amp;inclOverDue=")
+      %elif (quicklinkRef == "overdueevents" )
+          <a name="overdueevents"></a>
+          @dtw_assign(includeVar, "&amp;inclOpen=&amp;inclComp=&amp;inclOverDue=Y")
+      %else
+          <a name="openevents"></a>
+          @dtw_assign(includeVar, "&amp;inclOpen=Y&amp;inclComp=&amp;inclOverDue=")
+      %endif
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)CustomerContactEvent.d2w/REPORT$(d2wVarBase)$(includeVar)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("CRLNAMU", "Name")
+                  @Format_Column_Header("EMEVNT", "Event Code")
+                  @Format_Column_Header("EMDESC", "Description")
+                  @Format_Column_Header("EMUSER", "User Profile")
+                  @Format_Column_Header("EMEVTD", "Event Date")
+                  @Format_Column_Header("EMEVTT", "Event Time")
+
+                  %if (quicklinkRef == "completedevents")
+                      @Format_Column_Header("EMCMPD", "Completion Date")
+                  %endif
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(maintainVar, "$(genericVarBase)&amp;contactNumber=@dtw_rurlescseq(V_EMCONT)&amp;eventSequence=@dtw_rurlescseq(V_EMESEQ)&amp;eventCode=@dtw_rurlescseq(V_EMEVNT)&amp;desc=@dtw_rurlescseq(V_EMDESC)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;fromContactNumber=@dtw_rurlescseq(V_EMCONT)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+
+              @Date_FromISO_ToCYMD(V_EMEVTD, F_CYMD)
+              @Format_Date(F_CYMD, "D", F_EMEVTD)
+              @EditHrsMinSec(V_EMEVTT)
+              %if (quicklinkRef == "completedevents")
+                  @Date_FromISO_ToCYMD(V_EMCMPD, F_CYMD)
+                  @Format_Date(F_CYMD, "D", F_EMCMPD)
+              %endif
+
+              @retrieveUserRole(profileHandle, dataBaseID, V_EMUSER, userCustomer, userVendor, userSalesman, userBadge, userCatalog, newsLink, profileName)
+              @dtw_assign(fileName, "CRCEVU")	
+              @RtvFldDesc("ECFILN='$(fileName)' and ECEVNT='$(V_EMEVNT)' ", "SYEVNT", "ECDESC", eventDesc)
+
+              <tr class="$(rowClass)">
+                  %if (customerNumber > "0")
+                      @Format_EmplName(V_CRFNAM, V_CRLNAM, "", "", "", "D", F_Name)
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerContactselect.d2w/REPORT$(d2wVarBase)&amp;contactNumber=@dtw_rurlescseq(V_EMCONT)" title="View Contact">$(F_Name)</a></td>
+                  %endif
+                  <td class="colalph" $(helpCursor)><span title="$(eventDesc)">$(V_EMEVNT)</span></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerContactEventSelect.d2w/REPORT$(genericVarBase)&amp;contactNumber=@dtw_rurlescseq(V_EMCONT)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;eventSequence=@dtw_rurlescseq(V_EMESEQ)&amp;eventCode=@dtw_rurlescseq(V_EMEVNT)" title="View Event">$(V_EMDESC)</a></td>
+                  <td class="colalph" $(helpCursor)><span title="$(profileName)">$(V_EMUSER)</span></td>
+                  @dtw_assign(calYear, @dtw_rsubstr(V_EMEVTD, "1", "4"))
+                  @dtw_assign(calMonth, @dtw_rsubstr(V_EMEVTD, "6", "2"))
+                  <td class="coldate"><a href="$(homeURL)$(cGIPath)EventCalendar.d2w/CALENDAR$(genericVarBase)&amp;calYear=@dtw_rurlescseq(calYear)&amp;calMonth=@dtw_rurlescseq(calMonth)&amp;calWeek=0&amp;calView=M&amp;reload=Y&amp;searchVar=@@user@dtw_rurlescseq(V_EMUSER)}{" title="View Calendar">$(F_EMEVTD)</a></td>
+                  <td class="colalph">$(V_EMEVTT)</td>
+                  %if (quicklinkRef == "completedevents" )
+                      <td class="coldate"> $(F_EMCMPD)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Availability (IN CHAR(64)    profileHandle,
+				                     CHAR(2)     dataBaseID,
+                                                    CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="availability"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)VendCustProdAvail.d2w/REPORT$(d2wVarBase)$(vendCustURL)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("VCVCIT", "Customer Item Number")
+                  @Format_Column_Header("IMIMDS", "Item Description")
+                  @Format_Column_Header("xxx", "Price")
+                  @Format_Column_Header("WILORD", "Last Order Date")
+                  @Format_Column_Header("WILRSQ", "Last Order Quantity")
+                  @Format_Column_Header("xxx", "Quantity Available")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+%{ Check Item Comments %}
+              @Check_Item_Comments(profileHandle, dataBaseID, V_VCITEM, vendCustFlag, customerNumber, documentType, headerTrailer, itemComments)
+%{ Get Quantity Available %}
+              @Get_Qty_Avail(profileHandle, dataBaseID, V_VCITEM, V_WIWHS, qtyAvailable)
+%{ Get Unit Price %}
+              @Cust_Unit_Price(profileHandle, dataBaseID, customerNumber, V_VCITEM, unitPrice, V_WIWHS, piecesPerPricing)
+
+              @Format_Nbr($(unitPrice), F_unitPrice, $(prcNbrDec), $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_WILRSQ), F_WILRSQ, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr($(qtyAvailable), F_qtyAvailable, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Date(V_WILORD, "D", F_WILORD)
+
+              @dtw_assign(itemImage, "$(V_VCITEM)$(itemImageExt)")
+              @dtwf_exists(itemImage, imageExists)
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_VCVCIT)</td>                                      	
+                  <td class="colalph">$(V_IMIMDS)</td>
+                  %if (IMKIT == "K")
+                      @RtvFldDesc("KTKTIT='$(V_VCITEM)'", "HDKIT", "KTKTPR", KTKTPR)
+                  %endif
+                  %if (V_WIWHS > "0" && (V_IMKIT == "" || (V_IMKIT == "K" && V_KTKTPR == "K")))
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)PricingInquiry.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;itemNumber=@dtw_rurlescseq(V_VCITEM)&amp;itemDescription=@dtw_rurlescseq(V_IMIMDS)&amp;warehouseNumber=@dtw_rurlescseq(V_WIWHS)&amp;productClass=@dtw_rurlescseq(V_IMPCLS)&amp;quantity=1" onclick="$(inquiryWinVar)" title="View Pricing">$(F_unitPrice)</a></td>
+                  %else
+                      <td class="colnmbr">$(F_unitPrice)</td>
+                  %endif
+                  <td class="coldate">$(F_WILORD)</td>
+                  <td class="colnmbr">$(F_WILRSQ)</td>
+                  <td class="colnmbr">$(F_qtyAvailable)</td>
+                  %if (itemComments == "Y" && formatToPrint != "Y")
+                      <td class="colicon"><a href="$(homeURL)$(cGIPath)ItemComments.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_VCITEM)&amp;itemDesc=@dtw_rurlescseq(V_IMIMDS)" onclick="$(commentWinVar)">$(commentExistImage)</a></td>
+                  %elif(itemComments != "" && formatToPrint != "Y")
+                      <td class="colicon"><a href="$(homeURL)$(cGIPath)VendCustItemComments.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_VCITEM)&amp;vendCustItemNumber=@dtw_rurlescseq(V_VCVCIT)&amp;itemDesc=@dtw_rurlescseq(V_IMIMDS)&amp;vendCustNumber=@dtw_rurlescseq(customerNumber)&amp;vendCustFlag=@dtw_rurlescseq(vendCustFlag)" onclick="$(commentWinVar)">$(commentExistImage)</a></td>
+                  %else
+                      <td class="colicon">&nbsp;</td>
+                  %endif
+                  %if (imageExists == "Y" && formatToPrint != "Y")
+                      <td class="colicon"><a href="$(homeURL)$(cGIPath)ImageDisplay.d2w/DISPLAY$(genericVarBase)&amp;imageDisplayPath=$(homeURL)$(itemImage)&amp;imageDesc=@dtw_rurlescseq(V_IMIMDS)" onclick="$(itemImageWinVar)">$(foundImage)</a></td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Open_Orders (IN CHAR(64)    profileHandle,
+				                    CHAR(2)     dataBaseID,
+                                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="openorders"></a>
+      @dtw_assign(key, "OESHTO")
+      %if (multShipToCustomer > "1")
+          @dtw_assign(key, "OEBLTO")
+      %endif
+      @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=185&amp;fKey1=@dtw_rurlescseq(key)&amp;fVal1=@dtw_rurlescseq(customerNumber)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  %if (multShipToCustomer > "1")
+                      @Format_Column_Header("OESHTO", "Ship-To")
+                  %endif
+
+                  @Format_Column_Header("OEORTY", "Order Type")
+                  @Format_Column_Header("OEORD#", "Order Number")
+                  @Format_Column_Header("OEORRF", "Reference Number")
+                  @Format_Column_Header("OERQDT", "Required Date")
+                  @Format_Column_Header("OEDOTS", "Date Last Shipped")
+                  @Format_Column_Header("OEBDTE", "Order Date")
+                  @Format_Column_Header("OETIVA", "Order Amount")
+                  @Format_Column_Header("OEDSHP", "Drop Ship")
+                  @Format_Column_Header("OEHOLD", "Hold Code")
+                  @Format_Column_Header("OELOC#", "Loc")
+                  %if (V_HDPDRL>"0")
+                      @Format_Column_Header("mfgOpen", "Open Mfg Orders")
+                      @Format_Column_Header("mfgComp", "Comp Mfg Orders")
+                  %endif
+                  %if (V_HDCMRL>"0")
+                      @Format_Column_Header("CRLNAMU", "Contact Name")
+                  %endif
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("ODORD#=$(V_OEORD#) and ODORST='O' and ODBLKT<>'Y' and ODQSTC<>0", "OEORDT", "char(count(*))", shippedNotInv)
+              %if (shippedNotInv > "0")
+                 @RtvFldDesc("ODORD#=$(V_OEORD#) and ODORST='O' and ODBLKT<>'Y'", "OEORDT", "char(sum(((odqord-odqstd-odqstc)*odslpr)/odoruf))", V_OETIVA)
+              %endif
+              @Format_Nbr($(V_OETIVA), F_OETIVA, "2", $(amtEditCode), "", "", "")
+              @Format_Date(V_OERQDT, "D", F_OERQDT)
+              @Format_Date(V_OEDOTS, "D", F_OEDOTS)
+              @Format_Date(V_OEBDTE, "D", F_OEBDTE)
+              @RtvFldDesc("(OTOTCD='$(V_OEORTY)' and OTAPID='OE')", "HDOTYP", "OTDESC", orderTypeDesc)
+              @RtvFldDesc("(HCHLCD='$(V_OEHOLD)' and HCTYPE='O')", "HDHLCD", "HCDESC", holdCodeDesc)
+              %if (V_HDCMRL > "0")
+                  @Format_EmplName(V_CRFNAM, V_CRLNAM, "", "", "", "D", F_Name)
+              %endif
+
+              <tr class="$(rowClass)">
+                  %if (multShipToCustomer > "1")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_OESHTO)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(V_OESHTO)</a></td>
+                  %endif
+                  <td class="colcode" $(helpCursor)><span title="$(orderTypeDesc)">$(V_OEORTY)</span></td>
+                  <td class="colnmbr"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrder.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_OEORD#)" title="View Order Detail">$(V_OEORD#)</a></td>
+                  <td class="colalph">$(V_OEORRF)</td>
+                  <td class="coldate">$(F_OERQDT)</td>
+                  %if (V_OEDOTS != "0")
+                      <td class="coldate"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=205&amp;fKey1=HHSHTO&amp;fVal1=@dtw_rurlescseq(customerNumber)&amp;fKey2=HHORD&amp;fVal2=@dtw_rurlescseq(V_OEORD#)" title="View Order History">$(F_OEDOTS)</a></td>
+                  %else
+                      <td class="coldate">$(F_OEDOTS)</td>
+                  %endif
+                  <td class="coldate">$(F_OEBDTE)</td>
+                  <td class="colnmbr">$(F_OETIVA)</td>
+                  %if (V_OEDSHP>"0")
+                      @RtvFldDesc("DSVCF='C' and DSVNCS=$(V_OESHTO) and DSNMBR=$(V_OEDSHP)", "HDDSHP", "DSNAME", dropShipName)
+                      %if (dropShipName>" ")
+                          <td class="colnmbr"><a href="$(homeURL)$(cGIPath)DropShipInquiry.d2w/DISPLAY$(genericVarBase)&amp;dropShipVCF=C&amp;dropShipVendCust=@dtw_rurlescseq(V_OESHTO)&amp;dropShipNumber=@dtw_rurlescseq(V_OEDSHP)" onclick="$(inquiryWinVar)" title="Drop Ship Quickview">$(V_OEDSHP)</a></td>
+                      %else
+                          <td class="colnmbr">$(V_OEDSHP)</td>
+                      %endif
+                  %else
+                      <td class="colalph">&nbsp;</td>
+                  %endif
+                  <td class="colalph" $(helpCursor)><span title="$(holdCodeDesc)">$(V_OEHOLD)</span></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)LocationSelect.d2w/REPORT$(genericVarBase)&amp;locationNumber=@dtw_rurlescseq(V_OELOC#)" title="View Location">$(V_OELOC#)</a></td>
+                  %if (V_HDPDRL>"0")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)SalesOrderStatus.d2w/REPORT$(genericVarBase)&amp;shipTo=@dtw_rurlescseq(V_OESHTO)&amp;customerName=@dtw_rurlescseq(customerName)&amp;billTo=@dtw_rurlescseq(V_OEBLTO)&amp;orderNumber=@dtw_rurlescseq(V_OEORD#)&amp;orderType=@dtw_rurlescseq(V_OEORTY)&amp;orderDate=@dtw_rurlescseq(V_OEBDTE)&amp;reqDate=@dtw_rurlescseq(V_OERQDT)&amp;refNumber=@dtw_rurlescseq(V_OEORRF)" title="View Sales Order Status">$(V_mfgOpen)</a></td>
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)SalesOrderStatus.d2w/REPORT$(genericVarBase)&amp;shipTo=@dtw_rurlescseq(V_OESHTO)&amp;customerName=@dtw_rurlescseq(customerName)&amp;billTo=@dtw_rurlescseq(V_OEBLTO)&amp;orderNumber=@dtw_rurlescseq(V_OEORD#)&amp;orderType=@dtw_rurlescseq(V_OEORTY)&amp;orderDate=@dtw_rurlescseq(V_OEBDTE)&amp;reqDate=@dtw_rurlescseq(V_OERQDT)&amp;refNumber=@dtw_rurlescseq(V_OEORRF)" title="View Sales Order Status">$(V_mfgComp)</a></td>
+                  %endif
+                  %if (V_HDCMRL > "0")
+                      @Format_EmplName(V_CRFNAM, V_CRLNAM, "", "", "", "D", F_Name)
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerContactselect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;contactNumber=@dtw_rurlescseq(V_OECONT)" title="View Contact">$(F_Name)</a></td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Order_History (IN CHAR(64)    profileHandle,
+				                      CHAR(2)     dataBaseID,
+                                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="orderhistory"></a>
+      @dtw_assign(key, "HHSHTO")
+      %if (multShipToCustomer > "1")
+          @dtw_assign(key, "HHBLTO")
+      %endif
+      @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=205&amp;fKey1=@dtw_rurlescseq(key)&amp;fVal1=@dtw_rurlescseq(customerNumber)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  %if (multShipToCustomer > "1")
+                      @Format_Column_Header("HHSHTO", "Ship-To")
+                  %endif
+                  @Format_Column_Header("HHORTY", "Order Type")
+                  @Format_Column_Header("HHORD#", "Order Number")
+                  @Format_Column_Header("HHSEQ#", "Seq")
+                  @Format_Column_Header("HHORRF", "Reference Number")
+                  @Format_Column_Header("HHRQDT", "Required Date")
+                  @Format_Column_Header("HHDOTS", "Date Of Shipment")
+                  @Format_Column_Header("HHSVDS", "Ship Via")
+                  @Format_Column_Header("HHLIV#", "Invoice")
+                  @Format_Column_Header("HHLDTI", "Invoice Date")
+                  @Format_Column_Header("HHTIVA", "Invoice Amount")
+                  @Format_Column_Header("HHDSHP", "Drop Ship")
+                  @Format_Column_Header("HHLOC#", "Loc")
+                  %if (V_HDCMRL>"0")
+                      @Format_Column_Header("CRLNAMU", "Contact Name")
+                  %endif
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @RtvFldDesc("(HHORD#=$(V_HHORD#) and HHSEQ#=0)", "OEORHH", " char(count(HHORD#))", summaryOrder)
+
+              @Retrieve_Tracking_URL(V_HHSVSV, trackingBy, trackDftRef, trackDftOrder, trackDftInv, trackDftCust, dftLeadZero, dftSeparator, trackingURL)
+              %if (trackingBy == "T")
+                  @RtvFldDesc("THORD#=$(V_HHORD#) and THSSEQ=$(V_HHSEQ#)", "OETNHM", "THTRCK", trackingNumber)
+              %endif
+
+              @dtw_assign(HHDOTS, V_HHDOTS)
+              @dtw_assign(HHLDTI, V_HHLDTI)
+              @Format_Date(V_HHRQDT, "D", F_HHRQDT)
+              @Format_Date(V_HHDOTS, "D", F_HHDOTS)
+              @Format_Date(V_HHLDTI, "D", F_HHLDTI)
+              @RtvFldDesc("(OTOTCD='$(V_HHORTY)' and OTAPID='OE')", "HDOTYP", "OTDESC", orderTypeDesc)
+              @Check_Invoice(profileHandle, dataBaseID, V_HHLIV#, V_HHBLTO, invoiceFound)
+              @Format_Nbr($(V_HHTIVA), F_HHTIVA, "2", $(amtEditCode), "", "", "")
+              %if (V_HDCMRL > "0")
+                  @Format_EmplName(V_CRFNAM, V_CRLNAM, "", "", "", "D", F_Name)
+              %endif
+
+              <tr class="$(rowClass)">
+                  %if (multShipToCustomer > "1")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_HHSHTO)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(V_HHSHTO)</a></td>
+                  %endif
+                  <td class="colcode" $(helpCursor)><span title="$(orderTypeDesc)">$(V_HHORTY)</span></td>
+                  %if (summaryOrder == "1")
+                      <td class="colnmbr"> <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrderHistory.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_HHORD#)&amp;orderSequence=0" title="View Shipment Summary">$(V_HHORD#)</a></td>
+                  %else
+                      <td class="colnmbr"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrder.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_HHORD#)" title="View Order Detail">$(V_HHORD#)</a></td>
+                  %endif
+                  <td class="colnmbr"> <a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrderHistory.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_HHORD#)&amp;orderSequence=@dtw_rurlescseq(V_HHSEQ#)" title="View Shipment Detail">$(V_HHSEQ#)</a></td>
+                  <td class="colalph"> $(V_HHORRF)</td>
+                  <td class="coldate"> $(F_HHRQDT)</td>
+                  <td class="coldate"> $(F_HHDOTS)</td>
+                  %if (trackingBy == "T" || trackingBy == "R")
+                      %if (trackingURL != "")
+                          %if (V_HHDSHP > "0")
+                              @RtvFldDesc("DSVCF='C' and DSVNCS=$(V_HHSHTO) and DSNMBR=$(V_HHDSHP)", "HDDSHP", "DSZIP", zipCode)
+                          %else
+                              @RtvFldDesc("CMCUST=$(V_HHSHTO)", "HDCUST", "CMZIP", zipCode)
+                          %endif
+                          @Update_Tracking_URL(trackingNumber, HHDOTS, zipCode, V_HHSHTO, V_HHORD#, V_HHLIV#, V_HHORRF, trackingURL)
+                          %if (trackingNumber != "")
+                               <td class="colalph"><a href="$(trackingURL)" onclick="$(trackingWinVar)" title="Track Shipment">$(V_HHSVDS)</a></td>
+                          %else
+                               <td class="colalph"><a href="$(homeURL)$(cGIPath)ShipViaInquiry.d2w/DISPLAY$(genericVarBase)&amp;shipVia=@dtw_rurlescseq($(V_HHSVSV))" onclick="$(inquiryWinVar)" title="Ship Via Quickview">$(V_HHSVDS)</a></td>
+                          %endif
+                      %else
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)ShipViaInquiry.d2w/DISPLAY$(genericVarBase)&amp;shipVia=@dtw_rurlescseq($(V_HHSVSV))" onclick="$(inquiryWinVar)" title="Ship Via Quickview">$(V_HHSVDS)</a></td>
+                      %endif
+                  %else
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)ShipViaInquiry.d2w/DISPLAY$(genericVarBase)&amp;shipVia=@dtw_rurlescseq($(V_HHSVSV))" onclick="$(inquiryWinVar)" title="Ship Via Quickview">$(V_HHSVDS)</a></td>
+                  %endif
+                  %if (invoiceFound == "Y")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)SelectInvoice.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_HHBLTO)&amp;customerName=@dtw_rurlescseq(customerName)&amp;invoiceNumber=@dtw_rurlescseq(V_HHLIV#)&amp;invoiceDate=@dtw_rurlescseq(HHLDTI)&amp;formatToPrint=Y" onclick="$(invoiceWinVar)" title="Invoice Quickview">$(V_HHLIV#)</a></td>
+                  %else
+                      <td class="colnmbr">$(V_HHLIV#)</td>
+                  %endif
+                  <td class="coldate"> $(F_HHLDTI)</td>
+                  <td class="colnmbr"> $(F_HHTIVA)</td>
+                  %if (V_HHDSHP>"0")
+                      @RtvFldDesc("DSVCF='C' and DSVNCS=$(V_HHSHTO) and DSNMBR=$(V_HHDSHP)", "HDDSHP", "DSNAME", dropShipName)
+                      %if (dropShipName>" ")
+                          <td class="colnmbr"><a href="$(homeURL)$(cGIPath)DropShipInquiry.d2w/DISPLAY$(genericVarBase)&amp;dropShipVCF=C&amp;dropShipVendCust=@dtw_rurlescseq(V_HHSHTO)&amp;dropShipNumber=@dtw_rurlescseq(V_HHDSHP)" onclick="$(inquiryWinVar)" title="Drop Ship Quickview">$(V_HHDSHP)</a></td>
+                      %else
+                          <td class="colnmbr">$(V_HHDSHP)</td>
+                      %endif
+                  %else
+                      <td class="colalph">&nbsp;</td>
+                  %endif
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)LocationSelect.d2w/REPORT$(genericVarBase)&amp;locationNumber=@dtw_rurlescseq(V_HHLOC#)" title="View Location">$(V_HHLOC#)</a></td>
+                  %if (V_HDCMRL > "0")
+                      @Format_EmplName(V_CRFNAM, V_CRLNAM, "", "", "", "D", F_Name)
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerContactselect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;contactNumber=@dtw_rurlescseq(V_HHCONT)" title="View Contact">$(F_Name)</a></td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Invoices (IN CHAR(64)    profileHandle,
+				                 CHAR(2)     dataBaseID,
+                                                CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="invoices"></a>
+      %if (billToCustomer > "0")
+          @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=177&amp;fKey1=IVBLTO&amp;fVal1=@dtw_rurlescseq(billToCustomer)&amp;fKey2=IVCUST&amp;fVal2=@dtw_rurlescseq(customerNumber)")
+      %else
+          @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=177&amp;fKey1=IVBLTO&amp;fVal1=@dtw_rurlescseq(customerNumber)")
+      %endif
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("IVAINV", "Invoice")
+                  @Format_Column_Header("IVIVDT", "Invoice Date")
+                  @Format_Column_Header("IVDUED", "Due Date")
+                  @Format_Column_Header("IVIVAM", "Invoice Amount")
+                  @Format_Column_Header("IVNPOS", "Amount Paid")
+                  @Format_Column_Header("NETDUE", "Invoice Balance")
+                  @Format_Column_Header("IVPPOS", "Pending Payment")
+                  @Format_Column_Header("IVORD", "Order Number")
+                  @Format_Column_Header("IVARPO", "Reference Number")
+                  @Format_Column_Header("IVMORD", "Mfg Order")
+                  @Format_Column_Header("IVLOC", "Loc")
+                  @Format_Column_Header("IVSLSM", "Salesman")
+                  %if (billToCount > "0")
+                      @Format_Column_Header("BTNAMEU", "Bill-To Name")
+                  %endif
+                  %if (shipToCount > "0")
+                      @Format_Column_Header("STNAMEU", "Ship-To Name")
+                  %endif
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (V_HDOERL > "0")
+                 @Check_Invoice(profileHandle, dataBaseID, V_IVAINV, V_IVBLTO, invoiceFound)
+                 @retHistorySeq(profileHandle, dataBaseID, V_IVAINV, sequence)
+              %else
+                 @dtw_assign(invoiceFound, "N")
+                 @dtw_assign(sequence, "0")
+              %endif
+              @Format_Nbr($(V_IVIVAM), F_IVIVAM, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_IVNPOS), F_IVNPOS, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_NETDUE), F_NETDUE, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_IVPPOS), F_IVPPOS, "2", $(amtEditCode), "", "", "")
+              @dtw_assign(IVDT, $(V_IVIVDT))
+              @Format_Date(V_IVIVDT, "D", F_IVIVDT)
+              @Format_Date_ISO(V_IVDUED, "D", F_IVDUED)
+
+              <tr class="$(rowClass)">
+                  %if (invoiceFound == "Y")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)SelectInvoice.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVBLTO)&amp;customerName=@dtw_rurlescseq(customerName)&amp;invoiceNumber=@dtw_rurlescseq(V_IVAINV)&amp;invoiceDate=@dtw_rurlescseq(IVDT)&amp;formatToPrint=Y" onclick="$(invoiceWinVar)" title="Invoice Quickview">$(V_IVAINV)</a></td>
+                  %else
+                      <td class="colnmbr">$(V_IVAINV)</td>
+                  %endif
+                  <td class="coldate"><a href="$(homeURL)$(phpPath)ARInvoiceInquiry.php$(altVarBase)&amp;tag=REPORT&amp;customerNumber=@dtw_rurlescseq(V_IVBLTO)&amp;invoiceSequence=@dtw_rurlescseq(V_IVISEQ)" title="View A/R Invoice">$(F_IVIVDT)</a></td>
+                  <td class="coldate">$(F_IVDUED)</td>
+                  <td class="colnmbr">$(F_IVIVAM)</td>
+                  %if (V_IVNPOS != ".00" )
+                      <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=176&amp;fKey1=YPBLTO&amp;fVal1=@dtw_rurlescseq(V_IVBLTO)&amp;fKey2=YPISEQ&amp;fVal2=@dtw_rurlescseq(V_IVISEQ)" title="View Payment History">$(F_IVNPOS)</a></td>
+                  %else
+                      <td class="colnmbr">$(F_IVNPOS)</td>
+                  %endif
+                  <td class="colnmbr">$(F_NETDUE)</td>
+                  <td class="colnmbr">$(F_IVPPOS)</td>
+                  %if (V_IVORD != "0" && V_IVORD != "99999999" && sequence > "0")
+                      <td class="colnmbr"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrderHistory.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_IVORD)&amp;orderSequence=@dtw_rurlescseq(sequence)" title="View Order History Detail">$(V_IVORD)</a></td>
+                  %else
+                      @RtvFldDesc("HHBLTO=$(V_IVBLTO) and HHLIV#=$(V_IVAINV)", "OEORHH", "char(count(*))", oeorhhCnt)
+                      %if (oeorhhCnt > "0")
+                          <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=205&amp;fKey1=HHBLTO&amp;fVal1=@dtw_rurlescseq(V_IVBLTO)&amp;fKey2=HHLIV&amp;fVal2=@dtw_rurlescseq(V_IVAINV)" title="View Order History">$(V_IVORD)</a></td>
+                      %else
+                         <td class="colnmbr">$(V_IVORD)</td>
+                      %endif
+                  %endif
+                  <td class="colalph">$(V_IVARPO)</td>
+                  %if (V_MFGORDCOUNT != "0")
+                      <td class="colalph"><a href=$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(V_IVPLT)&amp;mfgOrder=@dtw_rurlescseq(V_IVMORD) " onclick="$(inquiryWinVar)" title="View Mfg Order">$(V_IVMORD)</a></td>
+	              %else
+	                  <td class="colalph">$(V_IVMORD)</td>
+                  %endif
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)LocationSelect.d2w/REPORT$(genericVarBase)&amp;locationNumber=@dtw_rurlescseq(V_IVLOC)&amp;locationName=@dtw_rurlescseq(V_LOLNA1)" title="View Location">$(V_IVLOC)</a></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(V_SMSNA1)">$(V_IVSLSM)</span></td>
+                  %if (billToCount > "0")
+                      %if (V_IVBLTO != customerNumber)
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVBLTO)&amp;customerName=@dtw_rurlescseq(V_BTNAME)" title="View Customer [$(V_IVBLTO)]">$(V_BTNAME)</a></td>
+                      %else
+                          <td class="colalph">&nbsp;</td>
+                      %endif
+                  %endif
+                  %if (shipToCount > "0")
+                      %if (V_IVCUST != customerNumber)
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVCUST)&amp;customerName=@dtw_rurlescseq(V_STNAME)" title="View Customer [$(V_IVCUST)]">$(V_STNAME)</a></td>
+                      %else
+                          <td class="colalph">&nbsp;</td>
+                      %endif
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Payments (IN CHAR(64)    profileHandle,
+				                 CHAR(2)     dataBaseID,
+                                                CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="payments"></a>
+      %if (billToCustomer > "0")
+          @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=176&amp;fKey1=YPBLTO&amp;fVal1=@dtw_rurlescseq(billToCustomer)&amp;fKey2=IVCUST&amp;fVal2=@dtw_rurlescseq(customerNumber)")
+      %else
+          @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=176&amp;fKey1=YPBLTO&amp;fVal1=@dtw_rurlescseq(customerNumber)")
+      %endif
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("YPAINV", "Invoice")
+                  @Format_Column_Header("YPIVDT", "Invoice Date")
+                  @Format_Column_Header("IVDUED", "Due Date")
+                  @Format_Column_Header("YPAMT",  "Amount Paid")
+                  @Format_Column_Header("YPDAMT", "Discount")
+                  @Format_Column_Header("PSDESCU", "Payment Code")
+                  %if (billToCount > "0")
+                      @Format_Column_Header("BTNAMEU", "Bill-To Name")
+                  %endif
+                  @Format_Column_Header("YPBDAT", "Date Paid")
+                  @Format_Column_Header("YPCHKU", "Document")
+                  @Format_Column_Header("HAS_YPCMNT", "Cmt")
+                  @Format_Column_Header("YPMEMO", "Memo")
+                  @Format_Column_Header("IVLOC", "Loc")
+                  @Format_Column_Header("IVSLSM", "Slm")
+                  @Format_Column_Header("YPPAYR", "Payer")
+                  @Format_Column_Header("YPBANK", "Bank")
+                  @Format_Column_Header("YPBCH", "Batch")
+                  @Format_Column_Header("IVORD", "Order Number")
+                  @Format_Column_Header("IVMORD", "Mfg Order")
+                  %if (shipToCount > "0")
+                      @Format_Column_Header("STNAMEU", "Ship-To Name")
+                  %endif
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (V_HDOERL > "0")
+                 @Check_Invoice(profileHandle, dataBaseID, V_YPAINV, V_YPBLTO, invoiceFound)
+                 @retHistorySeq(profileHandle, dataBaseID, V_YPAINV, sequence)
+              %else
+                 @dtw_assign(invoiceFound, "N")
+                 @dtw_assign(sequence, "0")
+              %endif
+
+              @Format_Nbr($(V_YPAMT), F_YPAMT, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_YPDAMT), F_YPDAMT, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_NETDUE), F_NETDUE, "2", $(amtEditCode), "", "", "")
+              @dtw_assign(INVD, V_YPIVDT)
+              @Format_Date(V_YPIVDT, "D", F_YPIVDT)
+              @Format_Date_ISO(V_IVDUED, "D", F_IVDUED)
+              @Format_Date(V_YPBDAT, "D", F_YPBDAT)
+			
+              <tr class="$(rowClass)">
+                  %if (invoiceFound == "Y")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)SelectInvoice.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_YPBLTO)&amp;customerName=@dtw_rurlescseq(customerName)&amp;invoiceNumber=@dtw_rurlescseq(V_YPAINV)&amp;invoiceDate=@dtw_rurlescseq(INVD)&amp;formatToPrint=Y" onclick="$(invoiceWinVar)" title="Invoice Quickview">$(V_YPAINV)</a></td>
+                  %else
+                      <td class="colnmbr">$(V_YPAINV)</td>
+                  %endif
+                  <td class="coldate"><a href="$(homeURL)$(phpPath)ARInvoiceInquiry.php$(altVarBase)&amp;tag=REPORT&amp;customerNumber=@dtw_rurlescseq(V_YPBLTO)&amp;invoiceSequence=@dtw_rurlescseq(V_YPISEQ)" title="View A/R Invoice">$(F_YPIVDT)</a></td>
+                  <td class="coldate">$(F_IVDUED)</td>
+                  <td class="colnmbr">$(F_YPAMT)</td>
+                  <td class="colnmbr">$(F_YPDAMT)</td>
+                  <td class="colalph" $(helpCursor)><span title="$(V_YPSBCD) [$(V_PYPYDS)]">$(V_PSDESC)</span></td>
+                  %if (billToCount > "0")
+                      %if (V_YPBLTO != customerNumber)
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_YPBLTO)&amp;customerName=@dtw_rurlescseq(V_BTNAME)" title="View Customer [$(V_YPBLTO)]">$(V_BTNAME)</a></td>
+                      %else
+                          <td class="colnmbr">&nbsp;</td>
+                      %endif
+                  %endif
+                  <td class="coldate">$(F_YPBDAT)</td>
+                  %if (V_YPCHK != "" && V_YPBANK>"0")
+                      <td class="colnmbr"><a href="$(homeURL)$(phpPath)ARCheckInquiry.php$(altVarBase)&amp;tag=REPORT&amp;fromDocument=@dtw_rurlescseq(V_YPCHK)&amp;fromDatePaid=@dtw_rurlescseq(V_YPBDAT)&amp;fromBank=@dtw_rurlescseq(V_YPBANK)&amp;fromPayer=@dtw_rurlescseq(V_YPPAYR)&amp;fromCustomer=@dtw_rurlescseq(V_YPBLTO)" onclick="$(drillDownWinVar)" title="A/R Document Quickview">$(V_YPCHK)</a></td>
+                  %else
+                      <td class="colnmbr">$(V_YPCHK)</td>
+                  %endif
+                  <td class="colcode" $(helpCursor)><span title="$(V_YPCMNT)">$(V_HAS_YPCMNT)</span></td>
+                  <td class="colalph">$(V_YPMEMO)</td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)LocationSelect.d2w/REPORT$(genericVarBase)&amp;locationNumber=@dtw_rurlescseq(V_IVLOC)" title="View Location">$(V_IVLOC)</a></td>
+                  <td class="colcode" $(helpCursor)><span title="$(V_SMSNA1)">$(V_IVSLSM)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(V_PYPYNM)">$(V_YPPAYR)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(V_BKBKNM)">$(V_YPBANK)</span></td>
+                  %if (V_YPBCH != "0")
+                      <td class="colnmbr"><a href="$(homeURL)$(phpPath)ApplCashBatchSelect.php$(altVarBase)&amp;fromBatchNumber=@dtw_rurlescseq(V_YPBCH)&amp;fromBatchDate=@dtw_rurlescseq(V_YPBDAT)&amp;fromBatchBank=@dtw_rurlescseq(V_YPBANK)" title="View Batch">$(V_YPBCH)</a></td>
+                  %else
+                      <td class="colnmbr">&nbsp;</td>
+                  %endif
+                  %if (V_IVORD != "0" && V_IVORD != "99999999" && sequence > "0")
+                      <td class="colnmbr"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrderHistory.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_IVORD)&amp;orderSequence=@dtw_rurlescseq(sequence)" title="View Order History Detail">$(V_IVORD)</a></td>
+                  %else
+                      @RtvFldDesc("HHBLTO=$(V_YPBLTO) and HHLIV#=$(V_YPAINV)", "OEORHH", "char(count(*))", oeorhhCnt)
+                      %if (oeorhhCnt > "0")
+                          <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=205&amp;fKey1=HHBLTO&amp;fVal1=@dtw_rurlescseq(V_YPBLTO)&amp;fKey2=HHLIV&amp;fVal2=@dtw_rurlescseq(V_YPAINV)" title="View Order History">$(V_IVORD)</a></td>
+                      %else
+                          <td class="colnmbr">$(V_IVORD)</td>
+                      %endif
+                  %endif
+                  %if (V_MFGORDCOUNT != "0")
+	                  <td class="colalph"><a href=$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(V_IVPLT)&amp;mfgOrder=@dtw_rurlescseq(V_IVMORD)" onclick="$(inquiryWinVar)" title="View Mfg Order">$(V_IVMORD)</a></td>
+	              %else
+	                  <td class="colalph">$(V_IVMORD)</td>
+                  %endif
+                  %if (shipToCount > "0")
+                      %if (V_IVCUST != customerNumber)
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVCUST)&amp;customerName=@dtw_rurlescseq(V_STNAME)" title="View Customer [$(V_IVCUST)]">$(V_STNAME)</a></td>
+                      %else
+                          <td class="colalph">&nbsp;</td>
+                      %endif
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_PendingPayments (IN CHAR(64)    profileHandle,
+		                                               CHAR(2)     dataBaseID,
+                                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="pendingpmts"></a>
+      @dtw_assign(displayMaxRowsMsg, "N")
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("PESINV" , "Invoice")
+                  @Format_Column_Header("PEIVDT" , "Invoice Date")
+                  @Format_Column_Header("PEAMT " , "Payment Amount")
+                  @Format_Column_Header("PEDAMT" , "Discount")
+                  @Format_Column_Header("PSDESCU", "Payment Code")
+                  %if (billToCount > "0")
+                      @Format_Column_Header("BTNAMEU", "Bill-To Name")
+                  %endif
+                  @Format_Column_Header("PEBCHD", "Batch Date")
+                  @Format_Column_Header("PEMCHK" , "Document")
+                  @Format_Column_Header("HAS_PECMNT", "Cmt")
+                  @Format_Column_Header("PEMEMO" , "Memo")
+                  @Format_Column_Header("PEARPO" , "Reference Number")
+                  @Format_Column_Header("PELOC"  , "Loc")
+                  @Format_Column_Header("PESLSM", "Slm")
+                  @Format_Column_Header("PEPAYR", "Payer")
+                  @Format_Column_Header("PEBCHB", "Bank")
+                  @Format_Column_Header("PEBCHN", "Batch")
+                  @Format_Column_Header("PEORD"  , "Order Number")
+                  @Format_Column_Header("PEMORD" , "Mfg Order")
+                  %if (shipToCount > "0")
+                      @Format_Column_Header("STNAMEU", "Ship-To Name")
+                  %endif
+                  @Format_Column_Header("ARPYENERROR", "Number of Errors")
+                  @Format_Column_Header("PEPMID" , "Trans Type")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @dtw_assign(INVD, V_PEIVDT)
+              %if (V_HDOERL > "0")
+                 @Check_Invoice(profileHandle, dataBaseID, V_PESINV, V_IVBLTO, invoiceFound)
+                 @retHistorySeq(profileHandle, dataBaseID, V_PESINV, sequence)
+              %else
+                 @dtw_assign(invoiceFound, "N")
+                 @dtw_assign(sequence, "0")
+              %endif
+
+              @Format_Nbr($(V_PEAMT), F_PEAMT, "2", $(amtEditCode), "", "", "")
+              @Format_Nbr($(V_PEDAMT), F_PEDAMT, "2", $(amtEditCode), "", "", "")
+              @Format_Date(V_PEIVDT, "D", F_PEIVDT)
+              @Format_Date(V_PEBCHD, "D", F_PEBCHD)
+			
+              <tr class="$(rowClass)">
+                  %if (invoiceFound == "Y")
+                      <td class="colnmbr"><a href="$(homeURL)$(cGIPath)SelectInvoice.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVBLTO)&amp;customerName=@dtw_rurlescseq(customerName)&amp;invoiceNumber=@dtw_rurlescseq(V_PESINV)&amp;invoiceDate=@dtw_rurlescseq(INVD)&amp;formatToPrint=Y" onclick="$(invoiceWinVar)" title="Invoice Quickview">$(V_PESINV)</a></td>
+                  %else
+                      <td class="colnmbr">$(V_PESINV)</td>
+                  %endif
+                  %if (V_PECRTB == "A")
+                      <td class="colnmbr">$(F_PEIVDT)</td>
+                  %else
+                      <td class="coldate"><a href="$(homeURL)$(phpPath)ARInvoiceInquiry.php$(altVarBase)&amp;tag=REPORT&amp;customerNumber=@dtw_rurlescseq(V_IVBLTO)&amp;invoiceSequence=@dtw_rurlescseq(V_PEISEQ)" title="View A/R Invoice">$(F_PEIVDT)</a></td>
+                  %endif
+                  <td class="colnmbr">$(F_PEAMT)</td>
+                  <td class="colnmbr">$(F_PEDAMT)</td>
+                  <td class="colalph" $(helpCursor)><span title="$(V_PESBCD)">$(V_PSDESC)</span></td>
+                  %if (billToCount > "0")
+                      %if (V_IVBLTO != customerNumber)
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVBLTO)&amp;customerName=@dtw_rurlescseq(V_BTNAME)" title="View Customer [$(V_IVBLTO)]">$(V_BTNAME)</a></td>
+                      %else
+                          <td class="colnmbr">&nbsp;</td>
+                      %endif
+                  %endif
+                  <td class="coldate">$(F_PEBCHD)</td>
+                  <td class="colnmbr">$(V_PEMCHK)</td>
+                  <td class="colcode" $(helpCursor)><span title="$(V_PECMNT)">$(V_HAS_PECMNT)</span></td>
+                  <td class="colalph">$(V_PEMEMO)</td>
+                  <td class="colalph">$(V_PEARPO)</td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)LocationSelect.d2w/REPORT$(genericVarBase)&amp;locationNumber=@dtw_rurlescseq(V_PELOC)" title="View Location [$(V_LOLNA1)]">$(V_PELOC)</a></td>
+                  <td class="colcode" $(helpCursor)><span title="$(V_SMSNA1)">$(V_PESLSM)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(V_PYPYNM)">$(V_PEPAYR)</span></td>
+                  <td class="colnmbr" $(helpCursor)><span title="$(V_BKBKNM)">$(V_PEBCHN)</span></td>
+                  %if (V_PEBCHN != "0")
+                      <td class="colnmbr"><a href="$(homeURL)$(phpPath)ApplCashBatchSelect.php$(altVarBase)&amp;fromBatchNumber=@dtw_rurlescseq(V_PEBCHN)&amp;fromBatchDate=@dtw_rurlescseq(V_PEBCHD)&amp;fromBatchBank=@dtw_rurlescseq(V_PEBCHB)" title="View Batch">$(V_PEBCHN)</a></td>
+                  %else
+                      <td class="colnmbr">&nbsp;</td>
+                  %endif
+                  %if (V_PEORD != "0" && V_PEORD != "99999999" && sequence > "0")
+                      <td class="colnmbr"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrderHistory.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_PEORD)&amp;orderSequence=@dtw_rurlescseq(sequence)" title="View Order History Detail">$(V_PEORD)</a></td>
+                  %else
+                      <td class="colnmbr">$(V_PEORD)</td>
+                  %endif
+                  %if (V_MFGORDCOUNT != "0")
+	                  <td class="colalph"><a href=$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(d2wVarBase)&amp;plantNumber=@dtw_rurlescseq(V_PEPLT)&amp;mfgOrder=@dtw_rurlescseq(V_PEMORD) " onclick="$(inquiryWinVar)" title="View Mfg Order">$(V_PEMORD)</a></td>
+	              %else
+	                  <td class="colalph">$(V_PEMORD)</td>
+                  %endif
+
+                  %if (shipToCount > "0")
+                      %if (V_IVCUST != customerNumber)
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_IVCUST)&amp;customerName=@dtw_rurlescseq(V_STNAME)" title="View Customer [$(V_IVCUST)]">$(V_STNAME)</a></td>
+                      %else
+                          <td class="colalph">&nbsp;</td>
+                      %endif
+                  %endif
+                  %if (V_ARPYENERROR=="0")
+                      <td class="colnmbr">&nbsp;</td>
+                  %else
+                      <td class="colnmbr"><a href="$(homeURL)$(phpPath)ApplCashErrorInquiry.php$(altVarBase)&amp;tag=REPORT&amp;fromBatchNumber=@dtw_rurlescseq(V_PEBCHN)&amp;fromBatchDate=@dtw_rurlescseq(V_PEBCHD)&amp;fromBatchBank=@dtw_rurlescseq(V_PEBCHB)&amp;fromType=@dtw_rurlescseq(V_PETYPE)&amp;fromID=@dtw_rurlescseq(V_PEID)&amp;fromDocument=@dtw_rurlescseq(V_PECHK)&amp;fromPaymentType=@dtw_rurlescseq(V_PEPTYP)&amp;fromPaymentID=@dtw_rurlescseq(V_PEPMID)&amp;fromInvoiceSeq=@dtw_rurlescseq(V_PEISEQ)&amp;fromEntryID=@dtw_rurlescseq(V_PEENID)" onclick="$(inquiryWinVar)" title="View Error">$(V_ARPYENERROR)</a></td>
+                  %endif
+                  <td class="colcode" $(helpCursor)><span title="$(V_FLDESC)">$(V_PEPMID)</span></td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Aging (IN CHAR(64)    profileHandle,
+				              CHAR(2)     dataBaseID,
+                                             CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="accountsreceivableaging"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=177&amp;fKey1=IVBLTO&amp;fVal1=@dtw_rurlescseq(customerNumber)&amp;fKey2=IVOPEN&amp;fVal2=Y&amp;fDsc2=null")
+      @dtw_assign(displayMaxRowsMsg, "N")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("xxx", "Aging Days")
+                  @Format_Column_Header("xxx", "Amount Due")
+                  @Format_Column_Header("xxx", "Number Of Invoices")
+              </tr>
+          %endif
+          @dtw_assign(T_IVAMT, "0")
+          @dtw_assign(T_INV_COUNT, "0")
+
+          %ROW{
+              %if (V_AIBCKT == "1")
+                  @dtw_assign(agingDesc, "Current")
+              %elif (V_AIBCKT == "2")
+                  @dtw_assign(agingDesc, "1 - $(V_CRAGE1)")
+              %elif (V_AIBCKT == "3")
+                  @dtw_assign(agingDesc, "@dtw_radd(V_CRAGE1, "1") - $(V_CRAGE2)")
+              %elif (V_AIBCKT == "4")
+                  @dtw_assign(agingDesc, "@dtw_radd(V_CRAGE2, "1") - $(V_CRAGE3)")
+              %elif (V_AIBCKT == "5")
+                  @dtw_assign(agingDesc, "@dtw_radd(V_CRAGE3, "1") - $(V_CRAGE4)")
+              %elif (V_AIBCKT == "6")
+                  @dtw_assign(agingDesc, "@dtw_radd(V_CRAGE4, "1") - over")
+              %elif (V_AIBCKT == "7")
+                  @dtw_assign(agingDesc, "Credits")
+              %endif
+
+              @dtw_add(T_IVAMT, V_IVAMT, "15", T_IVAMT)
+              @dtw_add(T_INV_COUNT, V_INV_COUNT, "15", T_INV_COUNT)
+              @Format_Nbr($(V_IVAMT), F_IVAMT, "2", $(amtEditCode), "", "", "")
+
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colcode">$(agingDesc)</td>
+                  <td class="colnmbr"><a href="$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=177&amp;fKey1=IVBLTO&amp;fVal1=@dtw_rurlescseq(customerNumber)&amp;fKey2=AIBCKT&amp;fVal2=@dtw_rurlescseq(V_AIBCKT)&amp;fDsc2=@dtw_rurlescseq(agingDesc)&amp;fKey3=IVOPEN&amp;fVal3=Y&amp;fDsc3=null" title="View Customer Invoices">$(F_IVAMT)</a></td>
+                  <td class="colnmbr">$(V_INV_COUNT)</td>
+              </tr>
+          %}
+
+          @Format_Nbr(T_IVAMT, F_IVAMT, "2", $(amtEditCode), "", "", "")
+          %INCLUDE "SetRowClass.icl"
+          <tr>
+              <td class="coltotal">Total</td>
+              <td class="coltotal">$(F_IVAMT)</td>
+              <td class="coltotal">$(T_INV_COUNT)</td>
+          </tr>
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Fax (IN CHAR(64)    profileHandle,
+				            CHAR(2)     dataBaseID,
+                                           CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="customerfax"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)VendCustFax.d2w/REPORT$(d2wVarBase)$(vendCustURL)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("FMDOCT", "Document")
+                  @Format_Column_Header("DODESCU", "Description")
+                  %if (V_HDCMRL > "0")
+                      @Format_Column_Header("FMCONT", "Contact")
+                      @Format_Column_Header("LNAMU", "Name")
+                  %endif
+                  @Format_Column_Header("FMFAX", "Fax Number")
+                  @Format_Column_Header("FMEMALU", "E-mail Address")
+                  @Format_Column_Header("FMBCC", "BCC")
+              </tr>
+          %endif
+
+          %ROW{
+              %if (V_HDCMRL > "0")
+                  @Format_EmplName(V_FNAM, V_LNAM, "", "", "", "D", F_Name)
+              %endif
+              %INCLUDE "SetRowClass.icl"
+              %if (V_FMBCC == "Y")
+                  @dtw_assign(bccImage, checkImage)
+              %else
+                  @dtw_assign(bccImage, "&nbsp")
+              %endif
+              @dtw_assign(maintainVar, "$(d2wVarBase)&amp;documentType=@dtw_rurlescseq(V_FMDOCT)&amp;docDescr=@dtw_rurlescseq(V_DODESC)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_FMDOCT)</td>
+                  <td class="colalph">$(V_DODESC)</td>
+                  %if (V_HDCMRL > "0")
+                      @Format_Nbr(V_FMCONT, F_FMCONT, "0", "Z", "", "", "")
+                      <td class="colnmbr">$(F_FMCONT)</td>
+                      <td class="colalph">$(F_Name)</td>
+                  %endif
+                  <td class="colalph">$(V_FMFAX)</td>
+                  <td class="colalph">$(V_FMEMAL)</td>
+                  <td class="colcode">$(bccImage)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Customer_Items (IN CHAR(64)    profileHandle,
+				                       CHAR(2)     dataBaseID,
+                                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="customeritems"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)VendCustItem.d2w/REPORT$(d2wVarBase)$(vendCustURL)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("VCITEM", "Item Number")
+                  @Format_Column_Header("IMIMDS", "Item Description")
+                  @Format_Column_Header("VCVCIT", "Customer Item")
+                  @Format_Column_Header("TOTQTY", "Quantity")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @Format_Nbr($(V_TOTQTY), F_TOTQTY, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              <tr class="$(rowClass)">
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_VCITEM))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_VCITEM)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_VCITEM)&amp;itemDescription=@dtw_rurlescseq(V_IMIMDS)" title="View Item">$(V_IMIMDS)</a></td>
+                  <td class="colalph">$(V_VCVCIT)</td>
+                  <td class="colnmbr">$(F_TOTQTY)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Comment_Detail (IN CHAR(64)    profileHandle,
+				                       CHAR(2)     dataBaseID,
+                                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="commentdetail"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)VendCustCmt.d2w/REPORT$(genericVarBase)&amp;vendCustNumber=@dtw_rurlescseq(customerNumber)&amp;vendCustName=@dtw_rurlescseq(customerName)&amp;vendCustFlag=C")
+      @dtw_assign(displayMaxRowsMsg, "N")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              @dtw_assign(previousDocType,"")
+              @dtw_assign(previousCommentType,"")
+          %endif
+
+          %ROW{
+              %if (V_CXDOCT == previousDocType && V_CXHT == previousCommentType )
+                  <tr><td class="colalph">$(V_CXCMNT)</td></tr>
+              %else
+                  @dtw_assign(previousDocType, V_CXDOCT)
+                  @dtw_assign(previousCommentType, V_CXHT)
+                  @RtvFldDesc("DODOCT='$(V_CXDOCT)'", "HDDOCT", "DODESC", fieldDesc)
+                  %if (V_CXHT == "H")
+                      @dtw_concat(fieldDesc, "&nbsp; (Header)", fieldDesc)
+                  %else
+                      @dtw_concat(fieldDesc, "&nbsp; (Trailer)", fieldDesc)
+                  %endif
+                  <tr>
+                      <td class="colhdr">$(fieldDesc)</td>
+                  </tr>
+                  %if (V_CXCMNT == "")
+                      @dtw_assign(V_CXCMNT, "&nbsp;")
+                  %endif
+                  <tr>
+                      <td class="colalph">$(V_CXCMNT)</td>
+                  </tr>
+              %endif
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Comment_Summary (IN CHAR(64)    profileHandle,
+				                        CHAR(2)     dataBaseID,
+                                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="commentsummary"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)VendCustCmt.d2w/REPORT$(genericVarBase)&amp;vendCustNumber=@dtw_rurlescseq(customerNumber)&amp;vendCustName=@dtw_rurlescseq(customerName)&amp;vendCustFlag=C")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("xxx", "Document")
+              </tr>
+          %endif
+
+          %ROW{
+              @RtvFldDesc("DODOCT='$(V_CXDOCT)'", "HDDOCT", "DODESC", fieldDesc)
+              %if (V_CXHT == "H")
+                  @dtw_concat(fieldDesc, "&nbsp; (Header)", fieldDesc)
+              %else
+                  @dtw_concat(fieldDesc, "&nbsp; (Trailer)", fieldDesc)
+              %endif
+              <tr>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)VendCustComments.d2w/REPORT$(genericVarBase)&amp;vendCustNumber=@dtw_rurlescseq(customerNumber)&amp;vendCustFlag=@dtw_rurlescseq(vendCustFlag)&amp;documentType=@dtw_rurlescseq(V_CXDOCT)&amp;commentType=@dtw_rurlescseq(V_CXHT)" title="View Comments" onclick="$(commentWinVar)">$(fieldDesc)</a>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Related_Customers (IN CHAR(64)    profileHandle,
+				                          CHAR(2)     dataBaseID,
+                                                         CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="relatedcustomers"></a>
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("CMCUST", "Number")
+                  @Format_Column_Header("CMCNA1", "Name")
+                  @Format_Column_Header("CMCNA2", "Address")
+                  @Format_Column_Header("CMCCTY", "City")
+                  @Format_Column_Header("CMST", "State")
+                  @Format_Column_Header("CMZIP", "Zip")
+                  @Format_Column_Header("CMPHON", "Phone Number")
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @EditPhoneNumber(V_CMPHON)
+              <tr class="$(rowClass)">
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)CustomerInquiry.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_CMCUST)" onclick="$(inquiryWinVar)" title="Customer Quickview">$(V_CMCUST)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)CustomerSelect.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(V_CMCUST)&amp;customerName=@dtw_rurlescseq(V_CMCNA1)" title="View Customer">$(V_CMCNA1)</a></td>
+                  <td class="colalph">$(V_CMCNA2)</td>
+                  <td class="colalph">$(V_CMCCTY)</td>
+                  <td class="colcode">$(V_CMST)</td>
+                  <td class="colalph">$(V_CMZIP)</td>
+                  <td class="colnmbr">$(V_CMPHON)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Stores (IN CHAR(64)    profileHandle,
+				                              CHAR(2)     dataBaseID,
+                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="customerstores"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=223&amp;fKey1=COSHTO&amp;fVal1=@dtw_rurlescseq(customerNumber)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("COSTOR", "Store")
+                  @Format_Column_Header("CONAME", "Name")
+                  @Format_Column_Header("COADR1", "Address")
+                  @Format_Column_Header("COCITY", "City")
+                  @Format_Column_Header("COSTAT", "State")
+                  @Format_Column_Header("COZIP", "Zip")
+                  @Format_Column_Header("COPHON", "Phone Number")
+                  %if (V_CESUD1 != "")
+                      @Format_Column_Header("COSUA1U", "$(V_CESUD1)")
+                  %endif
+                  %if (V_CESUD2 != "")
+                      @Format_Column_Header("COSUA2U", "$(V_CESUD2)")
+                  %endif
+                  %if (V_CESUD3 != "")
+                      @Format_Column_Header("COSUA3U", "$(V_CESUD3)")
+                  %endif
+                  %if (V_CESUD4 != "")
+                      @Format_Column_Header("COSUA4U", "$(V_CESUD4)")
+                  %endif
+                  %if (V_CESUD5 != "")
+                      @Format_Column_Header("COSUA5U", "$(V_CESUD5)")
+                  %endif
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @EditPhoneNumber(V_COPHON)
+              <tr class="$(rowClass)">
+                  <td class="colnmbr">$(V_COSTOR)</td>
+                  <td class="colalph">$(V_CONAME)</td>
+                  <td class="colalph">$(V_COADR1)</td>
+                  <td class="colalph">$(V_COCITY)</td>
+                  <td class="colcode">$(V_COSTAT)</td>
+                  <td class="colalph">$(V_COZIP)</td>
+                  <td class="colnmbr">$(V_COPHON)</td>
+                  %if (V_CESUD1 != "")
+                      <td class="colalph">$(V_COSUA1)</td>
+                  %endif
+                  %if (V_CESUD2 != "")
+                      <td class="colalph">$(V_COSUA2)</td>
+                  %endif
+                  %if (V_CESUD3 != "")
+                      <td class="colalph">$(V_COSUA3)</td>
+                  %endif
+                  %if (V_CESUD4 != "")
+                      <td class="colalph">$(V_COSUA4)</td>
+                  %endif
+                  %if (V_CESUD5 != "")
+                      <td class="colalph">$(V_COSUA5)</td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Top_Items (IN CHAR(64)    profileHandle,
+				                  CHAR(2)     dataBaseID,
+                                                 CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %if (quicklinkRef == "ytdtopitems" )
+          <a name="ytdtopitems"></a>
+      %else
+          <a name="lastyeartopitems"></a>
+      %endif
+      @dtw_assign(moreURL, "")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+          %if (sql_Record_Count == "0")
+              <table $(contentTable)>
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              @Format_Nbr(salesTotal, F_salesTotal, "2", $(amtEditCode), "", "$", "")
+              <div class="page">
+                   Total Sales: $(F_salesTotal)
+              </div>
+              <table $(contentTable)>
+                  <tr>
+                      @Format_Column_Header("DHITEM", "Item Number")
+                      @Format_Column_Header("xxx", "Item Description")
+                      @Format_Column_Header("SALES", "Sales")
+                      @Format_Column_Header("xxx", "Percent of Total")
+                      @Format_Column_Header("QTYSHIPPED", "Quantity")
+                  </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (salesTotal > "0")
+                  @dtw_multiply(V_SALES, "100", percentOfTotal)
+                  @dtw_divide(percentOfTotal, salesTotal, percentOfTotal)
+                  @Format_Nbr($(percentOfTotal), F_percentOfTotal, "2", $(pctEditCode), "Y", "", "%")
+              %else
+                  @dtw_assign(F_percentOfTotal, "")
+              %endif
+              @Format_Nbr(V_QTYSHIPPED, F_QTYSHIPPED, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+              @Format_Nbr($(V_SALES), F_SALES, "2", $(amtEditCode), "", "", "")
+              @RtvFldDesc("IMITEM='$(V_DHITEM)'", "HDIMST", "IMIMDS", fieldDesc)
+              <tr class="$(rowClass)">
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_DHITEM))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_DHITEM)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_DHITEM)&amp;itemDescription=@dtw_rurlescseq(fieldDesc)" title="View Item">$(fieldDesc)</a></td>
+                  <td class="colnmbr">$(F_SALES)</td>
+                  <td class="colnmbr">$(F_percentOfTotal)</td>
+                  <td class="colnmbr">$(F_QTYSHIPPED)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Open_Items (IN CHAR(64)    profileHandle,
+				                   CHAR(2)     dataBaseID,
+                                                  CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="openitems"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(cGIPath)CustomerOpenItems.d2w/REPORT$(d2wVarBase)")
+      @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=184&amp;fKey1=OESHTO&amp;fVal1=@dtw_rurlescseq(customerNumber)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("ODITEM", "Item Number")
+                  @Format_Column_Header("ODWH", "Whs")
+                  @Format_Column_Header("ODIMDSU", "Item Description")
+                  @Format_Column_Header("ODORD#", "Order Number")
+                  @Format_Column_Header("ODOLN#", "Line")
+                  @Format_Column_Header("ODBRL#", "Rel")
+                  @Format_Column_Header("ODRQDT", "Required Date")
+                  @Format_Column_Header("ODQORD", "Qty Ordered")
+                  @Format_Column_Header("ODQOPK", "Qty On Pick")
+                  @Format_Column_Header("ODQSTD", "Qty Shipped")
+                  @Format_Column_Header("ODQOBO", "Qty Backordered")
+
+                  %if (V_HDPDRL>"0")
+                      @Format_Column_Header("ODMORD", "Mfg Order")
+                  %endif
+              </tr>
+          %endif
+
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  @Format_Date(V_ODRQDT, "D", F_ODRQDT)
+                  @Format_Nbr(V_ODQORD, F_ODQORD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  @Format_Nbr(V_ODQOPK, F_ODQOPK, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  @Format_Nbr(V_ODQSTD, F_ODQSTD, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                  @Format_Nbr(V_ODQOBO, F_ODQOBO, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemInquiry.d2w/DISPLAY$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_ODITEM))" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_ODITEM)</a></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)ItemWarehouseSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq($(V_ODITEM))&amp;warehouseNumber=@dtw_rurlescseq(V_ODWH)" title="View Item/Warehouse"> $(V_ODWH)</a></td>
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)ItemSelect.d2w/REPORT$(genericVarBase)&amp;itemNumber=@dtw_rurlescseq(V_ODITEM)&amp;itemDescription=@dtw_rurlescseq(V_ODIMDS)" title="View Item">$(V_ODIMDS)</a></td>
+                  <td class="colnmbr"><a onClick="saveCurrentURL();" href="$(homeURL)$(cGIPath)SelectOrder.d2w/REPORT$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(V_ODORD#)" title="View Order Detail">$(V_ODORD#)</a></td>
+                  <td class="colnmbr">$(V_ODORL#)</td>
+                  <td class="colnmbr">$(V_ODBLN#)</td>
+                  <td class="coldate">$(F_ODRQDT)</td>
+                  <td class="colnmbr">$(F_ODQORD)</td>
+                  <td class="colnmbr">$(F_ODQOPK)</td>
+                  <td class="colnmbr">$(F_ODQSTD)</td>
+                  <td class="colnmbr">$(F_ODQOBO)</td>
+                  %if (V_HDPDRL>"0")
+                      %if (V_ODMORD != "")
+                          @RtvFldDesc("OHPLT=$(V_ODPLT) and OHORD='$(V_ODMORD)'", "HDMOHM", "CHAR(COUNT(OHORD))", mfgOrderCnt)
+                      %else
+                          @dtw_assign(mfgOrderCnt, "0")
+                      %endif
+                      %if (mfgOrderCnt > "0")
+                          <td class="colalph"><a href="$(homeURL)$(cGIPath)SelectMfgOrder.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq($(V_ODPLT))&amp;mfgOrder=@dtw_rurlescseq($(V_ODMORD))" onclick="$(inquiryWinVar)" title="View Mfg Order">$(V_ODMORD)</a></td>
+                      %else
+                          <td class="colalph">$(V_ODMORD)</td>
+                      %endif
+                  %endif
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Drop_Ship (IN CHAR(64)    profileHandle,
+				                  CHAR(2)     dataBaseID,
+                                                 CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="dropship"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=221&amp;fKey1=DSVNCS&amp;fVal1=@dtw_rurlescseq(customerNumber)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("DSNAMEU", "Name")
+                  @Format_Column_Header("DSADR1U", "Address")
+                  @Format_Column_Header("DSCITYU", "City")
+                  @Format_Column_Header("DSST", "State")
+                  @Format_Column_Header("DSZIP", "Zip")
+                  @Format_Column_Header("DSPHON", "Phone Number")
+              </tr>
+          %endif
+      			
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              @EditPhoneNumber(V_DSPHON)
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_DSNAME)</td>
+                  <td class="colalph">$(V_DSADR1)</td>
+                  <td class="colalph">$(V_DSCITY)</td>
+                  <td class="colcode">$(V_DSST)</td>
+                  <td class="colalph">$(V_DSZIP)</td>
+                  <td class="colnmbr">$(V_DSPHON)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_Ship_Via (IN CHAR(64)    profileHandle,
+				                 CHAR(2)     dataBaseID,
+                                                CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="customershipvia"></a>
+      @dtw_assign(moreURL, "$(homeURL)$(phpPath)hdList.php$(altVarBase)&amp;tblID=222&amp;fKey1=CSSHTO&amp;fVal1=@dtw_rurlescseq(customerNumber)")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %else
+              <tr>
+                  @Format_Column_Header("CSSVSV", "Ship Via")
+                  @Format_Column_Header("SVSVDSU", "Description")
+                  @Format_Column_Header("CSSVAC", "Account")
+              </tr>
+          %endif
+      			
+          %ROW{
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  <td class="colalph">$(V_CSSVSV)</td>
+                  <td class="colalph">$(V_SVSVDS)</td>
+                  <td class="colalph">$(V_CSSVAC)</td>
+              </tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Customer_Select_User_Defined (IN CHAR(64)    profileHandle,
+				                                    CHAR(2)     dataBaseID,
+                                                    CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <a name="userdefined"></a>
+      @dtw_assign(moreURL, "")
+      @dtw_assign(displayMaxRowsMsg, "N")
+      %INCLUDE "QuickLinkTopOfForm.icl"
+
+      <table $(contentTable)>
+          %if (sql_Record_Count == "0")
+              %INCLUDE "QuickLinkNoInfoMsg.icl"
+          %endif
+      			
+          %ROW{
+    	       <tr><td class="dsphdr">$(V_UFDESC)</td>
+                  %if (V_UFTYPE == "A")
+                      %if (V_UFFFMT == "U")
+                          <td class="dspalph"><a href="$(V_CUFLDV)" target=_blank>$(V_CUFLDV)</a></td>
+                      %elif (V_UFFFMT == "E")
+                          <td class="dspalph"><a href="mailto:$(V_CUFLDV)" target=_blank title="Click here to send e-mail">$(V_CUFLDV)</a></td>
+                      %else
+                          <td class="dspalph">$(V_CUFLDV)
+                      %endif
+                  %elif (V_UFTYPE == "C")
+                      %if (formatToPrint != "Y")
+                          <td><textarea name="$(V_UFFLDN)" readonly ROWS=$(V_UFBOXS) COLS=60 >$(V_CUFLDV)</textarea>
+                      %else
+                          @dtw_chartohex(V_CUFLDV, hexValue)
+                          @dtw_length(hexValue, fldLength)
+                          @dtw_assign(printRows, "1")
+                          @dtw_assign(x, "1")
+                          %while(x <= fldLength){
+                              @dtw_pos("0D25", hexValue, x, y)
+                              %if (y > "0")
+                                  @dtw_add(printRows, "1", printRows)
+                                  @dtw_add(y, "4", x)
+                              %else
+                                  @dtw_add(fldLength, "1", x)
+                              %endif
+                          %}
+                          <td><textarea name="$(V_UFFLDN)" readonly ROWS=$(printRows) COLS=60 WRAP="hard">$(V_CUFLDV)</textarea>
+                      %endif
+                  %elif (V_UFTYPE == "N")
+                      @dtw_add(V_UFSIZE, V_UFDECM, V_UFSIZE)
+                      %if (V_UFDECM != "0")
+                          @dtw_add(V_UFSIZE, "2", V_UFSIZE)
+                      %endif
+                      @dtw_assign(Precision, @dtw_radd(V_UFSIZE, V_UFDECM))
+                      @dtw_format(V_CUFLDR, V_UFSIZE, V_UFDECM, "", "", Precision, V_CUFLDR)
+                      %if (V_UFFFMT == "P")
+                          @EditPhoneNumber(V_CUFLDR)
+                      %endif
+                      <td class="dspnmbr">$(V_CUFLDR)
+                  %elif (V_UFTYPE == "D")
+                      @Date_FromISO_ToCYMD(V_CUFLDD, F_CYMD)
+                      @Format_Date(F_CYMD, "H", F_CUFLDD)
+                      <td class="dspnmbr">$(F_CUFLDD)
+                  %endif
+              </td></tr>
+          %}
+      </table>
+      </fieldset>
+  %}
+%}
+%INCLUDE "AttachmentSelect.icl"
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Set_SQL(stmtSQL)
+%}

@@ -1,0 +1,518 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Catalog Display                                             *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "BrowserType.icl"
+%INCLUDE "$(catalogVarName)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Catalog"
+  d2wName                 = "ProdCatalogItems.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;catalogVarName=@dtw_rurlescseq(catalogVarName)&amp;catalog=@dtw_rurlescseq(catalog)&amp;catalogDesc=@dtw_rurlescseq(catalogDesc)&amp;catalogHeaderPage=@dtw_rurlescseq(catalogHeaderPage)&amp;chldDesc=@dtw_rurlescseq(chldDesc)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;cntr=@dtw_rurlescseq(svcntr)&amp;pcnt=@dtw_rurlescseq(svpcnt)&amp;prnt=@dtw_rurlescseq(svprnt)&amp;chld=@dtw_rurlescseq(svchld)&amp;srchCatalog=@dtw_rurlescseq(srchCatalog)"
+  nextPrevVar             = "$(d2wVarBase)&amp;wildCardSearch=@dtw_rurlescseq(wildCardSearch)&amp;wildCardDisplay=@dtw_rurlescseq(wildCardDisplay)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  START_ROW_NUM           = "1"
+  RPT_MAX_ROWS            = "@dtw_rmultiply($(catItemsPerRow), $(catNbrOfRows))"
+  ROW_NUM                 = "0"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  cntr                    = "000000000"
+  pcnt                    = "000000000"
+  svcntr                  = ""
+  svpcnt                  = ""
+  svprnt                  = ""
+  svchld                  = ""
+  svcscn                  = ""
+  retrieveCode            = "R"
+  popUpWin                = "Y"
+%}
+
+%MACRO_FUNCTION Display_Error (IN errorMessage) {
+  <html>
+      <head>
+          <script TYPE="text/javascript">
+              alert('$(errorMessage)');
+              window.history.back();
+          </script>
+      </head>
+      <body $(bodyTagAttr)>
+      </body>
+  </html>
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "headcat.icl"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+	       %INCLUDE "numzero.icl"
+              %INCLUDE "NewWindowOpen.icl"
+              function goToPage(selectedPage) {if (selectedPage != "") {self.location=selectedPage;}}
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(catBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "CATALOGORDERENTRY")
+                  <td>
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " OECATX ", fileSQL)
+                      @dtw_concat(selectSQL, "CXCATN='$(catalog)' and CXITEM>' ' ", selectSQL)
+                      %if (srchCatalog != "Y")
+                          @dtw_concat(selectSQL, " and CXPCNT=$(cntr) and CXPRNT='$(chld)' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By CXITEM ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @Catalog_Item_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(catTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Catalog_Item_Query (IN CHAR(64)    profileHandle,
+                                          CHAR(2)     dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @dtw_assign(edtVar, "")
+      @Order_Control(profileHandle, dataBaseID, orderControlNumber, retrieveCode, dropShip, edtVar)
+      %if (srchCatalog == "Y")
+          @dtw_assign(hdrDesc, "$(catalogDesc)")
+      %else
+          @dtw_assign(hdrDesc, "$(chldDesc)")
+      %endif
+
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(hdrDesc)</h1></td>
+              %if (catSeqOrderQty > "0")
+                  @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1BLN#=0", "OEDTWK", " char(count(O1ITEM))", numberOfItems)
+                  @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "char(H1OTOT)", orderTotal)
+                  @Format_Nbr(numberOfItems, F_numberOfItems, "0", "3", "", "", "")
+                  <td class="toolbar">
+                      <table $(contentTable)>
+                          @Format_Header("Item Count", $(F_numberOfItems), "")
+                          %if (allowInquiryOnly != "Y")
+                              @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "char(H1OTOT)", orderTotal)
+                              @Format_Nbr(orderTotal, F_orderTotal, "2", $(amtEditCode), "", "$", "")
+                              @Format_Header("Order Total", $(F_orderTotal), "")
+                          %endif
+                      </table>
+                  </td>
+              %endif
+              <td class="toolbar">
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/CLOSE$(d2wVarBase)">$(closeImageMed)</a>
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+
+              </td>
+          </tr>
+      </table>
+      $(cathrTagAttr)
+      %INCLUDE "$(catalogHeaderPage)"
+
+      %if (allowItemSearch == "Y" || srchCatalog == "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Item Number</th>
+                      <th class="colhdr">Description</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchItem" size="10" maxlength="15">
+                          <input type="hidden" name="operItem" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchDesc" size="10" maxlength="30">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchItem.focus();
+              </script>
+          </form>
+      %endif
+
+      %INCLUDE "AssignPageValue.icl"
+      %INCLUDE "NoRecordsFound.icl"
+
+      @dtw_assign(itemCount, "0")
+      @dtw_assign(groupCount, "0")
+      @dtw_assign(firstItem, "Y")
+
+          %ROW{
+              @dtw_assign(cntr, "$(V_CXCNTR)")
+              @dtw_assign(pcnt, "$(V_CXPCNT)")
+              @dtw_assign(prnt, "$(V_CXPRNT)")
+              @dtw_assign(chld, "$(V_CXCHLD)")
+              @dtw_assign(cscn, "$(V_CXCSCN)")
+              %INCLUDE "SetRowClass.icl"
+
+              @dtw_assign(desc, $(V_CXDESC))
+              %if (firstItem == "Y" && catDspHeadings == "Y")
+                  <table $(contentTable)>
+                      @dtw_assign(firstItem, "N")
+                      <tr class="$(rowClass)">
+                          @dtw_assign(x, "01")
+                          %while(x <= "30"){
+                              %if (catSeqItemImage==$(x))
+                                  <td>&nbsp;</td>
+                              %elif (catSeqItemNbr==$(x))
+                                  <td class="colhdr">Item Number</td>
+                              %elif (catSeqItemDesc==$(x))
+                                  <td class="colhdr">Description</td>
+                              %elif (catSeqPrice==$(x))
+                                  <td class="colhdr">Price</td>
+                              %elif (catSeqOrderQty==$(x))
+                                  <td class="colhdr">Order<br>Quantity</td><td>&nbsp;</td>
+                              %elif (catSeqQtyAvail==$(x))
+                                  %if (catTypQtyAvail == "S")
+                                      <td>&nbsp;</td>
+                                  %else
+                                      <td class="colhdr">Qty Available</td>
+                                  %endif
+                              %elif (catSeqUXA1==$(x))
+                                  <td class="colhdr">$(itemExtAlph1)</td>
+                              %elif (catSeqUXA2==$(x))
+                                  <td class="colhdr">$(itemExtAlph2)</td>
+                              %elif (catSeqUXA3==$(x))
+                                  <td class="colhdr">$(itemExtAlph3)</td>
+                              %elif (catSeqUXA4==$(x))
+                                  <td class="colhdr">$(itemExtAlph4)</td>
+                              %elif (catSeqUXA5==$(x))
+                                  <td class="colhdr">$(itemExtAlph5)</td>
+                              %elif (catSeqUXN1==$(x))
+                                  <td class="colhdr">$(itemExtNum1)</td>
+                              %elif (catSeqUXN2==$(x))
+                                  <td class="colhdr">$(itemExtNum2)</td>
+                              %elif (catSeqUXN3==$(x))
+                                  <td class="colhdr">$(itemExtNum3)</td>
+                              %elif (catSeqUXN4==$(x))
+                                  <td class="colhdr">$(itemExtNum4)</td>
+                              %elif (catSeqUXN5==$(x))
+                                  <td class="colhdr">$(itemExtNum5)</td>
+                              %elif (catSeqUXD1==$(x))
+                                  <td class="colhdr">$(itemExtDate1)</td>
+                              %elif (catSeqUXD2==$(x))
+                                  <td class="colhdr">$(itemExtDate2)</td>
+                              %elif (catSeqUXD3==$(x))
+                                  <td class="colhdr">$(itemExtDate3)</td>
+                              %elif (catSeqUXD4==$(x))
+                                  <td class="colhdr">$(itemExtDate4)</td>
+                              %elif (catSeqUXD5==$(x))
+                                  <td class="colhdr">$(itemExtDate5)</td>
+                              %elif (catSeqUDA1==$(x))
+                                  <td class="colhdr">$(V_CIIAS1)</td>
+                              %elif (catSeqUDA2==$(x))
+                                  <td class="colhdr">$(V_CIIAS2)</td>
+                              %elif (catSeqUDA3==$(x))
+                                  <td class="colhdr">$(V_CIIAS3)</td>
+                              %elif (catSeqUDA4==$(x))
+                                  <td class="colhdr">$(V_CIIAS4)</td>
+                              %elif (catSeqUDA5==$(x))
+                                  <td class="colhdr">$(V_CIIAS5)</td>
+                              %elif (catSeqUDN1==$(x))
+                                  <td class="colhdr">$(V_CIINS1)</td>
+                              %elif (catSeqUDN2==$(x))
+                                  <td class="colhdr">$(V_CIINS2)</td>
+                              %elif (catSeqUDN3==$(x))
+                                  <td class="colhdr">$(V_CIINS3)</td>
+                              %elif (catSeqUDN4==$(x))
+                                  <td class="colhdr">$(V_CIINS4)</td>
+                              %elif (catSeqUDN5==$(x))
+                                  <td class="colhdr">$(V_CIINS5)</td>
+                              %endif
+                              @dtw_add(x, "1", x)
+                          %}
+                      </tr>
+              %endif
+
+              %if (itemCount=="0")
+                  <tr class="$(rowClass)">
+              %endif
+
+              @dtw_add(itemCount, "1", itemCount)
+              @dtw_assign(imageExists, "")
+              %if (catSeqItemImage!="")
+                  @dtw_assign(itemImage, "$(V_CXITEM)$(itemImageExt)")
+                  @dtwf_exists(itemImage, imageExists)
+              %endif
+
+              @dtw_assign(x, "01")
+              %while(x <= "30"){
+                  %if (catSeqItemImage==$(x))
+                      %if (imageExists == "Y")
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)ImageDisplay.d2w/DISPLAY$(genericVarBase)&amp;imageDisplayPath=$(homeURL)$(itemImage)&amp;imageDesc=@dtw_rurlescseq(desc)" onclick="$(itemImageWinVar)"><img src="$(homeURL)$(itemImage)" alt="" $(catItemImgSmall) $(catImgBorder) title="Click here to view larger image"></a></td>
+                      %else
+                          <td class="colicon">&nbsp;</td>
+                      %endif
+
+                  %elif (catSeqItemNbr==$(x))
+                      <td class="colalph">$(V_CXITEM)</td>
+
+                  %elif (catSeqItemDesc==$(x))
+                      %if (V_CXUHTM!="")
+                          <td  class="colalph"><a href="$(V_CXUHTM)" onclick="$(catUserHTMLWinVar)" title="View Details">$(desc)</a></td>
+                      %else
+                          <td class="colalph">$(desc)</td>
+                      %endif
+
+                  %elif (catSeqPrice==$(x))
+                      @Cust_Unit_Price(profileHandle, dataBaseID, customerNumber, V_CXITEM, unitPrice, V_CXWHS, piecesPerPricing)
+                      @Format_Nbr(unitPrice, F_unitPrice, "2", $(amtEditCode), "Y", "", "")
+                      %if (allowPriceInq == "Y")
+                          <td class="colnmbr"><a href="$(homeURL)$(cGIPath)PricingInquiry.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;itemNumber=@dtw_rurlescseq(V_CXITEM)&amp;itemDescription=@dtw_rurlescseq(V_CXDESC)&amp;warehouseNumber=@dtw_rurlescseq(V_CXWHS)&amp;quantity=1" onclick="$(inquiryWinVar)" title="View Pricing">$(F_unitPrice)</a></td>
+                      %else
+                          <td class="colnmbr">$(F_unitPrice)</td>
+                      %endif
+
+                  %elif (catSeqOrderQty==$(x))
+                      <td class="inputnmbr">
+                          <form class="formClass" NAME="Qty" METHOD=POST onSubmit="return (editZero(orderQty1, 9, 4))"
+                              ACTION="$(homeURL)$(cGIPath)$(d2wName)/ADDTOORDER$(d2wVarBase)&amp;item1=@dtw_rurlescseq(V_CXITEM)&amp;whs1=@dtw_rurlescseq(V_CXWHS)&amp;cscn=@dtw_rurlescseq(svcscn)&amp;updateRowNum=@dtw_rurlescseq($(START_ROW_NUM))">
+                              <input type="text" name="orderQty1" size="5" maxlength="15">
+                               @BrowserType(browserCode)
+                               %if (browserCode == "IE")
+                                   <button type=submit>$(orderAddToImage)</button>
+                               %else
+                                   <input TYPE=SUBMIT VALUE="Add To Cart">
+                               %endif
+                          </form>
+                      </td>
+
+                  %elif (catSeqQtyAvail==$(x))
+                      @Get_Qty_Avail(profileHandle, dataBaseID, V_CXITEM, V_CXWHS, qtyAvailable)
+                      @Format_Nbr(qtyAvailable, F_qtyAvailable, $(qtyNbrDec), $(qtyEditCode), "Y", "", "")
+                      %if (catTypQtyAvail == "S")
+                          %if (qtyAvailable > "0")
+                              <td class="colalph">$(inStockImage)</td>
+                          %else
+                              <td class="colalph"></td>
+                          %endif
+                      %else
+                          <td class="colnmbr">$(F_qtyAvailable)</td>
+                      %endif
+
+                  %elif (catSeqUXA1==$(x))
+                      <td class="colalph">$(V_CXUXA1)</td>
+                  %elif (catSeqUXA2==$(x))
+                      <td class="colalph">$(V_CXUXA2)</td>
+                  %elif (catSeqUXA3==$(x))
+                      <td class="colalph">$(V_CXUXA3)</td>
+                  %elif (catSeqUXA4==$(x))
+                      <td class="colalph">$(V_CXUXA4)</td>
+                  %elif (catSeqUXA5==$(x))
+                      <td class="colalph">$(V_CXUXA5)</td>
+
+                  %elif (catSeqUXN1==$(x))
+                      <td class="colnmbr">$(V_CXUXN1)</td>
+                  %elif (catSeqUXN2==$(x))
+                      <td class="colnmbr">$(V_CXUXN2)</td>
+                  %elif (catSeqUXN3==$(x))
+                      <td class="colnmbr">$(V_CXUXN3)</td>
+                  %elif (catSeqUXN4==$(x))
+                      <td class="colnmbr">$(V_CXUXN4)</td>
+                  %elif (catSeqUXN5==$(x))
+                      <td class="colnmbr">$(V_CXUXN5)</td>
+
+                  %elif (catSeqUXD1==$(x))
+                      @DateFromISO("$(V_CXUXD1)", V_CXUXD1)
+                      <td class="coldate">$(V_CXUXD1)</td>
+                  %elif (catSeqUXD2==$(x))
+                      @DateFromISO("$(V_CXUXD2)", V_CXUXD2)
+                      <td class="coldate">$(V_CXUXD2)</td>
+                  %elif (catSeqUXD3==$(x))
+                      @DateFromISO("$(V_CXUXD3)", V_CXUXD3)
+                      <td class="coldate">$(V_CXUXD3)</td>
+                  %elif (catSeqUXD4==$(x))
+                      @DateFromISO("$(V_CXUXD4)", V_CXUXD4)
+                      <td class="coldate">$(V_CXUXD4)</td>
+                  %elif (catSeqUXD5==$(x))
+                      @DateFromISO("$(V_CXUXD5)", V_CXUXD5)
+                      <td class="coldate">$(V_CXUXD5)</td>
+
+                  %elif (catSeqUDA1==$(x))
+                      <td class="colalph">$(V_CXUDA1)</td>
+                  %elif (catSeqUDA2==$(x))
+                      <td class="colalph">$(V_CXUDA2)</td>
+                  %elif (catSeqUDA3==$(x))
+                      <td class="colalph">$(V_CXUDA3)</td>
+                  %elif (catSeqUDA4==$(x))
+                      <td class="colalph">$(V_CXUDA4)</td>
+                  %elif (catSeqUDA5==$(x))
+                      <td class="colalph">$(V_CXUDA5)</td>
+
+                  %elif (catSeqUDN1==$(x))
+                      <td class="colnmbr">$(V_CXUDN1)</td>
+                  %elif (catSeqUDN2==$(x))
+                      <td class="colnmbr">$(V_CXUDN2)</td>
+                  %elif (catSeqUDN3==$(x))
+                      <td class="colnmbr">$(V_CXUDN3)</td>
+                  %elif (catSeqUDN4==$(x))
+                      <td class="colnmbr">$(V_CXUDN4)</td>
+                  %elif (catSeqUDN5==$(x))
+                      <td class="colnmbr">$(V_CXUDN5)</td>
+
+                  %endif
+                  @dtw_add(x, "1", x)
+              %}
+
+              %if (itemCount=="$(catItemsPerRow)")
+                  </tr>
+                  @dtw_assign(itemCount, "0")
+              %endif
+
+          %}
+          %if (itemCount>"0" && itemCount<"$(catItemsPerRow)")
+              </tr>
+          %endif
+      </table>
+      %INCLUDE "PageBottom.icl"
+      $(cathrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(svcntr, cntr)
+  @dtw_assign(svpcnt, pcnt)
+  @dtw_assign(svprnt, prnt)
+  @dtw_assign(svchld, chld)
+  @dtw_assign(svcscn, cscn)
+  @Set_SQL(stmtSQL)
+%}
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+
+  @dtw_assign(svcntr, cntr)
+  @dtw_assign(svpcnt, pcnt)
+  @dtw_assign(svprnt, prnt)
+  @dtw_assign(svchld, chld)
+  @dtw_assign(svcscn, cscn)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ADDTOORDER){
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(errorNumber, "")
+  @dtw_assign(edtVar, "")
+  @Order_Control(profileHandle, dataBaseID, orderControlNumber, retrieveCode, dropShip, edtVar)
+  %if (orderControlNumber=="00000000")
+      @dtw_assign(maintCode, "A")
+      @dtw_assign(orderControlNumber, "00000000")
+      @dtw_assign(orderType, $(defaultOrderType))
+      @Assign_OrderControl(profileHandle, dataBaseID, orderType, customerNumber, contactNumber, orderControlNumber, orderNumber, turnaround, maintCode, orderBusy, errorNumber)
+      %if (errorNumber != "")
+          @Ret_Error_Msg(profileHandle, dataBaseID, $(errorNumber), errorMessage)
+          @Display_Error(errorMessage)
+      %else
+          @dtw_assign(edtVar, "@@anon$(AnonymousUser)}{")
+          @Order_Control(profileHandle, dataBaseID, orderControlNumber, maintCode, dropShip, edtVar)
+      %endif
+  %endif
+
+  %if (errorNumber == "")
+      @dtw_assign(orderQty1,@dtw_rstrip(orderQty1))
+
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@octl", orderControlNumber)
+      @Concat_Field("@@shto", customerNumber)
+      @Concat_Field("@@itm1", item1)
+      @Concat_Field("@@whs1", whs1)
+      @Concat_Field("@@qty1", orderQty1)
+      @dtw_concat(edtVar, "}{", edtVar)
+
+      @Add_To_Order(profileHandle, dataBaseID, haveKit, edtVar)
+
+      @DTW_ASSIGN(updateTotal, "Y")
+      @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+      %if (haveKit == "Y")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)OrderEntryKitOptionError.d2w/DISPLAY$(genericVarBase)&amp;catalogVarName=@dtw_rurlescseq(catalogVarName)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;vendCustItemsFound=@dtw_rurlescseq(vendCustItemsFound)&amp;reliefCode=D&amp;addToOrder=I&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+      %elif (haveKit == "F")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)OrderEntryFeatureOptionError.d2w/DISPLAY$(genericVarBase)&amp;catalogVarName=@dtw_rurlescseq(catalogVarName)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;reliefCode=D&amp;addToOrder=I&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+      %else
+          %if (autoCloseItemWin == "Y")
+              <script TYPE="text/javascript">
+                  opener.location.href=opener.location.href;
+                  window.close();
+              </script>
+          %else
+              @dtw_assign(svcntr, cntr)
+              @dtw_assign(svpcnt, pcnt)
+              @dtw_assign(svprnt, prnt)
+              @dtw_assign(svchld, chld)
+              @dtw_assign(svcscn, cscn)
+              @dtw_assign(START_ROW_NUM,  "$(updateRowNum)")
+              @Set_SQL(stmtSQL)
+          %endif
+      %endif
+  %endif
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("CXITEM", "Item Number", $(srchItem), "U", operItem, "A")
+  @Build_WildCard ("upper(CXDESC)", "Description", $(srchDesc), "U", operDesc, "A")
+
+  %if (wildCardTemp != "")
+      @dtw_concat(wildCardSearch, wildCardTemp, wildCardSearch)
+      @dtw_concat(wildCardSearch, "))", wildCardSearch)
+      @dtw_concat(wildCardDisplay, wildDisplayTemp, wildCardDisplay)
+  %endif
+
+  @dtw_assign(svcntr, cntr)
+  @dtw_assign(svpcnt, pcnt)
+  @dtw_assign(svprnt, prnt)
+  @dtw_assign(svchld, chld)
+  @dtw_assign(svcscn, cscn)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(CLOSE) {
+  <script TYPE="text/javascript">
+      opener.location.href=opener.location.href;
+      window.close();
+  </script>
+%}

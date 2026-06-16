@@ -1,0 +1,606 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: A/R Invoice Entry Distribution                              *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "YNFlagTable.icl"
+
+%Define {
+  page_title              = "A/R Invoice Import Entry Distribution"
+  d2wName                 = "ARImportInvoiceEntryDist.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;firstTimeIn=@dtw_rurlescseq(firstTimeIn)&amp;WFReview=@dtw_rurlescseq(WFReview)&amp;invoiceSequence=@dtw_rurlescseq(invoiceSequence)&amp;wfInstance=@dtw_rurlescseq(wfInstance)&amp;wfInstanceDate=@dtw_rurlescseq(wfInstanceDate)&amp;wfWorkItem=@dtw_rurlescseq(wfWorkItem)&amp;wfWorkItemSequence=@dtw_rurlescseq(wfWorkItemSequence)&amp;wfParticipantId=@dtw_rurlescseq(wfParticipantId)&amp;wrnVar=@dtw_rurlescseq(wrnVar)&amp;fromD2w=@dtw_rurlescseq(fromD2w)"
+  refreshURL              = "$(homeURL)$(cGIPath)$(d2wName)/REFRESH$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  editVariables           = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @RtvFldDesc("(WIINST,WIINDT,WIWITM,WIWISQ,WIMODE,WPPTID,WPPART)=($(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),'M',$(wfParticipantId),'$(userProfile)') and WPRVWS in ('Y',' ') ", "WFWITM inner join WFWIPT on (WPINST,WPINDT,WPWITM,WPWISQ)=(WIINST,WIINDT,WIWITM,WIWISQ) ", "char(count(*))", recCount)	
+  %if (recCount<="0")
+      @dtw_assign(userPass,"N")
+  %else
+      @RtvFldDesc("(WIXHND,WIINST,WIINDT,WIISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", "ARIVVW", "char(WIBLTO)", V_WIBLTO)	
+      %if (V_WIBLTO>"0")
+          @CustomerUserView(profileHandle, dataBaseID, userPass, V_WIBLTO, "Y")
+      %else
+          @dtw_assign(userPass,"")
+      %endif
+  %endif
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From ARIVDW Where (WDXHND,WDSHOW)=('$(profileHandle)',' ') ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      @RtvFldDesc("(WDXHND,WDINST,WDINDT,WDISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", "ARIVDW", "char(count(*))", recCount)	
+      %if (recCount <= "0")
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Delete From ARIVDW Where WDXHND='$(profileHandle)' ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+
+          @RtvFldDesc("(FIINST,FIINDT,FIISEQ,FICLOS)=($(wfInstance),$(wfInstanceDate),$(invoiceSequence),' ') ", "ARIVIV", "char(FIWITM)", V_FIWITM)	
+          @RtvFldDesc("(FIINST,FIINDT,FIISEQ,FICLOS)=($(wfInstance),$(wfInstanceDate),$(invoiceSequence),' ') ", "ARIVIV", "char(FIWISQ)", V_FIWISQ)	
+
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into ARIVDW (WDXHND,WDINST,       WDINDT,           WDWITM,       WDWISQ,               WDISEQ,             WDARTY, WDLINE, WDDRCR, WDAMT, WDCO, WDFAC, WDACCT, WDSACT, WDSHOW) ", stmtSQL)
+          @dtw_concat(stmtSQL, " Select '$(profileHandle)', $(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence), FDARTY, FDLINE, FDDRCR, FDAMT, FDCO, FDFAC, FDACCT, FDSACT, 'Y' ", stmtSQL)
+          @dtw_concat(stmtSQL, " From ARIVDS Where (FDINST,FDINDT,FDWITM,FDWISQ,FDISEQ)=($(wfInstance),$(wfInstanceDate),$(V_FIWITM),$(V_FIWISQ),$(invoiceSequence)) ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      @RtvFldDesc("(WDXHND,WDARTY)=('$(profileHandle)','S') ", "ARIVDW", "char(count(*))", recCount)	
+      %if (recCount <= "0")
+          @RtvFldDesc("(WIXHND,WIINST,WIINDT,WIISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", "ARIVVW", "char(WIIVAM)", V_WIIVAM)	
+          %if (V_WIIVAM != ".00")
+              @dtw_assign(aln, "1")
+              @dtw_assign(show, "Y")
+          %else
+              @dtw_assign(aln, "0")
+              @dtw_assign(show, "")
+          %endif
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into ARIVDW (WDXHND,            WDINST,       WDINDT,           WDWITM,       WDWISQ,               WDISEQ,             WDARTY,WDLINE,WDDRCR,WDSHOW)   ", stmtSQL)
+          @dtw_concat(stmtSQL, "             Values('$(profileHandle)', $(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence), 'S',   $(aln),'C',  '$(show)') ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      @RtvFldDesc("(WDXHND,WDARTY)=('$(profileHandle)' ,'C') ", "ARIVDW", "char(count(*))", recCount)	
+      %if (recCount <= "0")
+          @RtvFldDesc("(WIXHND,WIINST,WIINDT,WIISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", "ARIVVW", "char(WIIVCT)", V_WIIVCT)	
+          %if (V_WIIVCT != ".00")
+              @dtw_assign(aln, "1")
+              @dtw_assign(show, "Y")
+          %else
+              @dtw_assign(aln, "0")
+              @dtw_assign(show, "")
+          %endif
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into ARIVDW (WDXHND,            WDINST,       WDINDT,           WDWITM,       WDWISQ,               WDISEQ,             WDARTY,WDLINE,WDDRCR,WDSHOW)   ", stmtSQL)
+          @dtw_concat(stmtSQL, "             Values('$(profileHandle)', $(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence), 'C',   $(aln),'D',  '$(show)') ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      @RtvFldDesc("(WDXHND,WDARTY)=('$(profileHandle)','I') ", "ARIVDW", "char(count(*))", recCount)	
+      %if (recCount <= "0")
+          @RtvFldDesc("(WIXHND,WIINST,WIINDT,WIISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", "ARIVVW", "char(WIIVCT)", V_WIIVCT)	
+          %if (V_WIIVCT != ".00")
+              @dtw_assign(aln, "1")
+              @dtw_assign(show, "Y")
+          %else
+              @dtw_assign(aln, "0")
+              @dtw_assign(show, "")
+          %endif
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into ARIVDW (WDXHND,            WDINST,       WDINDT,           WDWITM,       WDWISQ,               WDISEQ,             WDARTY,WDLINE,WDDRCR,WDSHOW)   ", stmtSQL)
+          @dtw_concat(stmtSQL, "             Values('$(profileHandle)', $(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence), 'I',   $(aln),'C',  '$(show)') ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+      %endif
+
+      @dtw_assign(editVariables, "")
+      @RtvFldDesc("(WDXHND,WDSHOW)=('$(profileHandle)','Y') ", "ARIVDW", "char(count(*))", recCount)	
+      @dtw_assign(ux, "1")
+      %while(ux <= recCount){
+          @dtw_assign(recNbr, ux)
+          %while(@dtw_rlength(recNbr) != "4") {@dtw_insert("0", recNbr, recNbr)%}
+          %if (editVariables != "")
+              @dtw_concat(editVariables, "  &&", editVariables)
+          %endif
+          @dtw_concat(editVariables, " editNum(document.Chg.amt$(recNbr), 11, 2) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.co$(recNbr), 2, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.fac$(recNbr), 4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.acct$(recNbr), 4, 0) && ", editVariables)
+          @dtw_concat(editVariables, " editNum(document.Chg.sact$(recNbr), 4, 0) ", editVariables)
+          @dtw_add(ux, "1", ux)
+      %}
+
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+     	   %INCLUDE "$(headInclude)"
+              @dtw_assign(formName, "Chg")
+              <script TYPE="text/javascript">
+                  %INCLUDE "Menu.js"
+     	           %INCLUDE "numedit.icl"
+                  %INCLUDE "CheckEnterChg.icl"
+                  function validate(chgForm) {
+                      if ($(editVariables))
+                          return true;
+                  }
+                  function confirmRefresh() { return confirm("Confirm reset of columns")}
+                  function confirmRefreshSection() { return confirm("Confirm reset of section")}
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+
+          <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "ARINVOICEENTRYDIST")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "Select ARIVVW.*, coalesce(WIIVAM-WISTAX-WIFRT-WISPC,0) as WISALE,  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(a.CMCNA1,' ') as bltoCMCNA1, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(b.CMCNA1,' ') as custCMCNA1, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(LOLNA1,' ') as LOLNA1, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(LOCO#,0) as LOCO#,coalesce(LOFAC#,0) as LOFAC#, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(CFCFNM,' ') as CFCFNM, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(SMSNA1,' ') as SMSNA1, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(TMCTDS,' ') as TMCTDS ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From ARIVVW ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join HDCUST a on a.CMCUST=WIBLTO ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join HDCUST b on b.CMCUST=WICUST ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join HDLCTN on LOLOC#=WILOC ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join HDCFAC on (CFCO#,CFFAC#)=(LOCO#,LOFAC#) ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join HDSLSM on SMSLSM=WISLSM ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join HDTRMS on TMCTRM=WITRMS ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where WIXHND='$(profileHandle)' ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Header(profileHandle, dataBaseID, stmtSQL)
+
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select ARIVDW.*,  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(WILOC,0) as WILOC, coalesce(WIIVAM-WISTAX-WIFRT-WISPC,0) as WISALE, coalesce(WIIVCT,0) as WIIVCT, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(LOCO#,0) as LOCO#,coalesce(LOFAC#,0) as LOFAC# ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From ARIVDW ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join ARIVVW on (WIXHND,WIINST,WIINDT,WIISEQ)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence)) ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join HDLCTN on LOLOC#=WILOC ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where WDXHND='$(profileHandle)' and WDARTY in ('S','C','I') ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Order By WDARTY,WDLINE ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Maintain_Query(profileHandle, dataBaseID, stmtSQL)
+
+                          $(hrTagAttr)
+                          %INCLUDE "Copyright.icl"
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Maintain_Header (IN CHAR(64)    profileHandle,
+                                       CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @pgmOptSecurity(profileHandle, dataBaseID, programName, sec_01, sec_02, sec_03, sec_04, sec_05, sec_06, sec_07, sec_08, sec_09, sec_10, sec_11, sec_12, sec_13, sec_14, sec_15)
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              <td class="toolbar">
+                  <a href="javascript:document.Chg.updateOption.value='2E'; check(document.Chg)">$(editNoUpdateSml)</a>
+                  %if ((sec_01 != "N" && (maintenanceCode == "A" || maintenanceCode == "Z")) || (sec_02 != "N" && maintenanceCode == "C") || (maintenanceCode != "A" && maintenanceCode != "C" && maintenanceCode != "D" && maintenanceCode != "Z"))
+                      <a href="javascript:document.Chg.updateOption.value='2U'; check(document.Chg)">$(acceptImageMed)</a>
+                  %endif
+                  <a href="$(homeURL)$(cGIPath)ARImportInvoiceEntry.d2w/MAINTAIN$(d2wVarBase)">$(previousImage)</a>
+                  %if (sec_03 != "N" && maintenanceCode == "C")
+                      <a onClick="return confirmDelete()" href="$(deleteURL)">$(deleteImageMed)</a>
+                  %endif
+                  <a onClick="return confirmRefresh()" href="$(refreshURL)">$(selectResetImage)</a>
+                  %if (WFReview=="Y")
+                      <a href="$(homeURL)$(cGIPath)WFWorkListOptions.d2w/CANCEL$(d2wVarBase)&amp;refreshD2W=N">$(cancelImageMed)</a>
+                  %endif
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "RequiredField.icl"
+      %INCLUDE "ErrorDisplay.icl"
+		
+      <table $(contentTable)>
+          %ROW {
+              @Format_Code(V_WICUST, F_WICUST)
+              @Format_Code(V_WIBLTO, F_WIBLTO)
+              <tr><td class="dsphdr">Ship-To Customer</td>
+                  <td class="dspalph">$(V_bltoCMCNA1) $(F_WICUST)</td>
+                  <td class="dsphdr">Bill-To Customer</td>
+                  <td class="dspalph">$(V_custCMCNA1) $(F_WIBLTO)</td>
+              </tr>
+
+              @Format_Date(V_WIIVDT, "D", F_WIIVDT)
+              <tr><td class="dsphdr">Invoice</td>
+                  <td class="dspnmbr">$(V_WIAINV)</td>
+                  <td class="dsphdr">Invoice Date</td>
+                  <td class="dspalph">$(F_WIIVDT)</td>
+              </tr>
+
+              @PeriodFromCYP(V_WIPER)
+              <tr><td class="dsphdr">Batch</td>
+                  <td class="dspnmbr">$(V_WIBCH)</td>
+                  <td class="dsphdr">Distribution Period</td>
+                  <td class="dspalph">$(V_WIPER)</td>
+              </tr>
+
+              @Format_Code(V_WILOC, F_WILOC)
+              @Format_CoFac("$(V_LOCO#)", "$(V_LOFAC#)", "", F_CoFac)
+              @Format_Code(F_CoFac, F_CoFac)
+              <tr><td class="dsphdr">Location</td>
+                  <td class="dspnmbr">$(V_LOLNA1) $(F_WILOC)</td>
+                  <td class="dsphdr">Company/Facility</td>
+                  <td class="dspalph">$(V_CFCFNM) $(F_CoFac)</td>
+              </tr>
+
+              @Format_Code(V_WITRMS, F_WITRMS)
+              <tr><td class="dsphdr">Terms Code</td>
+                  <td class="dspnmbr">$(V_TMCTDS) $(F_WITRMS)</td>
+                  <td class="dsphdr">or Days Till Due</td>
+                  <td class="dspalph">$(V_WICTDT)</td>
+              </tr>
+              
+              @Format_Date_ISO(V_WIDUED, "D", F_WIDUED)
+              <tr><td class="dsphdr">Due Date</td>
+                  <td class="dspnmbr">$(F_WIDUED)</td>
+              </tr>
+
+              @Format_Date_ISO(V_WIDSCD, "D", F_WIDSCD)
+              <tr><td class="dsphdr">Discount</td>
+                  <td class="dspnmbr">$(V_WIDSCT)</td>
+                  <td class="dsphdr">Discount Date</td>
+                  <td class="dspnmbr">$(F_WIDSCD)</td>
+              </tr>
+
+              @Format_Code(V_WISLSM, F_WISLSM)
+              <tr><td class="dsphdr">Salesman</td>
+                  <td class="dspnmbr">$(V_SMSNA1) $(F_WISLSM)</td>
+                  <td class="dsphdr">Reference Number</td>
+                  <td class="dspnmbr">$(V_WIARPO)</td>
+              </tr>
+
+              @Format_Date(V_WIORDT, "D", F_WIORDT)
+              <tr><td class="dsphdr">Order Number</td>
+                  <td class="dspnmbr">$(V_WIORD)</td>
+                  <td class="dsphdr">Order Date</td>
+                  <td class="dspalph">$(F_WIORDT)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Invoice Amount</td>
+                  <td class="dspnmbr">$(V_WIIVAM)</td>
+                  <td class="dsphdr">Cost Amount</td>
+                  <td class="dspalph">$(V_WIIVCT)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Sales Tax</td>
+                  <td class="dspnmbr">$(V_WISTAX)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Freight</td>
+                  <td class="dspnmbr">$(V_WIFRT)</td>
+              </tr>
+
+              <tr><td class="dsphdr">Special Charge</td>
+                  <td class="dspnmbr">$(V_WISPC)</td>
+                  <td class="dsphdr">Sale Amount</td>
+                  <td class="dspalph">$(V_WISALE)</td>
+              </tr>
+          %}
+      </table>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Maintain_Query (IN CHAR(64)    profileHandle,
+				       CHAR(2)     dataBaseID,
+                                      CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      @dtw_assign(tranType, "")
+		
+      @dtw_assign(focusField, "amt0001")
+      @dtw_assign(recNbr, "0")
+      <form class="formClass" METHOD=POST NAME="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)">
+          <table $(contentTable)>
+              <tr><td><input type="hidden" name="updateOption"></td>
+                  <td><input type="hidden" name="addType"></td>
+              </tr>
+          </table>
+          %ROW {
+              %if (tranType != "" && tranType != V_WDARTY)
+                  </table>
+                  </fieldset>
+              %endif
+              %if (tranType != V_WDARTY)
+                  @dtw_assign(tranType, V_WDARTY)
+                  @RtvFldDesc("(FLTYPE,FLVALU)=('ARDISTTYPE','$(V_WDARTY)')", "SYFLAG", "FLDESC", fieldDesc)
+                  %if (V_WDARTY!="Y")
+                      @RtvFldDesc("(WDXHND,WDARTY)=('$(profileHandle)','$(V_WDARTY)')", "ARIVDW", "CHAR(SUM(WDAMT))", sumWDAMT)
+                      %if (V_WDARTY=="S")
+                          @dtw_subtract(V_WISALE, sumWDAMT, leftAmt)
+                          @dtw_assign(displayAmount, "Sale Amount: $(V_WISALE)")
+                      %else
+                          @dtw_subtract(V_WIIVCT, sumWDAMT, leftAmt)
+                          @dtw_assign(displayAmount, "Cost Amount: $(V_WIIVCT)")
+                      %endif
+                      @dtw_assign(sumWDAMT, "($(displayAmount) Posted: $(sumWDAMT))")
+                      %if (leftAmt!="0")
+                          @dtw_assign(leftAmt, "(Remaining: $(leftAmt))")
+                      %else
+                          @dtw_assign(leftAmt, "")
+                      %endif
+                  %endif
+                  <fieldset class="legendBody">
+                  <legend class="legendTitle">$(fieldDesc) $(sumWDAMT) $(leftAmt)</legend>
+                      <div class="quickLinksTop">
+                          <a href="javascript:document.Chg.updateOption.value='AL';document.Chg.addType.value='$(tranType)'; check(document.Chg)">$(addMoreImage)</a>
+                          <a href="javascript:document.Chg.updateOption.value='RL';document.Chg.addType.value='$(tranType)'; check(document.Chg)">$(selectResetImage)</a>
+                      </div>
+                      <table $(contentTable)>
+                         <tr>
+                             <td class="colhdr">Amount</td>
+                             <td class="colhdr">Co/Fac</td>
+                             <td class="colhdr">Account</td>
+                             <td class="colhdr">Description</td>
+                         </tr>
+              %endif
+              %if (V_WDSHOW=="Y")
+                  @dtw_add(recNbr, "1", recNbr)
+                  %while(@dtw_rlength(recNbr) != "4") {@dtw_insert("0", recNbr, recNbr)%}
+                  @RtvFldDesc("(CHACCT,CHSUB)=($(V_WDACCT),$(V_WDSACT)) ", "HDCHRT", "CHCHDS", acctDesc)
+                  <tr>
+                      <td class="inputnmbr"><input type="text" name="amt$(recNbr)" value="$(V_WDAMT)" size="15" maxlength="15"></td>
+                      %if (V_WDARTY=="I")
+                          <td class="inputnmbr"><input type="text" name="co$(recNbr)" value="$(V_WDCO)" size="2"  maxlength="2">
+                                                <input type="text" name="fac$(recNbr)" value="$(V_WDFAC)" size="4" maxlength="4">
+                                                <a href="$(homeURL)$(phpPath)CoFacSearch.php$(altVarBase)&amp;docName=Chg&amp;fldCo=co$(recNbr)&amp;fldFac=fac$(recNbr)&amp;fldDesc=cofac$(recNbr)Desc" onclick="$(searchWinVar)">$(searchImage)</a>
+                                                <input type="hidden" name="cofac$(recNbr)Desc"></td>
+                      %else
+                          @Format_CoFac("$(V_LOCO#)", "$(V_LOFAC#)", "", F_CoFac)
+                          <td class="inputnmbr"><input type="hidden" name="co$(recNbr)" value="$(V_LOCO#)">
+                                                <input type="hidden" name="fac$(recNbr)" value="$(V_LOFAC#)">$(F_CoFac)
+                                                <input type="hidden" name="cofac$(recNbr)Desc">
+                          </td>
+                      %endif
+                      <td class="inputnmbr"><input type="text" name="acct$(recNbr)" value="$(V_WDACCT)" size="4"  maxlength="4">
+                                            <input type="text" name="sact$(recNbr)" value="$(V_WDSACT)" size="4" maxlength="4">
+                                            <a href="$(homeURL)$(phpPath)AccountSearch.php$(altVarBase)&amp;docName=Chg&amp;acctFld=acct$(recNbr)&amp;subFld=sact$(recNbr)&amp;descFld=acct$(recNbr)Desc" onclick="$(searchWinVar)">$(searchImage)</a>
+                      </td>
+                      <td class="inputnmbr"><input type="text" name="acct$(recNbr)Desc" value="$(acctDesc)" size="30" maxlength="30" disabled></td>
+                      %if (V_WDMSG != "")
+                          @Ret_Error_Msg(profileHandle, dataBaseID, $(V_WDMSG), errorMessage)
+                          <tr>
+                              <td class="error" colspan="19">Error: $(errorMessage)</td>		
+                          </tr>
+                      %endif
+                      <td><input type="hidden" name="arty$(recNbr)" value="$(V_WDARTY)">
+                          <input type="hidden" name="aln$(recNbr)" value="$(V_WDLINE)">
+                          <input type="hidden" name="drcr$(recNbr)" value="$(V_WDDRCR)">
+                       <td>
+                  </tr>
+              %endif
+          %}
+          </table>
+          </fieldset>
+          <script TYPE="text/javascript">
+              document.Chg.$(focusField).focus();
+          </script>
+      </form>
+      <table $(contentTable)>
+          <tr>
+              <td class="toolbar">
+                  <a href="javascript:document.Chg.updateOption.value='2E'; check(document.Chg)">$(editNoUpdateSml)</a>
+                  %if ((sec_01 != "N" && (maintenanceCode == "A" || maintenanceCode == "Z")) || (sec_02 != "N" && maintenanceCode == "C") || (maintenanceCode != "A" && maintenanceCode != "C" && maintenanceCode != "D" && maintenanceCode != "Z"))
+                      <a href="javascript:document.Chg.updateOption.value='2U'; check(document.Chg)">$(acceptImageMed)</a>
+                  %endif
+                  <a href="$(homeURL)$(cGIPath)ARImportInvoiceEntry.d2w/MAINTAIN$(d2wVarBase)">$(previousImage)</a>
+                  %if (sec_03 != "N" && maintenanceCode == "C")
+                      <a onClick="return confirmDelete()" href="$(deleteURL)">$(deleteImageMed)</a>
+                  %endif
+                  <a onClick="return confirmRefresh()" href="$(refreshURL)">$(selectResetImage)</a>
+                  %if (WFReview=="Y")
+                      <a href="$(homeURL)$(cGIPath)WFWorkListOptions.d2w/CANCEL$(d2wVarBase)&amp;refreshD2W=N">$(cancelImageMed)</a>
+                  %endif
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+              </td>
+          </tr>
+      </table>
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     maintenanceCode,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar,
+                                        INOUT CHAR(32000) wrnVar)
+{%EXEC {HARINE_W.PGM %}
+%}
+
+%HTML(MAINTAIN) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "ProgSecurityTest.icl"
+  %if (pgmOptAuth=="F")
+      %INCLUDE "ProgSecurityError.icl"
+  %elif (firstTimeIn == "Y")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From ARIVDW Where WDXHND='$(profileHandle)' ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      @RtvFldDesc("(FIINST,FIINDT,FIISEQ,FICLOS)=($(wfInstance),$(wfInstanceDate),$(invoiceSequence),' ') ", "ARIVIV", "char(FIWITM)", V_FIWITM)	
+      @RtvFldDesc("(FIINST,FIINDT,FIISEQ,FICLOS)=($(wfInstance),$(wfInstanceDate),$(invoiceSequence),' ') ", "ARIVIV", "char(FIWISQ)", V_FIWISQ)	
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Insert Into ARIVDW (WDXHND,WDINST,       WDINDT,           WDWITM,       WDWISQ,               WDISEQ,             WDARTY, WDLINE, WDDRCR, WDAMT, WDCO, WDFAC, WDACCT, WDSACT, WDSHOW) ", stmtSQL)
+      @dtw_concat(stmtSQL, " Select '$(profileHandle)', $(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence), FDARTY, FDLINE, FDDRCR, FDAMT, FDCO, FDFAC, FDACCT, FDSACT, 'Y' ", stmtSQL)
+      @dtw_concat(stmtSQL, " From ARIVDS Where (FDINST,FDINDT,FDWITM,FDWISQ,FDISEQ)=($(wfInstance),$(wfInstanceDate),$(V_FIWITM),$(V_FIWISQ),$(invoiceSequence)) ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/Edit_Data$(d2wVarBase)">
+  %else
+      @Set_SQL(stmtSQL)
+  %endif
+%}
+
+%HTML(REFRESH) {
+  %INCLUDE "setLibraryList.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Delete From ARIVDW Where WDXHND='$(profileHandle)'", stmtSQL)
+  @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(Edit_Data) {
+  %INCLUDE "setLibraryList.icl"
+  %if (updateOption=="")
+      @dtw_assign(updateOption, "2E")
+  %endif
+  @dtw_mUPPERCASE(referenceNumber)
+  @dtw_mUPPERCASE(termsCode)
+
+  @dtw_assign(maintenanceCode, "A")
+
+  %if (firstTimeIn == "")
+      @RtvFldDesc("(WDXHND,WDINST,WDINDT,WDISEQ,WDSHOW)=('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(invoiceSequence),'Y') ", "ARIVDW", "char(count(*))", recCount)	
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From ARIVDW Where WDXHND='$(profileHandle)'", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      @dtw_assign(ux, "1")
+      %while(ux <= recCount){
+          @dtw_assign(recNbr, ux)
+          %while(@dtw_rlength(recNbr) != "4")   {@dtw_insert("0", recNbr, recNbr) %}
+          @dtw_assign(arty, $(arty$(recNbr)))   %if (arty!="")  @dtw_mUPPERCASE(arty)  %endif
+          @dtw_assign(aln,  @dtw_rStrip($(aln$(recNbr))))    %if (aln=="")   @dtw_assign(aln, "0") %endif
+          @dtw_assign(drcr, $(drcr$(recNbr)))   %if (drcr!="")  @dtw_mUPPERCASE(drcr)  %endif
+          @dtw_assign(amt,  @dtw_rStrip($(amt$(recNbr))))    %if (amt=="")   @dtw_assign(amt, "0")  %endif
+          @dtw_assign(co,   @dtw_rStrip($(co$(recNbr))))     %if (co=="")    @dtw_assign(co, "0") %endif
+          @dtw_assign(fac,  @dtw_rStrip($(fac$(recNbr))))    %if (fac=="")   @dtw_assign(fac, "0")  %endif
+          @dtw_assign(acct, @dtw_rStrip($(acct$(recNbr))))   %if (acct=="")  @dtw_assign(acct, "0")  %endif
+          @dtw_assign(sact, @dtw_rStrip($(sact$(recNbr))))   %if (sact=="")  @dtw_assign(sact, "0") %endif
+
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into ARIVDW (WDXHND,           WDINST,       WDINDT,           WDWITM,       WDWISQ,               WDISEQ,             WDARTY,  WDLINE, WDDRCR,  WDAMT, WDCO,WDFAC,WDACCT, WDSACT, WDSHOW) ", stmtSQL)
+          @dtw_concat(stmtSQL, "            Values ('$(profileHandle)',$(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence),'$(arty)',$(aln),'$(drcr)',$(amt),$(co),$(fac),$(acct),$(sact),'Y') ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+
+          @dtw_add(ux, "1", ux)
+      %}
+  %endif
+
+  %if (updateOption=="AL")
+      %if (addType == "S" || addType == "I")
+        @dtw_assign(drcr, "C")
+      %else
+        @dtw_assign(drcr, "D")
+      %endif
+
+      @RtvFldDesc("(WDXHND,WDARTY)=('$(profileHandle)','$(addType)')", "ARIVDW", "char(coalesce(max(WDLINE),0))", maxSeq)
+      @dtw_assign(x, "1")
+      %while(x <= "5") {
+          @dtw_add(maxSeq, "1", maxSeq)
+          %INCLUDE "stmtSQLClear.icl"
+          @dtw_concat(stmtSQL, " Insert Into ARIVDW (WDXHND,            WDINST,       WDINDT,           WDWITM,       WDWISQ,               WDISEQ,              WDARTY,     WDLINE,    WDDRCR,  WDSHOW) ", stmtSQL)
+          @dtw_concat(stmtSQL, "             Values('$(profileHandle)', $(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence), '$(addType)',$(maxSeq),'$(drcr)','Y')    ", stmtSQL)
+          @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+          @SQL_Update(stmtSQL, status)
+          @dtw_add(x, "1", x)
+      %}
+  %elif (updateOption=="RL")
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Delete From ARIVDW Where (WDXHND,WDARTY)=('$(profileHandle)','$(addType)') ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+
+      @RtvFldDesc("(FIINST,FIINDT,FIISEQ,FICLOS)=($(wfInstance),$(wfInstanceDate),$(invoiceSequence),' ') ", "ARIVIV", "char(FIWITM)", V_FIWITM)	
+      @RtvFldDesc("(FIINST,FIINDT,FIISEQ,FICLOS)=($(wfInstance),$(wfInstanceDate),$(invoiceSequence),' ') ", "ARIVIV", "char(FIWISQ)", V_FIWISQ)	
+
+      %INCLUDE "stmtSQLClear.icl"
+      @dtw_concat(stmtSQL, " Insert Into ARIVDW (WDXHND,WDINST,       WDINDT,           WDWITM,       WDWISQ,               WDISEQ,             WDARTY, WDLINE, WDDRCR, WDAMT, WDCO, WDFAC, WDACCT, WDSACT, WDSHOW) ", stmtSQL)
+      @dtw_concat(stmtSQL, " Select '$(profileHandle)', $(wfInstance),$(wfInstanceDate),$(wfWorkItem),$(wfWorkItemSequence),$(invoiceSequence), FDARTY, FDLINE, FDDRCR, FDAMT, FDCO, FDFAC, FDACCT, FDSACT, 'Y' ", stmtSQL)
+      @dtw_concat(stmtSQL, " From ARIVDS Where (FDINST,FDINDT,FDWITM,FDWISQ,FDISEQ,FDARTY)=($(wfInstance),$(wfInstanceDate),$(V_FIWITM),$(V_FIWISQ),$(invoiceSequence),'$(addType)') ", stmtSQL)
+      @dtw_concat(stmtSQL, " @@endsql ", stmtSQL)
+      @SQL_Update(stmtSQL, status)
+  %else
+      @dtw_assign(edtVar, "")
+      @Concat_Field("@@wfid", wfInstance)
+      @Concat_Field("@@wfdt", wfInstanceDate)
+      @Concat_Field("@@wfcn", wfWorkItem)
+      @Concat_Field("@@wfsq", wfWorkItemSequence)
+      @Concat_Field("@@wfpt", wfParticipantId)
+      @Concat_Field("@@iseq", invoiceSequence)
+      @Concat_Field("@@@upd", updateOption)
+      @dtw_concat(edtVar, "}{", edtVar)
+
+      @Validate_Data(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar, wrnVar)
+  %endif
+
+  @dtw_assign(firstTimeIn, "")
+
+  %if (errFound == "" && updateOption=="2U")
+      @RtvFldDesc("(FFIMKY,FFIFIL)=($(wfInstance),'$(importTable)') ", "SYMITB", "FFDESC", importTableDescription)
+      @Format_ConfMsg_Desc(maintenanceCode, $(importTableDescription), "$(importTable)-$(importRecordType)-$(interfaceTable)-$(parentInterfaceTable)", "", "", "", "", confMessage)
+      %if (WFReview=="Y")
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)WFWorkList.d2w/REPORT$(d2wVarBase)">
+      %else
+          <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(fromD2w)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/MAINTAIN$(d2wVarBase)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}

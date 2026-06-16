@@ -1,0 +1,1247 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Order Entry - User Defined Detail                           *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+
+%Define {	
+  page_title              = "Order Entry - User Defined Detail"
+  d2wName                 = "OrderEntryDetail.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=@dtw_rurlescseq(lineNumber)&amp;releaseNumber=@dtw_rurlescseq(releaseNumber)&amp;errFound=@dtw_rurlescseq(errFound)&amp;addNonStock=@dtw_rurlescseq(addNonStock)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  userDetailCount         = ""
+  userDetailFields        = ""
+  multShipToCustomer      = ""
+  custType                = "B"
+  O1OREC                  = ""
+  tabID                   = "ITEMDETAIL"
+  deleteAllowed           = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@customerName", "@dtw_rurlescseq(customerName)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@customerNumber", "@dtw_rurlescseq(customerNumber)", "1", "a", workURL)
+  @dtw_replace(workURL, "@@orderControlNumber", "@dtw_rurlescseq(orderControlNumber)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Remove_User_Field (IN CHAR(100) fieldSeq)
+{
+  @dtw_assign(z, "1")
+  %while((@dtw_tb_rgetv(userDetailTable, z, "1") != "$(fieldSeq)") && (z < userDetailCount))
+      {@dtw_add(z, "1", z)%}
+  %if (@dtw_tb_rgetv(userDetailTable, z, "1") == "$(fieldSeq)")
+       @dtw_tb_deleterow(userDetailTable, z, "1")
+       @dtw_subtract(userDetailCount, "1", userDetailCount)
+  %endif
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "OrderEntryProgOpt.icl"
+          %INCLUDE "OrderEntryRetInfo.icl"
+          @dtw_assign(multShipToCustomer, "0")
+          %if (dropShip != "Y")
+              @RtvFldDesc("CMCUST=$(H1BLTO) or CMBLTO=$(H1BLTO)", "HDCUST", "CHAR(COUNT(CMCUST))", multShipToCustomer)
+          %endif
+
+          %if (addNonStock == "Y")
+              @dtw_assign(O1OREC, "N")
+          %else
+              @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber) and O1BLN#=$(releaseNumber)", "OEDTWK", "O1OREC", O1OREC)
+          %endif
+          @User_Detail_Query(userProfile, H1ORTY, O1OREC, userDetailTable)
+          @dtw_tb_rows(userDetailTable, userDetailCount)
+          %if (oe_sec_07 != "Y")
+              @Remove_User_Field("60")
+          %endif
+          %if (oe_sec_09 != "Y")
+              @Remove_User_Field("90")
+          %endif
+          %if (oe_sec_08 != "Y" && O1OREC != "N" && addNonStock != "Y")
+              @Remove_User_Field("100")
+          %endif
+          %if (oe_sec_10 != "Y")
+              @Remove_User_Field("10")
+          %endif
+          %if (userDtlNumDesc1 == "")
+              @Remove_User_Field("230")
+          %endif
+          %if (userDtlNumDesc2 == "")
+              @Remove_User_Field("240")
+          %endif
+          %if (userDtlNumDesc3 == "")
+              @Remove_User_Field("250")
+          %endif
+          %if (userDtlNumDesc4 == "")
+              @Remove_User_Field("251")
+          %endif
+          %if (userDtlNumDesc5 == "")
+              @Remove_User_Field("252")
+          %endif
+          %if (V_HDPORL == "00000" || allowPOGeneration != "Y")
+              @Remove_User_Field("160")
+          %endif
+
+          @dtw_assign(recCnt, "1")
+          @dtw_assign(userDetailFields, "")
+          %while(recCnt <= userDetailCount) {
+              @dtw_tb_getv(userDetailTable, recCnt, "1", V_UMFSEQ)
+              %while(@dtw_rlength(V_UMFSEQ) != "3") {@dtw_insert("0", V_UMFSEQ, V_UMFSEQ)%}
+              @dtw_concat(userDetailFields, "@@$(V_UMFSEQ)", userDetailFields)
+              @dtw_add(recCnt, "1", recCnt)
+          %}
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Chg")
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterChg.icl"
+              %INCLUDE "OrderEntryConfirm.icl"
+              function confirmClose() {return confirm("Confirm close of line");}
+              function validate(chgForm) {
+                  if (
+                      %if (@dtw_rpos("@@020", userDetailFields) > "0")
+                          document.Chg.itemNumber.value =="" ||
+                      %endif
+                      %if (@dtw_rpos("@@010", userDetailFields) > "0")
+                          document.Chg.warehouse.value =="" ||
+                      %endif
+                      %if (@dtw_rpos("@@030", userDetailFields) > "0")
+                          document.Chg.qtyOrdered.value =="" ||
+                      %endif
+                      %if (addNonStock == "Y" || O1OREC == "N")
+                          document.Chg.itemDescription.value =="" ||
+                          document.Chg.stockingUM.value =="" ||
+                          document.Chg.pricingUM.value =="" ||
+                          document.Chg.prodClass.value =="" ||
+                      %endif
+                      document.Chg.octl.value ==""
+                     )
+                     {alert("$(reqFieldError)"); return false;}
+                  if (
+                      editNum(document.Chg.octl, 8, 0)
+                      %if (@dtw_rpos("@@010", userDetailFields) > "0")
+                          && editNum(document.Chg.warehouse, 3, 0)
+                      %endif
+                      %if (@dtw_rpos("@@030", userDetailFields) > "0")
+                          && editNum(document.Chg.qtyOrdered, 9, 4)
+                      %endif
+                      %if (@dtw_rpos("@@040", userDetailFields) > "0")
+                          && editdate(document.Chg.reqDate)
+                      %endif
+                      %if (@dtw_rpos("@@060", userDetailFields) > "0")
+                          && editNum(document.Chg.price, 8, 5)
+                      %endif
+                      %if (@dtw_rpos("@@070", userDetailFields) > "0")
+                          && editNum(document.Chg.discountPercent, 3, 4)
+                      %endif
+                      %if (@dtw_rpos("@@090", userDetailFields) > "0")
+                          && editNum(document.Chg.commissionPercent, 3, 4)
+                      %endif
+                      %if (@dtw_rpos("@@100", userDetailFields) > "0")
+                          && editNum(document.Chg.unitCost, 8, 5)
+                      %endif
+                      %if (@dtw_rpos("@@230", userDetailFields) > "0")
+                          && editNum(document.Chg.userNumeric1, 8, 5)
+                      %endif
+                      %if (@dtw_rpos("@@240", userDetailFields) > "0")
+                          && editNum(document.Chg.userNumeric2, 8, 5)
+                      %endif
+                      %if (@dtw_rpos("@@250", userDetailFields) > "0")
+                          && editNum(document.Chg.userNumeric3, 8, 5)
+                      %endif
+                      %if (@dtw_rpos("@@251", userDetailFields) > "0")
+                          && editNum(document.Chg.userNumeric4, 8, 5)
+                      %endif
+                      %if (@dtw_rpos("@@252", userDetailFields) > "0")
+                          && editNum(document.Chg.userNumeric5, 8, 5)
+                      %endif
+                     )
+                     return true;
+              }
+              %INCLUDE "dateedit.icl"
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "calendar.icl"
+              %INCLUDE "NewWindowOpen.icl"
+              %INCLUDE "SearchMenu.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterChg()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      @dtw_assign(pageID, "ORDERENTRYDETAIL")
+                      <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      <td class="content">
+                          @dtw_assign(stmtSQL, "")
+                          %if (lineNumber == "000")
+                              %INCLUDE "AddRecordSQL.icl"
+                          %else
+                              @dtw_concat(stmtSQL, " Select OEDTWK.*, coalesce(SPPART,O1IMDS) as O1IMDS ", stmtSQL)
+                              @dtw_concat(stmtSQL, " From OEDTWK left join OESPWK on O1OCTL=SPOCTL and O1ORL#=SPORL# ", stmtSQL)
+                              @dtw_concat(stmtSQL, " Where O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber) and O1BLN#=$(releaseNumber)", stmtSQL)
+                          %endif
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Order_Detail_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) Order_Detail_Query (IN CHAR(64)    profileHandle,
+                                          CHAR(2)     dataBaseID,
+                                          CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "OrderEntryTabs.icl"
+
+      %ROW {
+          <div class="quickLinksTop">
+              <a href="javascript:check(document.Chg)">$(acceptImageLrg)</a>
+              %if (lineNumber > "000")
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/DETAIL$(d2wVarBase)">$(selectResetImage)</a>
+                  %if (V_O1QOPK == ".0000" && V_O1QSTC == ".0000" && V_O1QSTD != ".0000")
+                      %if (V_O1MNCD != "X")
+                          <a onClick="return confirmClose()" href="$(homeURL)$(cGIPath)$(d2wName)/STATUS$(d2wVarBase)&amp;status=X">$(lineCloseImage)</a>
+                      %endif
+                  %endif
+              %endif
+              %if (H1MNCD != "S")
+                  <a href="$(homeURL)$(cGIPath)OrderEntryDetail.d2w/DETAIL$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=000&amp;releaseNumber=000" title="Add Line">$(addImageMed)</a>
+                  %if (oe_sec_11 == "Y")
+                      <a href="$(homeURL)$(cGIPath)OrderEntryDetail.d2w/DETAIL$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=000&amp;releaseNumber=000&amp;addNonStock=Y">$(nonStockImage)</a>
+                  %endif
+              %endif
+              @dtw_assign(deleteAllowed, "")
+              %if ((V_O1QOPK == ".0000" && V_O1QSTC == ".0000" && V_O1QSTD == ".0000") || H1MNCD == "A" || H1MNCD == "Z")
+                  @dtw_assign(deleteAllowed, "Y")
+                  %if (V_O1PO# > "0" && V_O1DSHP == "Y")
+                      @dtw_assign(deleteAllowed, "")
+                  %endif
+              %endif
+              %if (deleteAllowed == "Y")
+                  <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)OrderEntryByItem.d2w/REMOVELINE$(d2wVarBase)">$(deleteImageMed)</a>
+              %endif
+          </div>
+          %INCLUDE "RequiredField.icl"
+          %INCLUDE "ErrorDisplay.icl"
+
+          %if (errFound != "")
+              @dtw_assign(focusField, "")
+              @EdtVarErr(profileHandle, typeValue, edtVar)
+              @ErrVarErr(profileHandle, typeError, errVar)
+          %elif (lineNumber == "000")
+              @dtw_assign(V_O1QORD, "1")
+              @dtw_assign(V_O1RQDT, H1RQDT)
+              @DateToCYMD(V_O1RQDT)
+              @dtw_assign(V_O1WH, shipToWhs)
+              %if (addNonStock == "Y")
+                  @dtw_assign(V_O1BOAL, "N")
+              %endif
+          %endif
+
+      <form class="formClass" METHOD=POST name="Chg" ACTION="$(homeURL)$(cGIPath)$(d2wName)/UPDATE$(d2wVarBase)&amp;userDetailFields=@dtw_rurlescseq(userDetailFields)&amp;multShipToCustomer=@dtw_rurlescseq(multShipToCustomer)&amp;dropShip=@dtw_rurlescseq(dropShip)&amp;storeNbrReq=@dtw_rurlescseq(storeNbrReq)&amp;shipToWhs=@dtw_rurlescseq(shipToWhs)&amp;H1MNCD=@dtw_rurlescseq(H1MNCD)">
+          <table $(contentTable)>
+              <tr>
+		   <td class="dsphdr">Line Number</td>
+                  <td class="dspnmbr">
+                      %if (lineNumber == "000")
+                          @dtw_assign(addUpdDesc, "Add")
+                          @dtw_assign(curLine, "999")
+                      %else
+                          @dtw_assign(addUpdDesc, "Update")
+                          @dtw_assign(curLine, V_O1ORL#)
+                      %endif
+                      @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1ORL#<$(curLine) and O1ORST='O' and O1BLN#=0 and O1MNCD<>'D' and O1MNCD<>'X'", "OEDTWK", "char(max(O1ORL#))", prevLine)
+                      @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1ORST='O' and O1BLN#=0 and O1MNCD<>'D' and O1MNCD<>'X'", "OEDTWK", "char(min(O1ORL#))", firstLine)
+                      @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1ORL#>$(curLine) and O1ORST='O' and O1BLN#=0 and O1MNCD<>'D' and O1MNCD<>'X'", "OEDTWK", "char(min(O1ORL#))", nextLine)
+                      %if (lineNumber != "000")
+                          @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1ORST='O' and O1BLN#=0 and O1MNCD<>'D' and O1MNCD<>'X'", "OEDTWK", "char(max(O1ORL#))", lastLine)
+                      %endif
+                      %if (firstLine > "0" && firstLine != curLine && firstLine != prevLine)
+                          @dtw_assign(previousImageBegTitle, "View First Line Number $(firstLine)")
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/DETAIL$(d2wVarBase)&amp;prevNextLine=@dtw_rurlescseq(firstLine)">$(previousImageBegSml)</a>
+                      %endif
+                      %if (prevLine > "0")
+                          @dtw_assign(previousImageTitle, "View Previous Line Number $(prevLine)")
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/DETAIL$(d2wVarBase)&amp;prevNextLine=@dtw_rurlescseq(prevLine)">$(previousImageSml)</a>
+                      %endif
+                      %if (prevOrder > "0")
+                          @dtw_assign(previousImageTitle, "View Previous Order Number $(prevOrder)")
+                          <a href="$(homeURL)$(cGIPath)SelectOrder$(openHist).d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;salesmanNumber=@dtw_rurlescseq(salesmanNumber)&amp;salesmanName=@dtw_rurlescseq(salesmanName)&amp;orderNumber=@dtw_rurlescseq(prevOrder)&amp;orderSequence=@dtw_rurlescseq(prevNextSeq)&amp;noMenu=@dtw_rurlescseq(noMenu)">$(previousImageSml)</a>
+                      %endif
+                      %if (lineNumber == "000")
+                          New Line
+                      %else
+                          $(V_O1ORL#)
+                      %endif
+                      %if (nextLine > "0")
+                          @dtw_assign(nextImageTitle, "View Next Line Number $(nextLine)")
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/DETAIL$(d2wVarBase)&amp;prevNextLine=@dtw_rurlescseq(nextLine)">$(nextImageSml)</a>
+                      %endif
+                      %if (lastLine > "0" && lastLine != curLine && nextLine != lastLine && lineNumber != "000")
+                          @dtw_assign(nextImageEndTitle, "View Last Line Number $(lastLine)")
+                          <a href="$(homeURL)$(cGIPath)$(d2wName)/DETAIL$(d2wVarBase)&amp;prevNextLine=@dtw_rurlescseq(lastLine)">$(nextImageEndSml)</a>
+                      %endif
+                      %if (confUpdate == "Y")
+                          &nbsp; <span class="error">Confirm $(addUpdDesc) Of Line</span>
+                      %endif
+                  </td>
+              </tr>
+
+              @dtw_assign(recCnt, "1")
+              %while(recCnt <= userDetailCount) {
+                  @dtw_tb_getv(userDetailTable, recCnt, "1", V_UMFSEQ)
+                  %while(@dtw_rlength(V_UMFSEQ) != "3") {@dtw_insert("0", V_UMFSEQ, V_UMFSEQ)%}
+
+                      %if (V_UMFSEQ == "010")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@wh@@", "warehouse")  @dtw_assign(Err_O1WH, fieldValue)
+                              @Decat_Field("@@wh@@")                  @dtw_assign(V_O1WH, fieldValue)
+                          %elif (focusField == "" && lineNumber == "000")
+                              @dtw_assign(focusField, "warehouse")
+                          %endif
+                          @SetTextOvr(Err_O1WH)
+                          <tr>
+                              <td class="dsphdr"><span $(textOvr)>Warehouse Number</span></td>
+                              @Default_Zero(V_O1WH)
+                              @RtvFldDesc("WHWHS=$(V_O1WH)", "HDWHSM", "WHWHNM", warehouseName)
+                              %if (lineNumber == "000")
+                                  <td class="inputnmbr"><input name="warehouse" type="text" value="$(V_O1WH)" size="3" maxlength="3"><a href="$(homeURL)$(phpPath)WarehouseSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=warehouse&amp;fldDesc=warehouseName" onclick="$(searchWinVar)"> $(reqFieldChar) $(searchImage) </a><input name="warehouseName" type="text" value="$(warehouseName)" size="35" disabled></td>
+                              %else
+                                  @Format_Code(V_O1WH, F_O1WH)
+                                  <td class="dspalph">$(warehouseName) &nbsp; $(F_O1WH)</td>
+                                  <td><input type="hidden" name="warehouse" value="$(V_O1WH)"></td>
+                              %endif
+                          </tr>
+                          @DspErrMsg(Err_O1WH)
+
+                      %elif (V_UMFSEQ == "020")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@item", "itemNumber")  @dtw_assign(Err_O1ITEM, fieldValue)
+                              @Decat_Field("@@item")                   @dtw_assign(V_O1ITEM, fieldValue)
+                          %elif (focusField == "" && lineNumber == "000")
+                              @dtw_assign(focusField, "itemNumber")
+                          %endif
+                          @SetTextOvr(Err_O1ITEM)
+                          %if (V_O1ITEM != "" && V_O1OREC != "N")
+                              @RtvFldDesc("IMITEM='$(V_O1ITEM)'", "HDIMST", "IMIMDS", itemDesc)
+                          %endif
+                          <tr>
+     		               <td class="dsphdr"><span $(textOvr)>Item Number</span></td>
+                              %if (lineNumber == "000")
+                                  <td class="inputalph"><input type="text" name="itemNumber" value="$(V_O1ITEM)" size="15" maxlength="15"> $(reqFieldChar)
+                                      %if (V_CIUVCT == "Y")
+                                          <a href="$(homeURL)$(cGIPath)VendorCatalogSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=itemNumber&amp;fldDesc=itemDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="itemDesc" value="$(itemDesc)" size="35" disabled>
+                                      %else
+                                          <a href="$(homeURL)$(phpPath)ItemSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=itemNumber&amp;fldDesc=itemDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="itemDesc" value="$(itemDesc)" size="35" disabled>
+                                      %endif
+                                  </td>
+                              %else
+                                  @Format_Code(V_O1ITEM, F_O1ITEM)
+                                  <td class="dspalph">$(V_O1IMDS) &nbsp; $(F_O1ITEM)</td>
+                                  <td><input type="hidden" name="itemNumber" value="$(V_O1ITEM)" size="15" maxlength="15"></td>
+                              %endif
+                          </tr>
+                          @DspErrMsg(Err_O1ITEM)
+
+                      %elif (V_UMFSEQ == "030")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@qord", "qtyOrdered")  @dtw_assign(Err_O1QORD, fieldValue)
+                              @Decat_Field("@@qord")                   @dtw_assign(V_O1QORD, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "qtyOrdered")
+                          %endif
+                          @SetTextOvr(Err_O1QORD)
+                          <tr>
+    		               <td class="dsphdr"><span $(textOvr)>Quantity Ordered</span></td>
+                              %if ((V_O1PO# > "0" && V_O1DSHP == "Y") || (V_O1BOAL == "N" && V_O1QOPK > "0") || (H1MNCD == "S" && (V_O1BLKT == "Y" || V_O1BLN# > "0")))
+                                  @Format_Nbr(V_O1QORD, F_O1QORD, "4", $(qtyEditCode), "Y", "", "")
+                                  <td class="dspnmbr">
+                                      $(F_O1QORD)
+                                      <input type="hidden" name="qtyOrdered" value="$(V_O1QORD)">
+                                  </td>
+                              %else
+                                  <td class="inputnmbr"><input type="text" name="qtyOrdered" value="$(V_O1QORD)" size="15" maxlength="15"> $(reqFieldChar)</td>
+                              %endif
+                          </tr>
+                          @DspErrMsg(Err_O1QORD)
+
+                      %elif (V_UMFSEQ == "040")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@rqdt", "reqDate")  @dtw_assign(Err_O1RQDT, fieldValue)
+                              @Decat_Field("@@rqdt")                @dtw_assign(V_O1RQDT, fieldValue)
+                          %else
+                              %if (focusField == "")
+                                  @dtw_assign(focusField, "reqDate")
+                              %endif
+                              @DateInputFromCYMD(V_O1RQDT)
+                          %endif
+                          @SetTextOvr(Err_O1RQDT)
+                          <tr>
+                              <td class="dsphdr"><span $(textOvr)>Required Date</span></td>
+                              <td class="inputnmbr"><input type="text" name="reqDate" value="$(V_O1RQDT)" size="6" maxlength="6">
+                                  <a href="javascript:calWindow('reqDate');">$(calendarImage)</a>
+                              </td>
+                          </tr>
+                          @DspErrMsg(Err_O1RQDT)
+
+                      %elif (V_UMFSEQ == "050")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@orec", "entryCode")  @dtw_assign(Err_O1OREC, fieldValue)
+                              @Decat_Field("@@orec")                  @dtw_assign(V_O1OREC, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "entryCode")
+                          %endif
+                          %if (oe_sec_11 == "N")
+                              @dtw_assign(z, "1")
+                              @dtw_tb_rows(entryCodeTable, rowCount)
+                              %while(z <= rowCount) {
+                                  %if (@dtw_tb_rgetv(entryCodeTable, z, "1") == "N")
+                                      @dtw_tb_deleterow(entryCodeTable, z, "1")
+                                      @dtw_subtract(rowCount, "1", rowCount)
+                                  %else
+                                      @dtw_add(z, "1", z)
+                                  %endif
+                              %}
+                          %endif
+                          @SetTextOvr(Err_O1OREC)
+                          <tr>
+    		               <td class="dsphdr"><span $(textOvr)>Entry Code</span></td>
+                              %if (V_O1OREC == "N" || addNonStock == "Y")
+    		                   <td class="dspalph">Non-Stock</td>
+                                  <td><input type="hidden" name="entryCode" value="N"></td>
+                              %elif ((V_O1PO# > "0" && V_O1DSHP == "Y") || lineNumber < "000" || H1MNCD == "S")
+                                  @RtvFldDesc("FLTYPE='OEENTCODE' AND FLVALU='$(V_O1OREC)'", "SYFLAG", "FLDESC", fieldDesc)
+    		                   <td class="dspalph">$(fieldDesc)</td>
+                                  <td><input type="hidden" name="entryCode" value="$(V_O1OREC)" size="1" maxlength="1"></td>
+                              %else
+                                  %if (V_O1OREC == "")
+                                      @dtw_assign(V_O1OREC, "S")
+                                  %endif
+                                  @dtw_tb_rows(entryCodeTable, maxRows)
+                                  @dtw_assign(x, "1")
+                                  %while((@dtw_tb_rgetv(entryCodeTable, x, "1") != V_O1OREC) && (x < maxRows)) {@dtw_add(x, "1", x)%}
+                                  <td>@dtw_tb_select(entryCodeTable, "entryCode", "2", "1", "N", "", x, "1")</td>
+                              %endif
+                          </tr>
+                          @DspErrMsg(Err_O1OREC)
+
+                      %elif (V_UMFSEQ == "060")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@slpr", "price")  @dtw_assign(Err_O1SLPR, fieldValue)
+                              @Decat_Field("@@slpr")              @dtw_assign(V_O1SLPR, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "price")
+                          %endif
+                          @SetTextOvr(Err_O1SLPR)
+                          <tr>
+  		               <td class="dsphdr"><span $(textOvr)>Unit Price</span></td>
+                              <td class="inputnmbr"><input type="text" name="price" value="$(V_O1SLPR)" size="15" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1SLPR)
+
+                      %elif (V_UMFSEQ == "070")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@lnds", "discountPercent")  @dtw_assign(Err_O1LNDS, fieldValue)
+                              @Decat_Field("@@lnds")                        @dtw_assign(V_O1LNDS, @dtw_rformat(@dtw_rmultiply(fieldValue, "1"),"","4"))
+                          %else
+                              %if (focusField == "")
+                                  @dtw_assign(focusField, "discountPercent")
+                              %endif
+                              @dtw_assign(V_O1LNDS, @dtw_rformat(@dtw_rmultiply(V_O1LNDS, "100"),"","4"))
+                          %endif
+                          @SetTextOvr(Err_O1LNDS)
+                          <tr>
+                              <td class="dsphdr"><span $(textOvr)>Discount Percent</span></td>
+                              <td class="inputnmbr"><input type="text" name="discountPercent" value="$(V_O1LNDS)" size="9" maxlength="9"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1LNDS)
+
+                      %elif (V_UMFSEQ == "080")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@imds", "itemDescription")  @dtw_assign(Err_O1IMDS, fieldValue)
+                              @Decat_Field("@@imds")                        @dtw_assign(V_O1IMDS, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "itemDescription")
+                          %endif
+                          @SetTextOvr(Err_O1IMDS)
+                          <tr>
+      		               <td class="dsphdr"><span $(textOvr)>Description</span></td>
+                              <td class="inputalph"><input type="text" name="itemDescription" value="@dtw_rqhtmlencode($(V_O1IMDS))" size="40" maxlength="30">
+                                  %if (addNonStock == "Y" || O1OREC == "N")
+                                      $(reqFieldChar)
+                                  %endif
+                              </td>
+                          </tr>
+                          @DspErrMsg(Err_O1IMDS)
+
+                      %elif (V_UMFSEQ == "090")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@cmpc", "commissionPercent")  @dtw_assign(Err_O1CMPC, fieldValue)
+                              @Decat_Field("@@cmpc")                          @dtw_assign(V_O1CMPC, fieldValue)
+                          %else
+                              %if (focusField == "")
+                                  @dtw_assign(focusField, "commissionPercent")
+                              %endif
+                              @dtw_assign(V_O1CMPC, @dtw_rformat(@dtw_rmultiply(V_O1CMPC, "100"),"","4"))
+                          %endif
+                          @SetTextOvr(Err_O1CMPC)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>Commission Percent</span></td>
+                              <td class="inputnmbr"><input type="text" name="commissionPercent" value="$(V_O1CMPC)" size="9" maxlength="9"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1CMPC)
+
+                      %elif (V_UMFSEQ == "100")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@cost", "unitCost")  @dtw_assign(Err_O1UCC1, fieldValue)
+                              @Decat_Field("@@cost")                 @dtw_assign(V_O1UCC1, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "unitCost")
+                          %endif
+                          @SetTextOvr(Err_O1UCC1)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>Unit Cost</span></td>
+                              <td class="inputnmbr"><input type="text" name="unitCost" value="$(V_O1UCC1)" size="15" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UCC1)
+
+                      %elif (V_UMFSEQ == "110")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@stum", "stockingUM")  @dtw_assign(Err_O1STUM, fieldValue)
+                              @Decat_Field("@@stum")                   @dtw_assign(V_O1STUM, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "stockingUM")
+                          %endif
+                          @SetTextOvr(Err_O1STUM)
+                          <tr>
+                              @RtvFldDesc("UMUOM='$(V_O1STUM)'", "HDUOM", "UMUMLD", fieldDesc)
+        		       <td class="dsphdr"><span $(textOvr)>Stocking U/M</span></td>
+                              <td class="inputnmbr"><input name="stockingUM" type="text" value="$(V_O1STUM)" size="4" maxlength="2"><a href="$(homeURL)$(cGIPath)UnitOfMeasureSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=stockingUM&amp;fldDesc=stockingUMDesc" onclick="$(searchWinVar)">
+                                  %if (addNonStock == "Y" || O1OREC == "N")
+                                      $(reqFieldChar)
+                                  %endif
+                                  $(searchImage) </a><input name="stockingUMDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                          </tr>
+                          @DspErrMsg(Err_O1STUM)
+
+                      %elif (V_UMFSEQ == "120")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@prum", "pricingUM")  @dtw_assign(Err_O1PRUM, fieldValue)
+                              @Decat_Field("@@prum")                  @dtw_assign(V_O1PRUM, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "pricingUM")
+                          %endif
+                          @SetTextOvr(Err_O1PRUM)
+                          <tr>
+                              @RtvFldDesc("UMUOM='$(V_O1PRUM)'", "HDUOM", "UMUMLD", fieldDesc)
+        		       <td class="dsphdr"><span $(textOvr)>Pricing U/M</span></td>
+                              <td class="inputnmbr"><input name="pricingUM" type="text" value="$(V_O1PRUM)" size="4" maxlength="2"><a href="$(homeURL)$(cGIPath)UnitOfMeasureSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=pricingUM&amp;fldDesc=pricingUMDesc" onclick="$(searchWinVar)">
+                                  %if (addNonStock == "Y" || O1OREC == "N")
+                                      $(reqFieldChar)
+                                  %endif
+                                  $(searchImage) </a><input name="pricingUMDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                          </tr>
+                          @DspErrMsg(Err_O1PRUM)
+
+                      %elif (V_UMFSEQ == "130")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@pcls", "prodClass")  @dtw_assign(Err_O1PCLS, fieldValue)
+                              @Decat_Field("@@pcls")                  @dtw_assign(V_O1PCLS, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "prodClass")
+                          %endif
+                          @SetTextOvr(Err_O1PCLS)
+                          <tr>
+                              @RtvFldDesc("PCPCLS='$(V_O1PCLS)'", "HDPCLS", "PCPCDS", fieldDesc)
+        		       <td class="dsphdr"><span $(textOvr)>Product Class</span></td>
+                              <td class="inputalph"><input name="prodClass" value="$(V_O1PCLS)" type="text" size="4" maxlength="4"><a href="$(homeURL)$(cGIPath)ProdClassSearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=prodClass&amp;fldDesc=productClassDesc" onclick="$(searchWinVar)">
+                                  %if (addNonStock == "Y" || O1OREC == "N")
+                                      $(reqFieldChar)
+                                  %endif
+                                  $(searchImage) </a><input name="productClassDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                          </tr>
+                          @DspErrMsg(Err_O1PCLS)
+
+                      %elif (V_UMFSEQ == "140")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@boal", "allowBackorders")  @dtw_assign(Err_O1BOAL, fieldValue)
+                              @Decat_Field("@@boal")                        @dtw_assign(V_O1BOAL, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "allowBackorders")
+                          %endif
+                          @RtvFldDesc("FLTYPE='BACKORDER' and FLVALU='$(V_O1BOAL)'", "SYFLAG", "FLDESC", allowBackordersDesc)
+                          @SetTextOvr(Err_O1BOAL)
+                          <tr><td class="dsphdr"><span $(textOvr)>Allow Backorders</span></td>
+                              <td class="inputalph"><input name="allowBackorders" type="text" value="$(V_O1BOAL)" size="1" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=BACKORDER&amp;flagSrchHdr=@dtw_rurlescseq("Allow Backorders")&amp;docName=Chg&amp;fldName=allowBackorders&amp;fldDesc=allowBackordersDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="allowBackordersDesc" value="$(allowBackordersDesc)" type="text" size="5" disabled></td>
+                          </tr>
+                          @DspErrMsg(Err_O1BOAL)
+
+                      %elif (V_UMFSEQ == "150")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@taxc", "taxable")  @dtw_assign(Err_O1TAXC, fieldValue)
+                              @Decat_Field("@@taxc")                @dtw_assign(V_O1TAXC, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "taxable")
+                          %endif
+                          @RtvYNDesc($(V_O1TAXC), fieldDesc)
+                          @SetTextOvr(Err_O1TAXC)
+                          <tr><td class="dsphdr"><span $(textOvr)>Taxable</span></td>
+                              <td class="inputalph"><input name="taxable" type="text" value="$(V_O1TAXC)" size="1" maxlength="1"><a href="$(homeURL)$(phpPath)FlagSearch.php$(altVarBase)&amp;flagType=YORN&amp;flagSrchHdr=@dtw_rurlescseq("Taxable")&amp;docName=Chg&amp;fldName=taxable&amp;fldDesc=taxableDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="taxableDesc" value="$(fieldDesc)" type="text" size="5" disabled></td>
+                          </tr>
+                          @DspErrMsg(Err_O1TAXC)
+
+                      %elif (V_UMFSEQ == "160")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@gnpo", "generatePO")  @dtw_assign(Err_O1GNPO, fieldValue)
+                              @Decat_Field("@@gnpo")                   @dtw_assign(V_O1GNPO, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "generatePO")
+                          %endif
+                          @RtvYNDesc($(V_O1GNPO), fieldDesc)
+                          @SetTextOvr(Err_O1GNPO)
+                          @dtw_assign(dspPO, "Y")
+                          %if (lineNumber != "000")
+                              @dtw_assign(dspPO, "N")
+                              %if (genPOType != "S" || V_O1OREC == "S")
+                                  %if (V_O1KIT != "K" && V_O1KIT != "F" && V_O1QORD > ".0000")
+                                      @dtw_assign(autoGenCount, "0")
+                                      %if (V_HDPDRL>"0")
+                                          @RtvFldDesc("IPITEM='$(V_O1ITEM)' and IPPLT=$(V_O1PLT) and IPPTYP='M' and IPKDFC='A'", "HDIPLT", "char(count(*))", autoGenCount)
+                                      %endif
+                                      %if (autoGenCount == "0")
+                                          @dtw_assign(dspPO, "Y")
+                                      %endif
+                                  %endif
+                              %endif
+                          %endif
+                          %if (dspPO == "Y")
+                              <tr><td class="dsphdr"><span $(textOvr)>P/O</span></td>
+                                  <td>
+                                      %if (V_O1GNPO == "Y")
+                                          @dtw_assign(poChecked, "CHECKED")
+                                      %else
+                                          @dtw_assign(poChecked, "")
+                                      %endif
+                                      %if (V_O1GNPO == "Y" && V_O1PO# > "0")
+                                          @dtw_assign(removeVar, "javascript:check(document.Chg)")
+                                          <span class="inputalph">
+                                              %if (V_O1DSHP == "Y")
+                                                  <input type="checkbox" name="generatePO" $(poChecked) value="Y" DISABLED>
+                                              %else
+                                                  <input type="checkbox" name="generatePO" $(poChecked) value="Y" onClick="return confirmBreakPOLink('$(removeVar)')">
+                                              %endif
+                                              $(V_O1PO#)
+                                          </span>
+                                      %else
+                                          <input type="checkbox" name="generatePO" $(poChecked) value="Y">
+                                      %endif
+                                  </td>
+                              </tr>
+                              @DspErrMsg(Err_O1GNPO)
+                          %else
+                              <tr><td><input type="hidden" name="generatePO" value="N"></td></tr>
+                          %endif
+
+                      %elif (V_UMFSEQ == "180")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@orcs", "custItemNumber")  @dtw_assign(Err_O1ORCS, fieldValue)
+                              @Decat_Field("@@orcs")                       @dtw_assign(V_O1ORCS, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "custItemNumber")
+                          %endif
+                          @SetTextOvr(Err_O1ORCS)
+                          <tr>
+        		       <td class="dsphdr">Customer Item Number</td>
+                              <td class="inputalph"><input type="text" name="custItemNumber" value="$(V_O1ORCS)" size="40" maxlength="30"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1ORCS)
+
+                      %elif (V_UMFSEQ == "200" && userDtlAlphaDesc1 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda1", "userAlpha1")  @dtw_assign(Err_O1UDA1, fieldValue)
+                              @Decat_Field("@@uda1")                   @dtw_assign(V_O1UDA1, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha1")
+                          %endif
+                          @SetTextOvr(Err_O1UDA1)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc1)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha1" value="$(V_O1UDA1)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA1)
+
+                      %elif (V_UMFSEQ == "210" && userDtlAlphaDesc2 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda2", "userAlpha2")  @dtw_assign(Err_O1UDA2, fieldValue)
+                              @Decat_Field("@@uda2")                   @dtw_assign(V_O1UDA2, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha2")
+                          %endif
+                          @SetTextOvr(Err_O1UDA2)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc2)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha2" value="$(V_O1UDA2)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA2)
+
+                      %elif (V_UMFSEQ == "220"  && userDtlAlphaDesc3 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda3", "userAlpha2")  @dtw_assign(Err_O1UDA3, fieldValue)
+                              @Decat_Field("@@uda3")                   @dtw_assign(V_O1UDA3, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha3")
+                          %endif
+                          @SetTextOvr(Err_O1UDA3)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc3)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha3" value="$(V_O1UDA3)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA3)
+
+                      %elif (V_UMFSEQ == "220"  && userDtlAlphaDesc3 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda3", "userAlpha3")  @dtw_assign(Err_O1UDA3, fieldValue)
+                              @Decat_Field("@@uda3")                   @dtw_assign(V_O1UDA3, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha3")
+                          %endif
+                          @SetTextOvr(Err_O1UDA3)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc3)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha3" value="$(V_O1UDA3)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA3)
+
+                      %elif (V_UMFSEQ == "221"  && userDtlAlphaDesc4 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda4", "userAlpha4")  @dtw_assign(Err_O1UDA4, fieldValue)
+                              @Decat_Field("@@uda4")                   @dtw_assign(V_O1UDA4, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha4")
+                          %endif
+                          @SetTextOvr(Err_O1UDA4)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc4)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha4" value="$(V_O1UDA4)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA4)
+
+                      %elif (V_UMFSEQ == "222"  && userDtlAlphaDesc5 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda5", "userAlpha5")  @dtw_assign(Err_O1UDA5, fieldValue)
+                              @Decat_Field("@@uda5")                   @dtw_assign(V_O1UDA5, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha5")
+                          %endif
+                          @SetTextOvr(Err_O1UDA5)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc5)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha5" value="$(V_O1UDA5)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA5)
+
+                      %elif (V_UMFSEQ == "223"  && userDtlAlphaDesc6 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda6", "userAlpha6")  @dtw_assign(Err_O1UDA6, fieldValue)
+                              @Decat_Field("@@uda6")                   @dtw_assign(V_O1UDA6, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha6")
+                          %endif
+                          @SetTextOvr(Err_O1UDA6)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc6)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha6" value="$(V_O1UDA6)" size="35" maxlength="30"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA6)
+
+                      %elif (V_UMFSEQ == "224"  && userDtlAlphaDesc7 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda7", "userAlpha7")  @dtw_assign(Err_O1UDA7, fieldValue)
+                              @Decat_Field("@@uda7")                   @dtw_assign(V_O1UDA7, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha7")
+                          %endif
+                          @SetTextOvr(Err_O1UDA7)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc7)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha7" value="$(V_O1UDA7)" size="35" maxlength="30"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA7)
+
+                      %elif (V_UMFSEQ == "225"  && userDtlAlphaDesc8 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda8", "userAlpha8")  @dtw_assign(Err_O1UDA8, fieldValue)
+                              @Decat_Field("@@uda8")                   @dtw_assign(V_O1UDA8, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha8")
+                          %endif
+                          @SetTextOvr(Err_O1UDA8)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc8)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha8" value="$(V_O1UDA8)" size="35" maxlength="30"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA8)
+
+                      %elif (V_UMFSEQ == "226"  && userDtlAlphaDesc9 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda9", "userAlpha9")  @dtw_assign(Err_O1UDA9, fieldValue)
+                              @Decat_Field("@@uda9")                   @dtw_assign(V_O1UDA9, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha9")
+                          %endif
+                          @SetTextOvr(Err_O1UDA9)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc9)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha9" value="$(V_O1UDA9)" size="35" maxlength="30"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA9)
+
+                      %elif (V_UMFSEQ == "227"  && userDtlAlphaDesc0 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@uda0", "userAlpha0")  @dtw_assign(Err_O1UDA0, fieldValue)
+                              @Decat_Field("@@uda0")                   @dtw_assign(V_O1UDA0, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userAlpha0")
+                          %endif
+                          @SetTextOvr(Err_O1UDA0)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlAlphaDesc0)</span></td>
+                              <td class="inputalph"><input type="text" name="userAlpha0" value="$(V_O1UDA0)" size="35" maxlength="30"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDA0)
+
+                      %elif (V_UMFSEQ == "230" && userDtlNumDesc1 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@udn1", "userNumeric1")  @dtw_assign(Err_O1UDN1, fieldValue)
+                              @Decat_Field("@@udn1")                     @dtw_assign(V_O1UDN1, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userNumeric1")
+                          %endif
+                          @SetTextOvr(Err_O1UDN1)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlNumDesc1)</span></td>
+                              <td class="inputnmbr"><input type="text" name="userNumeric1" value="$(V_O1UDN1)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDN1)
+
+                      %elif (V_UMFSEQ == "240" && userDtlNumDesc2 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@udn2", "userNumeric2")  @dtw_assign(Err_O1UDN2, fieldValue)
+                              @Decat_Field("@@udn2")                     @dtw_assign(V_O1UDN2, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userNumeric2")
+                          %endif
+                          @SetTextOvr(Err_O1UDN2)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlNumDesc2)</span></td>
+                              <td class="inputnmbr"><input type="text" name="userNumeric2" value="$(V_O1UDN2)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDN2)
+
+                      %elif (V_UMFSEQ == "250" && userDtlNumDesc3 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@udn3", "userNumeric3")  @dtw_assign(Err_O1UDN3, fieldValue)
+                              @Decat_Field("@@udn3")                     @dtw_assign(V_O1UDN3, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userNumeric3")
+                          %endif
+                          @SetTextOvr(Err_O1UDN3)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlNumDesc3)</span></td>
+                              <td class="inputnmbr"><input type="text" name="userNumeric3" value="$(V_O1UDN3)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDN3)
+
+                      %elif (V_UMFSEQ == "251" && userDtlNumDesc4 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@udn4", "userNumeric4")  @dtw_assign(Err_O1UDN4, fieldValue)
+                              @Decat_Field("@@udn4")                     @dtw_assign(V_O1UDN4, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userNumeric4")
+                          %endif
+                          @SetTextOvr(Err_O1UDN4)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlNumDesc4)</span></td>
+                              <td class="inputnmbr"><input type="text" name="userNumeric4" value="$(V_O1UDN4)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDN4)
+
+                      %elif (V_UMFSEQ == "252" && userDtlNumDesc5 > " ")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@udn5", "userNumeric5")  @dtw_assign(Err_O1UDN5, fieldValue)
+                              @Decat_Field("@@udn5")                     @dtw_assign(V_O1UDN5, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "userNumeric5")
+                          %endif
+                          @SetTextOvr(Err_O1UDN5)
+                          <tr>
+        		       <td class="dsphdr"><span $(textOvr)>$(userDtlNumDesc5)</span></td>
+                              <td class="inputnmbr"><input type="text" name="userNumeric5" value="$(V_O1UDN5)" size="22" maxlength="15"></td>
+                          </tr>
+                          @DspErrMsg(Err_O1UDN5)
+
+                      %elif (V_UMFSEQ == "260")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@pgrp", "prodGroup")  @dtw_assign(Err_O1PGRP, fieldValue)
+                              @Decat_Field("@@pgrp")                  @dtw_assign(V_O1PGRP, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "prodGroup")
+                          %endif
+                          @SetTextOvr(Err_O1PGRP)
+                          <tr>
+                              @RtvFldDesc("PGPGRP='$(V_O1PGRP)'", "HDPRGM", "PGDESC", fieldDesc)
+        		       <td class="dsphdr"><span $(textOvr)>Product Group</span></td>
+                              <td class="inputalph"><input name="prodGroup" type="text" value="$(V_O1PGRP)" size="7" maxlength="4"><a href="$(homeURL)$(cGIPath)productgroupsearch.d2w/ENTRY$(genericVarBase)&amp;docName=Chg&amp;fldName=prodGroup&amp;fldDesc=prodGroupDesc" onclick="$(searchWinVar)">  $(searchImage) </a><input name="prodGroupDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                          </tr>
+                          @DspErrMsg(Err_O1PGRP)
+
+                      %elif (V_UMFSEQ == "270")
+                          %if (errFound != "")
+                              @DecatErr_Field("@@stor", "store")      @dtw_assign(Err_O1STOR, fieldValue)
+                              @Decat_Field("@@stor")                  @dtw_assign(V_O1STOR, fieldValue)
+                          %elif (focusField == "")
+                              @dtw_assign(focusField, "store")
+                          %endif
+
+                          @RtvFldDesc("COSHTO=$(H1SHTO) and COSTOR='$(V_O1STOR)'", "HDCSTR", "CONAME", fieldDesc)
+                          @SetTextOvr(Err_O1STOR)
+                          <tr><td class="dsphdr"><span $(textOvr)>Store</span></td>
+                              <td class="inputalph"><input name="store" type="text" value="$(V_O1STOR)" size="20" maxlength="20"><a href="$(homeURL)$(cGIPath)CustomerStoreSearch.d2w/REPORT$(d2wVarBase)&amp;docName=Chg&amp;fldName=store&amp;fldDesc=storeName" onclick="$(searchWinVar)"> $(storeReq) $(searchImage) </a><input name="storeName" type="text" value="$(fieldDesc)" size="35" disabled></td>
+                          </tr>
+                          @DspErrMsg(Err_O1STOR)
+                      %endif
+                  @dtw_add(recCnt, "1", recCnt)
+              %}
+
+              %if (V_O1BLKT == "N" && multShipToCustomer>"1" && dropShip != "Y")
+                  %if (errFound != "")
+                      @DecatErr_Field("@@shto", "shipToCustomer")  @dtw_assign(Err_O1SHTO, fieldValue)
+                      @Decat_Field("@@shto")                       @dtw_assign(V_O1SHTO, fieldValue)
+                  %elif (focusField == "")
+                      @dtw_assign(focusField, "shipToCustomer")
+                  %endif
+                  @SetTextOvr(Err_O1SHTO)
+                  @RtvFldDesc("CMCUST=$(V_O1SHTO)", "HDCUST", "CMCNA1", fieldDesc)
+                  <tr><td class="dsphdr"><span $(textOvr)>Ship-To</span></td>
+                      <td class="inputnmbr"><input name="shipToCustomer" type="text" value="$(V_O1SHTO)" size="7" maxlength="7"><a href="$(homeURL)$(phpPath)CustomerSearch.php$(altVarBase)&amp;forCustomer=@dtw_rurlescseq(H1BLTO)&amp;docName=Chg&amp;fldName=shipToCustomer&amp;fldDesc=shipToName" onclick="$(searchWinVar)"> $(searchImage) </a><input name="shipToName" value="$(fieldDesc)" size="35" type="text" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_O1SHTO)
+
+                  %if (errFound != "")
+                      @DecatErr_Field("@@svsv", "shipVia")  @dtw_assign(Err_O1SVSV, fieldValue)
+                      @Decat_Field("@@svsv")                @dtw_assign(V_O1SVSV, fieldValue)
+                  %elif (focusField == "")
+                      @dtw_assign(focusField, "shipVia")
+                  %endif
+                  @SetTextOvr(Err_O1SVSV)
+                  @RtvFldDesc("SVSVSV='$(V_O1SVSV)'", "HDSHPV", "SVSVDS", fieldDesc)
+                  <tr><td class="dsphdr"><span $(textOvr)>Ship Via</span></td>
+                      <td class="inputalph"><input name="shipVia" type="text" value="$(V_O1SVSV)" size="7" maxlength="2"><a href="$(homeURL)$(phpPath)ShipViaSearch.php$(altVarBase)&amp;docName=Chg&amp;fldName=shipVia&amp;fldDesc=shipViaDesc" onclick="$(searchWinVar)"> $(searchImage) </a><input name="shipViaDesc" value="$(fieldDesc)" type="text" size="35" disabled></td>
+                  </tr>
+                  @DspErrMsg(Err_O1SVSV)
+              %endif
+              	
+              %if (V_HDMPRL > "0" && (lineNumber == "000" || V_O1MNCD == "A"))
+                  %if (V_O1ABDM == "Y")
+                      @dtw_assign(abnormalChecked, "CHECKED")
+                  %else
+                      @dtw_assign(abnormalChecked, "")
+                  %endif
+                  <tr><td class="dsphdr"><span $(textOvr)>Abnormal Demand</span></td>
+                      <td class="inputalph"><input name="abnormalDemand" type="checkbox" $(abnormalChecked) VALUE='Y'></td>
+                  </tr>
+              %endif
+
+              <tr><td class="inputalph"><input type="hidden" name="octl" value="$(orderControlNumber)"></td></tr>
+          %}
+          </table>
+          %if (focusField != "")
+              <script type="text/javascript">
+                  document.Chg.$(focusField).focus();
+              </script>
+          %endif
+      </form>
+      @dtw_assign(errFound, "")
+      <a href="javascript:check(document.Chg)">$(acceptImageLrg)</a>
+      %if (lineNumber > "000")
+          <a href="$(homeURL)$(cGIPath)$(d2wName)/DETAIL$(d2wVarBase)">$(selectResetImage)</a>
+      %endif
+      %if (H1MNCD != "S")
+          <a href="$(homeURL)$(cGIPath)OrderEntryDetail.d2w/DETAIL$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=000&amp;releaseNumber=000" title="Add Line">$(addImageMed)</a>
+          %if (oe_sec_11 == "Y")
+              <a href="$(homeURL)$(cGIPath)OrderEntryDetail.d2w/DETAIL$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=000&amp;releaseNumber=000&amp;addNonStock=Y">$(nonStockImage)</a>
+          %endif
+      %endif
+      %if (deleteAllowed == "Y")
+          <a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)OrderEntryByItem.d2w/REMOVELINE$(d2wVarBase)">$(deleteImageMed)</a>
+      %endif
+      %INCLUDE "EndTabs.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+      @dtw_GetCookie("work_cookie", haveKit)
+      @dtw_SetCookie("work_cookie", "", "path=/")
+      %if (haveKit == "K")
+          <meta http-equiv="refresh" content="0; URL=javascript:NewWindow('$(homeURL)$(cGIPath)OrderEntryKitOptionError.d2w/DISPLAY$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;reliefCode=D&amp;addToOrder=C&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))','orderEntry_win','$(orderEntryWinPctH)','$(orderEntryWinPctW)','$(orderEntryWinSB)','$(orderEntryWinRZ)','$(orderEntryWinTB)','$(orderEntryWinMB)','$(orderEntryWinST)');">
+      %elif (haveKit == "Q")
+          <meta http-equiv="refresh" content="0; URL=javascript:NewWindow('$(homeURL)$(cGIPath)OrderEntryKitOptionError.d2w/DISPLAY$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;reliefCode=E&amp;addToOrder=C&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))','orderEntry_win','$(orderEntryWinPctH)','$(orderEntryWinPctW)','$(orderEntryWinSB)','$(orderEntryWinRZ)','$(orderEntryWinTB)','$(orderEntryWinMB)','$(orderEntryWinST)');">
+      %elif (haveKit == "F")
+          <meta http-equiv="refresh" content="0; URL=javascript:NewWindow('$(homeURL)$(cGIPath)OrderEntryFeatureOptionError.d2w/DISPLAY$(d2wVarBase)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;reliefCode=D&amp;addToOrder=C&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))','orderEntry_win','$(orderEntryWinPctH)','$(orderEntryWinPctW)','$(orderEntryWinSB)','$(orderEntryWinRZ)','$(orderEntryWinTB)','$(orderEntryWinMB)','$(orderEntryWinST)');">
+      %elif (haveKit == "B")
+          <meta http-equiv="refresh" content="0; URL=javascript:NewWindow('$(homeURL)$(cGIPath)OrderEntryBlanketLine.d2w/DISPLAY$(d2wVarBase)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))','orderEntry_win','$(orderEntryWinPctH)','$(orderEntryWinPctW)','$(orderEntryWinSB)','$(orderEntryWinRZ)','$(orderEntryWinTB)','$(orderEntryWinMB)','$(orderEntryWinST)');">
+      %endif
+  %}
+%}
+
+%FUNCTION(dtw_directcall) Validate_Data(INOUT CHAR(64)    profileHandle,
+                                        INOUT CHAR(2)     dataBaseID,
+                                        INOUT CHAR(1)     qtyChg,
+                                        INOUT CHAR(1)     errFound,
+                                        INOUT CHAR(32000) edtVar,                             	
+                                        INOUT CHAR(32000) errVar)
+{%EXEC {HOEUDD_W.PGM %}
+%}
+
+%HTML(DETAIL) {
+  %INCLUDE "setLibraryList.icl"
+  %if (prevNextLine > "0")
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=@dtw_rurlescseq(prevNextLine)&amp;releaseNumber=000">
+  %else
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)">
+  %endif
+%}
+
+%HTML(DISPLAY) {
+  %INCLUDE "setLibraryList.icl"
+  @EntryCode_Query(profileHandle, dataBaseID, "OEENTCODE ", entryCodeTable)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(UPDATE) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_mUPPERCASE(itemNumber)
+  @dtw_mUPPERCASE(stockingUM)
+  @dtw_mUPPERCASE(pricingUM)
+  @dtw_mUPPERCASE(prodClass)
+  @dtw_mUPPERCASE(prodGroup)
+  @dtw_mUPPERCASE(allowBackorders)
+  @dtw_mUPPERCASE(taxable)
+  %if (generatePO == "") @dtw_assign(generatePO, "N") %endif
+  @dtw_mUPPERCASE(generatePO)
+  @dtw_mUPPERCASE(shipVia)
+  @dtw_mUPPERCASE(store)
+  @dtw_mUPPERCASE(userAlpha1)
+  @dtw_mUPPERCASE(userAlpha2)
+  @dtw_mUPPERCASE(userAlpha3)
+  @dtw_mUPPERCASE(userAlpha4)
+  @dtw_mUPPERCASE(userAlpha5)
+  @dtw_mUPPERCASE(userAlpha6)
+  @dtw_mUPPERCASE(userAlpha7)
+  @dtw_mUPPERCASE(userAlpha8)
+  @dtw_mUPPERCASE(userAlpha9)
+  @dtw_mUPPERCASE(userAlpha0)
+
+  @dtw_assign(qtyOrdered,@dtw_rstrip(qtyOrdered))
+  @dtw_assign(reqDate,@dtw_rstrip(reqDate))
+  @dtw_assign(price,@dtw_rstrip(price))
+  @dtw_assign(shipToCustomer,@dtw_rstrip(shipToCustomer))
+  @dtw_assign(discountPercent,@dtw_rstrip(discountPercent))
+  @dtw_assign(commissionPercent,@dtw_rstrip(commissionPercent))
+  @dtw_assign(unitCost,@dtw_rstrip(unitCost))
+  @dtw_assign(userNumeric1,@dtw_rstrip(userNumeric1))
+  @dtw_assign(userNumeric2,@dtw_rstrip(userNumeric2))
+  @dtw_assign(userNumeric3,@dtw_rstrip(userNumeric3))
+  @dtw_assign(userNumeric4,@dtw_rstrip(userNumeric4))
+  @dtw_assign(userNumeric5,@dtw_rstrip(userNumeric5))
+
+  %if (entryCode == "N")
+      @dtw_assign(stockingUM, pricingUM)
+  %endif
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@octl", orderControlNumber)
+  @Concat_Field("@@orl#", lineNumber)
+  @Concat_Field("@@bln#", releaseNumber)
+  @Concat_Field("@@strq", storeNbrReq)
+  %if (@dtw_rpos("@@040", userDetailFields) > "0")
+      @Concat_Field("@@rqdt", reqDate)
+  %endif
+  %if (@dtw_rpos("@@090", userDetailFields) > "0")
+      @Concat_Field("@@cmpc", commissionPercent)
+  %endif
+  %if (@dtw_rpos("@@070", userDetailFields) > "0")
+      @Concat_Field("@@lnds", discountPercent)
+  %endif
+  %if (@dtw_rpos("@@050", userDetailFields) > "0")
+      @Concat_Field("@@orec", entryCode)
+  %endif
+  %if (@dtw_rpos("@@020", userDetailFields) > "0")
+      @Concat_Field("@@item", itemNumber)
+  %endif
+  %if (@dtw_rpos("@@080", userDetailFields) > "0")
+      @Concat_Field("@@imds", itemDescription)
+  %endif
+  %if (@dtw_rpos("@@130", userDetailFields) > "0")
+      @Concat_Field("@@pcls", prodClass)
+  %endif
+  %if (@dtw_rpos("@@260", userDetailFields) > "0")
+      @Concat_Field("@@pgrp", prodGroup)
+  %endif
+  %if (@dtw_rpos("@@270", userDetailFields) > "0")
+      @Concat_Field("@@stor", store)
+  %endif
+  %if (@dtw_rpos("@@030", userDetailFields) > "0")
+      @Concat_Field("@@qord", qtyOrdered)
+  %endif
+  %if (@dtw_rpos("@@140", userDetailFields) > "0")
+      %if (allowBackorders == "")
+          @dtw_assign(allowBackorders, " ")
+      %endif
+      @Concat_Field("@@boal", allowBackorders)
+  %endif
+  %if (@dtw_rpos("@@010", userDetailFields) > "0")
+      @Concat_Field("@@wh@@", warehouse)
+  %elif (lineNumber == "000" && shipToWhs > "0")
+      @Concat_Field("@@wh@@", shipToWhs)
+  %endif
+  %if (@dtw_rpos("@@180", userDetailFields) > "0")
+      @Concat_Field("@@orcs", custItemNumber)
+  %endif
+  %if (@dtw_rpos("@@120", userDetailFields) > "0")
+      @Concat_Field("@@prum", pricingUM)
+  %endif
+  %if (@dtw_rpos("@@150", userDetailFields) > "0")
+      @Concat_Field("@@taxc", taxable)
+  %endif
+  %if (@dtw_rpos("@@060", userDetailFields) > "0")
+      @Concat_Field("@@slpr", price)
+  %endif
+  %if (@dtw_rpos("@@100", userDetailFields) > "0")
+      @Concat_Field("@@cost", unitCost)
+  %endif
+  %if (@dtw_rpos("@@110", userDetailFields) > "0")
+      @Concat_Field("@@stum", stockingUM)
+  %endif
+  %if (@dtw_rpos("@@160", userDetailFields) > "0")
+      @Concat_Field("@@gnpo", generatePO)
+  %endif
+  %if (multShipToCustomer>"1" && dropShip != "Y")
+      @Concat_Field("@@shto", shipToCustomer)
+      @Concat_Field("@@svsv", shipVia)
+  %endif
+  %if (@dtw_rpos("@@200", userDetailFields) > "0")
+      @Concat_Field("@@uda1", userAlpha1)
+  %endif
+  %if (@dtw_rpos("@@210", userDetailFields) > "0")
+      @Concat_Field("@@uda2", userAlpha2)
+  %endif
+  %if (@dtw_rpos("@@220", userDetailFields) > "0")
+      @Concat_Field("@@uda3", userAlpha3)
+  %endif
+  %if (@dtw_rpos("@@221", userDetailFields) > "0")
+      @Concat_Field("@@uda4", userAlpha4)
+  %endif
+  %if (@dtw_rpos("@@222", userDetailFields) > "0")
+      @Concat_Field("@@uda5", userAlpha5)
+  %endif
+  %if (@dtw_rpos("@@223", userDetailFields) > "0")
+      @Concat_Field("@@uda6", userAlpha6)
+  %endif
+  %if (@dtw_rpos("@@224", userDetailFields) > "0")
+      @Concat_Field("@@uda7", userAlpha7)
+  %endif
+  %if (@dtw_rpos("@@225", userDetailFields) > "0")
+      @Concat_Field("@@uda8", userAlpha8)
+  %endif
+  %if (@dtw_rpos("@@226", userDetailFields) > "0")
+      @Concat_Field("@@uda9", userAlpha9)
+  %endif
+  %if (@dtw_rpos("@@227", userDetailFields) > "0")
+      @Concat_Field("@@uda0", userAlpha0)
+  %endif
+  %if (@dtw_rpos("@@230", userDetailFields) > "0")
+      @Concat_Field("@@udn1", userNumeric1)
+  %endif
+  %if (@dtw_rpos("@@240", userDetailFields) > "0")
+      @Concat_Field("@@udn2", userNumeric2)
+  %endif
+  %if (@dtw_rpos("@@250", userDetailFields) > "0")
+      @Concat_Field("@@udn3", userNumeric3)
+  %endif
+  %if (@dtw_rpos("@@251", userDetailFields) > "0")
+      @Concat_Field("@@udn4", userNumeric4)
+  %endif
+  %if (@dtw_rpos("@@252", userDetailFields) > "0")
+      @Concat_Field("@@udn5", userNumeric5)
+  %endif
+  %if (V_HDMPRL > "0")
+      @Concat_Field("@@abdm", abnormalDemand)
+  %endif
+  @Concat_Field("@@clln", closeLine)
+  %if (entryCode != "N")
+      @Concat_Field("@@vcat", V_CIUVCT)
+  %endif
+  @Concat_Field("@@pcfc", productCfgFormat)
+  @Concat_Field("@@ucat", productCfgOptionDesc)
+  @dtw_concat(edtVar, "}{", edtVar)
+
+  @Validate_Data(profileHandle, dataBaseID, qtyChg, errFound, edtVar, errVar)
+  		
+  %if (errFound == "")
+      @Decat_Field("@@mfgr") @dtw_assign(mfgReview, fieldValue)
+      @Decat_Field("@@hkit") @dtw_assign(haveKit,   fieldValue)
+      %if (haveKit == "" && qtyChg != "")
+          @dtw_assign(haveKit, qtyChg)
+      %endif
+      @dtw_SetCookie("work_cookie", "$(haveKit)", "path=/")
+      @DTW_ASSIGN(updateTotal, "Y")
+      @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+      %if (maintCode == "S")
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)ordershippingreview.d2w/DISPLAY$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)">
+      %else
+          <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)&amp;confUpdate=Y">
+      %endif
+  %else
+      @EdtVarErr(profileHandle, typeValue, edtVar)
+      @ErrVarErr(profileHandle, typeError, errVar)
+      <meta http-equiv="refresh" content="0; URL=$(homeURL)$(cGIPath)$(d2wName)/DISPLAY$(d2wVarBase)&amp;errFound=@dtw_rurlescseq(errFound)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))">
+  %endif
+%}
+
+%HTML(STATUS) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, " Update OEDTWK Set O1MNCD='$(status)' ", stmtSQL)
+  @dtw_concat(stmtSQL, " Where O1OCTL=$(orderControlNumber) and O1ORL#=$(lineNumber) @@endsql", stmtSQL)
+  @SQL_Update(stmtSQL, status)
+  <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)OrderEntryByItem.d2w/ENTRY$(d2wVarBase)">
+%}

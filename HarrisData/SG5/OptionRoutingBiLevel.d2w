@@ -1,0 +1,271 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job:  Option Routing Bi-Level                                    *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "EdtVar.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_titleZ             = "Copy Routing To Bi-Level Options"
+  page_titleD             = "Delete Routing From Bi-Level Options"
+  d2wName                 = "OptionRoutingBiLevel.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(fromPlant)&amp;plantNumber=@dtw_rurlescseq(plantNumber)&amp;option=@dtw_rurlescseq(option)&amp;feature=@dtw_rurlescseq(feature)&amp;featureDesc=@dtw_rurlescseq(featureDesc)&amp;biLevel=@dtw_rurlescseq(biLevel)&amp;maintenanceCode=@dtw_rurlescseq(maintenanceCode)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HPD021"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  advanceSearch           = "N"
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @PlantUserView(profileHandle, dataBaseID, userPass, plantNumber)
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script TYPE="text/javascript">
+                  function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+                  function confirmCopy(text) {return confirm("OK to copy?" + "\n" + "\n" + text);}
+                  %INCLUDE "CheckEnterSearch.icl"
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "NoFormValidate.icl"
+              </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                           @dtw_assign(pageID, "OPTIONROUTINGBILEVEL")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(distinctSQL, "FOOPTN", distinctSQL)
+                          @dtw_concat(stmtSQL, "Select distinct FOOPTN ", stmtSQL)
+                          @dtw_concat(fileSQL, " HDMFOP ", fileSQL)
+                          %if (maintenanceCode == "D")
+                              @dtw_concat(fileSQL, " , HDMFRM ", fileSQL)
+                          %endif
+                          @dtw_concat(selectSQL, " FOPLT=$(plantNumber)", selectSQL)
+                          @dtw_concat(selectSQL, " and FOFEAT='$(biLevel)'", selectSQL)
+                          %if (maintenanceCode == "Z")
+                              @dtw_concat(selectSQL, " and FOOPTN<>'$(option)'", selectSQL)
+                          %endif
+                          %if (maintenanceCode == "D")
+                              @dtw_concat(selectSQL, " and FOPLT=FRPLT", selectSQL)
+                              @dtw_concat(selectSQL, " and FOOPTN=FRFEAT", selectSQL)
+                              @dtw_concat(selectSQL, " and '$(feature)'=FRFITM", selectSQL)
+                          %endif
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By FOOPTN", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @OptionRoutingBiLevel_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) OptionRoutingBiLevel_Query (IN CHAR(64)    profileHandle,
+                                                  CHAR(2)     dataBaseID,
+                                                  CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+
+      @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+      %if (maintenanceCode == "Z")
+          @RtvFldDesc("IMITEM='$(option)'", "HDIMST", "IMIMDS", optionDesc)
+      %endif
+      @RtvFldDesc("FOPLT=$(plantNumber) and FOFEAT='$(biLevel)'", "HDMFOP", "FOFDSC", biLevelDesc)
+
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr>
+              %if (maintenanceCode == "Z")
+                  <td><h1>$(page_titleZ)</h1></td>
+              %else
+                  <td><h1>$(page_titleD)</h1></td>
+              %endif
+          </tr>
+      </table>
+
+      <table $(contentTable)>
+          @Format_Header_URL("Plant", $(plantName), $(plantNumber), "$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(d2wVarBase)")
+          %if (maintenanceCode == "Z")
+              @Format_Header_URL("Option", $(optionDesc), $(option), "$(homeURL)$(cGIPath)Option.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(fromPlant)")
+              @Format_Header_URL("Feature", $(featureDesc), $(feature), "$(homeURL)$(cGIPath)Feature.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(fromPlant)")
+          %endif
+          @Format_Header_URL("Bi-Level Option", $(biLevelDesc), $(biLevel), "")
+      </table>
+      %INCLUDE "ConfMessageDisplay.icl"
+	
+      $(hrTagAttr)	
+
+      <table $(contentTable)>
+          <tr><td> %INCLUDE "AssignPageValue.icl" </td></tr>
+      </table>
+
+      <table $(contentTable)>
+          <tr>
+              <th class="colhdr">Option</th>
+              <th class="colhdr">Description</th>
+              <th class="colhdr">Routings</th>
+          </tr>		
+          %INCLUDE "NoRecordsFound.icl"
+
+      %ROW{
+              %INCLUDE "SetRowClass.icl"
+              %if (maintenanceCode == "Z")
+                  @Format_Confirm_Desc("All Routings to Option", $(V_FOOPTN), "", "", "", "", confirmDesc)
+              %endif
+              %if (maintenanceCode == "D")
+                  @Format_Confirm_Desc("All Routings from Option", $(V_FOOPTN), "", "", "", "", confirmDesc)
+              %endif
+              @dtw_assign(maintainVar, "$(d2wVarBase)")
+              @RtvFldDesc("IMITEM='$(V_FOOPTN)'", "HDIMST", "IMIMDS", biLevelOptionDesc)
+              @RtvFldDesc("FRPLT=$(plantNumber) and FRFEAT='$(V_FOOPTN)' and FRFITM='$(feature)'", "HDMFRM","FRDEPT", dept)
+              %if (dept != "")
+                  @dtw_assign(rtgExists, "Y")
+              %else
+                  @dtw_assign(rtgExists, "")
+              %endif
+	       <tr class="$(rowClass)">
+                  %if (maintenanceCode == "Z")
+                      <td class="colalph"><a onClick="return confirmCopy('$(confirmDesc)')" href="$(homeURL)$(cGIPath)OptionRoutingBiLevel.d2w/COPYALL$(d2wVarBase)&amp;toOption=@dtw_rurlescseq(V_FOOPTN)" title="Copy All Routings">$(V_FOOPTN)</a></td>
+                  %endif
+                  %if (maintenanceCode == "D")
+                      <td class="colalph"><a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)OptionRoutingBiLevel.d2w/DELETEALL$(d2wVarBase)&amp;fromOption=@dtw_rurlescseq(V_FOOPTN)" title="Delete All Routings">$(V_FOOPTN)</a></td>
+                  %endif
+                  <td class="colalph">$(biLevelOptionDesc)</td>
+                  <td class="colcode">$(rtgExists)</td>
+	       </tr>
+	   %}
+      </table>
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%FUNCTION(dtw_directcall) Validate_DELETEALL(INOUT CHAR(64)    profileHandle,
+                                             INOUT CHAR(2)     dataBaseID,
+                                             INOUT CHAR(1)     maintenanceCode,
+                                             INOUT CHAR(1)     errFound,
+                                             INOUT CHAR(32000) edtVar,                             	
+                                             INOUT CHAR(32000) errVar,
+                                             INOUT CHAR(10)    SUBR)
+{%EXEC {HPD021_W.PGM %}
+%}
+
+%HTML(DELETEALL) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(SUBR, "SRDelAll")
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@plt@", plantNumber)
+  @Concat_Field("@@feat", fromOption)
+  @Concat_Field("@@fitm", feature)
+  @Concat_Field("@@rtgt", "O")
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Validate_DELETEALL(profileHandle, dataBaseID, maintenanceCode, errFound, edtVar, errVar, SUBR)
+
+  %if (errFound == "")
+      @Format_ConfMsg_Desc(maintenanceCode, "All Routings", "", "", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @DecatErr_Field("@@plt@", "sequenceNumber")  @dtw_assign(confMessage, "$(fieldValue)")
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %endif
+%}
+
+%FUNCTION(dtw_directcall) Validate_COPYALL(INOUT CHAR(64)    profileHandle,
+                                           INOUT CHAR(2)     dataBaseID,
+                                           INOUT CHAR(1)     maintenanceCode,
+                                           INOUT CHAR(1)     errFound,
+                                           INOUT CHAR(32000) edtVar,                             	
+                                           INOUT CHAR(32000) errVar,
+                                           INOUT CHAR(10)    SUBR)
+
+{%EXEC {HPD021_W.PGM %}
+%}
+
+%HTML(COPYALL) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(SUBR, "SRCpyBiLvl")
+
+  @dtw_assign(edtVar, "")
+  @Concat_Field("@@fplt", plantNumber)
+  @Concat_Field("@@ffea", option)
+  @Concat_Field("@@ffit", feature)
+  @Concat_Field("@@tplt", plantNumber)
+  @Concat_Field("@@tfea", toOption)
+  @Concat_Field("@@tfit", feature)
+  @Concat_Field("@@rtgt", "O")
+  @dtw_concat(edtVar, "}{", edtVar)
+  @Validate_COPYALL(profileHandle, dataBaseID, maintCode, errFound, edtVar, errVar, SUBR)
+
+  %if (errFound == "")
+      @Format_ConfMsg_Desc("Z", "All Routings", "", "", "", "", "", confMessage)
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %else
+      @DecatErr_Field("@@tplt", "sequenceNumber")  @dtw_assign(confMessage, "$(fieldValue)")
+      %if (confMessage == "")
+          @DecatErr_Field("@@tfea", "sequenceNumber")  @dtw_assign(confMessage, "$(fieldValue)")
+          %if (confMessage == "")
+              @DecatErr_Field("@@tfit", "sequenceNumber")  @dtw_assign(confMessage, "$(fieldValue)")
+          %endif
+      %endif
+      <meta http-equiv="refresh" content="1; URL=$(homeURL)$(cGIPath)$(d2wName)/REPORT$(d2wVarBase)&amp;confMessage=@dtw_rurlescseq(confMessage)">
+  %endif
+%}

@@ -1,0 +1,444 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Company/Facility Search                                     *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "SystemControl$(dataBaseID).icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Company/Facility Search"
+  d2wName                 = "CoFacSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;fldCo=@dtw_rurlescseq(fldCo)&amp;fldFac=@dtw_rurlescseq(fldFac)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "ENTRY$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  novcf                   = ""
+  docName                 = ""
+  fldCo                   = ""
+  fldFac                  = ""
+  fldDesc                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectCoFac(companyNumber, facilityNumber, desc){
+                  window.opener.document.$(docName).$(fldCo).value = companyNumber;
+                  window.opener.document.$(docName).$(fldFac).value = facilityNumber;
+                  window.opener.document.$(docName).$(fldDesc).value = desc;
+                  window.opener.document.$(docName).$(fldCo).focus();
+                  window.close();
+              }
+	       %INCLUDE "NumEdit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchCo, 2, 0) &&
+                      editNum(document.Search.srchFac, 4, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      @dtw_assign(uv_CompanyName, "CFCO#")
+                      @dtw_assign(uv_FacilityName, "CFFAC#")
+                      %INCLUDE "userview.icl"
+
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " HDCFAC ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, " CFCO#=$(companyNumber) and CFFAC#=$(facilityNumber)", selectSQL)
+                      %elseif (wildCardSearch!="" || uv_Sql!="")
+                          @dtw_concat(selectSQL, " CFCO#>0", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @CoFac_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+%FUNCTION(dtw_sql) CoFac_Search (IN CHAR(64)    profileHandle,
+     	                             CHAR(2)     dataBaseID,
+                                    CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Name</th>
+                      <th class="colhdr">Co / Fac</th>
+                  </tr>
+                  <tr>
+                      <td class="inputalph">
+                          <input type="text" name="srchName" size="30" maxlength="30">
+                          <input type="hidden" name="operName" value="LIKE">
+                      </td>
+                       <td class="inputnmbr"><input name="srchCo" type="text" size="2" maxlength="2"> / <input name="srchFac" type="text" size="4" maxlength="4">
+                          <input type="hidden" name="operCo" value="=">
+                          <input type="hidden" name="operFac" value="=">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchName.focus();
+              </script>
+          </form>
+	
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("CFCO#", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Number" title="Sequence By Co/Fac"> Co/Fac</a></th>
+                  @OrderBy_Sort("CFCFNMU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Name" title="Sequence By Name, Co/Fac"> Name</a></th>
+                  @OrderBy_Sort("CFDTES", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Established" title="Sequence By Date Established, Co/Fac"> Date<br>Established</a></th>
+                  @OrderBy_Sort("CFDTDE", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Deactivated" title="Sequence By Date Deactivated, Co/Fac"> Date<br>Deactivated</a></th>
+              </tr>
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif		
+
+              %ROW{
+                  @Format_CoFac("$(V_CFCO#)", "$(V_CFFAC#)", "", F_CoFac)
+                  @Format_Date(V_CFDTES, "D", F_CFDTES)
+                  @Format_Date(V_CFDTDE, "D", F_CFDTDE)
+                  @Format_Quote(V_CFCFNM, F_CFCFNM)
+
+    	           %if (moreInfo != "Y")	
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          <td class="colnmbr">$(F_CoFac)</td>
+                          <td class="colalph"><a href="javascript:selectCoFac($(V_CFCO#),$(V_CFFAC#),'$(F_CFCFNM)')" title="Select Company/Facility">$(V_CFCFNM)</a></td>
+                          <td class="coldate">$(F_CFDTES)</td>
+                          <td class="coldate">$(F_CFDTDE)</td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;companyNumber=@dtw_rurlescseq(V_CFCO#)&amp;facilityNumber=@dtw_rurlescseq(V_CFFAC#)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      %{ More Information Screen %}
+
+                      <tr><td><a href="javascript:selectCoFac($(V_CFCO#),$(V_CFFAC#),'$(F_CFCFNM)')" title="Select Company/Facility">$(selectImageLrg)</a>
+                      </td></tr>
+
+                      <tr><td class="dsphdr">Company/Facility Number</td>
+                          <td class="dspalph">$(F_CoFac)</td>
+                      </tr>
+    	   		
+                      <tr><td class="dsphdr">Company/Facility Name</td>
+                          <td class="dspalph">$(V_CFCFNM)</td>
+                      </tr>
+
+                      %if (V_CFDFAC>"0")
+                          @Default_Zero(V_CFDFAC)
+                          @Default_Zero(V_CFDFSB)
+		           @Format_Acct("$(V_CFDFAC)", "$(V_CFDFSB)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Inter-Company Due From</td>
+                              <td class="dspalph">$(F_AcctSub)</td></tr>
+                      %endif
+
+                      %if (V_CFAPA>"0")
+                          @Default_Zero(V_CFAPA)
+                          @Default_Zero(V_CFAPS)
+		           @Format_Acct("$(V_CFAPA)", "$(V_CFAPS)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">A/P Account</td>
+                              <td class="dspalph">$(F_AcctSub)</td></tr>
+                      %endif
+
+                      %if (V_CFIAAC>"0")
+                          @Default_Zero(V_CFIAAC)
+                          @Default_Zero(V_CFIASB)
+		           @Format_Acct("$(V_CFIAAC)", "$(V_CFIASB)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Inter-Co Bal Allocations</td>
+                              <td class="dspalph">$(F_AcctSub)</td></tr>
+                      %endif
+
+                      %if (V_CFICAC>"0")
+                          @Default_Zero(V_CFICAC)
+                          @Default_Zero(V_CFICSB)
+		           @Format_Acct("$(V_CFICAC)", "$(V_CFICSB)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Inter-Co Bal Current</td>
+                              <td class="dspalph">$(F_AcctSub)</td></tr>
+                      %endif
+
+                      %if (V_CFISAC>"0")
+                          @Default_Zero(V_CFISAC)
+                          @Default_Zero(V_CFISSB)
+		           @Format_Acct("$(V_CFISAC)", "$(V_CFISSB)", "Y", F_AcctSub)
+                          <tr><td class="dsphdr">Inter-Co Bal Recurring</td>
+                              <td class="dspalph">$(F_AcctSub)</td></tr>
+                      %endif
+
+                      %if (V_CFTIN#>"0")
+                          <tr><td class="dsphdr">Payer TIN Number</td>
+                              <td class="dspalph">$(V_CFTIN#)</td></tr>
+                      %endif
+
+               			
+                      %if (V_CFDBGT>"0")
+                          @RtvFldDesc("BGNMBR=$(V_CFDBGT)", "GLBGHD", "BGDESC", fieldDesc)
+                          <tr><td class="dsphdr">Default Budget Plan</td>
+                              <td class="dspalph">$(fieldDesc)</td></tr>
+                      %endif
+               			
+                      %if (V_CFDTES>"0")
+                          @Format_Date(V_CFDTES, "H", F_CFDTES)
+                          <tr><td class="dsphdr">Date Established</td>
+                              <td class="dspalph">$(F_CFDTES)</td></tr>
+                      %endif
+               			
+                      %if (V_CFDTDE>"0")
+                          @Format_Date(V_CFDTDE, "H", F_CFDTDE)
+                          <tr><td class="dsphdr">Date Deactivated</td>
+                              <td class="dspalph">$(F_CFDTDE)</td></tr>
+                      %endif
+
+                      %if (V_HDMCRL > "0")
+                          <tr><td class="dsphdr">Currency Type</td>
+                              <td class="dspalph">$(F_CFCURT)</td></tr>
+                      %endif
+
+                      %if (V_HDMCRL > "0")
+                          @Format_CoFac("$(V_CFTRCO)", "$(V_CFTRFC)", "Y", F_CoFac)
+                          <tr><td class="dsphdr">Translated Company/Facility</td>
+                              <td class="dspalph">$(F_CoFac)</td>
+                          </tr>
+                      %endif
+
+                  %endif
+              %}
+          </table>
+	   %if (moreInfo != "Y")	
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+	   %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(ENTRY) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "CFCFNMU,CFCO#,CFFAC#")
+      @DTW_ASSIGN(orderByDisplay, "Name, Number")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @DTW_ASSIGN(orderBy, "CFCO#")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY)
+{
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Number")
+      %if (orderBy == "CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderBy, "CFCO# DESC,CFFAC#")
+          @DTW_ASSIGN(orderByDisplay, "Co/Fac (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderByDisplay, "Co/Fac")
+      %endif
+  %elseif (sequence == "Name")
+      %if (orderBy == "CFCFNMU,CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderBy, "CFCFNMU DESC,CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderByDisplay, "Name (descending), Co/Fac")
+      %else
+          @DTW_ASSIGN(orderBy, "CFCFNMU,CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderByDisplay, "Name, Co/Fac")
+      %endif
+  %elseif (sequence == "Established")
+      %if (orderBy == "CFDTES,CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderBy, "CFDTES DESC,CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderByDisplay, "Date Established (descending), Co/Fac")
+      %else
+          @DTW_ASSIGN(orderBy, "CFDTES,CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderByDisplay, "Date Established, Co/Fac")
+      %endif
+  %elseif (sequence == "Deactivated")
+      %if (orderBy == "CFDTDE,CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderBy, "CFDTDE DESC,CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderByDisplay, "Date Deactivated (descending), Co/Fac")
+      %else
+          @DTW_ASSIGN(orderBy, "CFDTDE,CFCO#,CFFAC#")
+          @DTW_ASSIGN(orderByDisplay, "Date Deactivated, Co/Fac")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH)
+{
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchCo, 2, 0) &&
+                      editNum(document.Search.srchFac, 4, 0) &&
+                      editNum(document.Search.srchBdgt, 3, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Company</td>
+                              @dtw_assign(operNbr, "operCo")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchCo" size="2" maxlength="2"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Facility</td>
+                              @dtw_assign(operNbr, "operFac")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchFac" size="4" maxlength="4"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Name</td>
+                              @dtw_assign(operNbr, "operName")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchName" size="30" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Payer TIN Number</td>
+                              @dtw_assign(operNbr, "operTIN")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"> <input type="text" name="srchTIN" size="9" maxlength="9"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Default Budget Plan</td>
+                              @dtw_assign(operNbr, "operBdgt")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchBdgt" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Currency Type</td>
+                              @dtw_assign(operNbr, "operCur")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCur" size="4" maxlength="4"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchCo.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD)
+{
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("CFCFNMU", "Name", $(srchName), "U", operName, "A")
+  @Build_WildCard ("CFCO#", "Company", $(srchCo), "", operCo, "N")
+  @Build_WildCard ("CFFAC#", "Facility", $(srchFac), "", operFac, "N")
+  @Build_WildCard ("CFTIN#", "Payer TIN Number", $(srchTIN), "U", operTIN, "A")
+  @Build_WildCard ("CFDBGT", "Default Budget Plan", $(srchBdgt), "", operBdgt, "N")
+  @Build_WildCard ("CFCURT", "Currency Type", $(srchCur), "U", operCur, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

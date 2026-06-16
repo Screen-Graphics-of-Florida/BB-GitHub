@@ -1,0 +1,528 @@
+%{
+*********************************************************************
+* Copr 1979 2006 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Map Definition Search                                       *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Map Definition Search"
+  d2wName                 = "MapDefinitionSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;fldName=@dtw_rurlescseq(fldName)&amp;fldDesc=@dtw_rurlescseq(fldDesc)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldName                 = ""
+  fldDesc                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectProcess(mapKey, mapKeyDescription){
+                  window.opener.document.$(docName).$(fldName).value = mapKey;
+                  window.opener.document.$(docName).$(fldDesc).value = mapKeyDescription;
+                  window.opener.document.$(docName).$(fldName).focus();
+                  window.close();
+              }
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, " Select * ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYMMHD ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_assign(START_ROW_NUM, "1")
+                          @dtw_assign(RPT_MAX_ROWS, "9999")
+                          @dtw_concat(selectSQL, " MHMPKY=$(mapKey)", selectSQL)
+                      %elif (wildCardSearch!="")
+                          @dtw_concat(selectSQL, " MHMPKY>0 ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @List_Query(profileHandle, dataBaseID, stmtSQL)
+
+                      %if (moreInfo == "Y")
+                          @dtw_assign(SAVE_ROW_NUM, START_ROW_NUM)
+                          @dtw_assign(SAVE_MAX_ROWS, RPT_MAX_ROWS)
+                          @dtw_assign(START_ROW_NUM, "1")
+                          @dtw_assign(RPT_MAX_ROWS, "9999")
+
+                          %{Table %}
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select a.*,  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(b.MFDESC,' ') as ParentMFDESC, coalesce(b.MFDESCU,' ') as ParentMFDESCU ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From SYMMTB a ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMMTB b on b.MFMPKY=a.MFMPKY and b.MFMFIL=a.MFPFIL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where a.MFMPKY=$(mapKey) ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Order By MFDESCU, MFMFIL ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Process_Select_Table(profileHandle, dataBaseID, stmtSQL)
+
+                          %{Column %}
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select SYMMCL.*, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(MFDESC,' ') as MFDESC, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(PMPRMD,' ') as PMPRMD ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From SYMMCL", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMMTB on MFMPKY=MDMPKY and MFMFIL=MDMFIL ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join WFPARM on PMPARM=MDPARM ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where MDMPKY=$(mapKey) and MDDPOS>0 ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Order By MFDESC,MDMFIL,MDDPOS,MDMFLD ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Process_Select_Column(profileHandle, dataBaseID, stmtSQL)
+
+                          %{Import %}
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, " Select SYMIHD.*, SYMITB.* ", stmtSQL)
+                          @dtw_concat(stmtSQL, " From SYMIHD ", stmtSQL)
+                          @dtw_concat(stmtSQL, " left join SYMITB on FFIMKY=FHIMKY ", stmtSQL)
+                          @dtw_concat(stmtSQL, " and FFIFIL=(Select Max(FFIFIL) from SYMITB where FFIMKY=FHIMKY)", stmtSQL)
+                          @dtw_concat(stmtSQL, " Where FHMPKY=$(mapKey)  ", stmtSQL)
+                          @dtw_concat(stmtSQL, " Order By FHDESCU ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          @Process_Select_Import(profileHandle, dataBaseID, stmtSQL)
+
+                          @dtw_assign(START_ROW_NUM, SAVE_ROW_NUM)
+                          @dtw_assign(RPT_MAX_ROWS, SAVE_MAX_ROWS)
+                      %endif
+
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) List_Query (IN  CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Description</th>
+                      <th class="colhdr">Workflow Program</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchDesc" size="15" maxlength="50">
+                          <input type="hidden" name="operDesc" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchWFProgram" size="10" maxlength="10">
+                          <input type="hidden" name="operWFProgram" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchDesc.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              <tr>
+                  @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+                  @OrderBy_Sort("MHDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Description"        title="Sequence By Description, Map Definition">Description</a></th>
+                  @OrderBy_Sort("MHWPGM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=WFProgram"          title="Sequence By Workflow Program, Map Definition">Workflow Program</a></th>
+                  @OrderBy_Sort("MHMPGM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=MapProgram"         title="Sequence By Map Program, Map Definition">Map Program</a></th>
+                  @OrderBy_Sort("MHRPGM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ReportProgram"      title="Sequence By Interface Report Program, Map Definition">Interface Report Program</a></th>
+                  @OrderBy_Sort("MHCPGM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CleanUpProgram"     title="Sequence By Interface Clean Up Program, Map Definition">Interface Clean Up Program</a></th>
+                  @OrderBy_Sort("MHPPGM", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ProcessProgram"     title="Sequence By Interface Process Program, Map Definition">Interface Process Program</a></th>
+              </tr>
+
+              %INCLUDE "NoRecordsFound.icl"
+      %endif		
+
+              %ROW{
+                  @Format_Quote(V_MHMPKY, F_MHMPKY)
+                  @Format_Quote(V_MHDESC, F_MHDESC)
+
+                  %if (moreInfo != "Y")	
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          <td class="colalph"><a href="javascript:selectProcess('$(F_MHMPKY)','$(F_MHDESC)')" title="Select Definition">$(V_MHDESC)</a></td>
+                          <td class="colalph">$(V_MHWPGM)</td>                                      	
+                          <td class="colalph">$(V_MHMPGM)</td>                                      	
+                          <td class="colalph">$(V_MHRPGM)</td>                                      	
+                          <td class="colalph">$(V_MHCPGM)</td>                                      	
+                          <td class="colalph">$(V_MHPPGM)</td>                                      	
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;mapKey=@dtw_rurlescseq(V_MHMPKY)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      <table $(contentTable)>
+                          <tr><td><a href="javascript:selectProcess('$(F_MHMPKY)','$(F_MHDESC)')" title="Select Definition">$(selectImageLrg)</a>
+                              </td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Description</td>
+                              <td class="dspalph">$(V_MHDESC)</td>
+                          </tr>
+
+                          @RtvFldDesc("ACPGM='$(V_MHWPGM)'", "WFAPCT", "Max(ACDESC)", V_ACDESC)
+                          <tr><td class="dsphdr">Workflow Program</td>
+                              @Format_Code(V_MHWPGM, F_MHWPGM)
+                              <td class="dspalph">$(V_ACDESC) $(F_MHWPGM)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Map Program</td>
+                              <td class="dspalph">$(V_MHMPGM)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Interface Report Program</td>
+                              <td class="dspalph">$(V_MHRPGM)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Interface Clean Up Program</td>
+                              <td class="dspalph">$(V_MHCPGM)</td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Interface Process Program</td>
+                              <td class="dspalph">$(V_MHPPGM)</td>
+                          </tr>
+                      </table>
+                  %endif
+              %}
+
+      %if (moreInfo != "Y")	
+          </table>
+          %INCLUDE "PageBottom.icl"
+          %INCLUDE "WildCardPrint.icl"
+      %endif	   	
+  %}
+%}
+
+%FUNCTION(dtw_sql) Process_Select_Table (IN  CHAR(64)    profileHandle,
+                                             CHAR(2)     dataBaseID,
+                                             CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Table</legend>
+          <table $(contentTable)>
+              <tr>
+                  <th class="colhdr">Interface Table</th>
+                  <th class="colhdr">Description</th>
+                  <th class="colhdr">Parent Interface Table</th>
+              </tr>
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colalph">$(V_MFMFIL)</td>
+                      <td class="colalph">$(V_MFDESC)</td>
+                      <td class="colalph" $(helpCursor)><span title="$(V_MFPFIL)">$(V_ParentMFDESC)</span></td>
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Process_Select_Column (IN  CHAR(64)    profileHandle,
+                                              CHAR(2)     dataBaseID,
+                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Column</legend>
+          <table $(contentTable)>
+              <tr>
+                  <th class="colhdr">Interface Table</th>
+                  <th class="colhdr">Column</th>
+                  <th class="colhdr">Description</th>
+                  <th class="colhdr">Note</th>
+                  <th class="colhdr">Column Type</th>
+                  <th class="colhdr">Numeric Stored</th>
+                  <th class="colhdr">Normal Balance</th>
+                  <th class="colhdr">Default Logic</th>
+                  <th class="colhdr">Workflow Parameter</th>
+              </tr>
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colalph" $(helpCursor)><span title="$(V_MDMFIL)">$(V_MFDESC)</td>                                      	
+                      <td class="colalph">$(V_MDMFLD)</td>                                      	
+                      <td class="colalph">$(V_MDDESC)</td>                                      	
+                      %if (V_MDNOTE != "")
+                          <td class="colcode" $(helpCursor)><span title="$(V_MDNOTE)">Y</span></td>                                      	
+                      %else
+                          <td class="colalph">&nbsp;</td>                                      	
+                      %endif
+                      <td class="colcode">$(V_MDFLDT)</td>                                      	
+                      <td class="colcode">$(V_MDSTOR)</td>                                      	
+                      <td class="colcode">$(V_MDNAB)</td>                                      	
+                      <td class="colcode">$(V_MDDLGC)</td>
+                      <td class="colalph" $(helpCursor)><span title="$(V_PMPRMD)">$(V_MDPARM)</span></td>
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+  %}
+%}
+
+%FUNCTION(dtw_sql) Process_Select_Import (IN  CHAR(64)    profileHandle,
+                                              CHAR(2)     dataBaseID,
+                                              CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <fieldset class="legendBody">
+          <legend class="legendTitle">Import</legend>
+          <table $(contentTable)>
+              <tr>
+                  <th class="colhdr">Import Definition</th>
+                  <th class="colhdr">Import Table</th>
+              </tr>
+
+              %ROW{
+                  %INCLUDE "SetRowClass.icl"
+                  <tr class="$(rowClass)">
+                      <td class="colalph" $(helpCursor)><span title="$(V_FHIMKY)">$(V_FHDESC)</span></td>
+                      <td class="colalph" $(helpCursor)><span title="$(V_FFIFIL)">$(V_FFDESC)</span></td>
+                  </tr>
+              %}
+          </table>
+      </fieldset>
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "MHDESCU,MHMPKY")
+      @DTW_ASSIGN(orderByDisplay, "Description, Map Definition")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "Description")
+      %if (orderBy == "MHDESCU,MHMPKY")
+          @DTW_ASSIGN(orderBy, "MHDESCU DESC,MHMPKY")
+          @DTW_ASSIGN(orderByDisplay, "Description (descending), Map Definition")
+      %else
+          @DTW_ASSIGN(orderBy, "MHDESCU,MHMPKY")
+          @DTW_ASSIGN(orderByDisplay, "Description, Map Definition")
+      %endif
+  %elif (sequence == "WFProgram")
+      %if (orderBy == "MHWPGM,MHDESCU")
+          @DTW_ASSIGN(orderBy, "MHWPGM DESC,MHDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Workflow Program (descending), Description")
+      %else
+          @DTW_ASSIGN(orderBy, "MHWPGM,MHDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Workflow Program, Description")
+      %endif
+  %elif (sequence == "MapProgram")
+      %if (orderBy == "MHMPGM,MHDESCU")
+          @DTW_ASSIGN(orderBy, "MHMPGM DESC,MHDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Map Program (descending), Description")
+      %else
+          @DTW_ASSIGN(orderBy, "MHMPGM,MHDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Map Program, Description")
+      %endif
+  %elif (sequence == "ReportProgram")
+      %if (orderBy == "MHRPGM,MHDESCU")
+          @DTW_ASSIGN(orderBy, "MHRPGM DESC,MHDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Interface Report Program (descending), Description")
+      %else
+          @DTW_ASSIGN(orderBy, "MHRPGM,MHDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Interface Report Program, Description")
+      %endif
+  %elif (sequence == "CleanUpProgram")
+      %if (orderBy == "MHCPGM,MHDESCU")
+          @DTW_ASSIGN(orderBy, "MHCPGM DESC,MHDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Interface Clean Up Program (descending), Description")
+      %else
+          @DTW_ASSIGN(orderBy, "MHCPGM,MHDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Interface Clean Up Program, Description")
+      %endif
+  %elif (sequence == "ProcessProgram")
+      %if (orderBy == "MHPPGM,MHDESCU")
+          @DTW_ASSIGN(orderBy, "MHPPGM DESC,MHDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Interface Process Program (descending), Description")
+      %else
+          @DTW_ASSIGN(orderBy, "MHPPGM,MHDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Interface Process Program, Description")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "MAPDEFINITIONSEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Description</td>
+                              @dtw_assign(operNbr, "operDesc")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchDesc" size="15" maxlength="50"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Workflow Program</td>
+                              @dtw_assign(operNbr, "operWFProgram")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchWFProgram" size="10" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Map Program</td>
+                              @dtw_assign(operNbr, "operMapProgram")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchMapProgram" size="10" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Interface Report Program</td>
+                              @dtw_assign(operNbr, "operReportProgram")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchReportProgram" size="10" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Interface Clean Up Program</td>
+                              @dtw_assign(operNbr, "operCleanUpProgram")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCleanUpProgram" size="10" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Interface Process Program</td>
+                              @dtw_assign(operNbr, "operProcessProgram")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchProcessProgram" size="10" maxlength="10"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchDesc.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("MHDESCU", "Description", $(srchDesc), "U", operDesc, "A")
+  @Build_WildCard ("MHWPGM",  "Workflow Program", $(srchWFProgram), "U", operWFProgram, "A")
+  @Build_WildCard ("MHMPGM",  "Map Program", $(srchMapProgram), "U", operMapProgram, "A")
+  @Build_WildCard ("MHRPGM",  "Interface Report Program", $(srchReportProgram), "U", operReportProgram, "A")
+  @Build_WildCard ("MHCPGM",  "Interface Clean Up Program", $(srchCleanUpProgram), "U", operCleanUpProgram, "A")
+  @Build_WildCard ("MHPPGM",  "Interface Process Program", $(srchProcessProgram), "U", operProcessProgram, "A")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

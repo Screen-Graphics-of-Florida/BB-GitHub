@@ -1,0 +1,365 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                  					             *
+*  Job: Common User Search                                          *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+
+%Define {	
+  page_title              = "Common User Search"
+  d2wName                 = "CommonUserSearch.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;docName=@dtw_rurlescseq(docName)&amp;fldName=@dtw_rurlescseq(fldName)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  docName                 = ""
+  fldName                 = ""
+%}
+	
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {	
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function selectUser(commonUser){
+                  window.opener.document.$(docName).$(fldName).value = commonUser;
+                  window.opener.document.$(docName).$(fldName).focus();
+                  window.close();
+              }
+              %INCLUDE "CheckEnterSearch.icl"
+              %INCLUDE "NoFormValidate.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td class="content">
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, "SELECT SYCUSF.*, ", stmtSQL)
+                      @dtw_concat(stmtSQL, " coalesce(USDESC,CUUSER) as USDESC, coalesce(USDESCU,CUUSER) as USDESCU  ", stmtSQL)
+                      @dtw_concat(fileSQL, " SYCUSF ", fileSQL)
+                      @dtw_concat(fileSQL, " left join SYUSER on USUSER=CUUSER ", fileSQL)
+                      %if (moreInfo == "Y")
+                          @dtw_concat(selectSQL, " CUCUSR='$(commonUser)' and CUUSER='$(individualUser)'", selectSQL)
+                      %elif (wildCardSearch!="")
+                          @dtw_concat(selectSQL, " CUCUSR<>' ' ", selectSQL)
+                      %endif
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @User_Search(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) User_Search (IN CHAR(64)    profileHandle,
+                                   CHAR(2)     dataBaseID,
+                                   CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      %INCLUDE "PageTitle.icl"
+
+      $(searchhrTagAttr)
+      %if (moreInfo != "Y")	
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Common User</th>
+                      <th class="colhdr">Individual User</th>
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchCommonUser" size="10" maxlength="10">
+                          <input type="hidden" name="operCommonUser" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchIndividualUser" size="20" maxlength="30">
+                          <input type="hidden" name="operIndividualUser" value="LIKE">
+                      </td>
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchCommonUser.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+
+          <table $(contentTable)>
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              <tr>
+                  @OrderBy_Sort("CUCUSR", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=CommonUser" title="Sequence By Common User, Individual User">Common User</a></th>
+                  @OrderBy_Sort("USDESCU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=IndividualUser" title="Sequence By Individual User, Common User">Individual User</a></th>
+                  @OrderBy_Sort("CUPASS", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=FillRange" title="Sequence By Fill All Ranges, Individual User, Common User">Fill All Ranges</a></th>
+                  @OrderBy_Sort("CUFRAT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=FromRate" title="Sequence By From Complexity Rating, Individual User, Common User">From Complexity Rating</a></th>
+                  @OrderBy_Sort("CUTRAT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=ToRate" title="Sequence By To Complexity Rating, Individual User, Common User">To Complexity Rating</a></th>
+              </tr>
+
+              %INCLUDE "NoRecordsFound.icl"
+      %else
+          <table $(contentTable)>
+      %endif		
+
+              %ROW{
+                  @Format_Quote(V_CUCUSR, F_CUCUSR)
+
+                  %if (moreInfo != "Y")	
+                      %INCLUDE "SetRowClass.icl"
+                      <tr class="$(rowClass)">
+                          <td class="colalph"><a href="javascript:selectUser('$(F_CUCUSR)')" title="Select User">$(V_CUCUSR)</a></td>
+                          <td class="colalph" $(helpCursor)><span title="$(V_CUUSER)">$(V_USDESC)</span></td>
+                          <td class="colcode">$(V_CUPASS)</td>
+                          <td class="colnmbr">$(V_CUFRAT)</td>
+                          <td class="colnmbr">$(V_CUTRAT)</td>
+                          <td class="colicon"><a href="$(homeURL)$(cGIPath)$(d2wName)/MOREINFO$(d2wVarBase)&amp;commonUser=@dtw_rurlescseq(V_CUCUSR)&amp;individualUser=@dtw_rurlescseq(V_CUUSER)&amp;moreInfo=Y">$(moreInfoImage)</a></td>
+                      </tr>
+
+                  %else
+                      <tr><td><a href="javascript:selectUser('$(F_CUCUSR)')" title="Select User">$(selectImageLrg)</a>
+                          </td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Common User</td>
+                          <td class="dspnmbr">$(V_CUCUSR)</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Individual User</td>
+                          @Format_Code(V_CUUSER, F_CUUSER)
+                          <td class="dspalph">$(V_USDESC) $(F_CUUSER)</td></tr>
+
+                      <tr><td class="dsphdr">Fill All Ranges</td>
+                          <td class="dspalph">$(V_CUPASS)</td></tr>	
+                  </table>
+
+                  <table $(contentTable)>
+                      <tr><td class="colhdr">&nbsp;</td>
+                          <td class="colhdr">From</td>
+                          <td class="colhdr">To</td>
+                      </tr>
+
+                      <tr><td class="dsphdr">Complexity Rating</td>
+                          <td class="dspnmbr">$(V_CUFRAT)</td>
+                          <td class="dspnmbr">$(V_CUTRAT)</td>
+                      </tr>
+                  %endif
+              %}
+          </table>
+          %if (moreInfo != "Y")	
+              %INCLUDE "PageBottom.icl"
+              %INCLUDE "WildCardPrint.icl"
+          %endif	   	
+      $(searchhrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (orderBy == "")
+      @DTW_ASSIGN(orderBy, "USDESCU,CUCUSR")
+      @DTW_ASSIGN(orderByDisplay, "Individual User, Common User")
+      @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  %endif
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MOREINFO) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, "1000")
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "CommonUser")
+      %if (orderBy == "CUCUSR,USDESCU")
+          @DTW_ASSIGN(orderBy, "CUCUSR DESC,USDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Common User (descending), Individual User")
+      %else
+          @DTW_ASSIGN(orderBy, "CUCUSR,USDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Common User, Individual User")
+      %endif
+  %elif (sequence == "IndividualUser")
+      %if (orderBy == "USDESCU,CUCUSR")
+          @DTW_ASSIGN(orderBy, "USDESCU DESC,CUCUSR")
+          @DTW_ASSIGN(orderByDisplay, "Individual User (descending), Common User")
+      %else
+          @DTW_ASSIGN(orderBy, "USDESCU,CUCUSR")
+          @DTW_ASSIGN(orderByDisplay, "Individual User, Common User")
+      %endif
+  %elif (sequence == "FillRange")
+      %if (orderBy == "CUPASS,CUCUSR,USDESCU")
+          @DTW_ASSIGN(orderBy, "CUPASS DESC,CUCUSR,USDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Fill All Ranges (descending), Common User, Individual User")
+      %else
+          @DTW_ASSIGN(orderBy, "CUPASS,CUCUSR,USDESCU")
+          @DTW_ASSIGN(orderByDisplay, "Fill All Ranges, Common User, Individual User")
+      %endif
+  %elif (sequence == "FromRate")
+      %if (orderBy == "CUFRAT,CUCUSR")
+          @DTW_ASSIGN(orderBy, "CUFRAT DESC,CUCUSR,USDESCU")
+          @DTW_ASSIGN(orderByDisplay, "From Complexity Rating (descending), Common User, Individual User")
+      %else
+          @DTW_ASSIGN(orderBy, "CUFRAT,CUCUSR,USDESCU")
+          @DTW_ASSIGN(orderByDisplay, "From Complexity Rating, Common User, Individual User")
+      %endif
+  %elif (sequence == "ToRate")
+      %if (orderBy == "CUTRAT,CUCUSR")
+          @DTW_ASSIGN(orderBy, "CUTRAT DESC,CUCUSR,USDESCU")
+          @DTW_ASSIGN(orderByDisplay, "To Complexity Rating (descending), Common User, Individual User")
+      %else
+          @DTW_ASSIGN(orderBy, "CUTRAT,CUCUSR,USDESCU")
+          @DTW_ASSIGN(orderByDisplay, "To Complexity Rating, Common User, Individual User")
+      %endif
+  %endif
+		
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+		
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          @dtw_assign(formName, "Search")
+          <script TYPE="text/javascript">
+	       %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (editNum(document.Search.srchFromRate, 3, 0) &&
+                      editNum(document.Search.srchToRate, 3, 0))
+                  return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(searchBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "COMMONUSERSEARCH")
+                  <td>
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(searchhrTagAttr)
+
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Common User</td>
+                              @dtw_assign(operNbr, "operCommonUser")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchCommonUser" size="10" maxlength="10"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Individual User</td>
+                              @dtw_assign(operNbr, "operIndividualUser")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchIndividualUser" size="20" maxlength="30"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Fill All Ranges</td>
+                              @dtw_assign(operNbr, "operFillRange")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchFillRange" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">From Complexity Rating</td>
+                              @dtw_assign(operNbr, "operFromRate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchFromRate" size="3" maxlength="3"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">To Complexity Rating</td>
+                              @dtw_assign(operNbr, "operToRate")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"> <input type="text" name="srchToRate" size="3" maxlength="3"></td>
+                          </tr>
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchCommonUser.focus();
+                          </script>
+                      </form>
+                      $(searchhrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(searchTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+		
+  @Build_WildCard ("CUCUSR", "Common User", $(srchCommonUser), "U", operCommonUser, "A")
+  @Build_WildCard ("coalesce(USDESCU,CUUSER)", "Individual User", $(srchIndividualUser), "U", operIndividualUser, "A")
+  @Build_WildCard ("CUPASS", "Fill All Ranges", $(srchFillRange), "U", operFillRange, "A")
+  @Build_WildCard ("CUFRAT", "From Complexity Rating", $(srchFromRate), "", operFromRate, "N")
+  @Build_WildCard ("CUTRAT", "To Complexity Rating", $(srchToRate), "", operToRate, "N")
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}

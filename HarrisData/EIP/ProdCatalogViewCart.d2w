@@ -1,0 +1,379 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Product Catalog View Cart                                   *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "$(catalogVarName)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorNoWarning.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "InventoryControl$(dataBaseID).icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "NumFormat.icl"
+%INCLUDE "OrderEntry.icl"
+%INCLUDE "VarBase.icl"
+
+%Define {
+  page_title              = "Review Shopping Cart"
+  d2wName                 = "ProdCatalogViewCart.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;customerName=@dtw_rurlescseq(customerName)&amp;catalog=@dtw_rurlescseq(catalog)&amp;catalogDesc=@dtw_rurlescseq(catalogDesc)&amp;catalogVarName=@dtw_rurlescseq(catalogVarName)"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_HTML_TABLE          = "YES"
+  DTW_PAD_PGM_PARMS       = "YES"
+  RPT_MAX_ROWS            = "1000"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  retrieveCode            = "R"
+  catalogTable            = %table
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  %INCLUDE "$(docType)"	
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              function confirmCancel() {return confirm("Confirm Cancel Of Order")}
+              function confirmDelete(text) {return confirm("$(delRecordConf)" + "\n" + "\n" + text);}
+              %INCLUDE "NewWindowOpen.icl"
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr)>
+          <!-- Start Of Banner Code -->
+          %INCLUDE "$(catBanner)"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  <td>
+                      %INCLUDE "stmtSQLClear.icl"
+                      @dtw_concat(stmtSQL, "SELECT O1ORL#, O1ITEM, O1WH, O1IMDS, O1QORD,", stmtSQL)
+                      @dtw_concat(stmtSQL, " O1QSTD, O1SLPR, O1ORUF, O1KIT, O1KTRL, O1KTPR ", stmtSQL)
+                      @dtw_concat(fileSQL, " OEDTWK ", fileSQL)
+                      @dtw_concat(selectSQL, "O1OCTL=$(orderControlNumber) ", selectSQL)
+                      %INCLUDE "stmtSQLSelect.icl"
+                      @dtw_concat(stmtSQL, " Order By O1ORL# ", stmtSQL)
+                      %INCLUDE "stmtSQLEnd.icl"
+                      %INCLUDE "stmtSQLTotalRows.icl"
+                      @View_Cart_Query(profileHandle, dataBaseID, stmtSQL)
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "$(catTrailer)"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%FUNCTION(dtw_sql) View_Cart_Query (IN CHAR(64)    profileHandle,
+                                       CHAR(2)     dataBaseID,
+                                       CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1BLN#=0", "OEDTWK", " char(count(O1ITEM))", numberOfItems)
+              @RtvFldDesc("O1OCTL=$(orderControlNumber) and O1BLN#=0 and (O1KTRL='E' or O1KTRL='D')", "OEDTWK", " char(count(O1ITEM))", numberOfErrors)
+              @Format_Nbr(numberOfItems, F_numberOfItems, "0", "3", "", "", "")
+              <td class="toolbar">
+                  <table $(contentTable)>
+                      @Format_Header("Item Count", $(F_numberOfItems), "")
+                      %if (allowInquiryOnly != "Y")
+                          @RtvFldDesc("H1OCTL=$(orderControlNumber)", "OEHDWK", "char(H1OTOT)", orderTotal)
+                          @Format_Nbr(orderTotal, F_orderTotal, "2", $(amtEditCode), "", "$", "")
+                          @Format_Header("Order Total", $(F_orderTotal), "")
+                      %endif
+                  </table>
+              </td>
+              <td class="toolbar">
+                  %if (sql_Record_Count > "0" && numberOfErrors == "0" && allowInquiryOnly != "Y")
+                      <a href="$(homeURL)$(cGIPath)prodcatalogshipto.d2w/ENTRY$(d2wVarBase)">$(orderContinueImage)</a>
+                  %endif
+                  <a href="$(homeURL)$(cGIPath)$(d2wName)/CLOSE$(d2wVarBase)">$(closeImageMed)</a>
+                  @dtw_assign(medIcon, "Y")
+                  %INCLUDE "HelpPage.icl"
+                  %if (sql_Record_Count > "0")
+                      <a onClick="return confirmCancel()" href="$(homeURL)$(cGIPath)prodcatalogpayment.d2w/CANCEL$(d2wVarBase)">$(orderCancelImage)</a>
+                  %endif
+                  &nbsp;
+              </td>
+          </tr>
+      </table>
+	
+      $(cathrTagAttr)
+      <table $(contentTable)>
+          %if (sql_Record_Count >= "1")
+              @dtw_assign(firstItem, "Y")
+          %else
+              <tr><td>$(cartEmptyMsg)</td></tr>
+          %endif
+
+          %ROW {
+               %if (firstItem=="Y")
+                    @dtw_assign(firstItem, "")
+                    <tr>
+                        @dtw_assign(x, "01")
+                        %while(x <= "30"){
+                            %if (catSeqItemImage==$(x))
+                                <td>&nbsp;</td>
+                            %elif (catSeqItemNbr==$(x))
+                                <td class="colhdr">Item Number</td>
+                            %elif (catSeqItemDesc==$(x))
+                                <td class="colhdr">Description</td>
+                            %elif (catSeqPrice==$(x))
+                                <td class="colhdr">Price</td>
+                            %elif (catSeqOrderQty==$(x))
+                                <td class="colhdr">Order Qty</td>
+                            %elif (catSeqUXA1==$(x))
+                                <td class="colhdr">$(itemExtAlph1)</td>
+                            %elif (catSeqUXA2==$(x))
+                                <td class="colhdr">$(itemExtAlph2)</td>
+                            %elif (catSeqUXA3==$(x))
+                                <td class="colhdr">$(itemExtAlph3)</td>
+                            %elif (catSeqUXA4==$(x))
+                                <td class="colhdr">$(itemExtAlph4)</td>
+                            %elif (catSeqUXA5==$(x))
+                                <td class="colhdr">$(itemExtAlph5)</td>
+                            %elif (catSeqUXN1==$(x))
+                                <td class="colhdr">$(itemExtNum1)</td>
+                            %elif (catSeqUXN2==$(x))
+                                <td class="colhdr">$(itemExtNum2)</td>
+                            %elif (catSeqUXN3==$(x))
+                                <td class="colhdr">$(itemExtNum3)</td>
+                            %elif (catSeqUXN4==$(x))
+                                <td class="colhdr">$(itemExtNum4)</td>
+                            %elif (catSeqUXN5==$(x))
+                                <td class="colhdr">$(itemExtNum5)</td>
+                            %elif (catSeqUXD1==$(x))
+                                <td class="colhdr">$(itemExtDate1)</td>
+                            %elif (catSeqUXD2==$(x))
+                                <td class="colhdr">$(itemExtDate2)</td>
+                            %elif (catSeqUXD3==$(x))
+                                <td class="colhdr">$(itemExtDate3)</td>
+                            %elif (catSeqUXD4==$(x))
+                                <td class="colhdr">$(itemExtDate4)</td>
+                            %elif (catSeqUXD5==$(x))
+                                <td class="colhdr">$(itemExtDate5)</td>
+                            %elif (catSeqUDA1==$(x))
+                                <td class="colhdr">$(V_CIIAS1)</td>
+                            %elif (catSeqUDA2==$(x))
+                                <td class="colhdr">$(V_CIIAS2)</td>
+                            %elif (catSeqUDA3==$(x))
+                                <td class="colhdr">$(V_CIIAS3)</td>
+                            %elif (catSeqUDA4==$(x))
+                                <td class="colhdr">$(V_CIIAS4)</td>
+                            %elif (catSeqUDA5==$(x))
+                                <td class="colhdr">$(V_CIIAS5)</td>
+                            %elif (catSeqUDN1==$(x))
+                                <td class="colhdr">$(V_CIINS1)</td>
+                            %elif (catSeqUDN2==$(x))
+                                <td class="colhdr">$(V_CIINS2)</td>
+                            %elif (catSeqUDN3==$(x))
+                                <td class="colhdr">$(V_CIINS3)</td>
+                            %elif (catSeqUDN4==$(x))
+                                <td class="colhdr">$(V_CIINS4)</td>
+                            %elif (catSeqUDN5==$(x))
+                                <td class="colhdr">$(V_CIINS5)</td>
+                            %endif
+                            @dtw_add(x, "1", x)
+                        %}
+                        %if (allowInquiryOnly != "Y")
+                            <td class="colhdr">Extended<br>Price</td>
+                        %endif
+                    </tr>
+
+               %endif
+
+               %INCLUDE "SetRowClass.icl"
+               @Catalog_Item_Query(profileHandle, dataBaseID, "$(catalog)", "$(V_O1ITEM)", "$(V_O1WH)", catalogTable)
+               @Format_Confirm_Desc("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXDESC"))", "", "", "", "", "", confirmDesc)
+               @Format_Nbr("@dtw_rdivide(@dtw_rmultiply(@dtw_rsubtract(V_O1QORD, V_O1QSTD), V_O1SLPR), V_O1ORUF)", ExtendedPrice, "2", $(amtEditCode), "Y", "", "")
+               @DTW_ASSIGN(subTotal, @dtw_radd(subTotal, @dtw_rdivide(@dtw_rmultiply(@dtw_rsubtract(V_O1QORD, V_O1QSTD), V_O1SLPR), V_O1ORUF)))
+               @dtw_assign(kitStatus, "")
+               %if (V_O1KTRL == "E" && V_O1KIT == "K")
+                   @dtw_assign(kitStatus, "Kit Option error - click here to update")
+               %elif (V_O1KTRL == "D" && V_O1KIT == "F")
+                   @dtw_assign(kitStatus, "Feature/Options must be completed - click here to update")
+               %elif (V_O1KTRL == "E" && V_O1KIT == "F")
+                   @dtw_assign(kitStatus, "Feature/Option error - click here to update")
+               %endif
+
+               <tr class="$(rowClass)">
+                   @dtw_assign(itemImage, "$(V_O1ITEM)$(itemImageExt)")
+                   @dtwf_exists(itemImage, imageExists)
+                   @dtw_assign(x, "01")
+                   %while(x <= "30"){
+                       %if (catSeqItemImage==$(x))
+                           %if (imageExists == "Y")
+                               <td class="colicon"><a href="$(homeURL)$(cGIPath)ImageDisplay.d2w/DISPLAY$(genericVarBase)&amp;imageDisplayPath=$(homeURL)$(itemImage)&amp;imageDesc=@dtw_rurlescseq(desc)" onclick="$(itemImageWinVar)"><img src="$(homeURL)$(itemImage)" alt="" $(catItemImgSmall) $(catImgBorder) title="Click here to view larger image"></a></td>
+                           %else
+                               <td class="colicon">&nbsp;</td>
+                           %endif
+
+                       %elif (catSeqItemNbr==$(x))
+                           <td class="colalph">$(V_O1ITEM)</td>
+
+                       %elif (catSeqItemDesc==$(x))
+                           %if (V_CXUHTM!="")
+                               <td  class="colalph"><a href="$(V_CXUHTM)" onclick="$(catUserHTMLWinVar)" title="View Details">$(V_O1IMDS)</a></td>
+                           %else
+                               <td class="colalph">$(V_O1IMDS)</td>
+                           %endif
+
+                       %elif (catSeqPrice==$(x))
+                           @Format_Nbr(V_O1SLPR, F_O1SLPR, $(prcNbrDec), $(amtEditCode), "Y", "", "")
+                           %if (allowPriceInq == "Y" && (V_O1KIT == "" || (V_O1KIT == "K" && V_O1KTPR == "K")))
+                               <td class="colnmbr"><a href="$(homeURL)$(cGIPath)PricingInquiry.d2w/REPORT$(genericVarBase)&amp;customerNumber=@dtw_rurlescseq(customerNumber)&amp;itemNumber=@dtw_rurlescseq(V_O1ITEM)&amp;itemDescription=@dtw_rurlescseq(V_O1IMDS)&amp;warehouseNumber=@dtw_rurlescseq(V_O1WH)&amp;productClass=@dtw_rurlescseq(V_O1PCLS)&amp;quantity=@dtw_rurlescseq(V_O1QORD)&amp;orderDate=@dtw_rurlescseq(orderDate)" onclick="$(inquiryWinVar)" title="View Pricing">$(F_O1SLPR)</a></td>
+                           %else
+                               <td class="colnmbr">$(F_O1SLPR)</td>
+                           %endif
+
+                       %elif (catSeqOrderQty==$(x))
+                           @Format_Nbr(V_O1QORD, F_O1QORD, $(qtyNbrDec), $(qtyEditCode), "", "", "")
+                           <td class="colnmbr">$(F_O1QORD)</td>
+
+                       %elif (catSeqUXA1==$(x))
+                           <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA1"))</td>
+                       %elif (catSeqUXA2==$(x))
+                           <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA2"))</td>
+                       %elif (catSeqUXA3==$(x))
+                           <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA3"))</td>
+                       %elif (catSeqUXA4==$(x))
+                           <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA4"))</td>
+                       %elif (catSeqUXA5==$(x))
+                           <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXA5"))</td>
+
+                       %elif (catSeqUXN1==$(x))
+                           <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN1"))</td>
+                       %elif (catSeqUXN2==$(x))
+                           <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN2"))</td>
+                       %elif (catSeqUXN3==$(x))
+                           <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN3"))</td>
+                       %elif (catSeqUXN4==$(x))
+                           <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN4"))</td>
+                       %elif (catSeqUXN5==$(x))
+                           <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXN5"))</td>
+
+                       %elif (catSeqUXD1==$(x))
+                           @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD1"))", V_CXUXD1)
+                           <td class="coldate">$(V_CXUXD1)</td>
+                       %elif (catSeqUXD2==$(x))
+                           @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD2"))", V_CXUXD2)
+                           <td class="coldate">$(V_CXUXD2)</td>
+                       %elif (catSeqUXD3==$(x))
+                           @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD3"))", V_CXUXD3)
+                           <td class="coldate">$(V_CXUXD3)</td>
+                       %elif (catSeqUXD4==$(x))
+                           @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD4"))", V_CXUXD4)
+                           <td class="coldate">$(V_CXUXD4)</td>
+                       %elif (catSeqUXD5==$(x))
+                           @DateFromISO("@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUXD5"))", V_CXUXD5)
+                           <td class="coldate">$(V_CXUXD5)</td>
+
+                       %elif (catSeqUDA1==$(x))
+                           <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA1"))</td>
+                       %elif (catSeqUDA2==$(x))
+                           <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA2"))</td>
+                       %elif (catSeqUDA3==$(x))
+                           <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA3"))</td>
+                       %elif (catSeqUDA4==$(x))
+                           <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA4"))</td>
+                       %elif (catSeqUDA5==$(x))
+                           <td class="colalph">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDA5"))</td>
+
+                       %elif (catSeqUDN1==$(x))
+                           <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN1"))</td>
+                       %elif (catSeqUDN2==$(x))
+                           <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN2"))</td>
+                       %elif (catSeqUDN3==$(x))
+                           <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN3"))</td>
+                       %elif (catSeqUDN4==$(x))
+                           <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN4"))</td>
+                       %elif (catSeqUDN5==$(x))
+                           <td class="colnmbr">@dtw_tb_rgetv(catalogTable, "1", @dtw_tb_rQuerycolnonj(catalogTable, "CXUDN5"))</td>
+
+                       %endif
+                       @dtw_add(x, "1", x)
+                   %}
+                   %if (allowInquiryOnly != "Y")
+                       <td class="colnmbr">$(ExtendedPrice)</td>
+                   %endif
+                   <td class="colicon"><a onClick="return confirmDelete('$(confirmDesc)')" href="$(homeURL)$(cGIPath)$(d2wName)/REMOVELINE$(d2wVarBase)&amp;lineNumber=@dtw_rurlescseq(V_O1ORL#)">$(deleteImageSml)</a></td>
+              </tr>
+              %if (kitStatus != "" && allowInquiryOnly != "Y")
+                  <tr class="$(rowClass)">
+                      <td class=colicon>&nbsp;</td>
+                      <td>&nbsp;</td>
+                      <td class="error" colspan="4">
+                      %if (V_O1KIT == "F")
+                          %if (productCfgFormat == "O")
+                              <a href="$(homeURL)$(cGIPath)OrderEntryFeatureOption2.d2w/INPUT$(d2wVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=@dtw_rurlescseq(V_O1ORL#)&amp;recordDisplay=A&amp;maintenanceCode=L&amp;orderTypeDesc=@dtw_rurlescseq(orderTypeDesc)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))" onclick="$(orderEntryWinVar)" title="Click here to update feature/options">$(kitStatus)</a>
+                          %else
+                              <a href="$(homeURL)$(cGIPath)OrderEntryFeatureOption.d2w/INPUT$(d2wVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=@dtw_rurlescseq(V_O1ORL#)&amp;recordDisplay=A&amp;maintenanceCode=L&amp;orderTypeDesc=@dtw_rurlescseq(orderTypeDesc)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))" onclick="$(orderEntryWinVar)" title="Click here to update feature/options">$(kitStatus)</a>
+                          %endif
+                      %else
+                          <a href="$(homeURL)$(cGIPath)OrderEntryKitOption.d2w/DISPLAY$(d2wVarBase)&amp;orderControlNumber=@dtw_rurlescseq(orderControlNumber)&amp;lineNumber=@dtw_rurlescseq(V_O1ORL#)&amp;orderTypeDesc=@dtw_rurlescseq(orderTypeDesc)&amp;timeStamp=@dtw_rurlescseq(@dtw_rconcat(@dtw_rdate(),@dtw_rtime("X")))" onclick="$(orderEntryWinVar)" title="Click here to update kit options">$(kitStatus)</a>
+                      %endif
+                      </td>
+   	            </tr>
+              %endif
+          %}
+      </table>
+      $(cathrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%FUNCTION(DTW_SQL) Catalog_Item_Query (IN  CHAR(64) profileHandle,
+			                    char(2)  dataBaseID,
+			                    char(15) catalog,
+			                    char(15) itemNumber,
+			                    dec(3,0) warehouse,
+				        OUT catalogTable)
+{call $(pgmLibrary)HOECTX_P
+%}
+
+%HTML(VIEW) {
+  %INCLUDE "setLibraryList.icl"
+
+  @Order_Control(profileHandle, dataBaseID, orderControlNumber, retrieveCode, dropShip, edtVar)
+  @Calc_Cost_Price(profileHandle, dataBaseID, orderControlNumber, lineNumber, costPrice)
+  @DTW_ASSIGN(updateTotal, "Y")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(REMOVELINE) {
+  %INCLUDE "setLibraryList.icl"
+
+  @Order_Control(profileHandle, dataBaseID, orderControlNumber, retrieveCode, dropShip, edtVar)
+  @Remove_Line (profileHandle, dataBaseID, orderControlNumber, lineNumber)
+  @DTW_ASSIGN(updateTotal, "Y")
+  @Update_Misc_Charges (profileHandle, dataBaseID, orderControlNumber, freightCharge, specialCharge, updateTotal)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(CLOSE) {
+  <script TYPE="text/javascript">
+      opener.location.href=opener.location.href;
+      window.close();
+  </script>
+%}

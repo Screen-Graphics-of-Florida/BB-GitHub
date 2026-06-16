@@ -1,0 +1,628 @@
+%{
+*********************************************************************
+* Copr 1979 2003 An Unpublished Work By Harris Business Group, Inc. *
+* All rights reserved. This work contains trade secrets.            *
+*                                                                   *
+*  Job: Kanban                                                      *
+*********************************************************************
+%}
+
+%INCLUDE "$(baseVar)"
+%INCLUDE "EditRoutines.icl"
+%INCLUDE "ErrorMessage.icl"
+%INCLUDE "GenericDirectCallVariables.icl"
+%INCLUDE "Menu.icl"
+%INCLUDE "NewWindowVariables.icl"
+%INCLUDE "VarBase.icl"
+%INCLUDE "WildCard.icl"
+%INCLUDE "XMLProcess.icl"
+%INCLUDE "NumFormat.icl"
+
+%Define {
+  page_title              = "Kanban"
+  d2wName                 = "Kanban.d2w"
+  d2wVarBase              = "$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(plantNumber)"
+  nextPrevVar             = "$(d2wVarBase)"
+  wildDftVar              = "REPORT$(d2wVarBase)"
+  programName             = "HSIKBM"
+  DATABASE                = "*LOCAL"
+  DTW_DEFAULT_REPORT      = "NO"
+  DTW_PRINT_HEADER        = "NO"
+  RPT_MAX_ROWS            = "10"
+  ROW_NUM                 = "0"
+  START_ROW_NUM           = "1"
+  dspMaxRows              = "$(dspMaxRowsDft)"
+  prtMaxRows              = "$(prtMaxRowsDft)"
+  rowIndexNext            = "1"
+  totalPages              = "0"
+  plantNumber             = ""
+%}
+
+%MACRO_FUNCTION Set_URL (INOUT workURL) {
+  @dtw_replace(workURL, "@@backHome", "@dtw_rurlescseq(backHome)", "1", "a", workURL)
+%}
+
+%MACRO_FUNCTION Set_SQL (INOUT stmtSQL) {
+  @dtw_assign(userPass, "")
+  %if (plantNumber > "0")
+      @PlantUserView(profileHandle, dataBaseID, userPass, plantNumber)
+  %endif
+  %if (userPass == "N")
+      %INCLUDE "userViewError.icl"
+  %else
+      %INCLUDE "$(docType)"
+      <html>
+          <head>
+              %INCLUDE "$(headInclude)"
+              <script type="text/javascript">
+                  %INCLUDE "Menu.js"
+                  %INCLUDE "numedit.icl"
+                  %INCLUDE "CheckEnterSearch.icl"
+                  function validate(searchForm) {
+                      if (
+                          %if (plantNumber == "")
+                              editNum(document.Search.srchPlant, 3, 0) &&
+                          %endif
+                          editNum(document.Search.srchAnalyst, 7, 0) &&
+                          editNum(document.Search.srchVendor, 7, 0))
+                          return true;
+                  }
+               </script>
+              %INCLUDE "$(genericHead)"
+          </head>
+          <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+              <!-- Start Of Banner Code -->
+              %INCLUDE "banner.icl"
+              <!-- End Of Banner Code -->
+              <table $(baseTable)>
+                  <tr valign="top">
+                      %if (formatToPrint == "")
+                          @dtw_assign(pageID, "KANBAN")
+                          <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                      %endif
+                      <td class="content">
+                          @dtw_assign(uv_PlantName, "IPPLT")
+                          @dtw_assign(uv_PltInventoryTypeName, "IPITC")
+                          @dtw_assign(uv_PltPartTypeName, "IPPTYP")
+                          @dtw_assign(uv_PartClassName, "IPCLAS")
+                          @dtw_assign(uv_VendorName, "IPVEND")
+                          @dtw_assign(uv_BuyerName, "IPBAC")
+                          @dtw_assign(uv_ProuductClassName, "IMPCLS")
+                          %INCLUDE "userview.icl"
+
+                          %INCLUDE "stmtSQLClear.icl"
+                          @dtw_concat(stmtSQL, "Select IPPLT, IPITEM, IPKBDD, IPKBPC, IPPTYP, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " IPBAC, IPVEND, IPCQTY, IPCADJ, IPFOQ, ", stmtSQL)
+                          @dtw_concat(stmtSQL, " coalesce(a.FLDESC,' ') as policyDesc, coalesce(b.FLDESC,' ') as partType ", stmtSQL)
+                          %if (plantNumber == "")
+                              @dtw_concat(stmtSQL, " , coalesce(PLNAME,' ') as PLNAME, ", stmtSQL)
+                              @dtw_concat(stmtSQL, " coalesce(upper(PLNAME),' ') as PLNAMEU ", stmtSQL)
+                          %endif
+                          @dtw_concat(fileSQL, " HDIPLT ", fileSQL)
+                          @dtw_concat(fileSQL, " join HDIMST on IPITEM=IMITEM ", fileSQL)
+                          @dtw_concat(fileSQL, " left join SYFLAG a on a.FLTYPE='KANBANPLCY' and a.FLVALU=IPKBPC ", fileSQL)
+                          @dtw_concat(fileSQL, " left join SYFLAG b on b.FLTYPE='PARTTYPE' and b.FLVALU=IPPTYP ", fileSQL)
+                          %if (plantNumber == "")
+                              @dtw_concat(fileSQL, " left join HDPLNT on IPPLT=PLPLNT ", fileSQL)
+                          %endif
+                          @dtw_concat(selectSQL, " IPKDFC='K' ", selectSQL)
+                          %if (plantNumber > "0")
+                              @dtw_concat(selectSQL, " and IPPLT=$(plantNumber) ", selectSQL)
+                          %endif
+                          %INCLUDE "stmtSQLSelect.icl"
+                          @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+                          %INCLUDE "stmtSQLEnd.icl"
+                          %INCLUDE "stmtSQLTotalRows.icl"
+                          @Kanban_Query(profileHandle, dataBaseID, stmtSQL)
+                      </td>
+                  </tr>
+              </table>
+              <!-- Start Of Trailer Code -->
+              %INCLUDE "trailer.icl"
+              <!-- End Of Trailer Code -->
+          </body>
+      </html>
+  %endif
+%}
+
+%FUNCTION(dtw_sql) Kanban_Query (IN  CHAR(64)    profileHandle,
+                                     CHAR(2)     dataBaseID,
+                                     CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+
+  %REPORT{
+      <table $(contentTable)>
+          <colgroup>
+              <col width="80%">
+              <col width="15%">
+          <tr><td><h1>$(page_title)</h1></td>
+              %if (formatToPrint != "Y")
+                  <td class="toolbar">
+                      %INCLUDE "XMLFormat.icl"
+                      %INCLUDE "FormatToPrint.icl"
+                      %INCLUDE "HelpPage.icl"
+                  </td>
+              %endif
+          </tr>
+      </table>
+
+      %if (plantNumber > "0")
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+          <table $(contentTable)>
+              @Format_Header_URL("Plant", $(plantName), $(plantNumber), "$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(d2wVarBase)")
+          </table>
+      %endif
+      %INCLUDE "ConfMessageDisplay.icl"
+
+      $(hrTagAttr)
+
+      %if (formatToPrint != "Y")
+          <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" ACTION="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=">
+              <table $(quickSearchTable)>
+                  <tr><th class="colhdr">Item Number</th>
+                      <th class="colhdr">Part<br>Type</th>
+                      <th class="colhdr">Analyst</th>
+                      <th class="colhdr">Vendor<br>Number</th>
+                      %if (plantNumber == "")
+                          <th class="colhdr">Plant</th>
+                      %endif
+                  </tr>
+                  <tr><td><input type="text" class="inputalph" name="srchitemNumber" size="10" maxlength="15">
+                          <input type="hidden" name="operitemNumber" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputalph" name="srchpartType" size="5" maxlength="1">
+                          <input type="hidden" name="operpartType" value="LIKE">
+                      </td>
+                      <td><input type="text" class="inputnmbr" name="srchAnalyst" size="10" maxlength="7">
+                          <input type="hidden" name="operAnalyst" value="=">
+                      </td>
+                      <td><input type="text" class="inputnmbr" name="srchVendor" size="10" maxlength="7">
+                          <input type="hidden" name="operVendor" value="=">
+                      </td>
+                      %if (plantNumber == "")
+                          <td><input type="text" class="inputnmbr" name="srchPlant" size="5" maxlength="3">
+                              <input type="hidden" name="operPlant" value="=">
+                          </td>
+                      %endif
+                      <td><a href="javascript:check(document.Search)">$(goSearchImage)</a></td>
+                  </tr>
+              </table>
+              <script TYPE="text/javascript">
+                  document.Search.srchitemNumber.focus();
+              </script>
+          </form>
+
+          %INCLUDE "WildCardPage.icl"
+      %endif
+
+      <table $(contentTable)>
+          <tr>
+              %if (formatToPrint != "Y")
+                  <th class="colhdr">$(optionHeading)</th>
+              %endif
+              @dtw_assign(orderByVar, "$(d2wVarBase)$(searchVarBase)")
+              @OrderBy_Sort("IPITEM", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=itemNumber" title="Sequence By Item Number">Item Number</a></th>
+              @OrderBy_Sort("IPPTYP", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=partType" title="Sequence By Part Type, Item Number">Part<br>Type</a></th>
+              @OrderBy_Sort("IPKBPC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=policyCode" title="Sequence By Policy Code, Item Number">Policy<br>Code</a></th>
+              @OrderBy_Sort("IPBAC", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Analyst" title="Sequence By Analyst, Item Number">Analyst</a></th>
+              @OrderBy_Sort("IPVEND", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=Vendor" title="Sequence By Vendor, Item Number">Vendor<br>Number</a></th>
+              @OrderBy_Sort("IPCQTY", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=numberContainer" title="Sequence By Number Of Containers, Item Number">Number of<br>Containers</a></th>
+              @OrderBy_Sort("IPCADJ", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=containerAdjustment" title="Sequence By Container Adjustment, Item Number">Container<br>Adjustment</a></th>
+              @OrderBy_Sort("IPFOQ", sortVar)
+              <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=orderPoint" title="Sequence By Order Point, Item Number">Order Qty/<br>Order Point</a></th>
+              %if (plantNumber == "")
+                  @OrderBy_Sort("IPPLT", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlantNumber" title="Sequence By Plant">Plant</a></th>
+                  @OrderBy_Sort("PLNAMEU", sortVar)
+                  <th class="colhdr$(sortVar)"><a href="$(homeURL)$(cGIPath)$(d2wName)/ORDERBY$(orderByVar)&amp;sequence=PlantName" title="Sequence By Plant Name">Plant Name</a></th>
+              %endif
+          </tr>
+          %INCLUDE "NoRecordsFound.icl"
+
+          %ROW{
+              @RtvFldDesc("KCPLT=$(V_IPPLT) and KCITEM='$(V_IPITEM)'", "HDKBCM", "char(count(*))", cmtCount)
+              %if ($(V_IPKBDD) == "")
+                  @RtvFldDesc("PLPLNT=$(V_IPPLT)", "HDPLNT", "PLKBDD", documentDefinition)
+              %else
+                  @dtw_assign(documentDefinition, "$(V_IPKBDD)")
+              %endif
+              @RtvFldDesc("KBPLT=$(V_IPPLT) and KBITEM='$(V_IPITEM)'", "HDKBMS", "char(count(*))", signalCount)
+              @dtw_assign(maintainVar, "$(genericVarBase)&amp;fromPlant=@dtw_rurlescseq(plantNumber)&amp;plantNumber=@dtw_rurlescseq(V_IPPLT)&amp;itemNumber=@dtw_rurlescseq(V_IPITEM)&amp;fromD2w=@dtw_rurlescseq(d2wName)")
+
+              %INCLUDE "SetRowClass.icl"
+              <tr class="$(rowClass)">
+                  %if (formatToPrint != "Y")
+                      <td class="opticon">
+                          %if ($(V_IPKBPC) != "")
+                              <a href="$(homeURL)$(cGIPath)KanbanMaintain.d2w/REPORT$(maintainVar)&amp;maintenanceCode=C">$(changeImageSml)</a>
+                          %else
+                               &nbsp; &nbsp; &nbsp;
+                          %endif
+                          <a href="$(homeURL)$(cGIPath)KanbanSetup.d2w/MAINTAIN$(maintainVar)&amp;maintenanceCode=S">$(kanbanSetupImage)</a>
+                          %if (cmtCount > "0")
+                              <a href="$(homeURL)$(cGIPath)KanbanNotes.d2w/REPORT$(maintainVar)">$(commentExistImage)</a>
+                          %else
+                              <a href="$(homeURL)$(cGIPath)KanbanNotes.d2w/REPORT$(maintainVar)">$(commentImage)</a>
+                          %endif
+                          %if (documentDefinition == "I")
+                              <a href="$(homeURL)$(cGIPath)KanbanTraveler.d2w/REPORT$(maintainVar)&amp;maintenanceCode=C" title="Kanban Traveler"><b>TR</b></a>
+                          %endif
+                          %if ($(V_IPPTYP) == "P" && signalCount > "0")
+                              @RtvFldDesc("DCPLT=$(V_IPPLT) AND DCPITM='$(V_IPITEM)' AND DCIVTT='KP  '", "HDTRNM", "CHAR(DCORD#)", orderNumber)
+                              @RtvFldDesc("DCPLT=$(V_IPPLT) AND DCPITM='$(V_IPITEM)' AND DCIVTT='KP  '", "HDTRNM", "CHAR(DCORL#)", lineNumber)
+                              <a href="$(homeURL)$(cGIPath)KanbanAssignPO.d2w/REPORT$(maintainVar)&amp;orderNumber=@dtw_rurlescseq(orderNumber)&amp;lineNumber=@dtw_rurlescseq(lineNumber)&amp;maintenanceCode=C" title="Assign Purchase Order" onclick="$(smallPromptWinVar)"><b>PO</b></a>
+                          %endif
+                      </td>
+                  %endif
+
+                  <td class="colalph"><a href="$(homeURL)$(cGIPath)iteminquiry.d2w/DISPLAY$(maintainVar)" onclick="$(inquiryWinVar)" title="Item Quickview">$(V_IPITEM)</a></td>
+                  <td class="colcode" $(helpCursor)><span title="$(V_partType)">$(V_IPPTYP)</span></td>
+                  <td class="colcode" $(helpCursor)><span title="$(V_policyDesc)">$(V_IPKBPC)</span></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)BuyerInquiry.d2w/DISPLAY$(genericVarBase)&amp;buyerNumber=@dtw_rurlescseq(V_IPBAC)&amp;buyerAnalyst=Analyst" onclick="$(inquiryWinVar)" title="Analyst Quickview">$(V_IPBAC)</a></td>
+                  <td class="colnmbr"><a href="$(homeURL)$(cGIPath)VendorInquiry.d2w/DISPLAY$(genericVarBase)&amp;vendorNumber=@dtw_rurlescseq(V_IPVEND)" onclick="$(inquiryWinVar)" title="Vendor Quickview">$(V_IPVEND)</a></td>
+                  @Format_Nbr(V_IPCQTY, F_IPCQTY, "0", $(qtyEditCode), "Y", "", "")
+                  <td class="colnmbr">$(F_IPCQTY)</td>
+                  @Format_Nbr(V_IPCADJ, F_IPCADJ, "0", $(qtyEditCode), "Y", "", "")
+                  <td class="colnmbr">$(F_IPCADJ)</td>
+                  @Format_Nbr(V_IPFOQ, F_IPFOQ, "0", $(qtyEditCode), "Y", "", "")
+                  <td class="colnmbr">$(F_IPFOQ)</td>
+                  %if (plantNumber == "")
+                      <td class="colnmbr">$(V_IPPLT)</td>
+                      <td class="colalph"><a href="$(homeURL)$(cGIPath)PlantSelect.d2w/REPORT$(genericVarBase)&amp;plantNumber=@dtw_rurlescseq(V_IPPLT)&amp;plantName=@dtw_rurlescseq(V_PLNAME)" title="View Plant">$(V_PLNAME)</a></td>
+                  %endif
+              </tr>
+          %}
+      </table>
+      %INCLUDE "PageBottom.icl"
+      %INCLUDE "WildCardPrint.icl"
+      $(hrTagAttr)
+      %INCLUDE "Copyright.icl"
+  %}
+%}
+
+%MACRO_FUNCTION Set_XMLSQL (INOUT stmtSQL) {
+  @dtw_assign(uv_PlantName, "IPPLT")
+  @dtw_assign(uv_PltInventoryTypeName, "IPITC")
+  @dtw_assign(uv_PltPartTypeName, "IPPTYP")
+  @dtw_assign(uv_PartClassName, "IPCLAS")
+  @dtw_assign(uv_VendorName, "IPVEND")
+  @dtw_assign(uv_BuyerName, "IPBAC")
+  @dtw_assign(uv_ProuductClassName, "IMPCLS")
+  %INCLUDE "userview.icl"
+
+  %INCLUDE "stmtSQLClear.icl"
+  @dtw_concat(stmtSQL, "Select IPPLT, IPITEM, IPKBPC, IPPTYP, ", stmtSQL)
+  @dtw_concat(stmtSQL, " IPBAC, IPVEND, IPCQTY, IPCADJ, IPFOQ, ", stmtSQL)
+  %if (plantNumber == "")
+      @dtw_concat(stmtSQL, " , coalesce(PLNAME,' ') as PLNAME, ", stmtSQL)
+      @dtw_concat(stmtSQL, " coalesce(upper(PLNAME),' ') as PLNAMEU ", stmtSQL)
+  %endif
+  @dtw_concat(fileSQL, " HDIPLT ", fileSQL)
+  @dtw_concat(fileSQL, " join HDIMST on IPITEM=IMITEM ", fileSQL)
+  %if (plantNumber == "")
+      @dtw_concat(fileSQL, " left join HDPLNT on IPPLT=PLPLNT ", fileSQL)
+  %endif
+  @dtw_concat(selectSQL, " IPKDFC='K' ", selectSQL)
+  %if (plantNumber > "0")
+      @dtw_concat(selectSQL, " and IPPLT=$(plantNumber) ", selectSQL)
+  %endif
+  %INCLUDE "stmtSQLSelect.icl"
+  @dtw_concat(stmtSQL, " Order By $(orderBy) ", stmtSQL)
+  %INCLUDE "stmtSQLEnd.icl"
+  @Kanban_XMLQuery(profileHandle, dataBaseID, stmtSQL)
+
+%}
+
+%FUNCTION(dtw_sql) Kanban_XMLQuery (IN  CHAR(64)    profileHandle,
+			                        CHAR(2)     dataBaseID,
+                                        CHAR(32000) stmtSQL)
+{CALL $(pgmLibrary)HSYSQL_W
+  %REPORT{
+      @XMLBeginTag("KanbanList")
+      %if (plantNumber > "0")
+          @RtvFldDesc("PLPLNT=$(plantNumber)", "HDPLNT", "PLNAME", plantName)
+	   @XMLIDTag(plantNumber, "Plant ID")
+              @XMLTag(plantNumber, "PlantNumber")
+              @XMLTag(plantName, "PlantName")
+      %endif		
+		
+      %ROW{
+          @XMLIDTag("$(V_IPITEM)", "Kanban ID")
+              @XMLTag(V_IPITEM, "ItemNumber")
+              @XMLTag(V_IPPTYP, "PartType")
+              @XMLTag(V_IPKBPC, "PolicyCode")
+              @XMLTag(V_IPBAC, "Analyst")
+              @XMLTag(V_IPVEND, "VendorNumber")
+              @XMLTag(V_IPCQTY, "NumberOfContainers")
+              @XMLTag(V_IPCADJ, "ContainerAdjustment")
+              @XMLTag(V_IPFOQ, "OrderPoint")
+              %if (plantNumber == "")
+                  @XMLTag(V_IPPLT, "PlantNumber")
+                  @XMLTag(V_PLNAME, "PlantName")
+              %endif
+          @XMLEndTag("Kanban")
+      %}
+      %if (plantNumber > "0")
+          @XMLEndTag("Plant")
+      %endif
+      @XMLEndTag("KanbanList")
+  %}
+%}
+
+%HTML(REPORT) {
+  %INCLUDE "setLibraryList.icl"
+  %INCLUDE "WebReg.icl"
+  %if (formatToPrint != "")
+      @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  %else
+      %if (plantNumber > "0" && orderBy == "PLNAMEU,IPITEM")
+          @dtw_assign(orderBy, "")
+      %endif
+      %if (orderBy == "")
+          @DTW_ASSIGN(orderBy, "IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Item Number")
+          @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+      %endif
+      @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  %endif
+  %INCLUDE "SearchReturn.icl"
+%}
+
+%HTML(EXPORT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @XMLInit()
+  @DTW_ASSIGN(RPT_MAX_ROWS, prtMaxRows)
+  @Set_XMLSQL(stmtSQL)
+%}
+
+%HTML(INPUT) {
+  %INCLUDE "setLibraryList.icl"
+  @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(ORDERBY) {
+  %INCLUDE "setLibraryList.icl"
+  %if (sequence == "itemNumber")
+      %if (orderBy == "IPITEM")
+          @DTW_ASSIGN(orderBy, "IPITEM DESC")
+          @DTW_ASSIGN(orderByDisplay, "Item Number (descending)")
+      %else
+          @DTW_ASSIGN(orderBy, "IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Item Number")
+      %endif
+  %elif (sequence == "partType")
+      %if (orderBy == "IPPTYP,IPITEM")
+          @DTW_ASSIGN(orderBy, "IPPTYP DESC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Part Type (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IPPTYP,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Part Type, Item Number")
+      %endif
+  %elif (sequence == "policyCode")
+      %if (orderBy == "IPKBPC,IPITEM")
+          @DTW_ASSIGN(orderBy, "IPKBPC DESC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Policy Code (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IPKBPC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Policy Code, Item Number")
+      %endif
+  %elif (sequence == "Analyst")
+      %if (orderBy == "IPBAC,IPITEM")
+          @DTW_ASSIGN(orderBy, "IPBAC DESC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Analyst (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IPBAC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Analyst, Item Number")
+      %endif
+  %elif (sequence == "Vendor")
+      %if (orderBy == "IPVEND,IPITEM")
+          @DTW_ASSIGN(orderBy, "IPVEND DESC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Vendor Number (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IPVEND,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Vendor Number, Item Number")
+      %endif
+  %elif (sequence == "numberContainer")
+      %if (orderBy == "IPCQTY,IPITEM")
+          @DTW_ASSIGN(orderBy, "IPCQTY DESC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Number Containers (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IPCQTY,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Number Containers, Item Number")
+      %endif
+  %elif (sequence == "containerAdjustment")
+      %if (orderBy == "IPCADJ,IPITEM")
+          @DTW_ASSIGN(orderBy, "IPCADJ DESC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Container Adjustment (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IPCADJ,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Container Adjustment, Item Number")
+      %endif
+  %elif (sequence == "orderPoint")
+      %if (orderBy == "IPFOQ,IPITEM")
+          @DTW_ASSIGN(orderBy, "IPFOQ DESC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Order Point (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IPFOQ,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Order Point, Item Number")
+      %endif
+  %elif (sequence == "PlantNumber")
+      %if (orderBy == "IPPLT,IPITEM")
+          @DTW_ASSIGN(orderBy, "IPPLT DESC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "IPPLT,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Plant Number, Item Number")
+      %endif
+  %elif (sequence == "PlantName")
+      %if (orderBy == "PLNAMEU,IPITEM")
+          @DTW_ASSIGN(orderBy, "PLNAMEU DESC,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Plant Name (descending), Item Number")
+      %else
+          @DTW_ASSIGN(orderBy, "PLNAMEU,IPITEM")
+          @DTW_ASSIGN(orderByDisplay, "Plant Name, Item Number")
+      %endif
+  %endif
+
+  @DTW_ASSIGN(RPT_MAX_ROWS, dspMaxRows)
+  @Save_WebReg_OrderBy(webRegCurFile, profileHandle, d2wName, orderBy, orderByDisplay)
+  @Set_SQL(stmtSQL)
+%}
+
+%HTML(MASTERSEARCH) {
+  %INCLUDE "setLibraryList.icl"
+  %if (defaultSearch == "Y")
+      @DTW_ASSIGN(defaultSearch, "")
+      @Retrieve_WebReg(webRegCurFile, profileHandle, d2wName, wildCardSearch, orderBy, orderByDisplay, wildCardDisplay)
+  %endif
+  %INCLUDE "$(docType)"
+
+  <html>
+      <head>
+          %INCLUDE "$(headInclude)"
+          <script TYPE="text/javascript">
+              %INCLUDE "Menu.js"
+              %INCLUDE "numedit.icl"
+              %INCLUDE "CheckEnterSearch.icl"
+              function validate(searchForm) {
+                  if (
+                      %if (plantNumber == "")
+                          editNum(document.Search.srchPlant, 3, 0) &&
+                      %endif
+                      editNum(document.Search.srchAnalyst, 7, 0) &&
+                      editNum(document.Search.srchVendor, 7, 0) &&
+                      editNum(document.Search.srchContainers, 5, 0) &&
+                      editNum(document.Search.srchAdjustment, 5, 0) &&
+                      editNum(document.Search.srchorderPoint, 11, 0))
+                      return true;
+              }
+          </script>
+          %INCLUDE "$(genericHead)"
+      </head>
+      <body $(bodyTagAttr) onKeyPress="checkEnterSearch()">
+          <!-- Start Of Banner Code -->
+          %INCLUDE "banner.icl"
+          <!-- End Of Banner Code -->
+          <table $(baseTable)>
+              <tr valign="top">
+                  @dtw_assign(pageID, "KANBANSEARCH")
+                  <td class="menu">@Menu_Query(profileHandle, dataBaseID, portal, pageID)</td>
+                  <td class="content">
+                      %INCLUDE "SearchPageTitle.icl"
+                      $(hrTagAttr)
+                      @dtw_assign(wildCardResetURL, "$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)&amp;wildCardSearch=&amp;updateSearch=Y")
+                      %INCLUDE "WildCardReset.icl"
+
+                      <form class="formClass" METHOD=POST NAME="Search" onSubmit="return validate(document.Search)" action="$(homeURL)$(cGIPath)$(d2wName)/WILDCARD$(d2wVarBase)$(orderByVarBase)$(wildCardVarBase)">
+                          %INCLUDE "SearchTop.icl"
+
+                          <tr><td class="dsphdr">Item Number</td>
+                              @dtw_assign(operNbr, "operitemNumber")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchitemNumber" size="15" maxlength="15"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Part Type</td>
+                              @dtw_assign(operNbr, "operpartType")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchpartType" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Policy Code</td>
+                              @dtw_assign(operNbr, "operpolicyCode")
+                              <td>%INCLUDE "opersel_alph_short.icl"</td>
+                              <td class="inputalph"><input type="text" name="srchpolicyCode" size="1" maxlength="1"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Analyst</td>
+                              @dtw_assign(operNbr, "operAnalyst")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchAnalyst" size="7" maxlength="7"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Vendor Number</td>
+                              @dtw_assign(operNbr, "operVendor")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchVendor" size="7" maxlength="7"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Number Of Containers</td>
+                              @dtw_assign(operNbr, "operContainers")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchContainers" size="5" maxlength="5"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Container Adjustment</td>
+                              @dtw_assign(operNbr, "operAdjustment")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchAdjustment" size="5" maxlength="5"></td>
+                          </tr>
+
+                          <tr><td class="dsphdr">Order Qty/<br>Order Point</td>
+                              @dtw_assign(operNbr, "operorderPoint")
+                              <td>%INCLUDE "opersel_num_short.icl"</td>
+                              <td class="inputnmbr"><input type="text" name="srchorderPoint" size="11" maxlength="11"></td>
+                          </tr>
+
+                          %if (plantNumber == "")
+                              <tr><td class="dsphdr">Plant Number</td>
+                                  @dtw_assign(operNbr, "operPlant")
+                                  <td>%INCLUDE "opersel_num_short.icl"</td>
+                                  <td class="inputnmbr"><input type="text" name="srchPlant" size="5" maxlength="3"></td>
+                              </tr>
+
+                              <tr><td class="dsphdr">Plant Name</td>
+                                  @dtw_assign(operNbr, "operName")
+                                  <td>%INCLUDE "opersel_alph_short.icl"</td>
+                                  <td class="inputalph"> <input type="text" name="srchName" size="30" maxlength="26"></td>
+                              </tr>
+                          %endif
+
+                          %INCLUDE "SearchBottom.icl"
+                          <script TYPE="text/javascript">
+                              document.Search.srchitemNumber.focus();
+                          </script>
+                      </form>
+                      $(hrTagAttr)
+                      %INCLUDE "Copyright.icl"
+                  </td>
+              </tr>
+          </table>
+          <!-- Start Of Trailer Code -->
+          %INCLUDE "trailer.icl"
+          <!-- End Of Trailer Code -->
+      </body>
+  </html>
+%}
+
+%HTML(WILDCARD) {
+  %INCLUDE "setLibraryList.icl"
+  @dtw_assign(wildCardTemp, "")
+  @dtw_assign(wildDisplayTemp, "")
+
+  @Build_WildCard ("IPITEM", "Item Number", $(srchitemNumber), "U", operitemNumber, "A")
+  @Build_WildCard ("IPPTYP", "Part Type", $(srchpartType), "U", operpartType, "A")
+  @Build_WildCard ("IPKBPC", "Policy Code", $(srchpolicyCode), "U", operpolicyCode, "A")
+  @Build_WildCard ("IPBAC", "Analyst", $(srchAnalyst), "", operAnalyst, "N")
+  @Build_WildCard ("IPVEND", "Vendor Number", $(srchVendor), "", operVendor, "N")
+  @Build_WildCard ("IPCQTY", "Number Containers", $(srchContainers), "", operContainers, "N")
+  @Build_WildCard ("IPCADJ", "Container Adjustment", $(srchAdjustment), "", operAdjustment, "N")
+  @Build_WildCard ("IPFOQ", "Order Point", $(srchorderPoint), "", operorderPoint, "N")
+  %if (plantNumber == "")
+      @Build_WildCard ("IPPLT", "Plant Number", $(srchPlant), "", operPlant, "N")
+      @Build_WildCard ("upper(PLNAME)", "Plant Name", $(srchName), "U", operName, "A")
+  %endif
+
+  @dtw_assign(masterSearchVar, "$(homeURL)$(cGIPath)$(d2wName)/MASTERSEARCH$(d2wVarBase)")
+  %INCLUDE "WildCardUpdate.icl"
+%}
