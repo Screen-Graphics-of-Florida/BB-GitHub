@@ -52,6 +52,13 @@ $reportMap = array(
         ),
     ),
     'SGDINT' => array(
+        'INVMGMT' => array(
+            array(
+                'title' => 'Inventory Data Integrity Dashboard',
+                'desc'  => 'Items with incorrect inventory type codes, costing errors by product class',
+                'file'  => 'Inventory%20Management/InvDataIntegrityDashboard.php',
+            ),
+        ),
         'OE' => array(
             array(
                 'title' => 'CS Data Integrity Dashboard',

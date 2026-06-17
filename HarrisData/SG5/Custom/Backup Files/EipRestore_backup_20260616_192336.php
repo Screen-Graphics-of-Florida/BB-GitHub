@@ -64,7 +64,7 @@ $portals = [
 
 $cats = [
     'ACCT'    => 'Accounting',
-    'INVMGMT' => 'Inventory Mgmt',
+    'INVMGMT' => 'Inv Management',
     'MFG'     => 'Manufacturing',
     'OE'      => 'Order Entry',
     'PLN'     => 'Planning',
