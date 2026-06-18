@@ -33,7 +33,7 @@ SELECT TRIM(i.IMITEM) AS IMITEM,
        CASE
            WHEN TRIM(i.IMPCLS) = 'OS1' THEN 'Change Inv Type Code to ZOS1'
            WHEN TRIM(i.IMPCLS) = 'OS2' THEN 'Change Inv Type Code to ZOS2'
-           WHEN TRIM(i.IMITC)  = ''    THEN 'You must assign a Product Class to this item!'
+           WHEN TRIM(i.IMITC)  = ''    THEN 'You must assign an Inventory Type Code.'
            ELSE 'Review Inventory Type Code'
        END AS CORRECTION
 FROM SGHDSDATA.HDIMST i
@@ -279,6 +279,8 @@ table.dtbl thead th.sortable:hover { background: #1a1a99; }
   max-width: 260px;
 }
 .flt-clear { margin-left: 4px; }
+.btn-export { margin-left: 4px; background: #d4edda; border-color: #5a9e6f; color: #155724; }
+.btn-export:hover { background: #b8dac4; }
 
 .footer {
   border-top: 1px solid #888;
@@ -352,6 +354,7 @@ function($rows) { ?>
     <option value="">(All)</option>
   </select>
   <button class="btn flt-clear" onclick="clearFilters('tbl-q1')">&#10006; Clear</button>
+  <button class="btn btn-export" onclick="exportCSV('tbl-q1','InvTypeCode_Export',[5])">&#8595; Export to Excel</button>
 </div>
 <div class="tbl-wrap">
 <table class="dtbl" id="tbl-q1">
@@ -370,7 +373,7 @@ function($rows) { ?>
       if ($corr === 'Change Inv Type Code to ZOS1' ||
           $corr === 'Change Inv Type Code to ZOS2') {
           $tag = '<span class="tag-fix">' . esc($corr) . '</span>';
-      } elseif ($corr === 'You must assign a Product Class to this item!') {
+      } elseif ($corr === 'You must assign an Inventory Type Code.') {
           $tag = '<span class="tag-warn">' . esc($corr) . '</span>';
       } else {
           $tag = '<span class="tag-review">' . esc($corr) . '</span>';
@@ -398,15 +401,12 @@ renderSection('q2', 'Costing Errors', $rows2, $err2, '',
 function($rows) { ?>
 <div class="filter-bar">
   <span class="flt-label">Filter:</span>
-  <label class="flt-label">Cost Err</label>
-  <select class="flt-sel" data-filter-table="tbl-q2" data-col="5" onchange="applyFilters('tbl-q2')">
-    <option value="">(All)</option>
-  </select>
   <label class="flt-label">Error Description</label>
   <select class="flt-sel" data-filter-table="tbl-q2" data-col="6" onchange="applyFilters('tbl-q2')">
     <option value="">(All)</option>
   </select>
   <button class="btn flt-clear" onclick="clearFilters('tbl-q2')">&#10006; Clear</button>
+  <button class="btn btn-export" onclick="exportCSV('tbl-q2','CostingErrors_Export')">&#8595; Export to Excel</button>
 </div>
 <div class="tbl-wrap">
 <table class="dtbl" id="tbl-q2">
@@ -486,6 +486,39 @@ function clearFilters(tableId) {
     document.querySelectorAll('.flt-sel[data-filter-table="' + tableId + '"]')
         .forEach(function(s) { s.value = ''; });
     applyFilters(tableId);
+}
+function exportCSV(tableId, baseName, skipCols) {
+    skipCols = skipCols || [];
+    var table = document.getElementById(tableId);
+    var lines = [];
+    var headers = [];
+    table.querySelectorAll('thead th').forEach(function(th, i) {
+        if (skipCols.indexOf(i) !== -1) return;
+        var clone = th.cloneNode(true);
+        var ind = clone.querySelector('.sort-ind');
+        if (ind) ind.remove();
+        headers.push('"' + clone.textContent.trim().replace(/"/g, '""') + '"');
+    });
+    lines.push(headers.join(','));
+    table.querySelectorAll('tbody tr').forEach(function(tr) {
+        if (tr.style.display === 'none') return;
+        var cells = [];
+        tr.querySelectorAll('td').forEach(function(td, i) {
+            if (skipCols.indexOf(i) !== -1) return;
+            cells.push('"' + td.textContent.trim().replace(/"/g, '""') + '"');
+        });
+        lines.push(cells.join(','));
+    });
+    var d = new Date();
+    var stamp = d.getFullYear() + ('0'+(d.getMonth()+1)).slice(-2) + ('0'+d.getDate()).slice(-2);
+    var blob = new Blob([lines.join('\r\n')], {type: 'text/csv'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = baseName + '_' + stamp + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
 }
 
 var sortState = {};
