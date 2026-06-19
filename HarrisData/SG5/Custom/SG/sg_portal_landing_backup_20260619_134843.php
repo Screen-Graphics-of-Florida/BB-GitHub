@@ -26,11 +26,6 @@ $reportMap = array(
     'SGINQ' => array(
         'MFG' => array(
             array(
-                'title' => 'MO Daily Labor Report',
-                'desc'  => 'Today\'s labor detail by MO — filter by Emp#, MO#, or Work Center; sortable; export to Excel; auto-refreshes every 10 min (M-F, 7am-5pm ET)',
-                'file'  => 'Manufacturing/MODailyLaborReport.php',
-            ),
-            array(
                 'title' => 'MO Material Components Issues',
                 'desc'  => 'MO component qty variances — sortable, filter by order status, auto-refreshes every 10 min (M-F, 7am-5pm ET)',
                 'file'  => 'Manufacturing/MOMaterialComponents.php',

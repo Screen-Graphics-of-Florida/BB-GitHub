@@ -1,0 +1,526 @@
+<?php
+require_once dirname(__FILE__) . '/../../GetURLParm.php';
+require_once 'GenericDirectCallVariables.php';
+require_once 'SetLibraryList.php';
+date_default_timezone_set('America/Chicago');
+
+// ── Filter params ─────────────────────────────────────────────────────────────
+$filterEmp = isset($_GET['femp']) ? trim($_GET['femp']) : '';
+$filterOrd = isset($_GET['ford']) ? trim($_GET['ford']) : '';
+$filterWc  = isset($_GET['fwc'])  ? trim($_GET['fwc'])  : '';
+
+// ── Auto-refresh: M–F, 7 am–5 pm Eastern ─────────────────────────────────────
+$estNow      = new DateTime('now', new DateTimeZone('America/New_York'));
+$estDow      = (int)$estNow->format('N');
+$estHour     = (int)$estNow->format('G');
+$autoRefresh = ($estDow >= 1 && $estDow <= 5 && $estHour >= 7 && $estHour < 17);
+$refreshSecs = 600;
+$refreshedAt = date('m/d/Y g:i:s A');
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function molr_h($s) {
+    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+}
+function molr_esc($s) {
+    return str_replace("'", "''", (string)$s);
+}
+function molr_dec($v, $dp = 2) {
+    if ($v === null || $v === '') return '';
+    return number_format((float)$v, $dp);
+}
+function molr_int($v) {
+    if ($v === null || $v === '') return '';
+    return number_format((int)$v);
+}
+function molr_curr($v) {
+    if ($v === null || $v === '') return '';
+    $n = (float)$v;
+    return ($n < 0 ? '-' : '') . '$' . number_format(abs($n), 2);
+}
+function molr_date($v) {
+    if (!$v) return '';
+    $d = DateTime::createFromFormat('Y-m-d', (string)$v);
+    return $d ? $d->format('m/d/Y') : (string)$v;
+}
+
+// ── Build WHERE ───────────────────────────────────────────────────────────────
+$whereParts = array('T01.LDDATE = CURRENT DATE');
+if ($filterEmp !== '') {
+    $safe = molr_esc($filterEmp);
+    $whereParts[] = "RTRIM(CHAR(T01.LDEMP)) LIKE '%$safe%'";
+}
+if ($filterOrd !== '') {
+    $safe = molr_esc($filterOrd);
+    $whereParts[] = "RTRIM(T01.LDORD) LIKE '%$safe%'";
+}
+if ($filterWc !== '') {
+    $safe = molr_esc($filterWc);
+    $whereParts[] = "RTRIM(T01.LDWC) LIKE '%$safe%'";
+}
+$where = implode(' AND ', $whereParts);
+
+// ── SQL ───────────────────────────────────────────────────────────────────────
+$sql = "
+    WITH BASE AS (
+        SELECT
+            T01.LDDATE,
+            T01.LDEMP,
+            TRIM(T04.EMRNAM)  AS EMRNAM,
+            TRIM(T01.LDORD)   AS LDORD,
+            TRIM(T01.LDWC)    AS LDWC,
+            TRIM(T03.WCDESC)  AS WCDESC,
+            T01.LDSEQN,
+            T01.LDMPON,
+            TRIM(T01.LDPN)    AS LDPN,
+            T01.LDLBTY,
+            CASE WHEN T01.LDLBTY='R' THEN 'Rework'
+                 WHEN T01.LDLBTY='I' THEN 'Indirect'
+                 WHEN T01.LDLBTY='S' THEN 'Setup'
+                 ELSE 'Direct' END                                          AS LABORDEF,
+            CASE WHEN T01.LDLBTY='S' AND T01.LDWHRS < 0 THEN T01.LDSUHR
+                 WHEN T01.LDLBTY='D'                     THEN 0
+                 WHEN T01.LDWHRS < 0                     THEN 0
+                 WHEN T01.LDWHRS > 0                     THEN T01.LDSUHR
+                 ELSE 0 END                                                 AS CALCSUHRS,
+            CASE WHEN T01.LDLBTY='S' THEN 'H'
+                 ELSE T01.LDMHRC END                                        AS MSDHRSCODE,
+            CASE WHEN T01.LDLBTY='S'                        THEN 0
+                 WHEN T01.LDMHRC='P' AND T01.LDQTYC = 0    THEN 0
+                 WHEN T01.LDMHRC='P'
+                      THEN T01.LDMHRS * T01.LDMPON * T01.LDQTYC
+                 WHEN T01.LDMHRC='M' AND T01.LDQTYC = 0    THEN 0
+                 WHEN T01.LDMHRC='M'
+                      THEN T01.LDMHRS * T01.LDMPON * T01.LDQTYC / 1000
+                 ELSE 0 END                                                 AS STDHRS,
+            T01.LDWHRS,
+            T01.LDSUHR,
+            T01.LDSSR,
+            T01.LDSLR,
+            T02.OHCQTY,
+            T01.LDQTYC,
+            T01.LDRSCR
+        FROM SGHDSDATA.HDMLDM T01
+        JOIN SGHDSDATA.HDMOHM T02
+            ON  T01.LDORD = T02.OHORD
+            AND T01.LDPLT = T02.OHPLT
+        JOIN SGHDSDATA.HDMWCM T03
+            ON  T01.LDWC   = T03.WCWC
+            AND T01.LDDEPT = T03.WCDEPT
+            AND T01.LDPLT  = T03.WCPLT
+        LEFT JOIN SGHDSDATA.HREMPL T04
+            ON T01.LDEMP = T04.EMEMPL
+        WHERE $where
+    )
+    SELECT
+        LDDATE, LDEMP, EMRNAM, LDORD, LDWC, WCDESC,
+        LDSEQN, LDMPON, LDPN, LDLBTY, LABORDEF,
+        CALCSUHRS, MSDHRSCODE, STDHRS, LDWHRS,
+        CASE WHEN LDLBTY='S' THEN LDSUHR - LDWHRS
+             ELSE STDHRS - LDWHRS END                        AS VARIANCE,
+        OHCQTY, LDQTYC, LDRSCR,
+        CASE WHEN LDLBTY='S' THEN (LDSUHR - LDWHRS) * LDSSR
+             ELSE (STDHRS - LDWHRS) * LDSLR END             AS VARCOST
+    FROM BASE
+    ORDER BY LDORD ASC, LDSEQN ASC, LDEMP ASC
+";
+
+$conn   = $i5Connect->getConnection();
+$rows   = array();
+$sqlErr = '';
+
+// ── CSV / Excel export ────────────────────────────────────────────────────────
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    $stmt = db2_exec($conn, $sql, array('cursor' => DB2_SCROLLABLE));
+    if ($stmt) {
+        while ($r = db2_fetch_assoc($stmt)) { $rows[] = $r; }
+        db2_free_stmt($stmt);
+    }
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="MODailyLaborReport_'
+        . date('Ymd_His') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, array(
+        'Date', 'Emp #', 'Emp Name', 'MO #', 'Work Ctr #', 'WC Description',
+        'Seq', 'Std Crew Sz', 'Part #', 'Labor Typ', 'Labor Definition',
+        'Std Setup Hrs', 'Hrs Ref', 'Direct Std Hrs', 'Hrs Worked',
+        'Variance Hrs', 'Curr Ord Qty', 'Qty Completed', 'Qty Scrapped',
+        'Labor Var Cost',
+    ));
+    foreach ($rows as $r) {
+        fputcsv($out, array(
+            molr_date($r['LDDATE']),
+            (int)$r['LDEMP'],
+            trim((string)$r['EMRNAM']),
+            trim((string)$r['LDORD']),
+            trim((string)$r['LDWC']),
+            trim((string)$r['WCDESC']),
+            (int)$r['LDSEQN'],
+            (int)$r['LDMPON'],
+            trim((string)$r['LDPN']),
+            trim((string)$r['LDLBTY']),
+            trim((string)$r['LABORDEF']),
+            number_format((float)$r['CALCSUHRS'], 2, '.', ''),
+            trim((string)$r['MSDHRSCODE']),
+            number_format((float)$r['STDHRS'],    2, '.', ''),
+            number_format((float)$r['LDWHRS'],    2, '.', ''),
+            number_format((float)$r['VARIANCE'],  2, '.', ''),
+            (int)$r['OHCQTY'],
+            (int)$r['LDQTYC'],
+            (int)$r['LDRSCR'],
+            number_format((float)$r['VARCOST'],   2, '.', ''),
+        ));
+    }
+    fclose($out);
+    exit;
+}
+
+// ── Normal page load ──────────────────────────────────────────────────────────
+$stmt = db2_exec($conn, $sql, array('cursor' => DB2_SCROLLABLE));
+if ($stmt) {
+    while ($r = db2_fetch_assoc($stmt)) { $rows[] = $r; }
+    db2_free_stmt($stmt);
+} else {
+    $sqlErr = db2_stmt_errormsg();
+}
+$rowCount = count($rows);
+
+$eiBase = 'https://portal.screen-graphics.com:5601';
+
+$exportParams           = $_GET;
+$exportParams['export'] = 'csv';
+$exportURL              = '?' . http_build_query($exportParams);
+
+$jsRows = array();
+foreach ($rows as $r) {
+    $jsRows[] = array('moNum' => trim((string)$r['LDORD']));
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MO Daily Labor Report</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;
+       background: #edf1f7; color: #1a2233; }
+
+.topbar { background: #003087; color: #fff; padding: 8px 16px;
+          display: flex; align-items: center;
+          justify-content: space-between; }
+.topbar h1 { font-size: 15px; font-weight: 700; }
+.topbar-right { display: flex; align-items: center; gap: 10px;
+                font-size: 11px; color: #b8cfee; flex-shrink: 0; }
+.btn-refresh { background: #1a5276; color: #fff; border: 1px solid #2980b9;
+               padding: 5px 14px; border-radius: 3px; font-size: 12px;
+               cursor: pointer; white-space: nowrap; }
+.btn-refresh:hover { background: #21618c; }
+
+.filter-bar { background: #fff; border-bottom: 1px solid #c8d0de;
+              padding: 8px 16px; display: flex; align-items: center;
+              gap: 14px; flex-wrap: wrap; }
+.filter-lbl { font-size: 11px; font-weight: 700; color: #5a6478;
+              text-transform: uppercase; letter-spacing: .5px;
+              white-space: nowrap; }
+.filter-group { display: flex; align-items: center; gap: 5px; }
+.filter-group label { font-size: 11px; font-weight: 700; color: #5a6478;
+                      white-space: nowrap; }
+.filter-group input[type=text] { border: 1px solid #b0bac8; border-radius: 3px;
+                                  padding: 4px 7px; font-size: 12px;
+                                  width: 110px; }
+.filter-group input[type=text]:focus { outline: none;
+                                        border-color: #2980b9; }
+.btn-apply { background: #003087; color: #fff; border: none;
+             padding: 5px 16px; border-radius: 3px; font-size: 12px;
+             font-weight: 700; cursor: pointer; }
+.btn-apply:hover { background: #002060; }
+.btn-clear { background: #6c7a8d; color: #fff; border: none;
+             padding: 5px 12px; border-radius: 3px; font-size: 12px;
+             cursor: pointer; text-decoration: none; display: inline-block; }
+.btn-clear:hover { background: #55636f; color: #fff; }
+.btn-export { background: #1a7a1a; color: #fff; border: none;
+              padding: 5px 14px; border-radius: 3px; font-size: 12px;
+              cursor: pointer; text-decoration: none;
+              display: inline-block; white-space: nowrap; }
+.btn-export:hover { background: #155a15; color: #fff; }
+.meta-info { display: flex; gap: 12px; align-items: center;
+             font-size: 11px; color: #5a6478; margin-left: auto;
+             flex-wrap: wrap; }
+.meta-info b { color: #003087; }
+.cd-lbl { color: #b06000; }
+
+.content { padding: 10px 14px; }
+.tbl-wrap { overflow-x: auto; overflow-y: auto;
+            max-height: calc(100vh - 100px); }
+table { width: 100%; border-collapse: collapse; min-width: 2400px; }
+thead th { background: #003087; color: #fff; padding: 5px 7px;
+           font-size: 11px; font-weight: 700; white-space: nowrap;
+           cursor: pointer; user-select: none;
+           position: sticky; top: 0; z-index: 2; }
+thead th:hover { background: #002060; }
+thead th.sort-asc::after  { content: ' \25B2'; font-size: 9px; }
+thead th.sort-desc::after { content: ' \25BC'; font-size: 9px; }
+th.L, td.L { text-align: left; }
+th.R, td.R { text-align: right; }
+th.C, td.C { text-align: center; }
+td { padding: 4px 7px; border-bottom: 1px solid #e4e8ef;
+     white-space: nowrap; vertical-align: middle; font-size: 12px; }
+tr:nth-child(even) td { background: #f4f7fc; }
+tr:hover td { background: #eaf0fb; }
+.mo-link { color: #003087; text-decoration: none; font-weight: 700; }
+.mo-link:hover { text-decoration: underline; color: #0050c0; }
+.unfav { color: #cc0000; font-weight: 700; }
+.fav   { color: #177a17; }
+.err   { background: #fdd; color: #900; padding: 8px 12px;
+         border-radius: 4px; margin-bottom: 10px;
+         font-family: monospace; font-size: 12px; }
+.empty { text-align: center; padding: 40px; color: #888; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>MO Daily Labor Report</h1>
+  <div class="topbar-right">
+    <span><?php echo molr_h($refreshedAt); ?></span>
+    <button class="btn-refresh" onclick="location.reload();">&#x21BB; Refresh</button>
+  </div>
+</div>
+
+<form method="get" action="">
+<div class="filter-bar">
+  <span class="filter-lbl">Filter:</span>
+  <div class="filter-group">
+    <label for="molr-femp">Emp #</label>
+    <input type="text" id="molr-femp" name="femp"
+           value="<?php echo molr_h($filterEmp); ?>"
+           placeholder="Employee #">
+  </div>
+  <div class="filter-group">
+    <label for="molr-ford">MO #</label>
+    <input type="text" id="molr-ford" name="ford"
+           value="<?php echo molr_h($filterOrd); ?>"
+           placeholder="Order #">
+  </div>
+  <div class="filter-group">
+    <label for="molr-fwc">Work Ctr</label>
+    <input type="text" id="molr-fwc" name="fwc"
+           value="<?php echo molr_h($filterWc); ?>"
+           placeholder="Work Center">
+  </div>
+  <button type="submit" class="btn-apply">Apply</button>
+  <a class="btn-clear" href="?">Clear</a>
+  <a class="btn-export" href="<?php echo molr_h($exportURL); ?>">
+    &#x21E9; Export to Excel
+  </a>
+  <div class="meta-info">
+    <span><b><?php echo $rowCount; ?></b>
+      row<?php echo $rowCount !== 1 ? 's' : ''; ?></span>
+    <?php if ($autoRefresh): ?>
+    <span class="cd-lbl">
+      Auto-refresh in <b><span id="molr-cd"><?php echo $refreshSecs; ?></span>s</b>
+    </span>
+    <?php else: ?>
+    <span class="cd-lbl">Auto-refresh off (outside M&ndash;F 7am&ndash;5pm ET)</span>
+    <?php endif; ?>
+  </div>
+</div>
+</form>
+
+<div class="content">
+
+<?php if ($sqlErr): ?>
+<div class="err">Query error: <?php echo molr_h($sqlErr); ?></div>
+<?php endif; ?>
+
+<div class="tbl-wrap">
+<table id="molr-grid">
+  <thead>
+    <tr>
+      <th class="C">Date</th>
+      <th class="R">Emp #</th>
+      <th class="L">Emp Name</th>
+      <th class="L">MO #</th>
+      <th class="L">Work Ctr #</th>
+      <th class="L">WC Description</th>
+      <th class="R">Seq</th>
+      <th class="R">Std Crew Sz</th>
+      <th class="L">Part #</th>
+      <th class="C">Labor Typ</th>
+      <th class="L">Labor Definition</th>
+      <th class="R">Std Setup Hrs</th>
+      <th class="C">Hrs Ref</th>
+      <th class="R">Direct Std Hrs</th>
+      <th class="R">Hrs Worked</th>
+      <th class="R">Variance Hrs</th>
+      <th class="R">Curr Ord Qty</th>
+      <th class="R">Qty Completed</th>
+      <th class="R">Qty Scrapped</th>
+      <th class="R">Labor Var Cost</th>
+    </tr>
+  </thead>
+  <tbody>
+<?php if (empty($rows) && !$sqlErr): ?>
+  <tr>
+    <td colspan="20" class="empty">
+      No labor records found for today
+      <?php if ($filterEmp !== '' || $filterOrd !== '' || $filterWc !== ''): ?>
+        with the current filter
+      <?php endif; ?>.
+    </td>
+  </tr>
+<?php endif; ?>
+<?php foreach ($rows as $idx => $r):
+    $dtRaw    = (string)$r['LDDATE'];
+    $variance = (float)$r['VARIANCE'];
+    $varcost  = (float)$r['VARCOST'];
+    $varClass  = $variance > 0 ? ' unfav' : ($variance < 0 ? ' fav' : '');
+    $vcClass   = $varcost  > 0 ? ' unfav' : ($varcost  < 0 ? ' fav' : '');
+?>
+  <tr>
+    <td class="C" data-val="<?php echo molr_h($dtRaw); ?>">
+      <?php echo molr_h(molr_date($dtRaw)); ?>
+    </td>
+    <td class="R" data-val="<?php echo (int)$r['LDEMP']; ?>">
+      <?php echo (int)$r['LDEMP']; ?>
+    </td>
+    <td class="L"><?php echo molr_h(trim((string)$r['EMRNAM'])); ?></td>
+    <td class="L">
+      <a class="mo-link"
+         href="javascript:molrOpenMO(<?php echo $idx; ?>)">
+        <?php echo molr_h(trim((string)$r['LDORD'])); ?>
+      </a>
+    </td>
+    <td class="L"><?php echo molr_h(trim((string)$r['LDWC'])); ?></td>
+    <td class="L"><?php echo molr_h(trim((string)$r['WCDESC'])); ?></td>
+    <td class="R" data-val="<?php echo (int)$r['LDSEQN']; ?>">
+      <?php echo (int)$r['LDSEQN']; ?>
+    </td>
+    <td class="R" data-val="<?php echo (int)$r['LDMPON']; ?>">
+      <?php echo (int)$r['LDMPON']; ?>
+    </td>
+    <td class="L"><?php echo molr_h(trim((string)$r['LDPN'])); ?></td>
+    <td class="C"><?php echo molr_h(trim((string)$r['LDLBTY'])); ?></td>
+    <td class="L"><?php echo molr_h(trim((string)$r['LABORDEF'])); ?></td>
+    <td class="R" data-val="<?php echo (float)$r['CALCSUHRS']; ?>">
+      <?php echo molr_dec($r['CALCSUHRS'], 2); ?>
+    </td>
+    <td class="C"><?php echo molr_h(trim((string)$r['MSDHRSCODE'])); ?></td>
+    <td class="R" data-val="<?php echo (float)$r['STDHRS']; ?>">
+      <?php echo molr_dec($r['STDHRS'], 2); ?>
+    </td>
+    <td class="R" data-val="<?php echo (float)$r['LDWHRS']; ?>">
+      <?php echo molr_dec($r['LDWHRS'], 2); ?>
+    </td>
+    <td class="R<?php echo $varClass; ?>"
+        data-val="<?php echo $variance; ?>">
+      <?php echo molr_dec($variance, 2); ?>
+    </td>
+    <td class="R" data-val="<?php echo (int)$r['OHCQTY']; ?>">
+      <?php echo molr_int($r['OHCQTY']); ?>
+    </td>
+    <td class="R" data-val="<?php echo (int)$r['LDQTYC']; ?>">
+      <?php echo molr_int($r['LDQTYC']); ?>
+    </td>
+    <td class="R" data-val="<?php echo (int)$r['LDRSCR']; ?>">
+      <?php echo molr_int($r['LDRSCR']); ?>
+    </td>
+    <td class="R<?php echo $vcClass; ?>"
+        data-val="<?php echo $varcost; ?>">
+      <?php echo molr_curr($varcost); ?>
+    </td>
+  </tr>
+<?php endforeach; ?>
+  </tbody>
+</table>
+</div>
+</div>
+
+<script>
+var MOLR_BASE = <?php echo json_encode($eiBase); ?>;
+var MOLR_EID  = <?php echo json_encode($eID); ?>;
+var MOLR_ROWS = <?php echo json_encode(array_values($jsRows)); ?>;
+
+function molrOpenMO(idx) {
+    var r = MOLR_ROWS[idx];
+    if (!r || !r.moNum) return;
+    window.open(
+        MOLR_BASE + '/harris-CGI/SelectMfgOrder.d2w/REPORT'
+        + '?baseVar=BaseConfiguration.icl&portal=MFGMGMT'
+        + '&eID='        + MOLR_EID
+        + '&mfgOrder='   + encodeURIComponent(r.moNum)
+        + '&plantNumber=1',
+        '_blank'
+    );
+}
+
+// ── Sortable columns ──────────────────────────────────────────────────────────
+(function () {
+    var tbl   = document.getElementById('molr-grid');
+    if (!tbl) return;
+    var tbody = tbl.querySelector('tbody');
+    var ths   = tbl.querySelectorAll('thead th');
+    var state = { col: 3, dir: 1 }; // default: MO# asc
+
+    function cellVal(td) {
+        if (td.hasAttribute('data-val')) {
+            var raw = td.getAttribute('data-val');
+            var n   = parseFloat(raw);
+            return isNaN(n) ? raw.toLowerCase() : n;
+        }
+        var t = td.textContent.replace(/[\$,]/g, '').trim();
+        if (t === '' || t === '—') return null;
+        var n = parseFloat(t);
+        return isNaN(n) ? t.toLowerCase() : n;
+    }
+
+    function sortBy(col) {
+        state.dir = (state.col === col) ? -state.dir : 1;
+        state.col = col;
+        var trs = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+        trs.sort(function (a, b) {
+            var va = cellVal(a.cells[col]);
+            var vb = cellVal(b.cells[col]);
+            if (va === null && vb === null) return 0;
+            if (va === null) return  1;
+            if (vb === null) return -1;
+            if (va < vb) return -state.dir;
+            if (va > vb) return  state.dir;
+            return 0;
+        });
+        trs.forEach(function (r) { tbody.appendChild(r); });
+        for (var i = 0; i < ths.length; i++) {
+            ths[i].className = ths[i].className
+                .replace(/\s*sort-(asc|desc)/g, '');
+        }
+        ths[col].className += (state.dir === 1 ? ' sort-asc' : ' sort-desc');
+    }
+
+    for (var i = 0; i < ths.length; i++) {
+        (function (col) {
+            ths[col].addEventListener('click', function () { sortBy(col); });
+        }(i));
+    }
+    // Initial sort indicator: MO# (col 3) ascending
+    ths[3].className += ' sort-asc';
+}());
+
+// ── Auto-refresh countdown ────────────────────────────────────────────────────
+<?php if ($autoRefresh): ?>
+(function () {
+    var secs = <?php echo (int)$refreshSecs; ?>;
+    var el   = document.getElementById('molr-cd');
+    function tick() {
+        if (secs <= 0) { location.reload(); return; }
+        if (el) el.textContent = secs;
+        secs--;
+        setTimeout(tick, 1000);
+    }
+    tick();
+}());
+<?php endif; ?>
+</script>
+
+</body>
+</html>
