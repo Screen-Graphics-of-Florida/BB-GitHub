@@ -42,7 +42,12 @@ if ($searched) {
             COALESCE(TRIM(c.CMST),   '')                                AS CUSTST,
             d.\"ODORL#\"                                                AS LINENUM,
             d.ODORST                                                    AS DORST,
-            TRIM(d.ODMORD)                                              AS MFORD,
+            COALESCE(NULLIF(NULLIF(TRIM(d.ODMORD), ''), '0'),
+                (SELECT MIN(TRIM(oh.OHORD))
+                 FROM SGHDSDATA.HDMOHM oh
+                 WHERE oh.\"OHORD#\" = d.\"ODORD#\"
+                 -- AND   oh.\"OHORL#\" = d.\"ODORL#\"
+                 AND   TRIM(oh.OHPN) = TRIM(d.ODITEM)))                 AS MFORD,
             TRIM(d.ODITEM)                                              AS ITEM,
             TRIM(d.ODIMDS)                                              AS ITEMDESC,
             CASE WHEN d.ODITEM LIKE '93-%' THEN 'CStock'
@@ -62,6 +67,8 @@ if ($searched) {
             d.ODSLPR                                                    AS SLPR,
             d.ODQORD * d.ODSLPR                                         AS TTLSALE,
             d.ODRQDT                                                    AS RQDT,
+            (SELECT MIN(iw.IWWHS) FROM SGHDSDATA.HDIWHS iw
+             WHERE iw.IWITEM = d.ODITEM)                                AS WHSE,
             TRIM(CHAR(u.OUFLDR))                                        AS OUFLDR,
             TRIM(u.OUFLDV)                                              AS OUFLDV
         FROM SGHDSDATA.OEORHD h
@@ -210,6 +217,8 @@ tr:nth-child(even) td { background: #f7f8fc; }
 .typ-cstock { color: #b06000; font-size: 10px; font-weight: 700; }
 .mo-link  { color: #003087; text-decoration: none; font-weight: 700; }
 .mo-link:hover { text-decoration: underline; }
+.item-link { color: #003087; text-decoration: none; font-weight: 700; }
+.item-link:hover { text-decoration: underline; }
 a.ord-link { color: #6db3ff; text-decoration: none; }
 a.ord-link:hover { text-decoration: underline; color: #99ccff; }
 
@@ -319,6 +328,17 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
       window.open(url, '_blank');
   }
 
+  function openItem(item, desc, whse) {
+      window.open(EI_BASE + '/harris-CGI/ItemWarehouseSelect.d2w/REPORT'
+          + '?baseVar=BaseConfiguration.icl&portal=WAREHOUSEMANAGEMENT'
+          + '&eID='             + EI_EID
+          + '&fromItemNumber='  + encodeURIComponent(item)
+          + '&fromWarehouse='   + encodeURIComponent(whse)
+          + '&itemDescription=' + encodeURIComponent(desc)
+          + '&itemNumber='      + encodeURIComponent(item)
+          + '&warehouseNumber=' + encodeURIComponent(whse), '_blank');
+  }
+
   function openMO(mo) {
       if (!mo) return;
       window.open(EI_BASE + '/harris-CGI/SelectMfgOrder.d2w/REPORT'
@@ -389,7 +409,13 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
       ?>
       <tr>
         <td class="L"><?php echo (int)$ln['LINENUM']; ?></td>
-        <td class="L item-cell"><?php echo htmlspecialchars($ln['ITEM']); ?></td>
+        <td class="L item-cell"><a class="item-link"
+            href="javascript:openItem(<?php
+              echo htmlspecialchars(json_encode($ln['ITEM']));
+            ?>,<?php
+              echo htmlspecialchars(json_encode($ln['ITEMDESC']));
+            ?>,<?php echo (int)$ln['WHSE']; ?>)"
+            ><?php echo htmlspecialchars($ln['ITEM']); ?></a></td>
         <td class="L"><span class="<?php echo $typCls; ?>"><?php echo $typ; ?></span></td>
         <td class="L"><?php echo htmlspecialchars($ln['ITEMDESC']); ?></td>
         <td><?php echo cymdToDate($ln['RQDT']); ?></td>
@@ -400,15 +426,24 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
         <td class="L">
           <?php if ($mo !== '' && $mo !== '0'): ?>
           <a class="mo-link"
-             href="javascript:openMO(<?php echo json_encode($mo); ?>)">
+             href="javascript:openMO(<?php echo htmlspecialchars(json_encode($mo)); ?>)">
             <?php echo htmlspecialchars($mo); ?>
           </a>
           <?php else: echo '&mdash;'; endif; ?>
         </td>
         <td class="L"><?php
-          $oufldr = $ln['OUFLDR'];
-          if (is_numeric($oufldr)) $oufldr = (string)(int)$oufldr;
-          echo htmlspecialchars($oufldr);
+          $oufldr = trim((string)$ln['OUFLDR']);
+          // Strip .000000 via string ops — avoids 32-bit overflow on 10-digit phone numbers
+          if (strpos($oufldr, '.') !== false)
+              $oufldr = rtrim(rtrim($oufldr, '0'), '.');
+          if ($oufldr === '' || $oufldr === '0') {
+              echo '&mdash;';
+          } elseif (ctype_digit($oufldr) && strlen($oufldr) === 10) {
+              echo '(' . substr($oufldr,0,3) . ') '
+                 . substr($oufldr,3,3) . '-' . substr($oufldr,6,4);
+          } else {
+              echo htmlspecialchars($oufldr);
+          }
         ?></td>
         <td class="L"><?php echo htmlspecialchars($ln['OUFLDV']); ?></td>
       </tr>

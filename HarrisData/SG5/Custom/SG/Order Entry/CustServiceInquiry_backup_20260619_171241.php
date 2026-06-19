@@ -45,9 +45,9 @@ if ($searched) {
             COALESCE(NULLIF(NULLIF(TRIM(d.ODMORD), ''), '0'),
                 (SELECT MIN(TRIM(oh.OHORD))
                  FROM SGHDSDATA.HDMOHM oh
-                 WHERE oh.\"OHORD#\" = d.\"ODORD#\"
-                 -- AND   oh.\"OHORL#\" = d.\"ODORL#\"
-                 AND   TRIM(oh.OHPN) = TRIM(d.ODITEM)))                 AS MFORD,
+                 WHERE TRIM(CHAR(oh.\"OHORD#\")) = TRIM(CHAR(d.\"ODORD#\"))
+                 AND   TRIM(CHAR(oh.\"OHORL#\")) = TRIM(CHAR(d.\"ODORL#\"))))
+                                                                        AS MFORD,
             TRIM(d.ODITEM)                                              AS ITEM,
             TRIM(d.ODIMDS)                                              AS ITEMDESC,
             CASE WHEN d.ODITEM LIKE '93-%' THEN 'CStock'
@@ -426,7 +426,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
         <td class="L">
           <?php if ($mo !== '' && $mo !== '0'): ?>
           <a class="mo-link"
-             href="javascript:openMO(<?php echo htmlspecialchars(json_encode($mo)); ?>)">
+             href="javascript:openMO(<?php echo json_encode($mo); ?>)">
             <?php echo htmlspecialchars($mo); ?>
           </a>
           <?php else: echo '&mdash;'; endif; ?>
