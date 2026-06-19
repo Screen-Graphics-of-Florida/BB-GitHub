@@ -24,13 +24,6 @@ $catNames = array(
 // Reports keyed by portal => cat => [ [title, desc, file], ... ]
 $reportMap = array(
     'SGINQ' => array(
-        'MFG' => array(
-            array(
-                'title' => 'MO Material Components Issues',
-                'desc'  => 'MO component qty variances — sortable, filter by order status, auto-refreshes every 10 min (M-F, 7am-5pm ET)',
-                'file'  => 'Manufacturing/MOMaterialComponents.php',
-            ),
-        ),
         'OE' => array(
             array(
                 'title' => 'Customer Service Inquiry',
