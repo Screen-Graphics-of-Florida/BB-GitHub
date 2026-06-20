@@ -219,6 +219,8 @@ tr:nth-child(even) td { background: #f7f8fc; }
 .mo-link:hover { text-decoration: underline; }
 .item-link { color: #003087; text-decoration: none; font-weight: 700; }
 .item-link:hover { text-decoration: underline; }
+.cust-num-link { color: #a8c4f0; text-decoration: none; }
+.cust-num-link:hover { text-decoration: underline; color: #c8d8ff; }
 a.ord-link { color: #6db3ff; text-decoration: none; }
 a.ord-link:hover { text-decoration: underline; color: #99ccff; }
 
@@ -328,6 +330,15 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
       window.open(url, '_blank');
   }
 
+  function openCustomer(idx) {
+      var r = CSI_ROWS[idx];
+      window.open(EI_BASE + '/harris-CGI/CustomerSelect.d2w/REPORT'
+          + '?baseVar=BaseConfiguration.icl&portal=CUSTOMER'
+          + '&eID='            + EI_EID
+          + '&customerName='   + encodeURIComponent(r.custName)
+          + '&customerNumber=' + encodeURIComponent(r.shipTo), '_blank');
+  }
+
   function openItem(item, desc, whse) {
       window.open(EI_BASE + '/harris-CGI/ItemWarehouseSelect.d2w/REPORT'
           + '?baseVar=BaseConfiguration.icl&portal=WAREHOUSEMANAGEMENT'
@@ -361,7 +372,9 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
       </span>
       <span class="cust-lbl">
         <?php echo htmlspecialchars($ord['custname']); ?>
-        (<?php echo htmlspecialchars($ord['shipto']); ?>)
+        (<a class="cust-num-link"
+            href="javascript:openCustomer(<?php echo $ord['jsIdx']; ?>)"
+            ><?php echo htmlspecialchars($ord['shipto']); ?></a>)
       </span>
       <?php if (trim($ord['ponbr']) !== ''): ?>
       <span>P/O: <?php echo htmlspecialchars(trim($ord['ponbr'])); ?></span>
