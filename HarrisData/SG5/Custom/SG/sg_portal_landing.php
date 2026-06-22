@@ -39,7 +39,7 @@ $reportMap = array(
         'OE' => array(
             array(
                 'title' => 'Customer Service Inquiry',
-                'desc'  => 'Search open and closed orders by customer name, phone, P/O#, city/state, order #, or item #/description',
+                'desc'  => 'Search open and closed orders by order #, invoice #, customer name, phone, P/O#, city/state, or item #/description',
                 'file'  => 'Order%20Entry/CustServiceInquiry.php',
             ),
         ),

@@ -91,7 +91,7 @@ if ($searched) {
         WHERE h.\"OEORD#\" <> 0
           AND h.OEORTY NOT IN ('Q', 'U')$extraWhere
         ORDER BY h.OEBDTE DESC, h.\"OEORD#\" DESC, d.\"ODORL#\" ASC
-        FETCH FIRST 1000 ROWS ONLY
+        FETCH FIRST 500 ROWS ONLY
     ";
 
     $stmt = db2_exec($conn, $sql, array('cursor' => DB2_SCROLLABLE));
@@ -314,7 +314,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
         <?php endif; ?>
       </div>
     </form>
-    <p class="search-hint">Contains search &mdash; results limited to 1000 lines.</p>
+    <p class="search-hint">Contains search &mdash; results limited to 500 lines.</p>
   </div>
 
 <?php if ($searched): ?>
@@ -350,9 +350,9 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
       <div class="val"><?php echo $rowCount; ?></div>
       <div class="lbl">Lines</div>
     </div>
-    <?php if ($rowCount >= 1000): ?>
+    <?php if ($rowCount >= 500): ?>
     <div class="result-warn">
-      &#9888; Results capped at 1000 lines &mdash; narrow your search for complete results.
+      &#9888; Results capped at 500 lines &mdash; narrow your search for complete results.
     </div>
     <?php endif; ?>
   </div>

@@ -22,12 +22,7 @@ if ($searched) {
           OR UPPER(TRIM(d.ODIMDS))       LIKE UPPER('%{$v}%')
           OR UPPER(TRIM(d.ODITEM))       LIKE UPPER('%{$v}%')
           OR UPPER(TRIM(h.OEORRF))       LIKE UPPER('%{$v}%')
-          OR UPPER(TRIM(c.CMCNA1))       LIKE UPPER('%{$v}%')
-          OR TRIM(CHAR(h.\"OEORD#\"))    LIKE '%{$v}%'
-          OR EXISTS (
-              SELECT 1 FROM SGHDSDATA.HDINVC i
-              WHERE i.IVORD = h.\"OEORD#\"
-              AND   TRIM(CHAR(i.IVAINV)) LIKE '%{$v}%'))";
+          OR UPPER(TRIM(c.CMCNA1))       LIKE UPPER('%{$v}%'))";
 
     $sql = "
         SELECT
@@ -91,7 +86,7 @@ if ($searched) {
         WHERE h.\"OEORD#\" <> 0
           AND h.OEORTY NOT IN ('Q', 'U')$extraWhere
         ORDER BY h.OEBDTE DESC, h.\"OEORD#\" DESC, d.\"ODORL#\" ASC
-        FETCH FIRST 1000 ROWS ONLY
+        FETCH FIRST 500 ROWS ONLY
     ";
 
     $stmt = db2_exec($conn, $sql, array('cursor' => DB2_SCROLLABLE));
@@ -126,46 +121,6 @@ foreach ($rows as $r) {
         );
     }
     $orders[$ord]['lines'][] = $r;
-}
-
-// Fetch invoices for closed orders in the result set
-$invoices = array();
-if ($searched && !empty($orders)) {
-    $closedOrds = array();
-    foreach ($orders as $ord) {
-        if ($ord['horst'] === 'C')
-            $closedOrds[] = (int)$ord['ordnum'];
-    }
-    if (!empty($closedOrds)) {
-        $inList = implode(',', $closedOrds);
-        $invSql = "
-            SELECT TRIM(CHAR(i.IVORD))  AS IVORD,
-                   TRIM(CHAR(i.IVAINV)) AS IVAINV,
-                   i.IVIVDT             AS IVIVDT,
-                   TRIM(CHAR(i.IVBLTO)) AS IVBLTO
-            FROM SGHDSDATA.HDINVC i
-            WHERE i.IVORD IN ($inList)
-              AND i.IVAINV > 0
-            ORDER BY i.IVORD, i.IVIVDT
-        ";
-        $istmt = db2_exec($conn, $invSql);
-        if ($istmt) {
-            $seen = array();
-            while ($ir = db2_fetch_assoc($istmt)) {
-                $o   = trim($ir['IVORD']);
-                $num = trim($ir['IVAINV']);
-                if (!isset($seen[$o][$num])) {
-                    $seen[$o][$num] = true;
-                    $invoices[$o][] = array(
-                        'num'  => $num,
-                        'date' => $ir['IVIVDT'],
-                        'cust' => trim($ir['IVBLTO']),
-                    );
-                }
-            }
-            db2_free_stmt($istmt);
-        }
-    }
 }
 
 $eiBase = 'https://portal.screen-graphics.com:5601';
@@ -272,9 +227,6 @@ tr:nth-child(even) td { background: #f7f8fc; }
 .item-link:hover { text-decoration: underline; }
 .cust-num-link { color: #a8c4f0; text-decoration: none; }
 .cust-num-link:hover { text-decoration: underline; color: #c8d8ff; }
-.inv-lbl  { color: #a8c4f0; font-size: 11px; }
-.inv-link { color: #ffd080; text-decoration: none; font-weight: 700; font-size: 12px; }
-.inv-link:hover { text-decoration: underline; }
 a.ord-link { color: #6db3ff; text-decoration: none; }
 a.ord-link:hover { text-decoration: underline; color: #99ccff; }
 
@@ -298,7 +250,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
     <form method="get" action="">
       <div class="search-row">
         <div class="fg">
-          <label>Search (order #, invoice #, phone, name, DOT, asset, item description, P/O, customer &mdash; enter partial info)</label>
+          <label>Search (phone, name, DOT, asset, item description, P/O, customer &mdash; enter partial info)</label>
           <input type="text" name="q" value="" placeholder="enter any partial value to search across all fields..."
             autofocus>
         </div>
@@ -314,7 +266,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
         <?php endif; ?>
       </div>
     </form>
-    <p class="search-hint">Contains search &mdash; results limited to 1000 lines.</p>
+    <p class="search-hint">Contains search &mdash; results limited to 500 lines.</p>
   </div>
 
 <?php if ($searched): ?>
@@ -350,9 +302,9 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
       <div class="val"><?php echo $rowCount; ?></div>
       <div class="lbl">Lines</div>
     </div>
-    <?php if ($rowCount >= 1000): ?>
+    <?php if ($rowCount >= 500): ?>
     <div class="result-warn">
-      &#9888; Results capped at 1000 lines &mdash; narrow your search for complete results.
+      &#9888; Results capped at 500 lines &mdash; narrow your search for complete results.
     </div>
     <?php endif; ?>
   </div>
@@ -429,23 +381,6 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
       </span>
       <?php if (trim($ord['ponbr']) !== ''): ?>
       <span>P/O: <?php echo htmlspecialchars(trim($ord['ponbr'])); ?></span>
-      <?php endif; ?>
-      <?php if ($ord['horst'] === 'C' && !empty($invoices[$ord['ordnum']])): ?>
-      <span class="inv-lbl">Inv:<?php
-          foreach ($invoices[$ord['ordnum']] as $inv):
-              $iUrl = $eiBase
-                  . '/harris-CGI/SelectInvoice.d2w/DISPLAY'
-                  . '?formatToPrint=Y'
-                  . '&baseVar=BaseConfiguration.icl'
-                  . '&portal=CUSTOMER'
-                  . '&eID='            . urlencode($eID)
-                  . '&customerNumber=' . urlencode($inv['cust'])
-                  . '&invoiceDate='    . urlencode($inv['date'])
-                  . '&invoiceNumber='  . urlencode($inv['num']);
-      ?> <a class="inv-link" href="<?php echo htmlspecialchars($iUrl); ?>"
-            target="_blank">#<?php echo htmlspecialchars($inv['num']); ?></a><?php
-          endforeach;
-      ?></span>
       <?php endif; ?>
     </div>
 
