@@ -150,22 +150,19 @@ if ($searched) {
 
         // Step 3 — fetch all comments for matching orders
         $cSql = "
-            SELECT \"OCORD#\"  AS OCORD,
-                   OCCMNT      AS OCCMNT
+            SELECT TRIM(CHAR(\"OCORD#\")) AS OCORD,
+                   TRIM(OCCMNT)          AS OCCMNT
             FROM SGHDSDATA.OEOCMT
             WHERE \"OCORD#\" IN ($inList)
-            ORDER BY \"OCORD#\", \"OCORL#\"
+              AND TRIM(OCCMNT) <> ''
+            ORDER BY \"OCORD#\", \"OCORL#\", \"ORBLN#\"
         ";
         $cstmt = db2_exec($conn, $cSql);
         if ($cstmt) {
             while ($cr = db2_fetch_assoc($cstmt)) {
-                $cmt = trim((string)$cr['OCCMNT']);
-                if ($cmt !== '')
-                    $orderComments[(int)$cr['OCORD']][] = $cmt;
+                $orderComments[trim($cr['OCORD'])][] = trim($cr['OCCMNT']);
             }
             db2_free_stmt($cstmt);
-        } else {
-            $err .= ' [Cmt query: ' . db2_stmt_errormsg() . ']';
         }
     }
 }
@@ -603,10 +600,10 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
       </tbody>
     </table>
     </div>
-    <?php if (!empty($orderComments[(int)$ord['ordnum']])): ?>
+    <?php if (!empty($orderComments[$ord['ordnum']])): ?>
     <div class="order-comments">
       <div class="cmts-lbl">Comments</div>
-      <?php foreach ($orderComments[(int)$ord['ordnum']] as $cmt): ?>
+      <?php foreach ($orderComments[$ord['ordnum']] as $cmt): ?>
       <div class="cmt-line"><?php echo htmlspecialchars($cmt); ?></div>
       <?php endforeach; ?>
     </div>

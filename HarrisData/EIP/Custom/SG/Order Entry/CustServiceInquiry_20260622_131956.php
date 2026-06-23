@@ -154,7 +154,7 @@ if ($searched) {
                    OCCMNT      AS OCCMNT
             FROM SGHDSDATA.OEOCMT
             WHERE \"OCORD#\" IN ($inList)
-            ORDER BY \"OCORD#\", \"OCORL#\"
+            ORDER BY \"OCORD#\", \"OCORL#\", \"ORBLN#\"
         ";
         $cstmt = db2_exec($conn, $cSql);
         if ($cstmt) {

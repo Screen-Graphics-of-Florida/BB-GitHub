@@ -8,7 +8,7 @@ date_default_timezone_set('America/Chicago');
 $srchTerm = isset($_GET['q']) ? trim($_GET['q']) : '';
 $searched = ($srchTerm !== '');
 
-$rows = array(); $err = ''; $rowCount = 0; $orderComments = array();
+$rows = array(); $err = ''; $rowCount = 0;
 
 function escSql($v) { return str_replace("'", "''", $v); }
 
@@ -31,6 +31,7 @@ if ($searched) {
           OR EXISTS (
               SELECT 1 FROM SGHDSDATA.OEOCMT c2
               WHERE c2.\"OCORD#\" = d.\"ODORD#\"
+              AND   c2.\"OCORL#\" = d.\"ODORL#\"
               AND   UPPER(TRIM(c2.OCCMNT)) LIKE UPPER('%{$v}%')))";
 
     // Step 1 — find order numbers that match the search
@@ -146,26 +147,6 @@ if ($searched) {
             db2_free_stmt($stmt);
         } else {
             $err = db2_stmt_errormsg();
-        }
-
-        // Step 3 — fetch all comments for matching orders
-        $cSql = "
-            SELECT \"OCORD#\"  AS OCORD,
-                   OCCMNT      AS OCCMNT
-            FROM SGHDSDATA.OEOCMT
-            WHERE \"OCORD#\" IN ($inList)
-            ORDER BY \"OCORD#\", \"OCORL#\"
-        ";
-        $cstmt = db2_exec($conn, $cSql);
-        if ($cstmt) {
-            while ($cr = db2_fetch_assoc($cstmt)) {
-                $cmt = trim((string)$cr['OCCMNT']);
-                if ($cmt !== '')
-                    $orderComments[(int)$cr['OCORD']][] = $cmt;
-            }
-            db2_free_stmt($cstmt);
-        } else {
-            $err .= ' [Cmt query: ' . db2_stmt_errormsg() . ']';
         }
     }
 }
@@ -336,11 +317,6 @@ tr:nth-child(even) td { background: #f7f8fc; }
 .item-link:hover { text-decoration: underline; }
 .cust-num-link { color: #a8c4f0; text-decoration: none; }
 .cust-num-link:hover { text-decoration: underline; color: #c8d8ff; }
-.order-comments { background: #fffbe6; border-top: 1px solid #d8c84a; padding: 8px 14px; }
-.cmts-lbl { font-size: 10px; font-weight: 700; color: #6b5900; text-transform: uppercase;
-            letter-spacing: 1px; margin-bottom: 4px; }
-.cmt-line { font-size: 12px; color: #333; padding: 1px 0 1px 8px;
-            font-family: 'Courier New', monospace; white-space: pre-wrap; }
 .inv-lbl  { color: #a8c4f0; font-size: 11px; }
 .inv-link { color: #ffd080; text-decoration: none; font-weight: 700; font-size: 12px; }
 .inv-link:hover { text-decoration: underline; }
@@ -603,14 +579,6 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
       </tbody>
     </table>
     </div>
-    <?php if (!empty($orderComments[(int)$ord['ordnum']])): ?>
-    <div class="order-comments">
-      <div class="cmts-lbl">Comments</div>
-      <?php foreach ($orderComments[(int)$ord['ordnum']] as $cmt): ?>
-      <div class="cmt-line"><?php echo htmlspecialchars($cmt); ?></div>
-      <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
   </div>
   <?php endforeach; ?>
 

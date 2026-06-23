@@ -8,7 +8,7 @@ date_default_timezone_set('America/Chicago');
 $srchTerm = isset($_GET['q']) ? trim($_GET['q']) : '';
 $searched = ($srchTerm !== '');
 
-$rows = array(); $err = ''; $rowCount = 0; $orderComments = array();
+$rows = array(); $err = ''; $rowCount = 0;
 
 function escSql($v) { return str_replace("'", "''", $v); }
 
@@ -27,15 +27,55 @@ if ($searched) {
           OR EXISTS (
               SELECT 1 FROM SGHDSDATA.HDINVC i
               WHERE i.IVORD = h.\"OEORD#\"
-              AND   TRIM(CHAR(i.IVAINV)) LIKE '%{$v}%')
-          OR EXISTS (
-              SELECT 1 FROM SGHDSDATA.OEOCMT c2
-              WHERE c2.\"OCORD#\" = d.\"ODORD#\"
-              AND   UPPER(TRIM(c2.OCCMNT)) LIKE UPPER('%{$v}%')))";
+              AND   TRIM(CHAR(i.IVAINV)) LIKE '%{$v}%'))";
 
-    // Step 1 — find order numbers that match the search
-    $matchSql = "
-        SELECT DISTINCT h.\"OEORD#\" AS ORDNUM
+    $sql = "
+        SELECT
+            h.\"OEORD#\"                                                AS ORDNUM,
+            h.OEORST                                                    AS HORST,
+            h.OEORTY                                                    AS ORTY,
+            h.OEBDTE                                                    AS BDTE,
+            TRIM(CHAR(h.OESHTO))                                        AS SHIPTO,
+            TRIM(CHAR(h.OEBLTO))                                        AS BILLTO,
+            h.OESLSM                                                    AS SLSNUM,
+            TRIM(h.OEORRF)                                              AS PONBR,
+            TRIM(h.OEUDF1)                                              AS CSREP,
+            CASE WHEN s.SMREGN <> 'INACT' THEN TRIM(s.SMSNA1)
+                 ELSE 'Ex-Sales' END                                    AS SLSNAME,
+            COALESCE(TRIM(c.CMCNA1), '')                                AS CUSTNAME,
+            COALESCE(TRIM(c.CMCCTY), '')                                AS CUSTCITY,
+            COALESCE(TRIM(c.CMST),   '')                                AS CUSTST,
+            d.\"ODORL#\"                                                AS LINENUM,
+            d.ODORST                                                    AS DORST,
+            COALESCE(NULLIF(NULLIF(TRIM(d.ODMORD), ''), '0'),
+                (SELECT MIN(TRIM(oh.OHORD))
+                 FROM SGHDSDATA.HDMOHM oh
+                 WHERE oh.\"OHORD#\" = d.\"ODORD#\"
+                 -- AND   oh.\"OHORL#\" = d.\"ODORL#\"
+                 AND   TRIM(oh.OHPN) = TRIM(d.ODITEM)))                 AS MFORD,
+            TRIM(d.ODITEM)                                              AS ITEM,
+            TRIM(d.ODIMDS)                                              AS ITEMDESC,
+            CASE WHEN d.ODITEM LIKE '93-%' THEN 'CStock'
+                 WHEN d.ODITEM LIKE '94-%' THEN 'CStock'
+                 WHEN d.ODITEM LIKE '95-%' THEN 'CStock'
+                 WHEN d.ODITEM LIKE '96-%' THEN 'CStock'
+                 WHEN d.ODITEM LIKE '97-%' THEN 'Stock'
+                 WHEN d.ODITEM LIKE '99-%' THEN 'Stock'
+                 WHEN d.ODITEM LIKE '3M-%' THEN 'Stock'
+                 WHEN d.ODITEM LIKE '3M0%' THEN 'Stock'
+                 ELSE 'Custom' END                                      AS ITEMTYP,
+            d.ODQORD                                                    AS QORD,
+            d.ODQSTD                                                    AS QSTD,
+            CASE WHEN d.ODORST = 'C' THEN 0
+                 WHEN d.ODQORD - d.ODQSTD < 0 THEN 0
+                 ELSE d.ODQORD - d.ODQSTD END                          AS QTYDUE,
+            d.ODSLPR                                                    AS SLPR,
+            d.ODQORD * d.ODSLPR                                         AS TTLSALE,
+            d.ODRQDT                                                    AS RQDT,
+            (SELECT MIN(iw.IWWHS) FROM SGHDSDATA.HDIWHS iw
+             WHERE iw.IWITEM = d.ODITEM)                                AS WHSE,
+            TRIM(CHAR(u.OUFLDR))                                        AS OUFLDR,
+            TRIM(u.OUFLDV)                                              AS OUFLDV
         FROM SGHDSDATA.OEORHD h
         JOIN SGHDSDATA.OEORDT d   ON h.\"OEORD#\" = d.\"ODORD#\"
         LEFT JOIN (
@@ -44,129 +84,25 @@ if ($searched) {
                    MAX(TRIM(OUFLDV)) AS OUFLDV
             FROM SGHDSDATA.OEOUDT
             GROUP BY OUORD, OULINE
-        ) u ON u.OUORD = d.\"ODORD#\" AND u.OULINE = d.\"ODORL#\"
-        LEFT JOIN SGHDSDATA.HDCUST c ON h.OESHTO = c.CMCUST
+        ) u ON u.OUORD  = d.\"ODORD#\"
+           AND u.OULINE = d.\"ODORL#\"
+        LEFT JOIN SGHDSDATA.HDCUST c  ON h.OESHTO = c.CMCUST
+        LEFT JOIN SGHDSDATA.HDSLSM s  ON h.OESLSM = s.SMSLSM
         WHERE h.\"OEORD#\" <> 0
           AND h.OEORTY NOT IN ('Q', 'U')$extraWhere
-        FETCH FIRST 500 ROWS ONLY
+        ORDER BY h.OEBDTE DESC, h.\"OEORD#\" DESC, d.\"ODORL#\" ASC
+        FETCH FIRST 1000 ROWS ONLY
     ";
 
-    $matchedOrds = array();
-    $mstmt = db2_exec($conn, $matchSql);
-    if ($mstmt) {
-        while ($mr = db2_fetch_assoc($mstmt))
-            $matchedOrds[] = (int)$mr['ORDNUM'];
-        db2_free_stmt($mstmt);
+    $stmt = db2_exec($conn, $sql, array('cursor' => DB2_SCROLLABLE));
+    if ($stmt) {
+        while ($r = db2_fetch_assoc($stmt)) {
+            $rows[] = $r;
+        }
+        $rowCount = count($rows);
+        db2_free_stmt($stmt);
     } else {
         $err = db2_stmt_errormsg();
-    }
-
-    // Step 2 — fetch ALL lines for matching orders (no search filter on lines)
-    if (!empty($matchedOrds)) {
-        $inList = implode(',', $matchedOrds);
-
-        $sql = "
-            SELECT
-                h.\"OEORD#\"                                                AS ORDNUM,
-                h.OEORST                                                    AS HORST,
-                h.OEORTY                                                    AS ORTY,
-                h.OEBDTE                                                    AS BDTE,
-                TRIM(CHAR(h.OESHTO))                                        AS SHIPTO,
-                TRIM(CHAR(h.OEBLTO))                                        AS BILLTO,
-                h.OESLSM                                                    AS SLSNUM,
-                TRIM(h.OEORRF)                                              AS PONBR,
-                TRIM(h.OEUDF1)                                              AS CSREP,
-                CASE WHEN s.SMREGN <> 'INACT' THEN TRIM(s.SMSNA1)
-                     ELSE 'Ex-Sales' END                                    AS SLSNAME,
-                COALESCE(TRIM(c.CMCNA1), '')                                AS CUSTNAME,
-                COALESCE(TRIM(c.CMCCTY), '')                                AS CUSTCITY,
-                COALESCE(TRIM(c.CMST),   '')                                AS CUSTST,
-                d.\"ODORL#\"                                                AS LINENUM,
-                d.ODORST                                                    AS DORST,
-                COALESCE(NULLIF(NULLIF(TRIM(d.ODMORD), ''), '0'),
-                    (SELECT MIN(TRIM(oh.OHORD))
-                     FROM SGHDSDATA.HDMOHM oh
-                     WHERE oh.\"OHORD#\" = d.\"ODORD#\"
-                     -- AND   oh.\"OHORL#\" = d.\"ODORL#\"
-                     AND   TRIM(oh.OHPN) = TRIM(d.ODITEM)))                 AS MFORD,
-                TRIM(d.ODITEM)                                              AS ITEM,
-                TRIM(d.ODIMDS)                                              AS ITEMDESC,
-                CASE WHEN d.ODITEM LIKE '93-%' THEN 'CStock'
-                     WHEN d.ODITEM LIKE '94-%' THEN 'CStock'
-                     WHEN d.ODITEM LIKE '95-%' THEN 'CStock'
-                     WHEN d.ODITEM LIKE '96-%' THEN 'CStock'
-                     WHEN d.ODITEM LIKE '97-%' THEN 'Stock'
-                     WHEN d.ODITEM LIKE '99-%' THEN 'Stock'
-                     WHEN d.ODITEM LIKE '3M-%' THEN 'Stock'
-                     WHEN d.ODITEM LIKE '3M0%' THEN 'Stock'
-                     ELSE 'Custom' END                                      AS ITEMTYP,
-                d.ODQORD                                                    AS QORD,
-                d.ODQSTD                                                    AS QSTD,
-                CASE WHEN d.ODORST = 'C' THEN 0
-                     WHEN d.ODQORD - d.ODQSTD < 0 THEN 0
-                     ELSE d.ODQORD - d.ODQSTD END                          AS QTYDUE,
-                d.ODSLPR                                                    AS SLPR,
-                d.ODQORD * d.ODSLPR                                         AS TTLSALE,
-                d.ODRQDT                                                    AS RQDT,
-                (SELECT MIN(iw.IWWHS) FROM SGHDSDATA.HDIWHS iw
-                 WHERE iw.IWITEM = d.ODITEM)                                AS WHSE,
-                TRIM(CHAR(u.OUFLDR))                                        AS OUFLDR,
-                TRIM(u.OUFLDV)                                              AS OUFLDV,
-                COALESCE(cmt.OCCMNT, '')                                    AS OCCMNT
-            FROM SGHDSDATA.OEORHD h
-            JOIN SGHDSDATA.OEORDT d   ON h.\"OEORD#\" = d.\"ODORD#\"
-            LEFT JOIN (
-                SELECT OUORD, OULINE,
-                       MAX(OUFLDR)       AS OUFLDR,
-                       MAX(TRIM(OUFLDV)) AS OUFLDV
-                FROM SGHDSDATA.OEOUDT
-                GROUP BY OUORD, OULINE
-            ) u ON u.OUORD  = d.\"ODORD#\"
-               AND u.OULINE = d.\"ODORL#\"
-            LEFT JOIN (
-                SELECT \"OCORD#\", \"OCORL#\",
-                       MAX(TRIM(OCCMNT)) AS OCCMNT
-                FROM SGHDSDATA.OEOCMT
-                GROUP BY \"OCORD#\", \"OCORL#\"
-            ) cmt ON cmt.\"OCORD#\" = d.\"ODORD#\"
-                 AND cmt.\"OCORL#\" = d.\"ODORL#\"
-            LEFT JOIN SGHDSDATA.HDCUST c  ON h.OESHTO = c.CMCUST
-            LEFT JOIN SGHDSDATA.HDSLSM s  ON h.OESLSM = s.SMSLSM
-            WHERE h.\"OEORD#\" IN ($inList)
-            ORDER BY h.OEBDTE DESC, h.\"OEORD#\" DESC, d.\"ODORL#\" ASC
-            FETCH FIRST 1000 ROWS ONLY
-        ";
-
-        $stmt = db2_exec($conn, $sql, array('cursor' => DB2_SCROLLABLE));
-        if ($stmt) {
-            while ($r = db2_fetch_assoc($stmt)) {
-                $rows[] = $r;
-            }
-            $rowCount = count($rows);
-            db2_free_stmt($stmt);
-        } else {
-            $err = db2_stmt_errormsg();
-        }
-
-        // Step 3 — fetch all comments for matching orders
-        $cSql = "
-            SELECT \"OCORD#\"  AS OCORD,
-                   OCCMNT      AS OCCMNT
-            FROM SGHDSDATA.OEOCMT
-            WHERE \"OCORD#\" IN ($inList)
-            ORDER BY \"OCORD#\", \"OCORL#\"
-        ";
-        $cstmt = db2_exec($conn, $cSql);
-        if ($cstmt) {
-            while ($cr = db2_fetch_assoc($cstmt)) {
-                $cmt = trim((string)$cr['OCCMNT']);
-                if ($cmt !== '')
-                    $orderComments[(int)$cr['OCORD']][] = $cmt;
-            }
-            db2_free_stmt($cstmt);
-        } else {
-            $err .= ' [Cmt query: ' . db2_stmt_errormsg() . ']';
-        }
     }
 }
 
@@ -336,11 +272,6 @@ tr:nth-child(even) td { background: #f7f8fc; }
 .item-link:hover { text-decoration: underline; }
 .cust-num-link { color: #a8c4f0; text-decoration: none; }
 .cust-num-link:hover { text-decoration: underline; color: #c8d8ff; }
-.order-comments { background: #fffbe6; border-top: 1px solid #d8c84a; padding: 8px 14px; }
-.cmts-lbl { font-size: 10px; font-weight: 700; color: #6b5900; text-transform: uppercase;
-            letter-spacing: 1px; margin-bottom: 4px; }
-.cmt-line { font-size: 12px; color: #333; padding: 1px 0 1px 8px;
-            font-family: 'Courier New', monospace; white-space: pre-wrap; }
 .inv-lbl  { color: #a8c4f0; font-size: 11px; }
 .inv-link { color: #ffd080; text-decoration: none; font-weight: 700; font-size: 12px; }
 .inv-link:hover { text-decoration: underline; }
@@ -367,7 +298,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
     <form method="get" action="">
       <div class="search-row">
         <div class="fg">
-          <label>Search (order #, invoice #, phone, name, DOT, asset, item description, P/O, customer, comments &mdash; enter partial info)</label>
+          <label>Search (order #, invoice #, phone, name, DOT, asset, item description, P/O, customer &mdash; enter partial info)</label>
           <input type="text" name="q" value="" placeholder="enter any partial value to search across all fields..."
             autofocus>
         </div>
@@ -547,7 +478,6 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
         <th class="L">MO #</th>
         <th class="L">Phone</th>
         <th class="L">Name / DOT / Asset / Other</th>
-        <th class="L">Comment</th>
       </tr></thead>
       <tbody>
       <?php foreach ($ord['lines'] as $ln): ?>
@@ -597,20 +527,11 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
           }
         ?></td>
         <td class="L"><?php echo htmlspecialchars($ln['OUFLDV']); ?></td>
-        <td class="L"><?php echo $ln['OCCMNT'] !== '' ? htmlspecialchars($ln['OCCMNT']) : '&mdash;'; ?></td>
       </tr>
       <?php endforeach; ?>
       </tbody>
     </table>
     </div>
-    <?php if (!empty($orderComments[(int)$ord['ordnum']])): ?>
-    <div class="order-comments">
-      <div class="cmts-lbl">Comments</div>
-      <?php foreach ($orderComments[(int)$ord['ordnum']] as $cmt): ?>
-      <div class="cmt-line"><?php echo htmlspecialchars($cmt); ?></div>
-      <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
   </div>
   <?php endforeach; ?>
 
