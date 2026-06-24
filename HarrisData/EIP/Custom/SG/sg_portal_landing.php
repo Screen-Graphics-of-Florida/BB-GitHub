@@ -1,8 +1,30 @@
 <?php
 require_once dirname(__FILE__) . '/../GetURLParm.php';
 
-$portal = isset($_GET['portal']) ? strtoupper(trim($_GET['portal'])) : '';
-$cat    = isset($_GET['cat'])    ? strtoupper(trim($_GET['cat']))    : '';
+$portal      = isset($_GET['portal']) ? strtoupper(trim($_GET['portal'])) : '';
+$cat         = isset($_GET['cat'])    ? strtoupper(trim($_GET['cat']))    : '';
+$userProfile = isset($_SERVER['PHP_AUTH_USER']) ? strtoupper(trim($_SERVER['PHP_AUTH_USER'])) : '';
+
+// Check SGHDSDATA.SYPGMS: hide item only when SPOP01='N' explicitly.
+// Missing row = allow (default Y). DB error = allow.
+function sgCanSee($pgmId) {
+    global $userProfile;
+    if ($userProfile === '' || $pgmId === '') return true;
+    $conn = @db2_connect('*LOCAL', '', '');
+    if (!$conn) return true;
+    $us = str_replace("'", "''", $userProfile);
+    $pg = str_replace("'", "''", $pgmId);
+    $s  = @db2_exec($conn,
+        "SELECT RTRIM(SPOP01) FROM SGHDSDATA.SYPGMS "
+      . "WHERE SPUSER='$us' AND SPPGID='$pg'");
+    $allow = true;
+    if ($s) {
+        $r = db2_fetch_row($s);
+        if ($r) { $allow = (rtrim(db2_result($s, 0)) !== 'N'); }
+    }
+    db2_close($conn);
+    return $allow;
+}
 
 $portalNames = array(
     'SGINQ'  => 'SG Inquiries',
@@ -29,11 +51,13 @@ $reportMap = array(
                 'title' => 'MO Daily Labor Report',
                 'desc'  => 'Today\'s labor detail by MO — filter by Emp#, MO#, or Work Center; sortable; export to Excel; auto-refreshes every 10 min (M-F, 7am-5pm ET)',
                 'file'  => 'Manufacturing/MODailyLaborReport.php',
+                'pgm'   => 'MODLYLBR',
             ),
             array(
                 'title' => 'MO Material Components Issues',
                 'desc'  => 'MO component qty variances — sortable, filter by order status, auto-refreshes every 10 min (M-F, 7am-5pm ET)',
                 'file'  => 'Manufacturing/MOMaterialComponents.php',
+                'pgm'   => 'MOMATLCMP',
             ),
         ),
         'OE' => array(
@@ -41,6 +65,7 @@ $reportMap = array(
                 'title' => 'Customer Service Inquiry',
                 'desc'  => 'Search open and closed orders by order #, invoice #, customer name, phone, P/O#, city/state, or item #/description',
                 'file'  => 'Order%20Entry/CustServiceInquiry.php',
+                'pgm'   => 'CSSRVINQ',
             ),
         ),
     ),
@@ -50,16 +75,19 @@ $reportMap = array(
                 'title' => 'Bookings Dashboard',
                 'desc'  => 'D/W/M/Y bookings by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
                 'file'  => 'Order%20Entry/BookingsDashboard.php',
+                'pgm'   => 'BOOKDASH',
             ),
             array(
                 'title' => 'Shipments Dashboard',
                 'desc'  => 'Orders shipped today + D/W/M/Y invoice totals by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
                 'file'  => 'Order%20Entry/ShipmentsDashboard.php',
+                'pgm'   => 'SHIPSDASH',
             ),
             array(
                 'title' => 'Sales Dashboard',
                 'desc'  => 'D/W/M/Y sales by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
                 'file'  => 'Order%20Entry/SalesDashboard.php',
+                'pgm'   => 'SALESDASH',
             ),
         ),
     ),
@@ -69,6 +97,7 @@ $reportMap = array(
                 'title' => 'Inventory Data Integrity Dashboard',
                 'desc'  => 'Items with incorrect inventory type codes, costing errors by product class',
                 'file'  => 'Inventory%20Management/InvDataIntegrityDashboard.php',
+                'pgm'   => 'INVDATINT',
             ),
         ),
         'OE' => array(
@@ -76,6 +105,7 @@ $reportMap = array(
                 'title' => 'CS Data Integrity Dashboard',
                 'desc'  => 'Duplicate PO#s, open order taxes, CC fees, bad customer data, zero-cost lines, QM product class issues',
                 'file'  => 'Order%20Entry/CSDataIntegrityDashboard.php',
+                'pgm'   => 'CSDATINT',
             ),
         ),
     ),
@@ -85,6 +115,7 @@ $reportMap = array(
                 'title' => 'Manufacturing Order Requirements',
                 'desc'  => 'Items with net shortage — auto-refreshes every 10 minutes',
                 'file'  => 'Manufacturing/MORequirements.php',
+                'pgm'   => 'MOREQ',
             ),
         ),
         'PLN' => array(
@@ -92,11 +123,13 @@ $reportMap = array(
                 'title' => 'Manufacturing Order Requirements',
                 'desc'  => 'Items with net shortage — auto-refreshes every 10 minutes',
                 'file'  => 'Manufacturing/MORequirements.php',
+                'pgm'   => 'MOREQ',
             ),
             array(
                 'title' => 'Open Order Line Item Comments',
                 'desc'  => 'Open order lines with ACK comments — sortable, auto-refreshes every 15 min (7am–4pm CT)',
                 'file'  => 'Planning/OpenOrderLineItemComments.php',
+                'pgm'   => 'OPENORDLC',
             ),
         ),
     ),
@@ -180,6 +213,7 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
 <?php else: ?>
   <div class="report-list">
     <?php foreach ($items as $item):
+        if (!sgCanSee(isset($item['pgm']) ? $item['pgm'] : '')) continue;
         $params = array('baseVar' => $baseVar, 'eID' => $eID, 'portal' => $portal);
         $url    = htmlspecialchars($item['file'] . '?' . http_build_query($params));
     ?>
