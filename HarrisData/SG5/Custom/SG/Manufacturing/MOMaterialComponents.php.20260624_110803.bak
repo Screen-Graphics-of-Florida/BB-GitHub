@@ -22,19 +22,6 @@ if (empty($selectedStatuses)) {
     $selectedStatuses = array('A');
 }
 
-// ── Closed date-range filter (only applied when Closed is selected) ────────────
-$closedSel  = in_array('C', $selectedStatuses, true);
-$closedFrom = date('Y-m-d', strtotime('-7 days'));
-$closedTo   = date('Y-m-d');
-if ($closedSel) {
-    if (isset($_GET['cfrom']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['cfrom'])) {
-        $closedFrom = $_GET['cfrom'];
-    }
-    if (isset($_GET['cto']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['cto'])) {
-        $closedTo = $_GET['cto'];
-    }
-}
-
 // ── Auto-refresh: M–F, 7 am–5 pm Eastern ─────────────────────────────────────
 $estNow      = new DateTime('now', new DateTimeZone('America/New_York'));
 $estDow      = (int)$estNow->format('N'); // 1=Mon … 7=Sun
@@ -71,10 +58,6 @@ $inList = implode(',', array_map(
     function ($s) { return "'" . $s . "'"; },
     $selectedStatuses
 ));
-
-$dateWhere = $closedSel
-    ? "WHERE DATE(T01.CRTSTP) BETWEEN '$closedFrom' AND '$closedTo'"
-    : '';
 
 $sql = "
     SELECT CRORD, CRSEQN, WCWC, WCDESC, CRPPN, CRCPN,
@@ -117,7 +100,6 @@ $sql = "
             JOIN SGHDSDATA.HDMWCM  T05 ON T04.LDWC   = T05.WCWC
             JOIN SGHDSDATA.HDMOHM  T06 ON T01.CRORD   = T06.OHORD
                                       AND T06.OHSTC  IN ($inList)
-            $dateWhere
             GROUP BY T01.CRORD, T01.CRSEQN, T05.WCWC, T05.WCDESC,
                      T01.CRPPN, T01.CRCPN, T02.IMIMDS, T02.IMUOMS,
                      T06.OHCQTY, T01.CRQPER, T01.CRQTYI,
@@ -241,17 +223,7 @@ body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;
              font-size: 11px; color: #5a6478; margin-left: auto;
              flex-wrap: wrap; }
 .meta-info b { color: #003087; }
-.closed-date-grp { display: flex; align-items: center; gap: 6px;
-                   border-left: 2px solid #c8d0de; padding-left: 14px;
-                   flex-wrap: wrap; }
-.closed-date-grp label { font-size: 11px; font-weight: 700; color: #5a6478;
-                         white-space: nowrap; }
-.closed-date-grp input[type=date] { border: 1px solid #b0bac8; border-radius: 3px;
-                                     padding: 4px 7px; font-size: 12px;
-                                     background: #fff; color: #1a2233; width: 132px; }
-.closed-date-grp input[type=date]:focus { outline: none; border-color: #2980b9; }
-.closed-date-note { font-size: 10px; color: #b06000; font-style: italic;
-                    white-space: nowrap; }
+.cd-lbl { color: #b06000; }
 
 .content { padding: 10px 14px; }
 .tbl-wrap { overflow-x: auto; overflow-y: auto;
@@ -283,40 +255,17 @@ tr:hover td:first-child { background: #eaf0fb; }
          border-radius: 4px; margin-bottom: 10px;
          font-family: monospace; font-size: 12px; }
 .empty { text-align: center; padding: 40px; color: #888; font-size: 14px; }
-
-/* ── Standard refresh bar (matches BookingsDashboard.php) ── */
-.refresh-bar { background: #e8f0fb; border-bottom: 1px solid #bdd0ee; padding: 4px 14px; display: flex; align-items: center; gap: 14px; font-size: 11px; color: #5a6478; flex-shrink: 0; }
-.refresh-dot { width: 8px; height: 8px; border-radius: 50%; background: #1a7a3c; animation: pulse 2s infinite; flex-shrink: 0; }
-.refresh-dot--off { background: #94a3b8; animation: none; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-.refresh-progress { flex: 1; max-width: 160px; height: 4px; background: #d0dced; border-radius: 2px; overflow: hidden; }
-.refresh-fill { height: 100%; background: #0055b3; border-radius: 2px; transition: width 1s linear; }
-.refresh-pill { background: #fff; border: 1px solid #c8d0de; border-radius: 12px; padding: 2px 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
   <h1>MO Material Components Issues</h1>
+  <div class="topbar-right">
+    <span><?php echo momc_h($refreshedAt); ?></span>
+    <button class="btn-refresh" onclick="location.reload();">&#x21BB; Refresh</button>
+  </div>
 </div>
-<?php if ($autoRefresh): ?>
-<div class="refresh-bar">
-  <div class="refresh-dot"></div>
-  <span>Live &ndash; auto-refreshes every 10 min (M&ndash;F, 7:00am&ndash;5:00pm ET)</span>
-  <div class="refresh-progress"><div class="refresh-fill" id="momc-prog" style="width:100%"></div></div>
-  <span>Next refresh in: <strong id="momc-cd">10m 0s</strong></span>
-  <span class="refresh-pill">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-  <span class="refresh-pill" style="background:#fff0d0;border-color:#f0c060;color:#885500;">As of: <?php echo date('D, M j, Y'); ?></span>
-</div>
-<?php else: ?>
-<div class="refresh-bar">
-  <div class="refresh-dot refresh-dot--off"></div>
-  <span>Auto-refresh off (outside M&ndash;F 7:00am&ndash;5:00pm ET)</span>
-  <span style="flex:1"></span>
-  <span class="refresh-pill">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-  <span class="refresh-pill" style="background:#fff0d0;border-color:#f0c060;color:#885500;">As of: <?php echo date('D, M j, Y'); ?></span>
-</div>
-<?php endif; ?>
 
 <form method="get" action="">
 <div class="filter-bar">
@@ -331,15 +280,6 @@ tr:hover td:first-child { background: #eaf0fb; }
     </label>
     <?php endforeach; ?>
   </div>
-  <div class="closed-date-grp">
-    <label>Closed From:</label>
-    <input type="date" name="cfrom"
-           value="<?php echo momc_h($closedFrom); ?>">
-    <label>To:</label>
-    <input type="date" name="cto"
-           value="<?php echo momc_h($closedTo); ?>">
-    <span class="closed-date-note">&#9432; applies to Closed orders only</span>
-  </div>
   <button type="submit" class="btn-apply">Apply Filter</button>
   <a class="btn-export" href="<?php echo momc_h($exportURL); ?>">
     &#x21E9; Export to Excel
@@ -347,6 +287,13 @@ tr:hover td:first-child { background: #eaf0fb; }
   <div class="meta-info">
     <span><b><?php echo $rowCount; ?></b>
       row<?php echo $rowCount !== 1 ? 's' : ''; ?></span>
+    <?php if ($autoRefresh): ?>
+    <span class="cd-lbl">
+      Auto-refresh in <b><span id="momc-cd"><?php echo $refreshSecs; ?></span>s</b>
+    </span>
+    <?php else: ?>
+    <span class="cd-lbl">Auto-refresh off (outside M&ndash;F 7am&ndash;5pm ET)</span>
+    <?php endif; ?>
   </div>
 </div>
 </form>
@@ -528,17 +475,11 @@ function openMO(idx) {
 // ── Auto-refresh countdown ────────────────────────────────────────────────────
 <?php if ($autoRefresh): ?>
 (function () {
-    var total = <?php echo (int)$refreshSecs; ?>;
-    var secs  = total;
-    var cd    = document.getElementById('momc-cd');
-    var prog  = document.getElementById('momc-prog');
-    function fmt(s) {
-        return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
-    }
+    var secs = <?php echo (int)$refreshSecs; ?>;
+    var el   = document.getElementById('momc-cd');
     function tick() {
         if (secs <= 0) { location.reload(); return; }
-        if (cd)   cd.textContent   = fmt(secs);
-        if (prog) prog.style.width = (secs / total * 100).toFixed(1) + '%';
+        if (el) el.textContent = secs;
         secs--;
         setTimeout(tick, 1000);
     }

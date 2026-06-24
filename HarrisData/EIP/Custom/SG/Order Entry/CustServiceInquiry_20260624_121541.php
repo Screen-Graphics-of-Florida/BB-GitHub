@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__FILE__) . '/../../GetURLParm.php';
 require_once 'GenericDirectCallVariables.php';
 require_once 'SetLibraryList.php';
@@ -230,18 +230,6 @@ if ($searched && !empty($orders)) {
 
 $eiBase = 'https://portal.screen-graphics.com:5601';
 
-function linkTracking($txt) {
-    $safe = htmlspecialchars($txt);
-    return preg_replace_callback(
-        '/Tracking\s+#:\s*(\S+)/i',
-        function($m) {
-            $num = htmlspecialchars($m[1]);
-            $url = 'https://www.fedex.com/fedextrack/?trknbr=' . urlencode($m[1]);
-            return 'Tracking #: <a href="' . $url . '" target="_blank" class="tracking-link">' . $num . '</a>';
-        },
-        $safe
-    );
-}
 function cymdToDate($v) {
     $v = (int)$v;
     if ($v <= 0) return '';
@@ -355,8 +343,6 @@ tr:nth-child(even) td { background: #f7f8fc; }
 a.ord-link { color: #6db3ff; text-decoration: none; }
 a.ord-link:hover { text-decoration: underline; color: #99ccff; }
 
-.tracking-link { color: #7b3800; font-weight: 700; text-decoration: underline; }
-.tracking-link:hover { color: #4a2100; }
 .err   { background: #fdd; color: #900; padding: 8px 12px; border-radius: 4px;
          margin-bottom: 10px; font-family: monospace; font-size: 12px; }
 .empty { text-align: center; padding: 30px; color: #888; font-size: 14px; }
@@ -607,7 +593,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
           }
         ?></td>
         <td class="L"><?php echo htmlspecialchars($ln['OUFLDV']); ?></td>
-        <td class="L"><?php echo $ln['OCCMNT'] !== '' ? linkTracking($ln['OCCMNT']) : '&mdash;'; ?></td>
+        <td class="L"><?php echo $ln['OCCMNT'] !== '' ? htmlspecialchars($ln['OCCMNT']) : '&mdash;'; ?></td>
       </tr>
       <?php endforeach; ?>
       </tbody>
@@ -617,7 +603,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
     <div class="order-comments">
       <div class="cmts-lbl">Comments</div>
       <?php foreach ($orderComments[(int)$ord['ordnum']] as $cmt): ?>
-      <div class="cmt-line"><?php echo linkTracking($cmt); ?></div>
+      <div class="cmt-line"><?php echo htmlspecialchars($cmt); ?></div>
       <?php endforeach; ?>
     </div>
     <?php endif; ?>
