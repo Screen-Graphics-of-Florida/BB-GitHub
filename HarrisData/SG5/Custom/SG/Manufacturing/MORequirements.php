@@ -8,6 +8,7 @@ date_default_timezone_set('America/Chicago');
 $page_title  = 'Manufacturing Order Requirements';
 $refreshSecs = 600;
 $refreshedAt = date('m/d/Y g:i:s A');
+$eiBase      = 'https://portal.screen-graphics.com:5601';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -169,9 +170,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 
 // ── HTML output ───────────────────────────────────────────────────────────────
 
-$exportParams         = $_GET;
+$exportParams           = $_GET;
 $exportParams['export'] = 'csv';
-$exportURL            = '?' . http_build_query($exportParams);
+$exportURL              = '?' . http_build_query($exportParams);
 
 print "\n<html><head>";
 require_once ($headInclude);
@@ -189,18 +190,25 @@ require_once 'Banner.php';
     <td><h1>&nbsp;&nbsp;Manufacturing Order Requirements</h1></td>
     <td align="right" nowrap style="padding-right:10px;font-size:11px;">
       <b><?php echo $rowCount; ?>&nbsp;item<?php echo $rowCount === 1 ? '' : 's'; ?></b>
-      &nbsp;|&nbsp;Refreshed:&nbsp;<?php echo morr_h($refreshedAt); ?>
-      &nbsp;|&nbsp;Next&nbsp;refresh:&nbsp;<b><span id="morr-cd"><?php echo (int)$refreshSecs; ?></span>s</b>
       &nbsp;&nbsp;<a href="<?php echo morr_h($exportURL); ?>" style="font-size:11px;">&#x21E9; Export CSV</a>
       &nbsp;&nbsp;<button onclick="location.reload();" style="font-size:11px;padding:2px 8px;cursor:pointer;">&#x21BB; Refresh</button>
     </td>
   </tr>
   <tr>
     <td colspan="2" style="padding:0 0 4px 20px;font-size:11px;color:#555;">
-      Items with Net Shortage &mdash; Auto-refreshes every 10 minutes
+      Items with Net Shortage
     </td>
   </tr>
 </table>
+
+<div class="refresh-bar">
+  <div class="refresh-dot"></div>
+  <span>Live &ndash; auto-refreshes every 10 min</span>
+  <div class="refresh-progress"><div class="refresh-fill" id="morr-prog" style="width:100%"></div></div>
+  <span>Next refresh in: <strong id="morr-cd">10m 0s</strong></span>
+  <span class="refresh-pill">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
+  <span class="refresh-pill" style="background:#fff0d0;border-color:#f0c060;color:#885500;">As of: <?php echo date('D, M j, Y'); ?></span>
+</div>
 
 <?php if ($sqlErr): ?>
 <p style="color:red;font-weight:bold;padding:8px;"><?php echo morr_h('SQL Error: ' . $sqlErr); ?></p>
@@ -211,6 +219,12 @@ require_once 'Banner.php';
 #morr-grid thead th:hover { opacity:0.85; }
 #morr-grid thead th.morr-asc::after  { content:' \25B2'; font-size:9px; }
 #morr-grid thead th.morr-desc::after { content:' \25BC'; font-size:9px; }
+.refresh-bar { background:#e8f0fb; border-bottom:1px solid #bdd0ee; padding:4px 14px; display:flex; align-items:center; gap:14px; font-size:11px; color:#5a6478; flex-shrink:0; }
+.refresh-dot { width:8px; height:8px; border-radius:50%; background:#1a7a3c; animation:pulse 2s infinite; flex-shrink:0; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.refresh-progress { flex:1; max-width:160px; height:4px; background:#d0dced; border-radius:2px; overflow:hidden; }
+.refresh-fill { height:100%; background:#0055b3; border-radius:2px; transition:width 1s linear; }
+.refresh-pill { background:#fff; border:1px solid #c8d0de; border-radius:12px; padding:2px 10px; font-size:11px; font-weight:600; white-space:nowrap; }
 </style>
 
 <table id="morr-grid" <?php echo $contentTable; ?> style="width:100%;border-collapse:collapse;">
@@ -249,8 +263,15 @@ require_once 'Banner.php';
     </tr>
 <?php endif; ?>
 <?php foreach ($rows as $r):
-    $shortage = (float)(isset($r['SHORTAGE']) ? $r['SHORTAGE'] : 0);
-    $rowStyle = $shortage < 0 ? ' style="background-color:#ffcccc;"' : '';
+    $shortage  = (float)(isset($r['SHORTAGE']) ? $r['SHORTAGE'] : 0);
+    $rowStyle  = $shortage < 0 ? ' style="background-color:#ffcccc;"' : '';
+    $item      = trim((string)$r['ITEM']);
+    $desc      = trim((string)$r['ITEMDESC']);
+    $itemUrl   = $eiBase . '/harris-CGI/ItemSelect.d2w/REPORT'
+               . '?baseVar=BaseConfiguration.icl&portal=ITEM'
+               . '&eID=' . rawurlencode($eID)
+               . '&itemDescription=' . rawurlencode($desc)
+               . '&itemNumber=' . rawurlencode($item);
 ?>
     <tr<?php echo $rowStyle; ?>>
       <td class="colcode" align="right"><?php echo morr_h($r['WH']); ?></td>
@@ -259,9 +280,9 @@ require_once 'Banner.php';
       <td class="colcode" data-val="<?php echo (int)$r['DTLSSOLD']; ?>"><?php echo morr_h(morr_cYmdToDate($r['DTLSSOLD'])); ?></td>
       <td class="colcode" align="right"<?php echo $shortage < 0 ? ' style="color:#cc0000;font-weight:bold;"' : ''; ?>>
         <?php echo morr_int($r['SHORTAGE']); ?></td>
-      <td class="colcode"><?php echo morr_h(trim((string)$r['ITEM'])); ?></td>
+      <td class="colcode"><a href="<?php echo morr_h($itemUrl); ?>" target="_blank"><?php echo morr_h($item); ?></a></td>
       <td class="colcode" align="right"><?php echo morr_dec4($r['OHQTY']); ?></td>
-      <td class="colcode"><?php echo morr_h(trim((string)$r['ITEMDESC'])); ?></td>
+      <td class="colcode"><?php echo morr_h($desc); ?></td>
       <td class="colcode"><?php echo morr_h(trim((string)$r['DIECOLOR'])); ?></td>
       <td class="colcode" align="right"><?php echo morr_int($r['SFTYSTOCK']); ?></td>
       <td class="colcode" align="right"><?php echo morr_int($r['ACCTLOTSIZE']); ?></td>
@@ -287,12 +308,15 @@ require_once 'Banner.php';
 
 <script type="text/javascript">
 (function () {
-    var secs = <?php echo (int)$refreshSecs; ?>;
-    var el   = document.getElementById('morr-cd');
+    var total = <?php echo (int)$refreshSecs; ?>;
+    var secs  = total;
+    var cd    = document.getElementById('morr-cd');
+    var prog  = document.getElementById('morr-prog');
+    function fmt(s) { return Math.floor(s / 60) + 'm ' + (s % 60) + 's'; }
     function tick() {
-        if (!el) return;
         if (secs <= 0) { location.reload(); return; }
-        el.innerHTML = secs;
+        if (cd)   cd.textContent   = fmt(secs);
+        if (prog) prog.style.width = (secs / total * 100).toFixed(1) + '%';
         secs--;
         setTimeout(tick, 1000);
     }
@@ -324,7 +348,6 @@ require_once 'Banner.php';
         rows.sort(function (a, b) {
             var va = cellVal(a.cells[col]);
             var vb = cellVal(b.cells[col]);
-            // nulls/empty always last
             if (va === null && vb === null) return 0;
             if (va === null) return 1;
             if (vb === null) return -1;
