@@ -548,7 +548,14 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
     <td class="R" data-val="<?php echo (int)$r['LDMPON']; ?>">
       <?php echo (int)$r['LDMPON']; ?>
     </td>
-    <td class="L"><?php echo molr_h(trim((string)$r['LDPN'])); ?></td>
+    <?php $partNum = trim((string)$r['LDPN']); ?>
+    <td class="L"><?php if ($partNum !== ''): ?><a class="mo-link" target="_blank"
+      href="<?php echo molr_h($eiBase
+        . '/harris-CGI/ItemSelect.d2w/REPORT'
+        . '?baseVar=BaseConfiguration.icl&portal=ITEM'
+        . '&eID='        . urlencode($eID)
+        . '&itemNumber=' . urlencode($partNum)); ?>"
+    ><?php echo molr_h($partNum); ?></a><?php else: ?><?php endif; ?></td>
     <td class="C"><?php echo molr_h(trim((string)$r['LDLBTY'])); ?></td>
     <td class="L"><?php echo molr_h(trim((string)$r['LABORDEF'])); ?></td>
     <td class="R" data-val="<?php echo (float)$r['CALCSUHRS']; ?>">
