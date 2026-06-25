@@ -99,12 +99,22 @@ $reportMap = array(
                 'desc'  => 'YTD revenue vs $18.3M annual goal with % completion — drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/RevenueVsGoal.php',
             ),
+            array(
+                'title' => 'New Account Revenue vs Goal',
+                'desc'  => 'YTD invoiced revenue from new 2026 accounts (HDCUST.CMDFES) vs $4M goal with % completion — click customer # to open in EIP; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'file'  => 'Management/NewAccountsRevenue.php',
+            ),
         ),
         'OE' => array(
             array(
                 'title' => 'Revenue vs Goal',
                 'desc'  => 'YTD revenue vs $18.3M annual goal with % completion — drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/RevenueVsGoal.php',
+            ),
+            array(
+                'title' => 'New Account Revenue vs Goal',
+                'desc'  => 'YTD invoiced revenue from new 2026 accounts (HDCUST.CMDFES) vs $4M goal with % completion — click customer # to open in EIP; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'file'  => 'Management/NewAccountsRevenue.php',
             ),
         ),
     ),

@@ -326,6 +326,7 @@ if ($pctComplete >= 100) {
     <div class="nav-section">
       <div class="nav-header">SG Management</div>
       <a class="nav-item active" href="#">Revenue vs Goal <span class="nw-badge">&#8599;</span></a>
+      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Management/NewAccountsRevenue.php" target="_blank">New Acct Revenue <span class="nw-badge">&#8599;</span></a>
     </div>
     <div class="nav-section">
       <div class="nav-header">SG Dashboards</div>
