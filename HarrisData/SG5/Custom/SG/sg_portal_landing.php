@@ -5,11 +5,12 @@ $portal = isset($_GET['portal']) ? strtoupper(trim($_GET['portal'])) : '';
 $cat    = isset($_GET['cat'])    ? strtoupper(trim($_GET['cat']))    : '';
 
 $portalNames = array(
-    'SGINQ'  => 'SG Inquiries',
-    'SGDASH' => 'SG Dashboards',
-    'SGDINT' => 'SG Data Integrity',
-    'SGRPT'  => 'SG Reports',
-    'SGSOP'  => "SG SOP's",
+    'SGINQ'   => 'SG Inquiries',
+    'SGDASH'  => 'SG Dashboards',
+    'SGDINT'  => 'SG Data Integrity',
+    'SGRPT'   => 'SG Reports',
+    'SGSOP'   => "SG SOP's",
+    'SGTRAIN' => 'SG Training Guides',
 );
 
 $catNames = array(
@@ -76,6 +77,17 @@ $reportMap = array(
                 'title' => 'CS Data Integrity Dashboard',
                 'desc'  => 'Duplicate PO#s, open order taxes, CC fees, bad customer data, zero-cost lines, QM product class issues',
                 'file'  => 'Order%20Entry/CSDataIntegrityDashboard.php',
+            ),
+        ),
+    ),
+    'SGTRAIN' => array(
+        'OE' => array(
+            array(
+                'title'  => 'Customer Service Inquiry Training Guide',
+                'desc'   => 'Video tutorial — CS Inquiry search tips and order lookup walkthrough',
+                'file'   => 'Training%20Guides/Order%20Entry/CSInqTrainingVideo.php',
+                'target' => '_blank',
+                'icon'   => '&#127891;',
             ),
         ),
     ),
@@ -180,11 +192,13 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
 <?php else: ?>
   <div class="report-list">
     <?php foreach ($items as $item):
-        $params = array('baseVar' => $baseVar, 'eID' => $eID, 'portal' => $portal);
-        $url    = htmlspecialchars($item['file'] . '?' . http_build_query($params));
+        $params  = array('baseVar' => $baseVar, 'eID' => $eID, 'portal' => $portal);
+        $url     = htmlspecialchars($item['file'] . '?' . http_build_query($params));
+        $target  = !empty($item['target']) ? ' target="' . htmlspecialchars($item['target']) . '"' : '';
+        $icon    = !empty($item['icon'])   ? $item['icon'] : '&#128202;';
     ?>
-    <a class="report-row" href="<?php echo $url; ?>">
-      <div class="report-icon">&#128202;</div>
+    <a class="report-row" href="<?php echo $url; ?>"<?php echo $target; ?>>
+      <div class="report-icon"><?php echo $icon; ?></div>
       <div class="report-info">
         <div class="report-title"><?php echo htmlspecialchars($item['title']); ?></div>
         <?php if (!empty($item['desc'])): ?>

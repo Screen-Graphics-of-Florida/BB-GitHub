@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once dirname(__FILE__) . '/../../GetURLParm.php';
 require_once 'GenericDirectCallVariables.php';
 require_once 'SetLibraryList.php';
@@ -285,7 +285,6 @@ const COLS = [
   { key:'comment',  label:'Comment',     num:false },
   { key:'cmtSeq',   label:'Cmt Seq#',   num:true  },
   { key:'moNum',    label:'MO #',        num:false },
-  { key:'moPn',     label:'MO Item #',  num:false },
 ];
 
 let sortCol = 'ordNum';
@@ -356,19 +355,18 @@ function buildGrid() {
       '<td class="num"><a href="#" onclick="openOrder(' + idx + ');return false;">' + r.ordNum + '</a></td>' +
       '<td class="num">'+ r.ordLine       + '</td>' +
       '<td>'           + esc(r.rqdDate)  + '</td>' +
-      '<td>'           + esc(r.itemNum)  + '</td>' +
+      '<td>' + (r.itemNum ? '<a href="#" onclick="openItem(' + idx + ');return false;">' + esc(r.itemNum) + '</a>' : '') + '</td>' +
       '<td>'           + esc(r.itemDesc) + '</td>' +
       '<td class="num">'+ r.qtyOrd        + '</td>' +
       '<td>'           + esc(r.custName) + '</td>' +
-      '<td>'           + esc(r.shipTo)   + '</td>' +
-      '<td>'           + esc(r.comment)  + '</td>' +
+      '<td>' + (r.shipTo ? '<a href="#" onclick="openCustomer(' + idx + ');return false;">' + esc(r.shipTo) + '</a>' : '') + '</td>' +
+      '<td><a href="#" onclick="openComment(' + idx + ');return false;">' + esc(r.comment) + '</a></td>' +
       '<td class="num">'+ r.cmtSeq        + '</td>' +
-      '<td>' + (r.moNum ? '<a href="#" onclick="openMO(' + idx + ');return false;">' + esc(r.moNum) + '</a>' : '') + '</td>' +
-      '<td>'           + esc(r.moPn)     + '</td>';
+      '<td>' + (r.moNum ? '<a href="#" onclick="openMO(' + idx + ');return false;">' + esc(r.moNum) + '</a>' : '') + '</td>';
     tbody.appendChild(tr);
   });
   document.getElementById('gridFoot').innerHTML =
-    '<tr><td colspan="13" style="text-align:right;padding-right:12px;">' +
+    '<tr><td colspan="12" style="text-align:right;padding-right:12px;">' +
     OOLC_ROWS.length.toLocaleString() + ' rows</td></tr>';
   document.getElementById('panelCount').textContent = OOLC_ROWS.length.toLocaleString() + ' rows';
   document.getElementById('rowPill').textContent    = OOLC_ROWS.length.toLocaleString() + ' rows';
@@ -396,6 +394,42 @@ function openMO(idx) {
     '&eID=' + EI_EID +
     '&mfgOrder=' + encodeURIComponent(r.moNum) +
     '&plantNumber=1';
+  window.open(url, '_blank');
+}
+
+function openItem(idx) {
+  var r = OOLC_ROWS[idx];
+  if (!r.itemNum) return;
+  var url = EI_BASE + '/harris-CGI/ItemSelect.d2w/REPORT' +
+    '?baseVar=BaseConfiguration.icl' +
+    '&portal=ITEM' +
+    '&eID=' + EI_EID +
+    '&itemNumber=' + encodeURIComponent(r.itemNum) +
+    '&itemDescription=' + encodeURIComponent(r.itemDesc);
+  window.open(url, '_blank');
+}
+
+function openCustomer(idx) {
+  var r = OOLC_ROWS[idx];
+  if (!r.shipTo) return;
+  var url = EI_BASE + '/harris-CGI/CustomerSelect.d2w/REPORT' +
+    '?baseVar=BaseConfiguration.icl' +
+    '&portal=CUSTOMER' +
+    '&eID=' + EI_EID +
+    '&customerName=' + encodeURIComponent(r.custName) +
+    '&customerNumber=' + encodeURIComponent(r.shipTo);
+  window.open(url, '_blank');
+}
+
+function openComment(idx) {
+  var r = OOLC_ROWS[idx];
+  var url = EI_BASE + '/harris-CGI/SelectOrderComments.d2w/REPORT' +
+    '?baseVar=BaseConfiguration.icl' +
+    '&portal=CUSTOMER' +
+    '&eID=' + EI_EID +
+    '&orderNumber=' + encodeURIComponent(r.ordNum) +
+    '&lineNumber=' + encodeURIComponent(r.ordLine) +
+    '&batchNumber=&turnaround=';
   window.open(url, '_blank');
 }
 
