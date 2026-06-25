@@ -6,17 +6,18 @@ require_once 'SetLibraryList.php';
 date_default_timezone_set('America/Chicago');
 
 $now      = new DateTime();
-$dow      = (int)$now->format('w');
+$dow      = (int)$now->format('w');   // 0=Sun … 6=Sat (week starts Sunday)
 $wkSt     = clone $now; $wkSt->modify('-' . $dow . ' days');
 $moSt     = new DateTime($now->format('Y-m-01'));
 $yrSt     = new DateTime($now->format('Y-01-01'));
 $tomorrow = clone $now; $tomorrow->modify('+1 day');
 
-// DHDTLI (CYMD on OEORDH) is the invoice date anchor.
+// OEBDTE (CYMD on order header) is the booking date anchor.
 // All comparisons stay as integer CYMD — no SQL date conversion needed.
 function dateToCymd(DateTime $dt) {
     return ((int)$dt->format('Y') - 1900) * 10000 + (int)$dt->format('m') * 100 + (int)$dt->format('d');
 }
+$todayIso     = $now->format('Y-m-d');
 $todayCymd    = dateToCymd($now);
 $wkStCymd     = dateToCymd($wkSt);
 $moStCymd     = dateToCymd($moSt);
@@ -25,30 +26,21 @@ $tomorrowCymd = dateToCymd($tomorrow);
 
 $conn = $i5Connect->getConnection();
 
-// Sales amount = DHSLPR * DHQSTC / DHORUF (unit price × qty shipped ÷ unit factor)
-// Guard DHORUF <> 0 in each CASE to avoid divide-by-zero.
-// Filters: DHSEQ# <> 0 (exclude header rows), DHQSTC <> 0 (exclude zero-qty lines).
-// Salesperson lives on OEORHD (h.OESLSM) — join OEORDH(d) to OEORHD(h) on order number.
 $sql = "
     SELECT
-        TRIM(CHAR(h.OESLSM))                                                                AS SLSNUM,
-        CASE WHEN h.OESLSM = s.SMSLSM AND s.SMREGN <> 'INACT' THEN TRIM(s.SMSNA1) ELSE 'Ex-Sales' END AS SLSNAME,
-        SUM(CASE WHEN d.DHDTLI =  $todayCymd AND d.DHORUF <> 0
-                 THEN d.DHSLPR * d.DHQSTC / d.DHORUF ELSE 0 END)                           AS DAYAMT,
-        SUM(CASE WHEN d.DHDTLI >= $wkStCymd  AND d.DHORUF <> 0
-                 THEN d.DHSLPR * d.DHQSTC / d.DHORUF ELSE 0 END)                           AS WEEKAMT,
-        SUM(CASE WHEN d.DHDTLI >= $moStCymd  AND d.DHORUF <> 0
-                 THEN d.DHSLPR * d.DHQSTC / d.DHORUF ELSE 0 END)                           AS MONTHAMT,
-        SUM(CASE WHEN d.DHORUF <> 0
-                 THEN d.DHSLPR * d.DHQSTC / d.DHORUF ELSE 0 END)                           AS YEARAMT
-    FROM SGHDSDATA.OEORDH d
-    JOIN SGHDSDATA.OEORHD h ON d.\"DHORD#\" = h.\"OEORD#\"
+        TRIM(CHAR(h.OESLSM))                                                             AS SLSNUM,
+        CASE WHEN s.SMREGN <> 'INACT' THEN TRIM(s.SMSNA1) ELSE 'Ex-Sales' END          AS SLSNAME,
+        SUM(CASE WHEN h.OEBDTE =  $todayCymd THEN d.ODQORD * d.ODSLPR ELSE 0 END)      AS DAYAMT,
+        SUM(CASE WHEN h.OEBDTE >= $wkStCymd  THEN d.ODQORD * d.ODSLPR ELSE 0 END)      AS WEEKAMT,
+        SUM(CASE WHEN h.OEBDTE >= $moStCymd  THEN d.ODQORD * d.ODSLPR ELSE 0 END)      AS MONTHAMT,
+        SUM(d.ODQORD * d.ODSLPR)                                                          AS YEARAMT
+    FROM SGHDSDATA.OEORHD h
+    JOIN SGHDSDATA.OEORDT d ON h.\"OEORD#\" = d.\"ODORD#\"
     LEFT JOIN SGHDSDATA.HDSLSM s ON h.OESLSM = s.SMSLSM
-    WHERE d.\"DHSEQ#\" <> 0
-      AND d.DHQSTC <> 0
-      AND d.DHDTLI >= $yrStCymd
-      AND d.DHDTLI <  $tomorrowCymd
-    GROUP BY h.OESLSM, s.SMSLSM, s.SMREGN, s.SMSNA1
+    WHERE h.OEORTY NOT IN ('Q', 'U')
+      AND h.OEBDTE >= $yrStCymd
+      AND h.OEBDTE <  $tomorrowCymd
+    GROUP BY h.OESLSM, s.SMREGN, s.SMSNA1
     ORDER BY s.SMSNA1, h.OESLSM
 ";
 
@@ -80,7 +72,7 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sales Dashboard</title>
+<title>Bookings Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Roboto+Condensed:wght@400;700&display=swap');
@@ -233,6 +225,12 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
   table.detail tfoot td:first-child { text-align: left; }
   .money { font-variant-numeric: tabular-nums; }
   .zero { color: #aaa; }
+  a.drill-link {
+    color: inherit; text-decoration: none; display: block;
+    padding: 4px 10px; margin: -4px -10px; border-radius: 2px;
+    transition: background 0.15s; font-variant-numeric: tabular-nums;
+  }
+  a.drill-link:hover { background: #bbdaff; text-decoration: underline; cursor: pointer; }
   td.drillcell { padding: 0 !important; text-align: right; }
   .drill-link {
     color: inherit; text-decoration: none; display: block;
@@ -276,16 +274,16 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
     </div>
     <div class="nav-section">
       <div class="nav-header">SG Dashboards</div>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/BookingsDashboard.php">Bookings Dashboard <span class="nw-badge">&#8599;</span></a>
+      <a class="nav-item active" href="#">Bookings Dashboard <span class="nw-badge">&#8599;</span></a>
       <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/ShipmentsDashboard.php">Shipments Dashboard <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item active" href="#">Sales Dashboard <span class="nw-badge">&#8599;</span></a>
+      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/SalesDashboard.php">Sales Dashboard <span class="nw-badge">&#8599;</span></a>
     </div>
   </nav>
 
   <main class="main">
     <div class="page-header">
       <div>
-        <div class="page-title">Sales Dashboard</div>
+        <div class="page-title">Bookings Dashboard</div>
         <div class="page-meta">SG Dashboards &rsaquo; Order Entry &nbsp;&bull;&nbsp; Opens in new window &nbsp;&bull;&nbsp; All groups: View</div>
       </div>
       <div class="header-right">
@@ -296,9 +294,9 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
 
     <div class="refresh-bar">
       <div class="refresh-dot" id="rDot"></div>
-      <span id="rStatus">Live &mdash; refreshes every 15 minutes</span>
+      <span id="rStatus">Live &mdash; refreshes every 5 minutes</span>
       <div class="refresh-progress"><div class="refresh-fill" id="rFill" style="width:100%"></div></div>
-      <span>Next refresh in: <strong id="rCount">15m 0s</strong></span>
+      <span>Next refresh in: <strong id="rCount">5m 0s</strong></span>
       <span class="stat-pill" id="rTime">Last refresh: just now</span>
       <span class="stat-pill" style="background:#fff0d0;border-color:#f0c060;color:#885500;" id="asOfDate"></span>
     </div>
@@ -308,7 +306,6 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
       Query error: <?php echo htmlspecialchars($dbError); ?>
     </div>
     <?php endif; ?>
-
     <div class="dash-body">
 
       <!-- Top row: Day + Week -->
@@ -317,17 +314,17 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
         <!-- DAY -->
         <div class="quad-cell">
           <div class="panel lcd-cyan">
-            <div class="panel-title">&#9632; TODAY&rsquo;S SALES</div>
+            <div class="panel-title">&#9632; TODAY&rsquo;S BOOKINGS</div>
             <div class="lcd-panel">
               <div class="lcd-display">
                 <div class="lcd-val" id="lcd-day">$0.00</div>
               </div>
-              <div class="lcd-label" style="color:#00aacc;text-align:center;margin-top:4px;">DAY SALES TOTAL</div>
+              <div class="lcd-label" style="color:#00aacc;text-align:center;margin-top:4px;">DAY BOOKED TOTAL</div>
             </div>
           </div>
           <div style="height:6px"></div>
           <div class="panel">
-            <div class="panel-title">Day Sales by Salesperson</div>
+            <div class="panel-title">Day Booked by Salesperson</div>
             <div class="chart-panel">
               <div class="chart-wrap"><canvas id="chartDay"></canvas></div>
             </div>
@@ -337,17 +334,17 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
         <!-- WEEK -->
         <div class="quad-cell">
           <div class="panel lcd-blue">
-            <div class="panel-title">&#9632; WEEK-TO-DATE SALES</div>
+            <div class="panel-title">&#9632; WEEK-TO-DATE BOOKINGS</div>
             <div class="lcd-panel">
               <div class="lcd-display">
                 <div class="lcd-val" id="lcd-week">$0.00</div>
               </div>
-              <div class="lcd-label" style="color:#3366cc;text-align:center;margin-top:4px;">WEEK SALES TOTAL</div>
+              <div class="lcd-label" style="color:#3366cc;text-align:center;margin-top:4px;">WEEK BOOKED TOTAL</div>
             </div>
           </div>
           <div style="height:6px"></div>
           <div class="panel">
-            <div class="panel-title">Week Sales by Salesperson</div>
+            <div class="panel-title">Week Booked by Salesperson</div>
             <div class="chart-panel">
               <div class="chart-wrap"><canvas id="chartWeek"></canvas></div>
             </div>
@@ -362,17 +359,17 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
         <!-- MONTH -->
         <div class="quad-cell">
           <div class="panel lcd-orange">
-            <div class="panel-title">&#9632; MONTH-TO-DATE SALES</div>
+            <div class="panel-title">&#9632; MONTH-TO-DATE BOOKINGS</div>
             <div class="lcd-panel">
               <div class="lcd-display">
                 <div class="lcd-val" id="lcd-month">$0.00</div>
               </div>
-              <div class="lcd-label" style="color:#cc7700;text-align:center;margin-top:4px;">MONTH SALES TOTAL</div>
+              <div class="lcd-label" style="color:#cc7700;text-align:center;margin-top:4px;">MONTH BOOKED TOTAL</div>
             </div>
           </div>
           <div style="height:6px"></div>
           <div class="panel">
-            <div class="panel-title">Month Sales by Salesperson</div>
+            <div class="panel-title">Month Booked by Salesperson</div>
             <div class="chart-panel">
               <div class="chart-wrap"><canvas id="chartMonth"></canvas></div>
             </div>
@@ -382,17 +379,17 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
         <!-- YEAR -->
         <div class="quad-cell">
           <div class="panel lcd-green">
-            <div class="panel-title">&#9632; YEAR-TO-DATE SALES</div>
+            <div class="panel-title">&#9632; YEAR-TO-DATE BOOKINGS</div>
             <div class="lcd-panel">
               <div class="lcd-display">
                 <div class="lcd-val" id="lcd-year">$0.00</div>
               </div>
-              <div class="lcd-label" style="color:#33aa33;text-align:center;margin-top:4px;">YEAR SALES TOTAL</div>
+              <div class="lcd-label" style="color:#33aa33;text-align:center;margin-top:4px;">YEAR BOOKED TOTAL</div>
             </div>
           </div>
           <div style="height:6px"></div>
           <div class="panel">
-            <div class="panel-title">Year Sales by Salesperson</div>
+            <div class="panel-title">Year Booked by Salesperson</div>
             <div class="chart-panel">
               <div class="chart-wrap"><canvas id="chartYear"></canvas></div>
             </div>
@@ -403,17 +400,17 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
 
       <!-- Detail Table -->
       <div class="panel table-section">
-        <div class="panel-title">&#9632; SALES SUMMARY DETAIL</div>
+        <div class="panel-title">&#9632; BOOKINGS SUMMARY DETAIL</div>
         <div class="tbl-wrap" style="padding:6px 8px 8px;">
           <table class="detail" id="detailTable">
             <thead>
               <tr>
                 <th style="text-align:left">Salesperson</th>
                 <th style="text-align:center">Sls#</th>
-                <th>Day Sales</th>
-                <th>Week Sales</th>
-                <th>Month Sales</th>
-                <th>Year Sales</th>
+                <th>Day Booked</th>
+                <th>Week Booked</th>
+                <th>Month Booked</th>
+                <th>Year Booked</th>
               </tr>
             </thead>
             <tbody id="detailBody"></tbody>
@@ -425,14 +422,15 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
     </div><!-- /dash-body -->
 
     <div class="page-footer">
-      <span>192.168.120.40 / SEQUELPROD / SGSALES &nbsp;&mdash;&nbsp; Source: SGHDSDATA/OEORDH, HDCUST, HDSLSM</span>
+      <span>192.168.120.40 / SEQUELPROD / SGBOOKINGS &nbsp;&mdash;&nbsp; Source: SGHDSDATA/OEORHD, OEORDT, HDCUST, HDSLSM</span>
       <span id="footerTime"></span>
     </div>
   </main>
 </div>
 
 <script>
-// ——— SALESPERSON DATA ————————————————————————————————————————————————————————
+// ─── SALESPERSON DATA ────────────────────────────────────────────────────────
+// Colors matching the original report legend order
 const SLS_COLORS = {
   'Adriane Medley':     '#8B0000',
   'Alexandra Davis':    '#FF8C00',
@@ -445,16 +443,16 @@ const SLS_COLORS = {
   'Tiffany Reichman':   '#CCAA00',
 };
 
-// Live data from SGHDSDATA — OEORDH, amount = DHSLPR * DHQSTC / DHORUF
+// Live data from SGHDSDATA — OEORHD joined OEORDT, amount = ODQORD * ODSLPR
 const DATA = <?php echo $dataJson; ?>;
 
-// ——— FORMATTING ——————————————————————————————————————————————————————————————
+// ─── FORMATTING ──────────────────────────────────────────────────────────────
 function fmtLCD(n) {
   return '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 const PERIOD_LABELS = { day:'Today', week:'This Week', month:'This Month', year:'This Year' };
 
-const DRILLDOWN_BASE = '<?php echo "https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/SalesDrilldown.php"; ?>';
+const DRILLDOWN_BASE = '<?php echo "https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/BookingsDrilldown.php"; ?>';
 
 function drillDown(slsNum, slsName, period) {
   const url = DRILLDOWN_BASE
@@ -471,10 +469,10 @@ function fmtMoney(n, slsNum, slsName, period) {
   const label = PERIOD_LABELS[period] || period;
   return '<a class="drill-link" href="#" onclick="event.preventDefault();drillDown(' +
     slsNum + ',\'' + slsName.replace(/'/g,"\\'") + '\',\'' + period + '\')" ' +
-    'title="' + label + ' sales for ' + slsName + '">' + dollars + '</a>';
+    'title="' + label + ' orders for ' + slsName + '">' + dollars + '</a>';
 }
 
-// ——— LCD TOTALS ————————————————————————————————————————————————————————————————
+// ─── LCD TOTALS ───────────────────────────────────────────────────────────────
 function updateTotals() {
   const t = DATA.reduce((a,r) => ({
     day: a.day + r.day,
@@ -489,11 +487,11 @@ function updateTotals() {
   return t;
 }
 
-// ——— CHART BUILDER ————————————————————————————————————————————————————————————
+// ─── CHART BUILDER ───────────────────────────────────────────────────────────
 let charts = {};
 
 function makeBarChart(id, field) {
-  const labels = DATA.map(r => r.name.split(' ')[0]);
+  const labels = DATA.map(r => r.name.split(' ')[0]); // first name only for axis
   const values = DATA.map(r => r[field]);
   const colors = DATA.map(r => SLS_COLORS[r.name] || '#999');
 
@@ -506,7 +504,7 @@ function makeBarChart(id, field) {
       datasets: [{
         data: values,
         backgroundColor: colors,
-        borderColor: colors,
+        borderColor: colors.map(c => c),
         borderWidth: 1,
         barPercentage: 0.75,
       }]
@@ -566,7 +564,7 @@ function buildCharts() {
   makeBarChart('chartYear',  'year');
 }
 
-// ——— DETAIL TABLE —————————————————————————————————————————————————————————————
+// ─── DETAIL TABLE ─────────────────────────────────────────────────────────────
 function buildTable() {
   const tbody = document.getElementById('detailBody');
   tbody.innerHTML = '';
@@ -596,13 +594,17 @@ function buildTable() {
     </tr>`;
 }
 
-// ——— REFRESH ——————————————————————————————————————————————————————————————————
-// Auto-refresh: every 15 minutes, M-F only, 4:00 PM – 6:00 PM Eastern Time
-const AUTO_SECS = 900;
+// ─── REFRESH ──────────────────────────────────────────────────────────────────
+// Auto-refresh: every 15 minutes, M-F only, 7:00 AM – 6:00 PM Eastern Time
+// Outside that window: manual Refresh Now button only
+// Eastern Time is always used regardless of browser/server timezone
+
+const AUTO_SECS = 900; // 15 minutes
 
 let countdown = AUTO_SECS;
 
 function getEasternTime() {
+  // Returns a Date object representing current Eastern Time (handles EST/EDT automatically)
   const now = new Date();
   const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
   return new Date(etStr);
@@ -610,22 +612,19 @@ function getEasternTime() {
 
 function isAutoRefreshTime() {
   const et    = getEasternTime();
-  const day   = et.getDay();
-  const hour  = et.getHours();
-  return (day >= 1 && day <= 5) && (hour >= 16) && (hour < 18);
+  const day   = et.getDay();    // 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
+  const hour  = et.getHours();  // 0-23
+  const isWeekday = day >= 1 && day <= 5;
+  // Window: 7:00 AM to 6:00 PM Eastern
+  const afterStart  = (hour >= 7);
+  const beforeEnd   = (hour < 18);
+  return isWeekday && afterStart && beforeEnd;
 }
 
 function fmtCountdown(secs) {
-  const tot = Math.max(0, secs);
-  const d = Math.floor(tot / 86400);
-  const h = Math.floor((tot % 86400) / 3600);
-  const m = Math.floor((tot % 3600) / 60);
-  const s = tot % 60;
-  const mm = String(m).padStart(2, '0');
-  const ss = String(s).padStart(2, '0');
-  if (d > 0) return d + (d === 1 ? ' day ' : ' days ') + String(h).padStart(2, '0') + ':' + mm + ':' + ss;
-  if (h > 0) return h + ':' + mm + ':' + ss;
-  return m + ':' + ss;
+  const m = Math.floor(secs / 60);
+  const s = String(secs % 60).padStart(2, '0');
+  return m + 'm ' + s + 's';
 }
 
 function updateStatusBar() {
@@ -638,16 +637,16 @@ function updateStatusBar() {
   if (auto) {
     dotEl.style.background = '#1a7a3c';
     dotEl.style.animation  = 'pulse 2s infinite';
-    statEl.textContent     = 'Live — auto-refreshes every 15 min (M–F, 4:00pm–6:00pm ET)';
+    statEl.textContent     = 'Live — auto-refreshes every 15 min (M–F, 7:00am–6:00pm ET)';
     fillEl.style.width     = ((countdown / AUTO_SECS) * 100) + '%';
     countEl.textContent    = fmtCountdown(countdown);
   } else {
     dotEl.style.background = '#888888';
     dotEl.style.animation  = 'none';
-    statEl.textContent     = 'Auto-refresh paused — outside M–F 4:00pm–6:00pm ET. Use Refresh Now.';
+    statEl.textContent     = 'Auto-refresh paused — outside M–F 7:00am–6:00pm ET. Use Refresh Now.';
     fillEl.style.width     = '0%';
-    countEl.textContent    = '–';
-    countdown = AUTO_SECS;
+    countEl.textContent    = '—';
+    countdown = AUTO_SECS; // reset so it fires promptly when window reopens
   }
 }
 
@@ -670,21 +669,21 @@ setInterval(() => {
 }, 1000);
 
 function exportCSV() {
-  const rows = [['Salesperson','Sls#','Day Sales','Week Sales','Month Sales','Year Sales']];
+  const rows = [['Salesperson','Sls#','Day Booked','Week Booked','Month Booked','Year Booked']];
   DATA.forEach(r => rows.push([r.name, r.num, r.day, r.week, r.month, r.year]));
   const t = DATA.reduce((a,r)=>({day:a.day+r.day,week:a.week+r.week,month:a.month+r.month,year:a.year+r.year}),{day:0,week:0,month:0,year:0});
   rows.push(['TOTAL','',t.day,t.week,t.month,t.year]);
   const csv = rows.map(r => r.map(v => '"'+v+'"').join(',')).join('\n');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = 'Sales_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.download = 'Bookings_' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
 }
 
-// ——— INIT —————————————————————————————————————————————————————————————————————
-document.getElementById('rTime').textContent      = 'Last refresh: <?php echo $refreshedAt; ?>';
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+document.getElementById('rTime').textContent    = 'Last refresh: <?php echo $refreshedAt; ?>';
 document.getElementById('footerTime').textContent = '<?php echo $now->format('m/d/Y') . '  ' . $refreshedAt; ?>';
-document.getElementById('asOfDate').textContent   = '<?php echo $asOfLabel; ?>';
+document.getElementById('asOfDate').textContent  = '<?php echo $asOfLabel; ?>';
 updateTotals();
 buildTable();
 buildCharts();

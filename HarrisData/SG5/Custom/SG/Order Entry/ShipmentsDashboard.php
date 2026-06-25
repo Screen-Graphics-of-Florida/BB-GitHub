@@ -782,9 +782,16 @@ function isAutoRefreshTime() {
 }
 
 function fmtCountdown(secs) {
-  const m = Math.floor(secs / 60);
-  const s = String(secs % 60).padStart(2, '0');
-  return m + 'm ' + s + 's';
+  const tot = Math.max(0, secs);
+  const d = Math.floor(tot / 86400);
+  const h = Math.floor((tot % 86400) / 3600);
+  const m = Math.floor((tot % 3600) / 60);
+  const s = tot % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  if (d > 0) return d + (d === 1 ? ' day ' : ' days ') + String(h).padStart(2, '0') + ':' + mm + ':' + ss;
+  if (h > 0) return h + ':' + mm + ':' + ss;
+  return m + ':' + ss;
 }
 
 function updateStatusBar() {

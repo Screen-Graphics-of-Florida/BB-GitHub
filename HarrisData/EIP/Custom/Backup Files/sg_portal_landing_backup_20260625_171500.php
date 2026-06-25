@@ -200,9 +200,6 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
     border: 1px solid rgba(255,255,255,0.15);
 }
 .back-btn:hover { background: #3a6a9c; color: white; }
-.sidebar-section { color: #7aafd4; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 4px; padding: 0 4px; }
-.sidebar-link { display: block; color: #cde0ff; text-decoration: none; font-size: 11px; padding: 5px 8px; border-radius: 3px; margin-bottom: 2px; }
-.sidebar-link:hover { background: rgba(255,255,255,0.12); color: white; }
 .main-content { flex: 1; padding: 24px; }
 </style>
 </head>
@@ -215,19 +212,6 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
 <div class="page-layout">
 <div class="sidebar">
   <a class="back-btn" href="javascript:history.back()">&#8592; Back to EIP</a>
-  <div class="sidebar-section">Dashboards</div>
-  <?php
-  $sideLinks = array(
-      array('label' => '&#128202; Bookings',  'file' => 'Order%20Entry/BookingsDashboard.php',  'p' => 'SGDASH'),
-      array('label' => '&#128230; Shipments', 'file' => 'Order%20Entry/ShipmentsDashboard.php', 'p' => 'SGDASH'),
-      array('label' => '&#128176; Sales',     'file' => 'Order%20Entry/SalesDashboard.php',     'p' => 'SGDASH'),
-  );
-  foreach ($sideLinks as $sl) {
-      $slParams = array('baseVar' => $baseVar, 'eID' => $eID, 'portal' => $sl['p']);
-      $slUrl = htmlspecialchars($sl['file'] . '?' . http_build_query($slParams));
-      echo '<a class="sidebar-link" href="' . $slUrl . '" target="_blank">' . $sl['label'] . '</a>' . "\n";
-  }
-  ?>
 </div>
 <div class="main-content">
 <?php if (empty($items)): ?>

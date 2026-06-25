@@ -30,6 +30,38 @@ $sql = "
         h.OESHTO             AS SHIPTO,
         h.\"OESEQ#\"         AS ORDSEQ,
         dt.ODITEM            AS ITEMNUM,
+  <?php
+require_once dirname(__FILE__) . '/../../GetURLParm.php';
+require_once 'GenericDirectCallVariables.php';
+require_once 'SetLibraryList.php';
+date_default_timezone_set('America/Chicago');
+
+function oolc_cymdToDate($v) {
+    $v = (int)$v;
+    if ($v <= 0) return '';
+    $c  = intval($v / 1000000);
+    $yy = intval(($v % 1000000) / 10000);
+    $mm = intval(($v % 10000)   / 100);
+    $dd = $v % 100;
+    if ($mm < 1 || $mm > 12 || $dd < 1 || $dd > 31) return '';
+    return sprintf('%02d/%02d/%04d', $mm, $dd, 1900 + $c * 100 + $yy);
+}
+
+$conn    = $i5Connect->getConnection();
+$dbError = '';
+
+$sql = "
+    SELECT
+        cm.\"OCORD#\"        AS ORDNUM,
+        cm.\"OCORL#\"        AS ORDLINE,
+        cm.OCCMNT            AS CMT,
+        cm.OCCSEQ            AS CMTSEQ,
+        cm.OCDOCT            AS DOCTYPE,
+        h.OEBDTE             AS ORDDATE,
+        h.OERQDT             AS RQDDATE,
+        h.OESHTO             AS SHIPTO,
+        h.\"OESEQ#\"         AS ORDSEQ,
+        dt.ODITEM            AS ITEMNUM,
         dt.ODIMDS            AS ITEMDESC,
         dt.ODQORD            AS QTYORD,
         TRIM(cust.CMCNA1)    AS CUSTNAME,
@@ -447,7 +479,16 @@ function isAutoRefreshTime() {
 }
 
 function fmtCountdown(secs) {
-  return Math.floor(secs / 60) + 'm ' + String(secs % 60).padStart(2, '0') + 's';
+  const tot = Math.max(0, secs);
+  const d = Math.floor(tot / 86400);
+  const h = Math.floor((tot % 86400) / 3600);
+  const m = Math.floor((tot % 3600) / 60);
+  const s = tot % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  if (d > 0) return d + (d === 1 ? ' day ' : ' days ') + String(h).padStart(2, '0') + ':' + mm + ':' + ss;
+  if (h > 0) return h + ':' + mm + ':' + ss;
+  return m + ':' + ss;
 }
 
 function updateStatusBar() {

@@ -11,6 +11,7 @@ $portalNames = array(
     'SGRPT'   => 'SG Reports',
     'SGSOP'   => "SG SOP's",
     'SGTRAIN' => 'SG Training Guides',
+    'SGMGMT'  => 'SG Management',
 );
 
 $catNames = array(
@@ -88,6 +89,22 @@ $reportMap = array(
                 'file'   => 'Training%20Guides/Order%20Entry/CSInqTrainingVideo.php',
                 'target' => '_blank',
                 'icon'   => '&#127891;',
+            ),
+        ),
+    ),
+    'SGMGMT' => array(
+        '' => array(
+            array(
+                'title' => 'Revenue vs Goal',
+                'desc'  => 'YTD revenue vs $18.3M annual goal with % completion — drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'file'  => 'Management/RevenueVsGoal.php',
+            ),
+        ),
+        'OE' => array(
+            array(
+                'title' => 'Revenue vs Goal',
+                'desc'  => 'YTD revenue vs $18.3M annual goal with % completion — drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'file'  => 'Management/RevenueVsGoal.php',
             ),
         ),
     ),
@@ -170,6 +187,23 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
 .report-title { font-size: 15px; font-weight: bold; color: #2a5a8c; }
 .report-desc  { font-size: 12px; color: #666; margin-top: 3px; }
 .report-arrow { font-size: 22px; color: #aaa; margin-left: 12px; }
+.page-layout { display: flex; align-items: flex-start; }
+.sidebar {
+    width: 160px; flex-shrink: 0;
+    background: #1a3d5c; min-height: calc(100vh - 80px);
+    padding: 14px 10px;
+}
+.back-btn {
+    display: block; background: #2a5a8c; color: #cde0ff;
+    text-decoration: none; font-size: 12px; font-weight: 700;
+    padding: 8px 12px; border-radius: 4px; text-align: center;
+    border: 1px solid rgba(255,255,255,0.15);
+}
+.back-btn:hover { background: #3a6a9c; color: white; }
+.sidebar-section { color: #7aafd4; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 4px; padding: 0 4px; }
+.sidebar-link { display: block; color: #cde0ff; text-decoration: none; font-size: 11px; padding: 5px 8px; border-radius: 3px; margin-bottom: 2px; }
+.sidebar-link:hover { background: rgba(255,255,255,0.12); color: white; }
+.main-content { flex: 1; padding: 24px; }
 </style>
 </head>
 <body>
@@ -178,7 +212,24 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
   <h1><?php echo htmlspecialchars($pageTitle); ?></h1>
   <div class="sub">Screen Graphics</div>
 </div>
-<div class="content">
+<div class="page-layout">
+<div class="sidebar">
+  <a class="back-btn" href="javascript:history.back()">&#8592; Back to EIP</a>
+  <div class="sidebar-section">Dashboards</div>
+  <?php
+  $sideLinks = array(
+      array('label' => '&#128202; Bookings',  'file' => 'Order%20Entry/BookingsDashboard.php',  'p' => 'SGDASH'),
+      array('label' => '&#128230; Shipments', 'file' => 'Order%20Entry/ShipmentsDashboard.php', 'p' => 'SGDASH'),
+      array('label' => '&#128176; Sales',     'file' => 'Order%20Entry/SalesDashboard.php',     'p' => 'SGDASH'),
+  );
+  foreach ($sideLinks as $sl) {
+      $slParams = array('baseVar' => $baseVar, 'eID' => $eID, 'portal' => $sl['p']);
+      $slUrl = htmlspecialchars($sl['file'] . '?' . http_build_query($slParams));
+      echo '<a class="sidebar-link" href="' . $slUrl . '" target="_blank">' . $sl['label'] . '</a>' . "\n";
+  }
+  ?>
+</div>
+<div class="main-content">
 <?php if (empty($items)): ?>
   <div class="card">
     <div class="icon">&#128193;</div>
@@ -194,7 +245,7 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
     <?php foreach ($items as $item):
         $params  = array('baseVar' => $baseVar, 'eID' => $eID, 'portal' => $portal);
         $url     = htmlspecialchars($item['file'] . '?' . http_build_query($params));
-        $target  = !empty($item['target']) ? ' target="' . htmlspecialchars($item['target']) . '"' : '';
+        $target  = ' target="' . (!empty($item['target']) ? htmlspecialchars($item['target']) : '_blank') . '"';
         $icon    = !empty($item['icon'])   ? $item['icon'] : '&#128202;';
     ?>
     <a class="report-row" href="<?php echo $url; ?>"<?php echo $target; ?>>
@@ -210,6 +261,7 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
     <?php endforeach; ?>
   </div>
 <?php endif; ?>
-</div>
+</div><!-- /main-content -->
+</div><!-- /page-layout -->
 </body>
 </html>

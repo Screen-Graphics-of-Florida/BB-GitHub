@@ -312,7 +312,18 @@ require_once 'Banner.php';
     var secs  = total;
     var cd    = document.getElementById('morr-cd');
     var prog  = document.getElementById('morr-prog');
-    function fmt(s) { return Math.floor(s / 60) + 'm ' + (s % 60) + 's'; }
+    function fmt(s) {
+  var tot = Math.max(0, s);
+  var d = Math.floor(tot / 86400);
+  var h = Math.floor((tot % 86400) / 3600);
+  var m = Math.floor((tot % 3600) / 60);
+  var r = tot % 60;
+  var mm = (m < 10 ? '0' : '') + m;
+  var ss = (r < 10 ? '0' : '') + r;
+  if (d > 0) return d + (d === 1 ? ' day ' : ' days ') + (h < 10 ? '0' : '') + h + ':' + mm + ':' + ss;
+  if (h > 0) return h + ':' + mm + ':' + ss;
+  return m + ':' + ss;
+}
     function tick() {
         if (secs <= 0) { location.reload(); return; }
         if (cd)   cd.textContent   = fmt(secs);
