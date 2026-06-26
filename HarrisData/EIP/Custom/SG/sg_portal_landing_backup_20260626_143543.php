@@ -109,11 +109,6 @@ $reportMap = array(
                 'desc'  => 'Revenue growth of bottom-half customers. Compares same YTD period last year vs this year; sortable detail table; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/BottomHalfRevenue.php',
             ),
-            array(
-                'title' => 'Daily Sales Cust Class Past 5 Years',
-                'desc'  => 'YTD invoiced sales by customer class for past 5 years side-by-side. Click class code for 5-year pie chart; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
-                'file'  => 'Management/CustClassSales5Yr.php',
-            ),
         ),
         'OE' => array(
             array(
@@ -130,11 +125,6 @@ $reportMap = array(
                 'title' => 'Bottom 50% Customer Revenue Growth',
                 'desc'  => 'Revenue growth of bottom-half customers. Compares same YTD period last year vs this year; sortable detail table; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/BottomHalfRevenue.php',
-            ),
-            array(
-                'title' => 'Daily Sales Cust Class Past 5 Years',
-                'desc'  => 'YTD invoiced sales by customer class for past 5 years side-by-side. Click class code for 5-year pie chart; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
-                'file'  => 'Management/CustClassSales5Yr.php',
             ),
         ),
     ),
