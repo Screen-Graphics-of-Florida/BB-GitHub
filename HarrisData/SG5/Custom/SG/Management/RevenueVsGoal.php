@@ -810,21 +810,23 @@ function saveGoal() {
 // ── Export to Excel ───────────────────────────────────────────────────
 function exportExcel() {
   var monthLabel = currentMonth ? MONTH_NAMES[parseInt(currentMonth, 10)] : 'YTD';
-  var lines = [
-    'Revenue by Ship-To Class Code — <?php echo $yearLabel; ?> ' + monthLabel,
-    '',
-    'Class Code\tDescription\tRevenue\t% of Total'
-  ];
+  function csvField(v) {
+    v = String(v == null ? '' : v);
+    return (v.indexOf(',') >= 0 || v.indexOf('"') >= 0 || v.indexOf('\n') >= 0)
+      ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  var rows = [['Class Code', 'Description', 'Revenue', '% of Total']];
   currentClassData.forEach(function(r) {
     var pct = currentTotal > 0 ? (r.amt / currentTotal * 100).toFixed(1) : '0.0';
-    lines.push(r.code + '\t' + r.desc + '\t' + r.amt.toFixed(2) + '\t' + pct + '%');
+    rows.push([r.code, r.desc, r.amt.toFixed(2), pct + '%']);
   });
-  lines.push('TOTAL\t\t' + currentTotal.toFixed(2) + '\t100.0%');
+  rows.push(['TOTAL', '', currentTotal.toFixed(2), '100.0%']);
 
-  var blob = new Blob([lines.join('\r\n')], {type: 'text/plain;charset=utf-8'});
+  var csv  = '﻿' + rows.map(function(row) { return row.map(csvField).join(','); }).join('\r\n');
+  var blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
   var a    = document.createElement('a');
   a.href   = URL.createObjectURL(blob);
-  a.download = 'RevenueByClass_<?php echo $yearLabel; ?>_' + monthLabel + '.xls';
+  a.download = 'RevenueByClass_<?php echo $yearLabel; ?>_' + monthLabel + '.csv';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

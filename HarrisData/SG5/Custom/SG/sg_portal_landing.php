@@ -104,6 +104,11 @@ $reportMap = array(
                 'desc'  => 'YTD invoiced revenue from new 2026 accounts (HDCUST.CMDFES) vs $4M goal with % completion — click customer # to open in EIP; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/NewAccountsRevenue.php',
             ),
+            array(
+                'title' => 'Bottom 50% Customer Revenue Growth',
+                'desc'  => 'Revenue growth of bottom-half customers (ranked by 2025 full-year) — compares same YTD period last year vs this year; sortable detail table; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'file'  => 'Management/BottomHalfRevenue.php',
+            ),
         ),
         'OE' => array(
             array(
@@ -115,6 +120,11 @@ $reportMap = array(
                 'title' => 'New Account Revenue vs Goal',
                 'desc'  => 'YTD invoiced revenue from new 2026 accounts (HDCUST.CMDFES) vs $4M goal with % completion — click customer # to open in EIP; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/NewAccountsRevenue.php',
+            ),
+            array(
+                'title' => 'Bottom 50% Customer Revenue Growth',
+                'desc'  => 'Revenue growth of bottom-half customers (ranked by 2025 full-year) — compares same YTD period last year vs this year; sortable detail table; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'file'  => 'Management/BottomHalfRevenue.php',
             ),
         ),
     ),
