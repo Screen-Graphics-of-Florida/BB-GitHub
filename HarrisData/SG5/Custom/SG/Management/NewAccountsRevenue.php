@@ -283,7 +283,9 @@ if ($pctComplete >= 100) {
   .filter-label { font-size: 11px; font-weight: 700; color: #333; white-space: nowrap; font-family: 'Roboto Condensed', sans-serif; }
   .filter-select { font-size: 12px; padding: 3px 8px; border: 1px solid #c8d0de; border-radius: 3px; font-family: 'Roboto Condensed', sans-serif; color: #1a2233; background: white; min-width: 180px; }
   .filter-count { font-size: 11px; color: #5a6478; font-style: italic; white-space: nowrap; }
-  .btn-clear-filter { font-size: 11px; padding: 2px 7px; color: #555; border-color: #bbb; display: none; }
+  .btn-clear-filter { font-size: 11px; padding: 2px 7px; background: #fff0e8; border-color: #d08060; color: #8b3010; }
+  .btn-clear-filter:hover { background: #ffe0c8; }
+  .btn-clear-filter:disabled { background: #f0f0f0; border-color: #ccc; color: #aaa; cursor: default; }
   .btn-export { background: #1a7a3c; color: white; border-color: #155e30; font-weight: 700; }
   .btn-export:hover { background: #155e30; color: white; }
   .tbl-wrap { overflow-x: auto; }
@@ -399,7 +401,6 @@ if ($pctComplete >= 100) {
               <div class="lcd-display">
                 <div class="lcd-val"><?php echo '$' . number_format($ytdTotal, 2); ?></div>
               </div>
-              <div class="lcd-sublabel">YEAR-TO-DATE &mdash; SOURCE: SGHDSDATA / OEORDH + HDCUST.CMDFES</div>
               <div class="lcd-stat"><?php echo $newAcctCount; ?> new accounts in <?php echo $yearLabel; ?> &nbsp;&bull;&nbsp; <?php echo $withRevCount; ?> with invoiced revenue</div>
             </div>
           </div>
@@ -446,13 +447,13 @@ if ($pctComplete >= 100) {
               <select class="filter-select" id="slsFilter" onchange="applyFilter()">
                 <option value="">&#8212; All Salespeople &#8212;</option>
               </select>
-              <button class="btn btn-clear-filter" id="clearFilterBtn" onclick="clearFilter()">&#x2715; Clear</button>
+              <button class="btn btn-clear-filter" id="clearFilterBtn" disabled onclick="clearFilter()">&#x2715; Clear</button>
               <span style="width:1px;background:#c8d0de;align-self:stretch;margin:0 4px"></span>
               <span class="filter-label">Month:</span>
               <select class="filter-select" id="moFilter" style="min-width:130px" onchange="applyFilter()">
                 <option value="">&#8212; All Months &#8212;</option>
               </select>
-              <button class="btn btn-clear-filter" id="clearMoBtn" onclick="clearMoFilter()">&#x2715; Clear</button>
+              <button class="btn btn-clear-filter" id="clearMoBtn" disabled onclick="clearMoFilter()">&#x2715; Clear</button>
               <span class="filter-count" id="filterCount"></span>
             </div>
             <button class="btn btn-export" onclick="exportToCSV()">&#8659; Export to Excel</button>
@@ -602,8 +603,8 @@ function applyFilter() {
   }
 
   setFilterCount(count);
-  document.getElementById('clearFilterBtn').style.display = slsVal ? '' : 'none';
-  document.getElementById('clearMoBtn').style.display     = moVal  ? '' : 'none';
+  document.getElementById('clearFilterBtn').disabled = !slsVal;
+  document.getElementById('clearMoBtn').disabled     = !moVal;
 
   // Update goal panel: monthly view when month selected, annual when not
   if (moVal) {

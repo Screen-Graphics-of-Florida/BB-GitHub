@@ -10,7 +10,9 @@ $yrSt = new DateTime($now->format('Y-01-01'));
 $next = clone $now; $next->modify('+1 day');
 
 function dateToCymd(DateTime $dt) {
-    return ((int)$dt->format('Y') - 1900) * 10000 + (int)$dt->format('m') * 100 + (int)$dt->format('d');
+    return ((int)$dt->format('Y') - 1900) * 10000
+         + (int)$dt->format('m') * 100
+         + (int)$dt->format('d');
 }
 $yrStCymd     = dateToCymd($yrSt);
 $tomorrowCymd = dateToCymd($next);
@@ -19,106 +21,62 @@ $conn    = $i5Connect->getConnection();
 $GOAL    = 18300000.00;
 $dbError = '';
 
-// ── Query 1: YTD revenue by ship-to class code + HDCCLS description ───────
-// HDCCLS: CCCCLS = class code key, CCCCDS = description
-$sql1 = "
+// Single query — order-level detail with class description and order date
+$sql = "
     SELECT
-        COALESCE(TRIM(cust.CMCCLS), '') AS CLSCODE,
-        COALESCE(TRIM(cls.CCCCDS),  '') AS CLSDESC,
-        SUM(CASE WHEN d.DHORUF <> 0 THEN d.DHSLPR * d.DHQSTC / d.DHORUF ELSE 0 END) AS AMT
+        h.\"OEORD#\"                                                            AS ORDNUM,
+        TRIM(h.OEORST)                                                          AS STATUS,
+        h.OESHTO                                                                AS SHIPTO,
+        COALESCE(TRIM(cust.CMCNA1), '')                                         AS CUSTNAME,
+        COALESCE(TRIM(cust.CMCCLS), '')                                         AS CLSCODE,
+        COALESCE(TRIM(cls.CCCCDS),  '')                                         AS CLSDESC,
+        MIN(d.DHDTLI)                                                           AS ORDATE,
+        SUM(CASE WHEN d.DHORUF <> 0
+                 THEN d.DHSLPR * d.DHQSTC / d.DHORUF
+                 ELSE 0 END)                                                    AS ORDAMT
     FROM SGHDSDATA.OEORDH d
-    JOIN SGHDSDATA.OEORHD h ON d.\"DHORD#\" = h.\"OEORD#\"
-    LEFT JOIN SGHDSDATA.HDCUST cust ON h.OESHTO = cust.CMCUST
-    LEFT JOIN SGHDSDATA.HDCCLS cls  ON cust.CMCCLS = cls.CCCCLS
+    JOIN SGHDSDATA.OEORHD h         ON d.\"DHORD#\"  = h.\"OEORD#\"
+    LEFT JOIN SGHDSDATA.HDCUST cust ON h.OESHTO      = cust.CMCUST
+    LEFT JOIN SGHDSDATA.HDCCLS cls  ON cust.CMCCLS   = cls.CCCCLS
     WHERE d.\"DHSEQ#\" <> 0
       AND d.DHQSTC <> 0
       AND d.DHDTLI >= $yrStCymd
       AND d.DHDTLI <  $tomorrowCymd
-    GROUP BY cust.CMCCLS, cls.CCCCDS
-    ORDER BY AMT DESC
-";
-
-$classRows = array();
-$ytdTotal  = 0.0;
-$stmt1 = db2_exec($conn, $sql1, array('cursor' => DB2_SCROLLABLE));
-if ($stmt1) {
-    while ($r = db2_fetch_assoc($stmt1)) {
-        $amt  = round((float)$r['AMT'], 2);
-        $code = trim((string)$r['CLSCODE']);
-        $desc = trim((string)$r['CLSDESC']);
-        if ($code === '') $code = '(none)';
-        $classRows[] = array('code' => $code, 'desc' => $desc, 'amt' => $amt);
-        $ytdTotal += $amt;
-    }
-    db2_free_stmt($stmt1);
-} else {
-    $dbError = db2_stmt_errormsg();
-}
-
-// ── Query 2: YTD order-level detail for orders drilldown ──────────────────
-// One row per unique order; grouped so each order appears once with its YTD
-// shipped revenue for that order.  Status 'A' → SelectOrder, 'C' → SelectOrderHistory.
-$sql2 = "
-    SELECT
-        h.\"OEORD#\"                                                                      AS ORDNUM,
-        TRIM(h.OEORST)                                                                    AS STATUS,
-        h.OESHTO                                                                          AS SHIPTO,
-        COALESCE(TRIM(cust.CMCNA1), '')                                                   AS CUSTNAME,
-        COALESCE(TRIM(cust.CMCCLS), '')                                                   AS CLSCODE,
-        SUM(CASE WHEN d.DHORUF <> 0 THEN d.DHSLPR * d.DHQSTC / d.DHORUF ELSE 0 END)     AS ORDAMT
-    FROM SGHDSDATA.OEORDH d
-    JOIN SGHDSDATA.OEORHD h ON d.\"DHORD#\" = h.\"OEORD#\"
-    LEFT JOIN SGHDSDATA.HDCUST cust ON h.OESHTO = cust.CMCUST
-    WHERE d.\"DHSEQ#\" <> 0
-      AND d.DHQSTC <> 0
-      AND d.DHDTLI >= $yrStCymd
-      AND d.DHDTLI <  $tomorrowCymd
-    GROUP BY h.\"OEORD#\", h.OEORST, h.OESHTO, cust.CMCNA1, cust.CMCCLS
+    GROUP BY h.\"OEORD#\", h.OEORST, h.OESHTO,
+             cust.CMCNA1, cust.CMCCLS, cls.CCCCDS
     ORDER BY cust.CMCCLS, ORDAMT DESC
 ";
 
 $orderRows = array();
-$stmt2 = db2_exec($conn, $sql2, array('cursor' => DB2_SCROLLABLE));
-if ($stmt2) {
-    while ($r = db2_fetch_assoc($stmt2)) {
+$ytdTotal  = 0.0;
+$stmt = db2_exec($conn, $sql, array('cursor' => DB2_SCROLLABLE));
+if ($stmt) {
+    while ($r = db2_fetch_assoc($stmt)) {
         $code = trim((string)$r['CLSCODE']);
         if ($code === '') $code = '(none)';
+        $amt = round((float)$r['ORDAMT'], 2);
+        $ytdTotal += $amt;
         $orderRows[] = array(
             'ordNum'   => (int)$r['ORDNUM'],
             'status'   => trim((string)$r['STATUS']),
             'shipTo'   => (int)$r['SHIPTO'],
             'custName' => trim((string)$r['CUSTNAME']),
             'clsCode'  => $code,
-            'ordAmt'   => round((float)$r['ORDAMT'], 2),
+            'clsDesc'  => trim((string)$r['CLSDESC']),
+            'orDate'   => (int)$r['ORDATE'],
+            'ordAmt'   => $amt,
         );
     }
-    db2_free_stmt($stmt2);
-} elseif (!$dbError) {
+    db2_free_stmt($stmt);
+} else {
     $dbError = db2_stmt_errormsg();
 }
 
 $ytdTotal    = round($ytdTotal, 2);
-$pctComplete = ($GOAL > 0) ? round(($ytdTotal / $GOAL) * 100, 1) : 0.0;
-$remaining   = round($GOAL - $ytdTotal, 2);
-$classJson   = json_encode($classRows);
 $orderJson   = json_encode($orderRows);
 $refreshedAt = $now->format('g:i:s A');
 $yearLabel   = $now->format('Y');
 $eiBase      = 'https://portal.screen-graphics.com:5601';
-
-if ($pctComplete >= 100) {
-    $barColor = 'linear-gradient(90deg,#1a7a3c,#16a34a)';
-    $badgeBg  = '#1a7a3c'; $badgeFg = 'white';
-} elseif ($pctComplete >= 75) {
-    $barColor = 'linear-gradient(90deg,#0055b3,#2563eb)';
-    $badgeBg  = '#0055b3'; $badgeFg = 'white';
-} elseif ($pctComplete >= 50) {
-    $barColor = 'linear-gradient(90deg,#b45309,#d97706)';
-    $badgeBg  = '#b45309'; $badgeFg = 'white';
-} else {
-    $barColor = 'linear-gradient(90deg,#b91c1c,#dc2626)';
-    $badgeBg  = '#b91c1c'; $badgeFg = 'white';
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -143,28 +101,33 @@ if ($pctComplete >= 100) {
   body {
     font-family: 'Roboto Condensed', Arial, sans-serif;
     font-size: 13px; color: var(--hd-text);
-    background: #edf1f7; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+    background: #edf1f7; display: flex; flex-direction: column;
+    height: 100vh; overflow: hidden;
   }
 
-  /* ── Top bar ──────────────────────────────────────────────── */
-  .topbar { background: var(--hd-blue); color: white; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 42px; flex-shrink: 0; }
-  .topbar-logo { font-size: 15px; font-weight: 700; letter-spacing: 0.5px; font-family: 'Roboto Condensed', sans-serif; }
+  /* ── Top bar ─────────────────────────────────────────── */
+  .topbar {
+    background: var(--hd-blue); color: white;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; height: 42px; flex-shrink: 0;
+  }
+  .topbar-logo { font-size: 15px; font-weight: 700; letter-spacing: .5px; font-family: 'Roboto Condensed', sans-serif; }
   .topbar-logo span { color: #6db3ff; }
   .topbar-right { display: flex; align-items: center; gap: 20px; font-size: 12px; color: #b8cfee; }
   .topbar-right a { color: #b8cfee; text-decoration: none; }
 
   .layout { display: flex; flex: 1; overflow: hidden; }
 
-  /* ── Left nav ─────────────────────────────────────────────── */
+  /* ── Left nav ────────────────────────────────────────── */
   .nav { width: var(--hd-nav-width); background: var(--hd-nav-bg); flex-shrink: 0; overflow-y: auto; }
-  .nav-section { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+  .nav-section { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.1); }
   .nav-item { display: block; padding: 6px 14px; color: #cde0ff; font-size: 12px; text-decoration: none; white-space: nowrap; }
-  .nav-item:hover { background: rgba(255,255,255,0.12); color: white; }
-  .nav-item.active { background: rgba(255,255,255,0.2); color: white; font-weight: 700; border-left: 3px solid #6db3ff; padding-left: 11px; }
+  .nav-item:hover { background: rgba(255,255,255,.12); color: white; }
+  .nav-item.active { background: rgba(255,255,255,.2); color: white; font-weight: 700; border-left: 3px solid #6db3ff; padding-left: 11px; }
   .nav-header { padding: 8px 14px 4px; color: #89afd4; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
-  .nw-badge { display: inline-block; background: rgba(109,179,255,0.25); color: #9ecfff; font-size: 9px; padding: 1px 4px; border-radius: 2px; margin-left: 4px; }
+  .nw-badge { display: inline-block; background: rgba(109,179,255,.25); color: #9ecfff; font-size: 9px; padding: 1px 4px; border-radius: 2px; margin-left: 4px; }
 
-  /* ── Main column ──────────────────────────────────────────── */
+  /* ── Main column ─────────────────────────────────────── */
   .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
   .page-header {
@@ -181,98 +144,113 @@ if ($pctComplete >= 100) {
   }
   .btn:hover { background: #f0f4fa; }
 
-  /* ── Refresh bar — standard ───────────────────────────────── */
-  .refresh-bar { background: #e8f0fb; border-bottom: 1px solid #bdd0ee; padding: 4px 14px; display: flex; align-items: center; gap: 14px; font-size: 11px; color: #5a6478; flex-shrink: 0; }
+  /* ── Refresh bar ─────────────────────────────────────── */
+  .refresh-bar {
+    background: #e8f0fb; border-bottom: 1px solid #bdd0ee;
+    padding: 4px 14px; display: flex; align-items: center; gap: 14px;
+    font-size: 11px; color: #5a6478; flex-shrink: 0;
+  }
   .refresh-dot { width: 8px; height: 8px; border-radius: 50%; background: #1a7a3c; animation: pulse 2s infinite; flex-shrink: 0; }
   .refresh-dot--off { background: #94a3b8; animation: none; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
   .refresh-progress { flex: 1; max-width: 160px; height: 4px; background: #d0dced; border-radius: 2px; overflow: hidden; }
   .refresh-fill { height: 100%; background: #0055b3; border-radius: 2px; transition: width 1s linear; }
   .refresh-pill { background: #fff; border: 1px solid #c8d0de; border-radius: 12px; padding: 2px 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 
-  /* ── Dashboard body ───────────────────────────────────────── */
+  /* ── Dashboard body ──────────────────────────────────── */
   .dash-body {
     flex: 1; overflow-y: auto; padding: 16px;
     background: linear-gradient(160deg, #dbd8cc 0%, #c8c4bc 100%);
-    display: flex; align-items: flex-start; justify-content: center;
   }
-  .content-wrap { width: 100%; max-width: 960px; }
+  .content-wrap { width: 100%; max-width: 980px; margin: 0 auto; }
 
-  /* ── Win98 panel ──────────────────────────────────────────── */
+  /* ── Win98 panel ─────────────────────────────────────── */
   .panel { background: #fff; border: 2px solid; border-color: #fff #888 #888 #fff; box-shadow: 1px 1px 0 #000; }
-  .panel-title { background: #000080; color: white; font-size: 11px; font-weight: 700; padding: 2px 6px; font-family: 'Roboto Condensed', sans-serif; letter-spacing: 0.5px; }
+  .panel-title { background: #000080; color: white; font-size: 11px; font-weight: 700; padding: 2px 6px; font-family: 'Roboto Condensed', sans-serif; letter-spacing: .5px; }
 
-  /* ── Revenue vs Goal grid ─────────────────────────────────── */
-  .rvg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  /* ── Combined card sections ──────────────────────────── */
+  .rv-top-row {
+    display: flex; gap: 0; border-bottom: 1px solid #ccc;
+  }
+  .rv-lcd-section {
+    flex: 2; padding: 10px 14px 12px;
+    border-right: 1px solid #ccc;
+  }
+  .rv-goal-section { flex: 3; padding: 10px 14px 12px; }
 
-  /* ── LCD display ──────────────────────────────────────────── */
-  .lcd-body { padding: 10px 14px 12px; }
+  /* ── LCD display ─────────────────────────────────────── */
   .lcd-display {
-    background: #001a22;
-    border: 3px inset #666; border-radius: 4px;
+    background: #001a22; border: 3px inset #666; border-radius: 4px;
     padding: 14px 16px; text-align: center;
     font-family: 'Share Tech Mono', monospace; letter-spacing: 2px;
     position: relative; overflow: hidden;
-    box-shadow: 0 0 16px rgba(0,200,255,0.3) inset;
-    cursor: pointer; transition: box-shadow 0.2s;
+    box-shadow: 0 0 16px rgba(0,200,255,.3) inset;
   }
-  .lcd-display:hover { box-shadow: 0 0 28px rgba(0,230,255,0.7) inset, 0 0 8px rgba(0,200,255,0.5); }
   .lcd-display::before {
     content: ''; position: absolute; inset: 0;
-    background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 4px);
+    background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,.08) 3px, rgba(0,0,0,.08) 4px);
     pointer-events: none;
   }
-  .lcd-val { font-size: 40px; font-weight: 400; line-height: 1; color: #00e5ff; text-shadow: 0 0 10px rgba(0,200,255,0.9); }
-  .lcd-hint { font-size: 10px; color: #0099bb; margin-top: 7px; font-family: 'Roboto Condensed', sans-serif; letter-spacing: 1px; }
-  .lcd-sublabel { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; font-family: 'Roboto Condensed', sans-serif; margin-top: 5px; color: #00aacc; text-align: center; }
+  .lcd-val { font-size: 38px; font-weight: 400; line-height: 1; color: #00e5ff; text-shadow: 0 0 10px rgba(0,200,255,.9); }
+  .lcd-sublabel { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; font-family: 'Roboto Condensed', sans-serif; margin-top: 7px; color: #00aacc; text-align: center; }
 
-  /* ── Goal panel ───────────────────────────────────────────── */
-  .goal-body { padding: 12px 14px; }
-  .goal-kv { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  /* ── Goal section ────────────────────────────────────── */
+  .goal-hdr-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
   .goal-k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #555; font-family: 'Roboto Condensed', sans-serif; }
-  .goal-v { font-size: 22px; font-weight: 700; color: #003087; font-family: 'Share Tech Mono', monospace; }
-  .divider { border: none; border-top: 1px solid #e0e0e0; margin: 8px 0; }
+  .goal-v { font-size: 22px; font-weight: 700; color: #003087; font-family: 'Share Tech Mono', monospace; margin-bottom: 6px; }
+  .divider { border: none; border-top: 1px solid #e0e0e0; margin: 6px 0; }
   .prog-lbl { font-size: 11px; color: #555; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
   .prog-track { background: #ddd; border-radius: 6px; height: 28px; overflow: hidden; border: 1px solid #bbb; position: relative; }
-  .prog-fill { height: 100%; border-radius: 5px; position: relative; overflow: hidden; }
-  .prog-fill::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 50%; background: rgba(255,255,255,0.18); border-radius: 5px 5px 0 0; }
-  .prog-pct-text { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 14px; font-weight: 700; font-family: 'Roboto Condensed', sans-serif; color: white; text-shadow: 0 1px 3px rgba(0,0,0,0.6); pointer-events: none; }
-  .bottom-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+  .prog-fill { height: 100%; border-radius: 5px; position: relative; overflow: hidden; transition: width .4s ease, background .4s ease; }
+  .prog-fill::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 50%; background: rgba(255,255,255,.18); border-radius: 5px 5px 0 0; }
+  .prog-pct-text { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 14px; font-weight: 700; font-family: 'Roboto Condensed', sans-serif; color: white; text-shadow: 0 1px 3px rgba(0,0,0,.6); pointer-events: none; }
+  .bottom-row { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
   .remaining-block .lbl { font-size: 10px; color: #777; text-transform: uppercase; letter-spacing: 1px; }
   .remaining-block .val { font-size: 16px; font-weight: 700; font-family: 'Share Tech Mono', monospace; }
   .remaining-block .val.under { color: #b91c1c; }
   .remaining-block .val.over  { color: #1a7a3c; }
-  .pct-badge { display: inline-block; padding: 5px 16px; border-radius: 20px; font-size: 18px; font-weight: 700; font-family: 'Roboto Condensed', sans-serif; }
+  .pct-badge { display: inline-block; padding: 5px 16px; border-radius: 20px; font-size: 18px; font-weight: 700; font-family: 'Roboto Condensed', sans-serif; transition: background .4s ease; }
 
-  /* ── Shared modal base ────────────────────────────────────── */
-  .modal-overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.55); align-items: center; justify-content: center;
+  /* ── Filter row ──────────────────────────────────────── */
+  .rv-filter-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 14px; background: #f0f0f0;
+    border-bottom: 1px solid #ccc;
   }
-  .modal-overlay.open { display: flex; }
-  .modal {
-    background: #fff; border: 2px solid; border-color: #fff #888 #888 #fff;
-    box-shadow: 4px 4px 0 #000; max-width: 95vw; max-height: 88vh;
-    display: flex; flex-direction: column;
+  .filter-lbl { font-size: 12px; font-weight: 700; color: #333; }
+  .filter-sel {
+    font-size: 12px; padding: 3px 8px; border: 1px solid #bbb;
+    border-radius: 3px; background: white; color: var(--hd-text); font-family: 'Roboto Condensed', sans-serif;
   }
-  .modal-hdr { background: #000080; color: white; padding: 3px 8px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-  .modal-hdr-title { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; font-family: 'Roboto Condensed', sans-serif; }
-  .modal-x { background: #d4d0c8; border: 2px solid; border-color: #fff #808080 #808080 #fff; color: #000; font-size: 11px; font-weight: 700; cursor: pointer; padding: 0 6px; height: 18px; line-height: 14px; font-family: monospace; }
-  .modal-x:hover { background: #c0b8b0; }
+  .btn-clear {
+    font-size: 11px; padding: 2px 8px; background: #fff0e8;
+    border-color: #d08060; color: #8b3010;
+  }
+  .btn-clear:hover { background: #ffe0c8; }
+  .btn-clear:disabled { background: #f0f0f0; border-color: #ccc; color: #aaa; cursor: default; }
+  .btn-export {
+    margin-left: auto;
+    font-size: 13px; font-weight: 700; padding: 5px 18px;
+    background: #1a7a3c; border-color: #0a4a1c; color: white;
+    border-radius: 4px;
+  }
+  .btn-export:hover { background: #0a5a2a; }
+  .row-count-badge {
+    font-size: 12px; font-style: italic; color: #555;
+    background: none; border: none; padding: 0; font-weight: 400;
+  }
 
-  /* ── Modal 1: pie chart + class code table ────────────────── */
-  #pieModal { z-index: 1000; }
-  #pieModal .modal { width: 820px; }
-  .pie-body { padding: 14px; overflow-y: auto; flex: 1; display: flex; gap: 16px; align-items: flex-start; }
+  /* ── Breakdown: pie + table ──────────────────────────── */
+  .rv-breakdown {
+    display: flex; gap: 0; align-items: flex-start;
+  }
+  .rv-pie-wrap {
+    flex-shrink: 0; padding: 14px 12px 14px 14px;
+    border-right: 1px solid #e0e0e0;
+  }
+  .rv-tbl-wrap { flex: 1; overflow-x: auto; }
 
-  /* ── Modal 2: orders drilldown ────────────────────────────── */
-  #ordModal { z-index: 1100; }
-  #ordModal .modal { width: 960px; }
-  .ord-body { padding: 10px 12px 12px; overflow-y: auto; flex: 1; }
-  .ord-info-bar { font-size: 11px; color: #555; margin-bottom: 8px; font-style: italic; }
-
-  /* ── Shared table styles ──────────────────────────────────── */
-  .tbl-wrap { overflow-x: auto; }
+  /* ── Shared table styles ─────────────────────────────── */
   table.dtbl { width: 100%; border-collapse: collapse; font-size: 12px; font-family: 'Roboto Condensed', sans-serif; }
   table.dtbl thead th { background: #000080; color: white; padding: 4px 10px; text-align: right; font-size: 11px; font-weight: 700; white-space: nowrap; }
   table.dtbl thead th:first-child { text-align: left; }
@@ -283,20 +261,55 @@ if ($pctComplete >= 100) {
   table.dtbl tfoot td { background: #ddd; font-weight: 700; padding: 5px 10px; text-align: right; border-top: 2px solid #888; }
   table.dtbl tfoot td:first-child { text-align: left; }
 
-  /* Clickable Revenue $ cell in class table */
   .rev-link { color: #0055b3; text-decoration: underline; cursor: pointer; font-variant-numeric: tabular-nums; }
   .rev-link:hover { color: #003087; background: #e8f0ff; border-radius: 2px; }
 
-  /* Clickable Order # cell in orders table */
+  /* ── Shared modal base ───────────────────────────────── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: #fff; border: 2px solid; border-color: #fff #888 #888 #fff; box-shadow: 4px 4px 0 #000; max-width: 95vw; max-height: 88vh; display: flex; flex-direction: column; }
+  .modal-hdr { background: #000080; color: white; padding: 3px 8px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .modal-hdr-title { font-size: 12px; font-weight: 700; letter-spacing: .5px; font-family: 'Roboto Condensed', sans-serif; }
+  .modal-x { background: #d4d0c8; border: 2px solid; border-color: #fff #808080 #808080 #fff; color: #000; font-size: 11px; font-weight: 700; cursor: pointer; padding: 0 6px; height: 18px; line-height: 14px; font-family: monospace; }
+  .modal-x:hover { background: #c0b8b0; }
+
+  /* ── Orders drilldown modal ──────────────────────────── */
+  #ordModal { z-index: 1100; }
+  #ordModal .modal { width: 960px; }
+  .ord-body { padding: 10px 12px 12px; overflow-y: auto; flex: 1; }
+  .ord-info-bar { font-size: 11px; color: #555; margin-bottom: 8px; font-style: italic; }
   .ord-link { color: #0055b3; text-decoration: none; cursor: pointer; font-weight: 700; font-variant-numeric: tabular-nums; border-bottom: 1px dotted #0055b3; }
   .ord-link:hover { color: #003087; border-bottom-style: solid; }
-  /* Clickable Ship-To # cell */
   .cust-link { color: #1a7a3c; text-decoration: none; cursor: pointer; font-weight: 700; font-variant-numeric: tabular-nums; border-bottom: 1px dotted #1a7a3c; }
   .cust-link:hover { color: #0a4a1c; border-bottom-style: solid; }
   .badge-open   { display: inline-block; background: #1a7a3c; color: white; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; margin-left: 5px; vertical-align: middle; }
   .badge-closed { display: inline-block; background: #64748b; color: white; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; margin-left: 5px; vertical-align: middle; }
 
-  /* ── Footer ───────────────────────────────────────────────── */
+  .btn-set-goal-inline {
+    background: #003087; color: white; border-color: #001a4d;
+    font-size: 12px; font-weight: 700; padding: 4px 14px;
+    border-radius: 4px; white-space: nowrap; align-self: center;
+  }
+  .btn-set-goal-inline:hover { background: #0055b3; }
+
+  /* ── Set Goal modal ──────────────────────────────────── */
+  #goalModal { z-index: 1200; }
+  #goalModal .modal { width: 380px; }
+  .goal-modal-body { padding: 20px; }
+  .goal-modal-body p { font-size: 12px; color: #555; margin-bottom: 12px; }
+  .goal-input-row { display: flex; gap: 8px; align-items: center; }
+  .goal-dollar { font-size: 20px; font-weight: 700; color: #003087; }
+  .goal-input {
+    flex: 1; padding: 6px 10px; font-size: 18px;
+    font-family: 'Share Tech Mono', monospace;
+    border: 2px inset #999; border-radius: 2px; text-align: right;
+    color: #003087;
+  }
+  .goal-modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .btn-primary { background: #0055b3; color: white; border-color: #003087; font-weight: 700; }
+  .btn-primary:hover { background: #003087; }
+
+  /* ── Footer ──────────────────────────────────────────── */
   .page-footer {
     background: linear-gradient(to bottom, #d4d0c8, #c8c4bc);
     border-top: 1px solid #999; padding: 3px 14px;
@@ -340,7 +353,7 @@ if ($pctComplete >= 100) {
     <div class="page-header">
       <div>
         <div class="page-title">Revenue vs Goal &mdash; <?php echo $yearLabel; ?></div>
-        <div class="page-meta">SG Management &rsaquo; Order Entry &nbsp;&bull;&nbsp; Goal: $18,300,000 &nbsp;&bull;&nbsp; Click revenue LCD to drill down by class code</div>
+        <div class="page-meta">SG Management &rsaquo; Order Entry &nbsp;&bull;&nbsp; Goal: $18,300,000</div>
       </div>
       <div>
         <button class="btn" onclick="triggerRefresh()">&#8635; Refresh Now</button>
@@ -364,49 +377,77 @@ if ($pctComplete >= 100) {
 
     <div class="dash-body">
       <div class="content-wrap">
-        <div class="rvg-grid">
 
-          <!-- YTD Revenue LCD (click to open pie drilldown) -->
-          <div class="panel">
-            <div class="panel-title">&#9632; YTD REVENUE <?php echo $yearLabel; ?></div>
-            <div class="lcd-body">
-              <div class="lcd-display" onclick="openPieModal()" title="Click to view breakdown by ship-to class code">
-                <div class="lcd-val"><?php echo '$' . number_format($ytdTotal, 2); ?></div>
-                <div class="lcd-hint">&#9654; Click to view by ship-to class code</div>
+        <div class="panel">
+          <div class="panel-title">&#9632; <?php echo $yearLabel; ?> REVENUE vs GOAL</div>
+
+          <!-- Top row: LCD + Goal -->
+          <div class="rv-top-row">
+
+            <div class="rv-lcd-section">
+              <div class="lcd-display">
+                <div class="lcd-val" id="lcdVal"><?php echo '$' . number_format($ytdTotal, 2); ?></div>
               </div>
-              <div class="lcd-sublabel">YEAR-TO-DATE REVENUE &mdash; SOURCE: SGHDSDATA / OEORDH</div>
+              <div class="lcd-sublabel" id="lcdSublabel">YEAR-TO-DATE REVENUE</div>
             </div>
-          </div>
 
-          <!-- Goal & Progress -->
-          <div class="panel">
-            <div class="panel-title">&#9632; <?php echo $yearLabel; ?> ANNUAL REVENUE GOAL</div>
-            <div class="goal-body">
-              <div class="goal-kv">
-                <span class="goal-k">Annual Goal</span>
-                <span class="goal-v">$18,300,000.00</span>
+            <div class="rv-goal-section">
+              <div class="goal-k" id="goalLabel">Annual Goal</div>
+              <div class="goal-hdr-row">
+                <div class="goal-v" id="goalVal"></div>
+                <button class="btn btn-set-goal-inline" onclick="openGoalModal()">&#9660; Set Goal</button>
               </div>
               <hr class="divider">
               <div class="prog-lbl">Progress to Goal</div>
               <div class="prog-track">
-                <div class="prog-fill" style="width:<?php echo min(100, $pctComplete); ?>%;background:<?php echo $barColor; ?>"></div>
-                <span class="prog-pct-text"><?php echo $pctComplete; ?>%</span>
+                <div class="prog-fill" id="progFill" style="width:0%"></div>
+                <span class="prog-pct-text" id="progPct"></span>
               </div>
               <div class="bottom-row">
                 <div class="remaining-block">
-                  <div class="lbl"><?php echo $remaining >= 0 ? 'Remaining' : 'Over Goal'; ?></div>
-                  <div class="val <?php echo $remaining >= 0 ? 'under' : 'over'; ?>">
-                    <?php echo ($remaining >= 0 ? '-$' : '+$') . number_format(abs($remaining), 2); ?>
-                  </div>
+                  <div class="lbl" id="remLabel">Remaining</div>
+                  <div class="val under" id="remVal"></div>
                 </div>
-                <div class="pct-badge" style="background:<?php echo $badgeBg; ?>;color:<?php echo $badgeFg; ?>">
-                  <?php echo $pctComplete; ?>% Complete
-                </div>
+                <div class="pct-badge" id="pctBadge"></div>
               </div>
+            </div>
+
+          </div><!-- /rv-top-row -->
+
+          <!-- Filter row -->
+          <div class="rv-filter-row">
+            <span class="filter-lbl">Month:</span>
+            <select class="filter-sel" id="monthFilter" onchange="applyFilters()">
+              <option value="">&#8212; All Months &#8212;</option>
+            </select>
+            <button class="btn btn-clear" id="clearBtn" disabled onclick="clearFilters()">&#x2715; Clear</button>
+            <span class="row-count-badge" id="rowCount">0 classes shown</span>
+            <button class="btn btn-export" onclick="exportExcel()">&#8595; Export to Excel</button>
+          </div>
+
+          <!-- Breakdown: pie + table -->
+          <div class="rv-breakdown">
+            <div class="rv-pie-wrap">
+              <canvas id="pieChart" width="230" height="230"></canvas>
+            </div>
+            <div class="rv-tbl-wrap">
+              <table class="dtbl">
+                <thead>
+                  <tr>
+                    <th style="text-align:left">Class Code</th>
+                    <th style="text-align:left">Description</th>
+                    <th title="Click $ to see orders for that class">Revenue &#9660; (click to drill)</th>
+                    <th>% of Total</th>
+                  </tr>
+                </thead>
+                <tbody id="clsBody"></tbody>
+                <tfoot id="clsFoot"></tfoot>
+              </table>
             </div>
           </div>
 
-        </div><!-- /rvg-grid -->
+        </div><!-- /panel -->
+
       </div><!-- /content-wrap -->
     </div><!-- /dash-body -->
 
@@ -417,42 +458,9 @@ if ($pctComplete >= 100) {
   </main>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════
-     Modal 1: Pie chart + class code breakdown table
-     Clicking a Revenue $ cell opens Modal 2 for that class.
-     ═══════════════════════════════════════════════════════════ -->
-<div class="modal-overlay" id="pieModal">
-  <div class="modal">
-    <div class="modal-hdr">
-      <span class="modal-hdr-title">&#9632; Revenue by Ship-To Class Code &mdash; <?php echo $yearLabel; ?> YTD</span>
-      <button class="modal-x" onclick="closePieModal()">&#x2715;</button>
-    </div>
-    <div class="pie-body">
-      <div style="flex-shrink:0">
-        <canvas id="pieChart" width="240" height="240"></canvas>
-      </div>
-      <div class="tbl-wrap" style="flex:1">
-        <table class="dtbl">
-          <thead>
-            <tr>
-              <th style="text-align:left">Class Code</th>
-              <th style="text-align:left">Description</th>
-              <th title="Click $ to see all YTD orders for that class">Revenue &#9660; (click to drill)</th>
-              <th>% of Total</th>
-            </tr>
-          </thead>
-          <tbody id="clsBody"></tbody>
-          <tfoot id="clsFoot"></tfoot>
-        </table>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════
-     Modal 2: All YTD orders for one class code
-     Order # links open the order in Harris CGI.
-     ═══════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════
+     Modal: Orders drilldown for one class code
+     ═══════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="ordModal">
   <div class="modal">
     <div class="modal-hdr">
@@ -461,7 +469,7 @@ if ($pctComplete >= 100) {
     </div>
     <div class="ord-body">
       <div class="ord-info-bar" id="ordInfoBar"></div>
-      <div class="tbl-wrap">
+      <div style="overflow-x:auto">
         <table class="dtbl">
           <thead>
             <tr>
@@ -479,82 +487,197 @@ if ($pctComplete >= 100) {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════
+     Modal: Set Goal
+     ═══════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="goalModal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <span class="modal-hdr-title">&#9632; Set Annual Revenue Goal</span>
+      <button class="modal-x" onclick="closeGoalModal()">&#x2715;</button>
+    </div>
+    <div class="goal-modal-body">
+      <p>Enter the annual revenue goal. The monthly goal is calculated as Annual &divide; 12 when a month filter is active.</p>
+      <div class="goal-input-row">
+        <span class="goal-dollar">$</span>
+        <input type="text" class="goal-input" id="goalInput" placeholder="18,300,000.00"
+               onkeydown="if(event.key==='Enter')saveGoal()">
+      </div>
+      <div class="goal-modal-btns">
+        <button class="btn" onclick="closeGoalModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveGoal()">Save Goal</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-// ── Server data ───────────────────────────────────────────────────────────
-var CLASS_DATA = <?php echo $classJson; ?>;
-var ORDER_DATA = <?php echo $orderJson; ?>;
-var YTD_TOTAL  = <?php echo json_encode($ytdTotal); ?>;
-var EI_BASE    = <?php echo json_encode($eiBase); ?>;
-var EI_EID     = <?php echo json_encode($eID); ?>;
+// ── Server data ───────────────────────────────────────────────────────
+var ORDER_DATA  = <?php echo $orderJson; ?>;
+var EI_BASE     = <?php echo json_encode($eiBase); ?>;
+var EI_EID      = <?php echo json_encode($eID); ?>;
+var PHP_GOAL    = <?php echo json_encode($GOAL); ?>;
 
-// Row-index array for the currently-shown orders (row-index onclick pattern).
-var ORD_VIEW   = [];
+// Load saved goal from localStorage, fall back to PHP default
+var ANNUAL_GOAL = (function() {
+  var s = localStorage.getItem('rvg_annual_goal');
+  return (s && parseFloat(s) > 0) ? parseFloat(s) : PHP_GOAL;
+}());
 
-// ── Colors ────────────────────────────────────────────────────────────────
+var MONTH_NAMES = ['','January','February','March','April','May','June',
+                   'July','August','September','October','November','December'];
+
 var PIE_COLORS = [
   '#003087','#0055b3','#1a7a3c','#b45309','#8b0000',
   '#5b21b6','#0e7490','#9a3412','#1e40af','#4d7c0f',
   '#7c3aed','#92400e'
 ];
 
-var pieInst = null;
+var currentMonth     = '';   // '' = all, '1'–'12' = specific month
+var currentClassData = [];   // [{code, desc, amt}] aggregated for active filter
+var currentTotal     = 0;
+var ORD_VIEW         = [];   // orders shown in drilldown modal
+var pieInst          = null;
 
+// ── Utilities ─────────────────────────────────────────────────────────
 function fmtMoney(n) {
-  return '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  return '$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// Modal 1 — Pie chart + class code breakdown
-// ══════════════════════════════════════════════════════════════════════════
-function openPieModal() {
+// Extract month (1–12) from CYMD date (e.g. 1260625 → 6)
+function cymdMonth(cymd) {
+  return Math.floor((cymd % 10000) / 100);
+}
+
+// ── Aggregation ───────────────────────────────────────────────────────
+function getFilteredOrders() {
+  if (!currentMonth) return ORDER_DATA;
+  var m = parseInt(currentMonth, 10);
+  return ORDER_DATA.filter(function(r) { return cymdMonth(r.orDate) === m; });
+}
+
+function aggregateClasses(orders) {
+  var map = {};
+  orders.forEach(function(r) {
+    if (!map[r.clsCode]) map[r.clsCode] = {code: r.clsCode, desc: r.clsDesc, amt: 0};
+    map[r.clsCode].amt += r.ordAmt;
+  });
+  return Object.values(map).sort(function(a, b) { return b.amt - a.amt; });
+}
+
+// ── Month dropdown ────────────────────────────────────────────────────
+function buildMonthOptions() {
+  var months = {};
+  ORDER_DATA.forEach(function(r) {
+    var m = cymdMonth(r.orDate);
+    if (m >= 1 && m <= 12) months[m] = true;
+  });
+  var sel = document.getElementById('monthFilter');
+  Object.keys(months).map(Number).sort(function(a, b) { return a - b; }).forEach(function(m) {
+    var opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = MONTH_NAMES[m];
+    sel.appendChild(opt);
+  });
+}
+
+// ── Apply / clear filters ─────────────────────────────────────────────
+function applyFilters() {
+  currentMonth = document.getElementById('monthFilter').value;
+  document.getElementById('clearBtn').disabled = !currentMonth;
+
+  var orders       = getFilteredOrders();
+  currentClassData = aggregateClasses(orders);
+  currentTotal     = currentClassData.reduce(function(s, r) { return s + r.amt; }, 0);
+
+  updateLCD();
+  updateGoalPanel();
   buildClsTable();
   buildPieChart();
-  document.getElementById('pieModal').classList.add('open');
+  document.getElementById('rowCount').textContent =
+    currentClassData.length + ' class' + (currentClassData.length !== 1 ? 'es' : '') + ' shown';
 }
-function closePieModal() {
-  document.getElementById('pieModal').classList.remove('open');
-}
-document.getElementById('pieModal').addEventListener('click', function(e) {
-  if (e.target === this) closePieModal();
-});
 
+function clearFilters() {
+  document.getElementById('monthFilter').value = '';
+  applyFilters();
+}
+
+// ── LCD ───────────────────────────────────────────────────────────────
+function updateLCD() {
+  document.getElementById('lcdVal').textContent = fmtMoney(currentTotal);
+  document.getElementById('lcdSublabel').textContent = currentMonth
+    ? MONTH_NAMES[parseInt(currentMonth, 10)].toUpperCase() + ' REVENUE'
+    : 'YEAR-TO-DATE REVENUE';
+}
+
+// ── Goal panel ────────────────────────────────────────────────────────
+function goalColors(pct) {
+  if (pct >= 100) return {bar:'linear-gradient(90deg,#1a7a3c,#16a34a)', bg:'#1a7a3c'};
+  if (pct >=  75) return {bar:'linear-gradient(90deg,#0055b3,#2563eb)', bg:'#0055b3'};
+  if (pct >=  50) return {bar:'linear-gradient(90deg,#b45309,#d97706)', bg:'#b45309'};
+  return              {bar:'linear-gradient(90deg,#b91c1c,#dc2626)',    bg:'#b91c1c'};
+}
+
+function updateGoalPanel() {
+  var target = currentMonth ? ANNUAL_GOAL / 12 : ANNUAL_GOAL;
+  var pct    = target > 0 ? Math.round(currentTotal / target * 1000) / 10 : 0;
+  var rem    = target - currentTotal;
+  var c      = goalColors(pct);
+
+  document.getElementById('goalLabel').textContent = currentMonth
+    ? 'Monthly Goal (' + MONTH_NAMES[parseInt(currentMonth, 10)] + ')'
+    : 'Annual Goal';
+  document.getElementById('goalVal').textContent  = fmtMoney(target);
+  document.getElementById('progFill').style.width      = Math.min(100, pct) + '%';
+  document.getElementById('progFill').style.background = c.bar;
+  document.getElementById('progPct').textContent       = pct + '%';
+  document.getElementById('remLabel').textContent      = rem >= 0 ? 'Remaining' : 'Over Goal';
+  document.getElementById('remVal').textContent        = (rem >= 0 ? '-$' : '+$')
+    + Math.abs(rem).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('remVal').className          = 'val ' + (rem >= 0 ? 'under' : 'over');
+  document.getElementById('pctBadge').textContent      = pct + '% Complete';
+  document.getElementById('pctBadge').style.background = c.bg;
+  document.getElementById('pctBadge').style.color      = 'white';
+}
+
+// ── Class code table ──────────────────────────────────────────────────
 function buildClsTable() {
   var tbody = document.getElementById('clsBody');
   tbody.innerHTML = '';
-  CLASS_DATA.forEach(function(r, i) {
-    var pct   = YTD_TOTAL > 0 ? (r.amt / YTD_TOTAL * 100).toFixed(1) : '0.0';
+  currentClassData.forEach(function(r, i) {
+    var pct   = currentTotal > 0 ? (r.amt / currentTotal * 100).toFixed(1) : '0.0';
     var color = PIE_COLORS[i % PIE_COLORS.length];
     var tr    = document.createElement('tr');
     tr.innerHTML =
-      // Code (with color swatch)
       '<td style="display:flex;align-items:center;gap:6px;">'
         + '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:'
         + color + ';flex-shrink:0"></span>'
         + '<strong>' + (r.code || '(none)') + '</strong></td>'
-      // Description
       + '<td style="text-align:left;color:#444">' + (r.desc || '&ndash;') + '</td>'
-      // Revenue — clickable to open orders drilldown
       + '<td><span class="rev-link" onclick="openOrdModal(' + i + ')" '
-        + 'title="Click to see all YTD orders for ' + (r.code || '') + '">'
+        + 'title="Click to see orders for ' + (r.code || '') + '">'
         + fmtMoney(r.amt) + '</span></td>'
       + '<td>' + pct + '%</td>';
     tbody.appendChild(tr);
   });
   document.getElementById('clsFoot').innerHTML =
-    '<tr><td>TOTAL</td><td></td><td>' + fmtMoney(YTD_TOTAL) + '</td><td>100.0%</td></tr>';
+    '<tr><td>TOTAL</td><td></td><td>' + fmtMoney(currentTotal) + '</td><td>100.0%</td></tr>';
 }
 
+// ── Pie chart ─────────────────────────────────────────────────────────
 function buildPieChart() {
   if (pieInst) { pieInst.destroy(); pieInst = null; }
+  if (!currentClassData.length) return;
   pieInst = new Chart(document.getElementById('pieChart'), {
     type: 'pie',
     data: {
-      labels: CLASS_DATA.map(function(r) {
+      labels: currentClassData.map(function(r) {
         return r.desc ? (r.code + ': ' + r.desc) : (r.code || '(none)');
       }),
       datasets: [{
-        data: CLASS_DATA.map(function(r) { return r.amt; }),
-        backgroundColor: CLASS_DATA.map(function(_, i) { return PIE_COLORS[i % PIE_COLORS.length]; }),
+        data: currentClassData.map(function(r) { return r.amt; }),
+        backgroundColor: currentClassData.map(function(_, i) { return PIE_COLORS[i % PIE_COLORS.length]; }),
         borderColor: '#fff',
         borderWidth: 2
       }]
@@ -562,11 +685,11 @@ function buildPieChart() {
     options: {
       responsive: false,
       plugins: {
-        legend: { display: false },
+        legend: {display: false},
         tooltip: {
           callbacks: {
             label: function(ctx) {
-              var pct = YTD_TOTAL > 0 ? (ctx.raw / YTD_TOTAL * 100).toFixed(1) : '0.0';
+              var pct = currentTotal > 0 ? (ctx.raw / currentTotal * 100).toFixed(1) : '0.0';
               return ' ' + fmtMoney(ctx.raw) + '  (' + pct + '%)';
             }
           }
@@ -576,35 +699,29 @@ function buildPieChart() {
   });
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// Modal 2 — YTD orders for one class code
-// ══════════════════════════════════════════════════════════════════════════
+// ── Orders drilldown modal ────────────────────────────────────────────
 function openOrdModal(classIdx) {
-  var cls = CLASS_DATA[classIdx];
+  var cls = currentClassData[classIdx];
   if (!cls) return;
 
-  // Filter and store in ORD_VIEW — row-index pattern for openOrderLink().
-  ORD_VIEW = ORDER_DATA.filter(function(o) { return o.clsCode === cls.code; });
+  var orders = getFilteredOrders();
+  ORD_VIEW = orders.filter(function(o) { return o.clsCode === cls.code; });
 
   var label = cls.desc ? cls.code + ': ' + cls.desc : cls.code;
-  document.getElementById('ordModalTitle').textContent =
-    '■ YTD Shipped Orders — Class Code: ' + label;
+  var monthPart = currentMonth
+    ? ' — ' + MONTH_NAMES[parseInt(currentMonth, 10)] + ' only'
+    : ' — <?php echo $yrSt->format("M j, Y"); ?> through <?php echo $now->format("M j, Y"); ?>';
+  document.getElementById('ordModalTitle').textContent = '■ Shipped Orders — Class: ' + label;
   document.getElementById('ordInfoBar').textContent =
     ORD_VIEW.length + ' order' + (ORD_VIEW.length !== 1 ? 's' : '')
-    + ' with invoiced revenue'
-    + ' — <?php echo $yrSt->format("M j, Y"); ?> through <?php echo $now->format("M j, Y"); ?>'
-    + ' — click an order # to open it';
+    + ' with invoiced revenue' + monthPart + ' — click an order # to open it';
 
   buildOrdTable();
   document.getElementById('ordModal').classList.add('open');
 }
 
-function closeOrdModal() {
-  document.getElementById('ordModal').classList.remove('open');
-}
-document.getElementById('ordModal').addEventListener('click', function(e) {
-  if (e.target === this) closeOrdModal();
-});
+function closeOrdModal() { document.getElementById('ordModal').classList.remove('open'); }
+document.getElementById('ordModal').addEventListener('click', function(e) { if (e.target === this) closeOrdModal(); });
 
 function buildOrdTable() {
   var tbody = document.getElementById('ordBody');
@@ -632,24 +749,21 @@ function buildOrdTable() {
     + '<td>' + fmtMoney(total) + '</td></tr>';
 }
 
-// Row-index pattern — avoids apostrophes / ampersands in onclick attributes.
-// Active (OEORST='A') → SelectOrder.d2w
-// Closed (OEORST='C') → SelectOrderHistory.d2w  (orderSequence=0 required)
+// Row-index link pattern
 function openOrderLink(idx) {
-  var r = ORD_VIEW[idx];
-  if (!r) return;
+  var r = ORD_VIEW[idx]; if (!r) return;
   var url;
   if (r.status === 'A') {
     url = EI_BASE + '/harris-CGI/SelectOrder.d2w/REPORT'
       + '?baseVar=BaseConfiguration.icl&portal=CUSTOMER'
-      + '&eID='            + EI_EID
+      + '&eID=' + EI_EID
       + '&customerName='   + encodeURIComponent(r.custName)
       + '&customerNumber=' + encodeURIComponent(r.shipTo)
       + '&orderNumber='    + encodeURIComponent(r.ordNum);
   } else {
     url = EI_BASE + '/harris-CGI/SelectOrderHistory.d2w/REPORT'
       + '?baseVar=BaseConfiguration.icl&portal=CUSTOMER'
-      + '&eID='            + EI_EID
+      + '&eID=' + EI_EID
       + '&customerName='   + encodeURIComponent(r.custName)
       + '&customerNumber=' + encodeURIComponent(r.shipTo)
       + '&orderNumber='    + encodeURIComponent(r.ordNum)
@@ -658,21 +772,66 @@ function openOrderLink(idx) {
   window.open(url, '_blank', 'width=1300,height=750,scrollbars=yes,resizable=yes');
 }
 
-// Ship-To # link → Harris CGI customer page
 function openCustLink(idx) {
-  var r = ORD_VIEW[idx];
-  if (!r) return;
+  var r = ORD_VIEW[idx]; if (!r) return;
   var url = EI_BASE + '/harris-CGI/CustomerSelect.d2w/REPORT'
     + '?baseVar=BaseConfiguration.icl&portal=CUSTOMER'
-    + '&eID='            + EI_EID
+    + '&eID=' + EI_EID
     + '&customerName='   + encodeURIComponent(r.custName)
     + '&customerNumber=' + encodeURIComponent(r.shipTo);
   window.open(url, '_blank', 'width=1300,height=750,scrollbars=yes,resizable=yes');
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// Auto-refresh at 4:30 pm & 5:00 pm ET on weekdays
-// ══════════════════════════════════════════════════════════════════════════
+// ── Set Goal modal ────────────────────────────────────────────────────
+function openGoalModal() {
+  document.getElementById('goalInput').value =
+    ANNUAL_GOAL.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('goalModal').classList.add('open');
+  setTimeout(function() { document.getElementById('goalInput').select(); }, 50);
+}
+
+function closeGoalModal() { document.getElementById('goalModal').classList.remove('open'); }
+document.getElementById('goalModal').addEventListener('click', function(e) { if (e.target === this) closeGoalModal(); });
+
+function saveGoal() {
+  var raw = document.getElementById('goalInput').value.replace(/[^0-9.]/g, '');
+  var v   = parseFloat(raw);
+  if (isNaN(v) || v <= 0) {
+    document.getElementById('goalInput').style.borderColor = '#b91c1c';
+    return;
+  }
+  document.getElementById('goalInput').style.borderColor = '';
+  ANNUAL_GOAL = v;
+  localStorage.setItem('rvg_annual_goal', v);
+  closeGoalModal();
+  applyFilters();
+}
+
+// ── Export to Excel ───────────────────────────────────────────────────
+function exportExcel() {
+  var monthLabel = currentMonth ? MONTH_NAMES[parseInt(currentMonth, 10)] : 'YTD';
+  var lines = [
+    'Revenue by Ship-To Class Code — <?php echo $yearLabel; ?> ' + monthLabel,
+    '',
+    'Class Code\tDescription\tRevenue\t% of Total'
+  ];
+  currentClassData.forEach(function(r) {
+    var pct = currentTotal > 0 ? (r.amt / currentTotal * 100).toFixed(1) : '0.0';
+    lines.push(r.code + '\t' + r.desc + '\t' + r.amt.toFixed(2) + '\t' + pct + '%');
+  });
+  lines.push('TOTAL\t\t' + currentTotal.toFixed(2) + '\t100.0%');
+
+  var blob = new Blob([lines.join('\r\n')], {type: 'text/plain;charset=utf-8'});
+  var a    = document.createElement('a');
+  a.href   = URL.createObjectURL(blob);
+  a.download = 'RevenueByClass_<?php echo $yearLabel; ?>_' + monthLabel + '.xls';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Auto-refresh scheduler ────────────────────────────────────────────
 (function() {
   var TARGETS   = [{h:16, m:30}, {h:17, m:0}];
   var lastFired = null;
@@ -720,11 +879,7 @@ function openCustLink(idx) {
     var isWd = wd >= 1 && wd <= 5;
     var isTarget = isWd && TARGETS.some(function(t) { return t.h === h && t.m === m; });
 
-    if (isTarget && key !== lastFired) {
-      lastFired = key;
-      location.reload();
-      return;
-    }
+    if (isTarget && key !== lastFired) { lastFired = key; location.reload(); return; }
     if (!isTarget && lastFired === key) lastFired = null;
 
     var dotEl  = document.getElementById('rvg-dot');
@@ -732,25 +887,21 @@ function openCustLink(idx) {
     var fillEl = document.getElementById('rvg-prog');
     var cdEl   = document.getElementById('rvg-cd');
     var remMs  = nextRefreshMs();
-
     if (remMs !== null && startMs === null) startMs = remMs;
 
     if (isWd && remMs !== null) {
       dotEl.className    = 'refresh-dot';
-      statEl.textContent = 'Live – auto-refreshes at 4:30 pm & 5:00 pm ET (M–F)';
+      statEl.textContent = 'Live – auto-refreshes at 4:30 pm & 5:00 pm ET (M–F)';
       cdEl.textContent   = fmtCd(remMs);
-      var pct = startMs ? Math.min(100, remMs / startMs * 100) : 100;
-      fillEl.style.width = pct.toFixed(1) + '%';
+      fillEl.style.width = (startMs ? Math.min(100, remMs / startMs * 100) : 100).toFixed(1) + '%';
     } else {
       dotEl.className    = 'refresh-dot refresh-dot--off';
       statEl.textContent = 'Auto-refresh off – outside M–F scheduled times. Use Refresh Now.';
       cdEl.textContent   = '–';
       fillEl.style.width = '0%';
     }
-
     setTimeout(tick, 1000);
   }
-
   tick();
 }());
 
@@ -759,6 +910,10 @@ function triggerRefresh() {
   document.getElementById('rvg-status').textContent = 'Refreshing…';
   setTimeout(function() { location.reload(); }, 300);
 }
+
+// ── Init ──────────────────────────────────────────────────────────────
+buildMonthOptions();
+applyFilters();
 </script>
 </body>
 </html>
