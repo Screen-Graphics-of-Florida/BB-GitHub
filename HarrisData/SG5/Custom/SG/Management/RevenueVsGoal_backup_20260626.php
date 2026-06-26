@@ -83,7 +83,7 @@ $eiBase      = 'https://portal.screen-graphics.com:5601';
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Current Annual Revenue vs Goal <?php echo $yearLabel; ?></title>
+<title>Revenue vs Goal <?php echo $yearLabel; ?></title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Roboto+Condensed:wght@400;700&display=swap');
@@ -338,8 +338,8 @@ $eiBase      = 'https://portal.screen-graphics.com:5601';
     </div>
     <div class="nav-section">
       <div class="nav-header">SG Management</div>
-      <a class="nav-item active" href="#">Current Revenue vs Goal <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Management/NewAccountsRevenue.php" target="_blank">New Acct Rev vs Growth <span class="nw-badge">&#8599;</span></a>
+      <a class="nav-item active" href="#">Revenue vs Goal <span class="nw-badge">&#8599;</span></a>
+      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Management/NewAccountsRevenue.php" target="_blank">New Acct Revenue <span class="nw-badge">&#8599;</span></a>
     </div>
     <div class="nav-section">
       <div class="nav-header">SG Dashboards</div>
@@ -352,7 +352,7 @@ $eiBase      = 'https://portal.screen-graphics.com:5601';
   <main class="main">
     <div class="page-header">
       <div>
-        <div class="page-title">Current Annual Revenue vs Goal &mdash; <?php echo $yearLabel; ?></div>
+        <div class="page-title">Revenue vs Goal &mdash; <?php echo $yearLabel; ?></div>
         <div class="page-meta">SG Management &rsaquo; Order Entry &nbsp;&bull;&nbsp; Goal: $18,300,000</div>
       </div>
       <div>

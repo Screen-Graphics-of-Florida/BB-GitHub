@@ -316,7 +316,7 @@ $custJson    = json_encode($allRows);
     <div class="nav-section">
       <div class="nav-header">SG Management</div>
       <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Management/RevenueVsGoal.php">Revenue vs Goal <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Management/NewAccountsRevenue.php">New Acct Rev vs Growth <span class="nw-badge">&#8599;</span></a>
+      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Management/NewAccountsRevenue.php">New Acct Revenue <span class="nw-badge">&#8599;</span></a>
       <a class="nav-item active" href="#">Bottom 50% Growth <span class="nw-badge">&#8599;</span></a>
     </div>
     <div class="nav-section">

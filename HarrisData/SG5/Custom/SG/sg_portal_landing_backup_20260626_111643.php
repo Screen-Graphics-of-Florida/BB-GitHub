@@ -29,12 +29,12 @@ $reportMap = array(
         'MFG' => array(
             array(
                 'title' => 'MO Daily Labor Report',
-                'desc'  => 'Today\'s labor detail by MO. Filter by Emp#, MO#, or Work Center; sortable; export to Excel; auto-refreshes every 10 min (M-F, 7am-5pm ET)',
+                'desc'  => 'Today\'s labor detail by MO — filter by Emp#, MO#, or Work Center; sortable; export to Excel; auto-refreshes every 10 min (M-F, 7am-5pm ET)',
                 'file'  => 'Manufacturing/MODailyLaborReport.php',
             ),
             array(
                 'title' => 'MO Material Components Issues',
-                'desc'  => 'MO component qty variances. Sortable, filter by order status, auto-refreshes every 10 min (M-F, 7am-5pm ET)',
+                'desc'  => 'MO component qty variances — sortable, filter by order status, auto-refreshes every 10 min (M-F, 7am-5pm ET)',
                 'file'  => 'Manufacturing/MOMaterialComponents.php',
             ),
         ),
@@ -50,17 +50,17 @@ $reportMap = array(
         'OE' => array(
             array(
                 'title' => 'Bookings Dashboard',
-                'desc'  => 'D/W/M/Y bookings by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
+                'desc'  => 'D/W/M/Y bookings by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
                 'file'  => 'Order%20Entry/BookingsDashboard.php',
             ),
             array(
                 'title' => 'Shipments Dashboard',
-                'desc'  => 'Orders shipped today + D/W/M/Y invoice totals by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
+                'desc'  => 'Orders shipped today + D/W/M/Y invoice totals by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
                 'file'  => 'Order%20Entry/ShipmentsDashboard.php',
             ),
             array(
                 'title' => 'Sales Dashboard',
-                'desc'  => 'D/W/M/Y sales by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
+                'desc'  => 'D/W/M/Y sales by salesperson — auto-refreshes every 15 min (M-F, 7am-6pm ET)',
                 'file'  => 'Order%20Entry/SalesDashboard.php',
             ),
         ),
@@ -85,7 +85,7 @@ $reportMap = array(
         'OE' => array(
             array(
                 'title'  => 'Customer Service Inquiry Training Guide',
-                'desc'   => 'Video tutorial. CS Inquiry search tips and order lookup walkthrough',
+                'desc'   => 'Video tutorial — CS Inquiry search tips and order lookup walkthrough',
                 'file'   => 'Training%20Guides/Order%20Entry/CSInqTrainingVideo.php',
                 'target' => '_blank',
                 'icon'   => '&#127891;',
@@ -95,35 +95,35 @@ $reportMap = array(
     'SGMGMT' => array(
         '' => array(
             array(
-                'title' => 'Current Revenue vs Goal',
-                'desc'  => 'YTD revenue vs $18.3M annual goal with % completion. Drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'title' => 'Revenue vs Goal',
+                'desc'  => 'YTD revenue vs $18.3M annual goal with % completion — drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/RevenueVsGoal.php',
             ),
             array(
                 'title' => 'New Account Revenue vs Goal',
-                'desc'  => 'YTD invoiced revenue from new accounts vs $4M goal with % completion. Click customer # to open in EIP; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'desc'  => 'YTD invoiced revenue from new 2026 accounts (HDCUST.CMDFES) vs $4M goal with % completion — click customer # to open in EIP; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/NewAccountsRevenue.php',
             ),
             array(
                 'title' => 'Bottom 50% Customer Revenue Growth',
-                'desc'  => 'Revenue growth of bottom-half customers. Compares same YTD period last year vs this year; sortable detail table; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'desc'  => 'Revenue growth of bottom-half customers (ranked by 2025 full-year) — compares same YTD period last year vs this year; sortable detail table; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/BottomHalfRevenue.php',
             ),
         ),
         'OE' => array(
             array(
-                'title' => 'Current Revenue vs Goal',
-                'desc'  => 'YTD revenue vs $18.3M annual goal with % completion. Drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'title' => 'Revenue vs Goal',
+                'desc'  => 'YTD revenue vs $18.3M annual goal with % completion — drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/RevenueVsGoal.php',
             ),
             array(
                 'title' => 'New Account Revenue vs Goal',
-                'desc'  => 'YTD invoiced revenue from new accounts vs $4M goal with % completion. Click customer # to open in EIP; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'desc'  => 'YTD invoiced revenue from new 2026 accounts (HDCUST.CMDFES) vs $4M goal with % completion — click customer # to open in EIP; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/NewAccountsRevenue.php',
             ),
             array(
                 'title' => 'Bottom 50% Customer Revenue Growth',
-                'desc'  => 'Revenue growth of bottom-half customers. Compares same YTD period last year vs this year; sortable detail table; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
+                'desc'  => 'Revenue growth of bottom-half customers (ranked by 2025 full-year) — compares same YTD period last year vs this year; sortable detail table; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
                 'file'  => 'Management/BottomHalfRevenue.php',
             ),
         ),
@@ -132,19 +132,19 @@ $reportMap = array(
         'MFG' => array(
             array(
                 'title' => 'Manufacturing Order Requirements',
-                'desc'  => 'Items with net shortage. Auto-refreshes every 10 minutes',
+                'desc'  => 'Items with net shortage — auto-refreshes every 10 minutes',
                 'file'  => 'Manufacturing/MORequirements.php',
             ),
         ),
         'PLN' => array(
             array(
                 'title' => 'Manufacturing Order Requirements',
-                'desc'  => 'Items with net shortage. Auto-refreshes every 10 minutes',
+                'desc'  => 'Items with net shortage — auto-refreshes every 10 minutes',
                 'file'  => 'Manufacturing/MORequirements.php',
             ),
             array(
                 'title' => 'Open Order Line Item Comments',
-                'desc'  => 'Open order lines with ACK comments. Sortable, auto-refreshes every 15 min (7am–4pm CT)',
+                'desc'  => 'Open order lines with ACK comments — sortable, auto-refreshes every 15 min (7am–4pm CT)',
                 'file'  => 'Planning/OpenOrderLineItemComments.php',
             ),
         ),
