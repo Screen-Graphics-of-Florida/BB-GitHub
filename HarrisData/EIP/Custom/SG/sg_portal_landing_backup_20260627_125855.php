@@ -146,13 +146,6 @@ $reportMap = array(
                 'file'  => 'Manufacturing/MORequirements.php',
             ),
         ),
-        'PUR' => array(
-            array(
-                'title' => 'PO Requirements Report',
-                'desc'  => 'Items with negative availability (Qty Available < 0). Sortable; export to Excel; auto-refreshes every 10 min',
-                'file'  => 'Purchasing/PORequirementsReport.php',
-            ),
-        ),
         'PLN' => array(
             array(
                 'title' => 'Manufacturing Order Requirements',

@@ -62,7 +62,6 @@ $pgms = [
     'INVDATINT' => 'Inv Data Integrity',
     'MODLYLBR'  => 'MO Daily Labor',
     'MOMATLCMP' => 'MO Material Comps',
-    'POREQRPT'  => 'PO Requirements Report',
 ];
 
 // Add new users to this list as they are created.

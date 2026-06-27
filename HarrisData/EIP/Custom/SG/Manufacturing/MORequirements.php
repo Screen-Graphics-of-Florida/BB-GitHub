@@ -202,10 +202,10 @@ require_once 'Banner.php';
 </table>
 
 <div class="refresh-bar">
-  <div class="refresh-dot"></div>
-  <span>Live &ndash; auto-refreshes every 10 min</span>
+  <div class="refresh-dot" id="morr-dot"></div>
+  <span id="morr-status">Live &ndash; auto-refreshes every 10 min (M&ndash;F, 7:00am&ndash;6:00pm CT)</span>
   <div class="refresh-progress"><div class="refresh-fill" id="morr-prog" style="width:100%"></div></div>
-  <span>Next refresh in: <strong id="morr-cd">10m 0s</strong></span>
+  <span>Next refresh in: <strong id="morr-cd">10:00</strong></span>
   <span class="refresh-pill">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
   <span class="refresh-pill" style="background:#fff0d0;border-color:#f0c060;color:#885500;">As of: <?php echo date('D, M j, Y'); ?></span>
 </div>
@@ -215,7 +215,8 @@ require_once 'Banner.php';
 <?php endif; ?>
 
 <style type="text/css">
-#morr-grid thead th { cursor:pointer; user-select:none; white-space:nowrap; }
+#morr-grid thead th { cursor:pointer; user-select:none; white-space:nowrap;
+                      color:#ffffff !important; font-weight:bold !important; }
 #morr-grid thead th:hover { opacity:0.85; }
 #morr-grid thead th.morr-asc::after  { content:' \25B2'; font-size:9px; }
 #morr-grid thead th.morr-desc::after { content:' \25BC'; font-size:9px; }
@@ -308,30 +309,56 @@ require_once 'Banner.php';
 
 <script type="text/javascript">
 (function () {
-    var total = <?php echo (int)$refreshSecs; ?>;
-    var secs  = total;
-    var cd    = document.getElementById('morr-cd');
-    var prog  = document.getElementById('morr-prog');
-    function fmt(s) {
-  var tot = Math.max(0, s);
-  var d = Math.floor(tot / 86400);
-  var h = Math.floor((tot % 86400) / 3600);
-  var m = Math.floor((tot % 3600) / 60);
-  var r = tot % 60;
-  var mm = (m < 10 ? '0' : '') + m;
-  var ss = (r < 10 ? '0' : '') + r;
-  if (d > 0) return d + (d === 1 ? ' day ' : ' days ') + (h < 10 ? '0' : '') + h + ':' + mm + ':' + ss;
-  if (h > 0) return h + ':' + mm + ':' + ss;
-  return m + ':' + ss;
-}
-    function tick() {
-        if (secs <= 0) { location.reload(); return; }
-        if (cd)   cd.textContent   = fmt(secs);
-        if (prog) prog.style.width = (secs / total * 100).toFixed(1) + '%';
-        secs--;
-        setTimeout(tick, 1000);
+    var AUTO_SECS = <?php echo (int)$refreshSecs; ?>;
+    var countdown = AUTO_SECS;
+    var dotEl  = document.getElementById('morr-dot');
+    var statEl = document.getElementById('morr-status');
+    var cdEl   = document.getElementById('morr-cd');
+    var progEl = document.getElementById('morr-prog');
+
+    function getCtTime() {
+        var now = new Date();
+        return new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
     }
-    tick();
+    function inWindow() {
+        var ct = getCtTime(), day = ct.getDay(), h = ct.getHours();
+        return day >= 1 && day <= 5 && h >= 7 && h < 18;
+    }
+    function fmt(s) {
+        var tot = Math.max(0, s);
+        var d = Math.floor(tot / 86400);
+        var h = Math.floor((tot % 86400) / 3600);
+        var m = Math.floor((tot % 3600) / 60);
+        var r = tot % 60;
+        var mm = (m < 10 ? '0' : '') + m;
+        var ss = (r < 10 ? '0' : '') + r;
+        if (d > 0) return d + (d === 1 ? ' day ' : ' days ') + (h < 10 ? '0' : '') + h + ':' + mm + ':' + ss;
+        if (h > 0) return h + ':' + mm + ':' + ss;
+        return m + ':' + ss;
+    }
+    function updateBar() {
+        var active = inWindow();
+        if (active) {
+            if (dotEl)  { dotEl.style.background = '#1a7a3c'; dotEl.style.animation = 'pulse 2s infinite'; }
+            if (statEl) statEl.textContent = 'Live – auto-refreshes every 10 min (M–F, 7:00am–6:00pm CT)';
+            if (progEl) progEl.style.width = (countdown / AUTO_SECS * 100).toFixed(1) + '%';
+            if (cdEl)   cdEl.textContent   = fmt(countdown);
+        } else {
+            if (dotEl)  { dotEl.style.background = '#888'; dotEl.style.animation = 'none'; }
+            if (statEl) statEl.textContent = 'Auto-refresh paused – outside M–F 7:00am–6:00pm CT. Use Refresh Now.';
+            if (progEl) progEl.style.width = '0%';
+            if (cdEl)   cdEl.textContent   = '—';
+            countdown = AUTO_SECS;
+        }
+    }
+    setInterval(function () {
+        if (inWindow()) {
+            countdown--;
+            if (countdown <= 0) { location.reload(); return; }
+        }
+        updateBar();
+    }, 1000);
+    updateBar();
 }());
 
 (function () {
