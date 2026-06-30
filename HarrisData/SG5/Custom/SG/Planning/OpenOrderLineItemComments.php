@@ -30,38 +30,6 @@ $sql = "
         h.OESHTO             AS SHIPTO,
         h.\"OESEQ#\"         AS ORDSEQ,
         dt.ODITEM            AS ITEMNUM,
-  <?php
-require_once dirname(__FILE__) . '/../../GetURLParm.php';
-require_once 'GenericDirectCallVariables.php';
-require_once 'SetLibraryList.php';
-date_default_timezone_set('America/Chicago');
-
-function oolc_cymdToDate($v) {
-    $v = (int)$v;
-    if ($v <= 0) return '';
-    $c  = intval($v / 1000000);
-    $yy = intval(($v % 1000000) / 10000);
-    $mm = intval(($v % 10000)   / 100);
-    $dd = $v % 100;
-    if ($mm < 1 || $mm > 12 || $dd < 1 || $dd > 31) return '';
-    return sprintf('%02d/%02d/%04d', $mm, $dd, 1900 + $c * 100 + $yy);
-}
-
-$conn    = $i5Connect->getConnection();
-$dbError = '';
-
-$sql = "
-    SELECT
-        cm.\"OCORD#\"        AS ORDNUM,
-        cm.\"OCORL#\"        AS ORDLINE,
-        cm.OCCMNT            AS CMT,
-        cm.OCCSEQ            AS CMTSEQ,
-        cm.OCDOCT            AS DOCTYPE,
-        h.OEBDTE             AS ORDDATE,
-        h.OERQDT             AS RQDDATE,
-        h.OESHTO             AS SHIPTO,
-        h.\"OESEQ#\"         AS ORDSEQ,
-        dt.ODITEM            AS ITEMNUM,
         dt.ODIMDS            AS ITEMDESC,
         dt.ODQORD            AS QTYORD,
         TRIM(cust.CMCNA1)    AS CUSTNAME,
@@ -96,8 +64,9 @@ if ($stmt) {
             'qtyOrd'   => (int)$r['QTYORD'],
             'custName' => trim((string)$r['CUSTNAME']),
             'shipTo'   => trim((string)$r['SHIPTO']),
-            'comment'  => trim((string)$r['CMT']),
-            'cmtSeq'   => (int)$r['CMTSEQ'],
+            'comment'        => trim((string)$r['CMT']),
+            'hasSeeAttached' => (stripos(trim((string)$r['CMT']), 'see attached') !== false),
+            'cmtSeq'         => (int)$r['CMTSEQ'],
             'docType'  => trim((string)$r['DOCTYPE']),
             'ordSeq'   => (int)$r['ORDSEQ'],
             'moNum'    => trim((string)$r['MONUM']),
@@ -217,6 +186,8 @@ $eiBase      = 'https://portal.screen-graphics.com:5601';
                         border-top: 2px solid #888; font-size: 10px; }
   table.grid tbody td a { color: #3366cc; text-decoration: underline; cursor: pointer; }
   table.grid tbody td a:hover { color: #0033aa; }
+  table.grid tbody td a.attach-link { color: #b35c00; font-weight: 600; }
+  table.grid tbody td a.attach-link:hover { color: #7a3e00; }
 
   .page-footer { background: linear-gradient(to bottom, #d4d0c8, #c8c4bc);
                  border-top: 1px solid #999; padding: 3px 14px;
@@ -392,7 +363,7 @@ function buildGrid() {
       '<td class="num">'+ r.qtyOrd        + '</td>' +
       '<td>'           + esc(r.custName) + '</td>' +
       '<td>' + (r.shipTo ? '<a href="#" onclick="openCustomer(' + idx + ');return false;">' + esc(r.shipTo) + '</a>' : '') + '</td>' +
-      '<td><a href="#" onclick="openComment(' + idx + ');return false;">' + esc(r.comment) + '</a></td>' +
+      '<td>' + (r.hasSeeAttached ? '<a href="#" class="attach-link" onclick="openAttachment(' + idx + ');return false;">&#128206; ' + esc(r.comment) + '</a>' : '<a href="#" onclick="openComment(' + idx + ');return false;">' + esc(r.comment) + '</a>') + '</td>' +
       '<td class="num">'+ r.cmtSeq        + '</td>' +
       '<td>' + (r.moNum ? '<a href="#" onclick="openMO(' + idx + ');return false;">' + esc(r.moNum) + '</a>' : '') + '</td>';
     tbody.appendChild(tr);
@@ -463,6 +434,11 @@ function openComment(idx) {
     '&lineNumber=' + encodeURIComponent(r.ordLine) +
     '&batchNumber=&turnaround=';
   window.open(url, '_blank');
+}
+
+function openAttachment(idx) {
+  var r = OOLC_ROWS[idx];
+  window.open('OpenAttachment.php?ordNum=' + r.ordNum + '&eID=' + encodeURIComponent(EI_EID), '_blank');
 }
 
 // ─── AUTO-REFRESH ─────────────────────────────────────────────────────────────

@@ -1,10 +1,6 @@
 <?php
 require_once dirname(__FILE__) . '/../GetURLParm.php';
 
-$proto    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$host     = $_SERVER['HTTP_HOST'];
-$backHref = $proto . '://' . $host . '/Welcome.php?baseVar=BaseConfiguration.php&eID=' . urlencode($eID) . '&portal=9999999999';
-
 $portal = isset($_GET['portal']) ? strtoupper(trim($_GET['portal'])) : '';
 $cat    = isset($_GET['cat'])    ? strtoupper(trim($_GET['cat']))    : '';
 
@@ -91,27 +87,13 @@ $reportMap = array(
                 'title'  => 'Customer Service Inquiry Training Guide',
                 'desc'   => 'Video tutorial. CS Inquiry search tips and order lookup walkthrough',
                 'file'   => 'Training%20Guides/Order%20Entry/CSInqTrainingVideo.php',
+                'target' => '_blank',
                 'icon'   => '&#127891;',
             ),
         ),
     ),
     'SGMGMT' => array(
         '' => array(
-            array(
-                'title' => 'Bookings Dashboard',
-                'desc'  => 'D/W/M/Y bookings by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/BookingsDashboard.php',
-            ),
-            array(
-                'title' => 'Shipments Dashboard',
-                'desc'  => 'Orders shipped today + D/W/M/Y invoice totals by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/ShipmentsDashboard.php',
-            ),
-            array(
-                'title' => 'Sales Dashboard',
-                'desc'  => 'D/W/M/Y sales by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/SalesDashboard.php',
-            ),
             array(
                 'title' => 'Current Revenue vs Goal',
                 'desc'  => 'YTD revenue vs $18.3M annual goal with % completion. Drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
@@ -134,21 +116,6 @@ $reportMap = array(
             ),
         ),
         'OE' => array(
-            array(
-                'title' => 'Bookings Dashboard',
-                'desc'  => 'D/W/M/Y bookings by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/BookingsDashboard.php',
-            ),
-            array(
-                'title' => 'Shipments Dashboard',
-                'desc'  => 'Orders shipped today + D/W/M/Y invoice totals by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/ShipmentsDashboard.php',
-            ),
-            array(
-                'title' => 'Sales Dashboard',
-                'desc'  => 'D/W/M/Y sales by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/SalesDashboard.php',
-            ),
             array(
                 'title' => 'Current Revenue vs Goal',
                 'desc'  => 'YTD revenue vs $18.3M annual goal with % completion. Drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
@@ -200,10 +167,9 @@ $reportMap = array(
                 'file'  => 'Manufacturing/MORequirements.php',
             ),
             array(
-                'title'  => 'Open Order Line Item Comments',
-                'desc'   => 'Open order lines with ACK comments. Sortable, auto-refreshes every 15 min (7am–4pm CT)',
-                'file'   => 'Planning/OpenOrderLineItemComments.php',
-                'target' => '_blank',
+                'title' => 'Open Order Line Item Comments',
+                'desc'  => 'Open order lines with ACK comments. Sortable, auto-refreshes every 15 min (7am–4pm CT)',
+                'file'  => 'Planning/OpenOrderLineItemComments.php',
             ),
         ),
     ),
@@ -292,7 +258,20 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
 </div>
 <div class="page-layout">
 <div class="sidebar">
-  <a class="back-btn" href="<?php echo htmlspecialchars($backHref); ?>">&#8592; Back to EIP</a>
+  <a class="back-btn" href="javascript:history.back()">&#8592; Back to EIP</a>
+  <div class="sidebar-section">Dashboards</div>
+  <?php
+  $sideLinks = array(
+      array('label' => '&#128202; Bookings',  'file' => 'Order%20Entry/BookingsDashboard.php',  'p' => 'SGDASH'),
+      array('label' => '&#128230; Shipments', 'file' => 'Order%20Entry/ShipmentsDashboard.php', 'p' => 'SGDASH'),
+      array('label' => '&#128176; Sales',     'file' => 'Order%20Entry/SalesDashboard.php',     'p' => 'SGDASH'),
+  );
+  foreach ($sideLinks as $sl) {
+      $slParams = array('baseVar' => $baseVar, 'eID' => $eID, 'portal' => $sl['p']);
+      $slUrl = htmlspecialchars($sl['file'] . '?' . http_build_query($slParams));
+      echo '<a class="sidebar-link" href="' . $slUrl . '" target="_blank">' . $sl['label'] . '</a>' . "\n";
+  }
+  ?>
 </div>
 <div class="main-content">
 <?php if (empty($items)): ?>
@@ -310,7 +289,7 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
     <?php foreach ($items as $item):
         $params  = array('baseVar' => $baseVar, 'eID' => $eID, 'portal' => $portal);
         $url     = htmlspecialchars($item['file'] . '?' . http_build_query($params));
-        $target  = ' target="' . (!empty($item['target']) ? htmlspecialchars($item['target']) : '_self') . '"';
+        $target  = ' target="' . (!empty($item['target']) ? htmlspecialchars($item['target']) : '_blank') . '"';
         $icon    = !empty($item['icon'])   ? $item['icon'] : '&#128202;';
     ?>
     <a class="report-row" href="<?php echo $url; ?>"<?php echo $target; ?>>

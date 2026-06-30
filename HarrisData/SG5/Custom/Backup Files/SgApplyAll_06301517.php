@@ -266,7 +266,7 @@ if ($confirm) {
             runSql("SYURLM $fuid",
                 "INSERT INTO SGHDSDATA.SYURLM
                      (FUID,FUDESC,FUTITL,FUTRGT,FUURL,FUIMG,FURESV,FUDESCU,FUTSTP,FUTSUS,FUTSWS,FUTSPT)
-                 SELECT '$fuid','$cdesc','$futitl','','$url','','Y','',
+                 SELECT '$fuid','$cdesc','$futitl','_blank','$url','','Y','',
                         CURRENT_TIMESTAMP,'','',''
                  FROM SYSIBM.SYSDUMMY1
                  WHERE NOT EXISTS (SELECT 1 FROM SGHDSDATA.SYURLM WHERE FUID='$fuid')");

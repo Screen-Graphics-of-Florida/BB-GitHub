@@ -163,56 +163,94 @@ require_once dirname(__FILE__) . '/../SgReportNav.php';
 <tr valign="top">
 <td class="content">
 
-<table width="100%" cellpadding="2" cellspacing="0" border="0">
-  <tr>
-    <td><h1 style="font-size:22px;">&nbsp;&nbsp;PO Requirements Report</h1></td>
-  </tr>
-</table>
+<style>
+table[summary="banner"] { display:none !important; }
+/* Full-width stretch — override portal table constraints */
+body { box-sizing:border-box !important; }
+body > table { width:100% !important; max-width:none !important; table-layout:auto !important; }
+td.content { width:calc(100vw - 155px) !important; max-width:none !important; box-sizing:border-box !important; }
+#porr-grid { width:100% !important; min-width:100% !important; }
+/* ── Logo color scheme — full-width gradient ── */
+#porr-grid thead th { background-color:#1840A8 !important; color:#fff !important;
+                      font-weight:bold !important; }
+#porr-grid tbody .porr-row:nth-child(odd)  { background:#F7F7F7; }
+#porr-grid tbody .porr-row:nth-child(even) { background:#FFFFFF; }
+#porr-grid tbody .porr-row:hover           { background:#FFF9C4 !important; }
+#porr-grid tbody td a { color:#1840A8 !important; text-decoration:none !important;
+                        font-weight:bold !important; }
+#porr-grid tbody td a:hover { text-decoration:underline !important; }
+.refresh-fill { background:#1840A8 !important; }
+.refresh-dot  { background:#1DA032 !important; }
+</style>
+
+<!-- Full-width title bar: escapes the 155px nav offset to span 100vw -->
+<div style="position:relative; left:-155px; width:calc(100% + 155px); box-sizing:border-box;
+            display:flex; align-items:center;
+            padding:10px 14px 10px calc(155px + 14px);
+            background:linear-gradient(to right,
+                #1DA032 0%,
+                #1840A8 20%,
+                #7B1FA2 40%,
+                #CC1F20 60%,
+                #E86200 80%,
+                #FFD000 100%);
+            border-bottom:3px solid rgba(0,0,0,0.22);
+            gap:10px; margin-bottom:6px;">
+  <h1 style="font-size:22px;color:#fff !important;margin:0;flex:1;font-weight:bold !important;
+              text-shadow:0 1px 3px rgba(0,0,0,0.4);">
+    PO Requirements Report
+  </h1>
+  <a href="<?php echo htmlspecialchars($_sgnHome . '/Welcome.php?baseVar=' . rawurlencode($_sgnBv) . '&eID=' . rawurlencode($_sgnEid) . '&portal=9999999999', ENT_QUOTES); ?>"
+     style="padding:4px 14px;font-size:12px;font-weight:700;background:rgba(0,0,0,0.28);
+            color:#fff !important;text-decoration:none !important;border-radius:4px;
+            border:1px solid rgba(255,255,255,0.4);white-space:nowrap;display:inline-block;">&#8592; Back to EIP</a>
+  <a href="https://screen-graphics.com/"
+     style="padding:4px 14px;font-size:12px;font-weight:700;background:#CC1F20;
+            color:#fff !important;text-decoration:none !important;border-radius:4px;
+            border:1px solid #8b1010;white-space:nowrap;display:inline-block;">Logout</a>
+</div>
 
 <?php if ($sqlErr): ?>
 <p style="color:red;font-weight:bold;padding:8px;"><?php echo porr_h('SQL Error: ' . $sqlErr); ?></p>
 <?php endif; ?>
 
 <style type="text/css">
-#porr-grid thead th { cursor:pointer; user-select:none; white-space:nowrap;
-                      background-color:#03a9fc !important;
-                      color:#ffffff !important; font-weight:bold !important; }
+#porr-grid thead th { cursor:pointer; user-select:none; white-space:nowrap; }
 #porr-grid thead th:hover { opacity:0.85; }
 #porr-grid thead th.porr-asc::after  { content:' \25B2'; font-size:9px; }
 #porr-grid thead th.porr-desc::after { content:' \25BC'; font-size:9px; }
-.refresh-dot { width:8px; height:8px; border-radius:50%; background:#1a7a3c;
+.refresh-dot { width:8px; height:8px; border-radius:50%;
                animation:pulse 2s infinite; flex-shrink:0; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-.refresh-progress { flex:1; max-width:160px; height:4px; background:#d0dced;
+.refresh-progress { flex:1; max-width:160px; height:4px; background:#dde3f0;
                     border-radius:2px; overflow:hidden; }
-.refresh-fill { height:100%; background:#0055b3; border-radius:2px;
-                transition:width 1s linear; }
-.refresh-pill { background:#fff; border:1px solid #c8d0de; border-radius:12px;
+.refresh-fill { height:100%; border-radius:2px; transition:width 1s linear; }
+.refresh-pill { background:#fff; border:1px solid #ddd; border-radius:12px;
                 padding:2px 10px; font-size:11px; font-weight:600; white-space:nowrap; }
 </style>
 
-<div style="display:flex;align-items:stretch;border-bottom:1px solid #bdd0ee;">
+<div style="display:flex;align-items:stretch;border-bottom:2px solid #E86200;">
 
   <!-- Left: two bars stacked -->
   <div style="flex:1;display:flex;flex-direction:column;">
 
     <!-- Refresh status bar -->
-    <div style="background:#e8f0fb;border-bottom:1px solid #bdd0ee;padding:4px 14px;
-                display:flex;align-items:center;gap:14px;font-size:11px;color:#5a6478;flex:1;">
+    <div style="background:#F7F7F7;border-bottom:1px solid #E86200;padding:4px 14px;
+                display:flex;align-items:center;gap:14px;font-size:11px;color:#444;flex:1;">
       <div class="refresh-dot" id="porr-dot"></div>
       <span id="porr-status">Live &ndash; auto-refreshes every 10 min (M&ndash;F, 7:00am&ndash;6:00pm CT)</span>
       <div class="refresh-progress"><div class="refresh-fill" id="porr-prog" style="width:100%"></div></div>
       <span>Next refresh in: <strong id="porr-cd">10:00</strong></span>
       <span class="refresh-pill">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-      <span class="refresh-pill" style="background:#fff0d0;border-color:#f0c060;color:#885500;">As of: <?php echo date('D, M j, Y'); ?></span>
+      <span class="refresh-pill" style="background:#fff3e0;border-color:#E86200;color:#8b4000;">As of: <?php echo date('D, M j, Y'); ?></span>
     </div>
 
     <!-- Filter bar -->
     <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;
-                background:#f0f2f5;font-size:12px;flex:1;">
+                background:#F7F7F7;font-size:12px;flex:1;">
       <label style="white-space:nowrap;font-weight:600;">W/H #:
         <select id="porr-fwh"
-                style="padding:2px 4px;border:1px solid #b0bac8;border-radius:3px;
+                style="padding:2px 4px;border:1px solid #bbb;border-radius:3px;
                        font-size:12px;margin-left:4px;">
           <option value="">All</option>
           <?php foreach (array_keys($whOptions) as $v): ?>
@@ -231,7 +269,7 @@ require_once dirname(__FILE__) . '/../SgReportNav.php';
         </select>
       </label>
       <button id="porr-clear-btn"
-              style="padding:2px 12px;font-size:12px;cursor:pointer;border:1px solid #b0bac8;
+              style="padding:2px 12px;font-size:12px;cursor:pointer;border:1px solid #bbb;
                      border-radius:3px;background:#fff;">Clear</button>
       <b id="porr-fcount-text" style="margin-left:auto;white-space:nowrap;font-size:12px;">
         <?php echo $rowCount; ?>&nbsp;item<?php echo $rowCount === 1 ? '' : 's'; ?>
@@ -242,13 +280,13 @@ require_once dirname(__FILE__) . '/../SgReportNav.php';
 
   <!-- Right: Refresh directly above Export, same column -->
   <div style="display:flex;flex-direction:column;align-items:stretch;justify-content:center;
-              gap:4px;padding:6px 10px;background:#e8f0fb;border-left:1px solid #bdd0ee;">
+              gap:4px;padding:6px 10px;background:#F7F7F7;border-left:2px solid #E86200;">
     <button onclick="location.reload();"
-            style="font-size:12px;padding:3px 14px;cursor:pointer;border:1px solid #5bb8f5;
-                   border-radius:3px;background:#b3e0fc;color:#003050;font-weight:bold;
+            style="font-size:12px;padding:3px 14px;cursor:pointer;border:1px solid #4a0f6e;
+                   border-radius:3px;background:#7B1FA2;color:#fff;font-weight:bold;
                    white-space:nowrap;text-align:center;">&#x21BB; Refresh</button>
     <a href="<?php echo porr_h($exportURL); ?>"
-       style="background:#2e7d32;color:#fff;padding:3px 14px;border-radius:3px;font-size:12px;
+       style="background:#1DA032;color:#fff;padding:3px 14px;border-radius:3px;font-size:12px;
               font-weight:bold;text-decoration:none;white-space:nowrap;
               text-align:center;display:block;">
       &#8595; Export to Excel
@@ -300,7 +338,7 @@ require_once dirname(__FILE__) . '/../SgReportNav.php';
                . '&itemDescription=' . rawurlencode($desc)
                . '&itemNumber=' . rawurlencode($item);
 ?>
-    <tr style="background-color:#ffcccc;">
+    <tr class="porr-row">
       <td class="colcode" align="right"><?php echo porr_h($r['WH']); ?></td>
       <td class="colcode"><?php echo porr_h(trim((string)$r['BUYCODE'])); ?></td>
       <td class="colcode">
@@ -313,7 +351,7 @@ require_once dirname(__FILE__) . '/../SgReportNav.php';
       <td class="colcode" align="right"><?php echo porr_int($r['QONORD']); ?></td>
       <td class="colcode" align="right"><?php echo porr_int($r['COMO']); ?></td>
       <td class="colcode" align="right"
-          style="<?php echo $available < 0 ? 'color:#cc0000;font-weight:bold;' : ''; ?>">
+          style="<?php echo $available < 0 ? 'color:#CC1F20;font-weight:bold;' : ''; ?>">
         <?php echo porr_dec4($r['AVAILABLE']); ?>
       </td>
       <td class="colcode" align="right"><?php echo porr_int($r['ANNAVGUSG']); ?></td>

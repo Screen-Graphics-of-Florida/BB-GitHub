@@ -112,50 +112,39 @@ if (!empty($_sgnRole) && isset($i5Connect)) {
 <style type="text/css">
 #sgn-left-nav {
     position:fixed; left:0; top:0; width:155px; height:100vh;
-    background:#003087; overflow-y:auto; z-index:900;
+    background:linear-gradient(to bottom,
+        #1DA032 0%,   /* green  */
+        #1840A8 22%,  /* blue   */
+        #7B1FA2 44%,  /* purple */
+        #CC1F20 63%,  /* red    */
+        #E86200 82%,  /* orange */
+        #FFD000 100%  /* yellow */
+    );
+    overflow-y:auto; z-index:99999;
     box-shadow:2px 0 6px rgba(0,0,0,0.35);
     font-family:Arial,sans-serif;
+    pointer-events:auto !important;
 }
 .sgn-hdr {
-    background:#001a4d; color:#fff !important;
+    background:rgba(0,0,0,0.35); color:#fff !important;
     padding:9px 10px 7px; font-size:10px; font-weight:700 !important;
     letter-spacing:1px; text-transform:uppercase;
-    border-bottom:1px solid rgba(255,255,255,0.08);
+    border-bottom:1px solid rgba(255,255,255,0.25);
     position:sticky; top:0; z-index:1;
 }
 .sgn-item {
-    display:block; padding:4px 8px 4px 10px;
+    display:block !important; padding:4px 8px 4px 10px;
     font-size:11px; color:#fff !important; font-weight:700 !important;
-    text-decoration:none !important;
+    text-decoration:none !important; cursor:pointer !important;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     border-bottom:1px solid rgba(255,255,255,0.04);
+    pointer-events:auto !important;
 }
-.sgn-item:hover  { background:rgba(255,255,255,0.14); color:#fff !important; }
-.sgn-item.sgn-active { background:rgba(255,255,255,0.22); color:#fff !important; font-weight:700 !important; }
+.sgn-item:hover  { background:rgba(255,255,255,0.18) !important; color:#fff !important; text-decoration:underline !important; }
+.sgn-item.sgn-active { background:rgba(255,255,255,0.22) !important; color:#fff !important; font-weight:700 !important; }
 .sgn-empty {
     padding:12px; font-size:10px; color:#fff !important; font-style:italic;
 }
-#sgn-btnbar {
-    display:flex; justify-content:flex-end; align-items:center;
-    gap:6px; padding:4px 10px;
-    background:#e8f0fb; border-bottom:1px solid #bdd0ee;
-}
-.sgn-btn-back {
-    padding:3px 11px; font-size:11px; font-weight:700 !important;
-    background:#2a5a8c !important; color:#fff !important;
-    text-decoration:none !important;
-    border-radius:3px; border:1px solid #1a3d5c; white-space:nowrap;
-    display:inline-block;
-}
-.sgn-btn-back:hover  { background:#3a6a9c !important; color:#fff !important; }
-.sgn-btn-logout {
-    padding:3px 11px; font-size:11px; font-weight:700 !important;
-    background:#c62828 !important; color:#fff !important;
-    text-decoration:none !important;
-    border-radius:3px; border:1px solid #8b1a1a; white-space:nowrap;
-    display:inline-block;
-}
-.sgn-btn-logout:hover { background:#d93232 !important; color:#fff !important; }
 </style>
 
 <div id="sgn-left-nav">
@@ -177,15 +166,11 @@ if (!empty($_sgnRole) && isset($i5Connect)) {
   <?php endforeach; endif; ?>
 </div>
 
-<div id="sgn-btnbar">
-  <a class="sgn-btn-back"
-     href="<?php echo htmlspecialchars($_sgnHome . '/', ENT_QUOTES); ?>">&#8592; Back to EIP</a>
-  <a class="sgn-btn-logout"
-     href="<?php echo htmlspecialchars($_sgnHome . '/eip', ENT_QUOTES); ?>">Logout</a>
-</div>
-
 <script type="text/javascript">
 (function () {
-    document.body.style.paddingLeft = '155px';
+    var w = 155;
+    document.body.style.paddingLeft = w + 'px';
+    // keep td.content width in sync via CSS var
+    document.documentElement.style.setProperty('--sgn-nav-w', w + 'px');
 }());
 </script>
