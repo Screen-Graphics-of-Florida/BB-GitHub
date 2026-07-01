@@ -14,6 +14,8 @@ $_sgnPhp  = isset($phpPath)       ? $phpPath             : '/';
 $_sgnCgi  = isset($cGIPath)       ? $cGIPath             : '/harris-CGI/';
 $_sgnHelp = isset($helpPath)      ? (string)$helpPath    : '';
 $_sgnBv   = isset($baseVar)       ? (string)$baseVar     : '';
+// Portal nav always navigates via BaseConfiguration.php, same as the portal's own nav
+$_sgnNavBv = 'BaseConfiguration.php';
 $_sgnEid  = isset($eID)           ? (string)$eID         : '';
 $_sgnPort = isset($portal)        ? (string)$portal      : '';
 $_sgnRole = isset($activeRole)    ? trim((string)$activeRole) : '';
@@ -25,7 +27,11 @@ $_sgnBrws = isset($browser)       ? (string)$browser          : '';
 if (!function_exists('sgn_buildURL')) {
     function sgn_buildURL($fuurl, $fpport, $home, $php, $cgi, $help, $bv, $eid, $prfh, $news, $brws) {
         $w = trim($fuurl);
-        if ($w === '') return 'javascript:void(0);';
+        if ($w === '') {
+            return $home . '/Welcome.php?baseVar=' . urlencode($bv)
+                 . '&eID=' . urlencode($eid)
+                 . '&portal=' . urlencode(trim($fpport));
+        }
 
         $phpPos = strpos(strtoupper($w), '.PHP');
         if ($phpPos !== false) {
@@ -48,16 +54,21 @@ if (!function_exists('sgn_buildURL')) {
 
         if (strpos($fuurl, '@@homeURL') !== false) {
             $amp = (strpos($w, '?') !== false) ? '&' : '?';
-            if (strpos($fuurl, '@@baseVar') === false) {
-                $w  .= $amp . 'baseVar=' . urlencode($bvWrk) . '&eID=' . urlencode($eid);
-                $amp = '&';
-            } else {
+            if (strpos($fuurl, '@@baseVar') !== false) {
                 $w = str_replace('@@baseVar', urlencode($bvWrk), $w);
+            } elseif (strpos($w, 'baseVar=') === false) {
+                $w  .= $amp . 'baseVar=' . urlencode($bvWrk);
+                $amp = '&';
             }
-            if (strpos($fuurl, '@@portal') === false) {
-                $w .= '&portal=' . urlencode(trim($fpport));
-            } else {
+            if (strpos($w, 'eID=') === false) {
+                $amp = (strpos($w, '?') !== false) ? '&' : '?';
+                $w  .= $amp . 'eID=' . urlencode($eid);
+            }
+            $amp = (strpos($w, '?') !== false) ? '&' : '?';
+            if (strpos($fuurl, '@@portal') !== false) {
                 $w = str_replace('@@portal', urlencode(trim($fpport)), $w);
+            } elseif (strpos($w, 'portal=') === false) {
+                $w .= $amp . 'portal=' . urlencode(trim($fpport));
             }
         }
         return $w;
@@ -102,8 +113,9 @@ if (!empty($_sgnRole) && isset($i5Connect)) {
                 'href'  => sgn_buildURL(
                     rtrim($row['FUURL']), rtrim($row['FPPORT']),
                     $_sgnHome, $_sgnPhp, $_sgnCgi, $_sgnHelp,
-                    $_sgnBv, $_sgnEid, $_sgnPrfh, $_sgnNews, $_sgnBrws
+                    $_sgnNavBv, $_sgnEid, $_sgnPrfh, $_sgnNews, $_sgnBrws
                 ),
+                'new_session' => (stripos($label, 'new session') !== false),
             );
         }
     }
@@ -113,12 +125,11 @@ if (!empty($_sgnRole) && isset($i5Connect)) {
 #sgn-left-nav {
     position:fixed; left:0; top:0; width:155px; height:100vh;
     background:linear-gradient(to bottom,
-        #1DA032 0%,   /* green  */
-        #1840A8 22%,  /* blue   */
-        #7B1FA2 44%,  /* purple */
-        #CC1F20 63%,  /* red    */
-        #E86200 82%,  /* orange */
-        #FFD000 100%  /* yellow */
+        #111827 0%,
+        #1F2937 25%,
+        #374151 55%,
+        #4B5563 78%,
+        #6B7280 100%
     );
     overflow-y:auto; z-index:99999;
     box-shadow:2px 0 6px rgba(0,0,0,0.35);
@@ -160,6 +171,7 @@ if (!empty($_sgnRole) && isset($i5Connect)) {
   <?php else: foreach ($_sgnItems as $_ni): ?>
     <a class="sgn-item<?php echo ($_ni['port'] === $_sgnPort) ? ' sgn-active' : ''; ?>"
        href="<?php echo htmlspecialchars($_ni['href'], ENT_QUOTES); ?>"
+       target="<?php echo $_ni['new_session'] ? '_blank' : '_top'; ?>"
        title="<?php echo htmlspecialchars($_ni['label'], ENT_QUOTES); ?>">
       <?php echo htmlspecialchars($_ni['label']); ?>
     </a>

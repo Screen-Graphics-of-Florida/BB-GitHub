@@ -187,7 +187,7 @@ $reportMap = array(
             ),
             array(
                 'title' => 'MO Receipt Report',
-                'desc'  => 'Open MOs with received qty that are not fully closed. Action badges (Check & Verify / Close / Final Tag & Close); filter by Action and Status; sortable; export to Excel; auto-refreshes every 10 min',
+                'desc'  => 'Open MOs with received qty that are not fully closed. Action badges (Check & Verify / Close / Final Tag & Close); filter by Status and Action; sortable; export to Excel; auto-refreshes every 10 min',
                 'file'  => 'Manufacturing/MOOpenBalanceReport.php',
             ),
         ),
@@ -219,6 +219,26 @@ $catDisplay    = isset($catNames[$cat])       ? $catNames[$cat]       : $cat;
 $pageTitle     = $portalDisplay . ($catDisplay ? ' - ' . $catDisplay : '');
 
 $items = isset($reportMap[$portal][$cat]) ? $reportMap[$portal][$cat] : array();
+
+// Build list of categories that have items for this portal
+$availCats = array();
+if (isset($reportMap[$portal])) {
+    foreach ($reportMap[$portal] as $ck => $cv) {
+        if ($ck !== '' && !empty($cv)) {
+            $availCats[$ck] = isset($catNames[$ck]) ? $catNames[$ck] : $ck;
+        }
+    }
+}
+$showCatSelect = ($cat === '' && empty($items) && !empty($availCats));
+
+$catIcons = array(
+    'ACCT'   => '&#128176;',
+    'INVMGMT'=> '&#128230;',
+    'MFG'    => '&#9881;',
+    'OE'     => '&#128666;',
+    'PLN'    => '&#128197;',
+    'PUR'    => '&#128722;',
+);
 ?>
 <!DOCTYPE html>
 <html>
@@ -236,40 +256,35 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
 }
 .header h1 { font-size: 20px; font-weight: bold; }
 .header .sub { font-size: 12px; opacity: 0.75; margin-top: 3px; }
-.content { padding: 32px 24px; }
-.card {
-    background: #fff;
-    border: 1px solid #dce1e8;
-    border-radius: 6px;
-    padding: 36px;
-    max-width: 600px;
-    text-align: center;
-    box-shadow: 0 2px 6px rgba(0,0,0,.06);
-}
-.card .icon { font-size: 40px; margin-bottom: 14px; color: #2a5a8c; }
-.card h2 { font-size: 18px; color: #2a5a8c; margin-bottom: 10px; }
-.card p  { font-size: 13px; color: #555; line-height: 1.6; }
 .breadcrumb { font-size: 11px; color: rgba(255,255,255,.65); margin-bottom: 6px; }
+.breadcrumb a { color: rgba(255,255,255,.75); text-decoration: none; }
+.breadcrumb a:hover { text-decoration: underline; }
 .report-list { max-width: 700px; }
 .report-row {
-    display: flex;
-    align-items: center;
-    background: #fff;
-    border: 1px solid #dce1e8;
-    border-radius: 6px;
-    padding: 16px 20px;
-    margin-bottom: 10px;
-    text-decoration: none;
-    color: inherit;
-    box-shadow: 0 2px 4px rgba(0,0,0,.04);
-    transition: box-shadow .15s, border-color .15s;
+    display: flex; align-items: center; background: #fff;
+    border: 1px solid #dce1e8; border-radius: 6px; padding: 16px 20px;
+    margin-bottom: 10px; text-decoration: none; color: inherit;
+    box-shadow: 0 2px 4px rgba(0,0,0,.04); transition: box-shadow .15s, border-color .15s;
+    cursor: pointer;
 }
-.report-row:hover { border-color: #2a5a8c; box-shadow: 0 3px 10px rgba(0,0,0,.1); }
+.report-row:hover { border-color: #2a5a8c; box-shadow: 0 3px 10px rgba(0,0,0,.12); }
 .report-icon { font-size: 24px; margin-right: 16px; color: #2a5a8c; flex-shrink: 0; }
 .report-info { flex: 1; }
 .report-title { font-size: 15px; font-weight: bold; color: #2a5a8c; }
-.report-desc  { font-size: 12px; color: #666; margin-top: 3px; }
+.report-desc  { font-size: 12px; color: #666; margin-top: 3px; line-height: 1.4; }
 .report-arrow { font-size: 22px; color: #aaa; margin-left: 12px; }
+.cat-grid { display: flex; flex-wrap: wrap; gap: 16px; max-width: 780px; }
+.cat-tile {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #fff; border: 1px solid #dce1e8; border-radius: 8px;
+    padding: 28px 24px; width: 180px; text-decoration: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,.05); transition: box-shadow .15s, border-color .15s;
+    cursor: pointer;
+}
+.cat-tile:hover { border-color: #2a5a8c; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.cat-tile .tile-icon { font-size: 36px; margin-bottom: 12px; }
+.cat-tile .tile-name { font-size: 14px; font-weight: bold; color: #2a5a8c; text-align: center; }
+.cat-tile .tile-count { font-size: 11px; color: #888; margin-top: 4px; }
 .page-layout { display: flex; align-items: flex-start; }
 .sidebar {
     width: 160px; flex-shrink: 0;
@@ -280,45 +295,79 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
     display: block; background: #2a5a8c; color: #cde0ff;
     text-decoration: none; font-size: 12px; font-weight: 700;
     padding: 8px 12px; border-radius: 4px; text-align: center;
-    border: 1px solid rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.15); margin-bottom: 8px;
 }
 .back-btn:hover { background: #3a6a9c; color: white; }
-.sidebar-section { color: #7aafd4; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 4px; padding: 0 4px; }
-.sidebar-link { display: block; color: #cde0ff; text-decoration: none; font-size: 11px; padding: 5px 8px; border-radius: 3px; margin-bottom: 2px; }
+.sidebar-link {
+    display: block; color: #cde0ff; text-decoration: none;
+    font-size: 11px; padding: 5px 8px; border-radius: 3px; margin-bottom: 2px;
+}
 .sidebar-link:hover { background: rgba(255,255,255,0.12); color: white; }
+.sidebar-link.active { background: rgba(255,255,255,0.18); color: white; font-weight: bold; }
+.sidebar-hdr { color: #7aafd4; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 4px; padding: 0 4px; }
 .main-content { flex: 1; padding: 24px; }
+.section-title { font-size: 16px; font-weight: bold; color: #1a3d5c; margin-bottom: 18px; }
 </style>
 </head>
 <body>
 <div class="header">
-  <div class="breadcrumb">HarrisData EIP &rsaquo; <?php echo htmlspecialchars($portalDisplay); ?></div>
+  <div class="breadcrumb">
+    <a href="<?php echo htmlspecialchars($backHref); ?>">EIP Home</a>
+    &rsaquo; <?php echo htmlspecialchars($portalDisplay); ?>
+    <?php if ($catDisplay): ?> &rsaquo; <?php echo htmlspecialchars($catDisplay); ?><?php endif; ?>
+  </div>
   <h1><?php echo htmlspecialchars($pageTitle); ?></h1>
   <div class="sub">Screen Graphics</div>
 </div>
 <div class="page-layout">
 <div class="sidebar">
   <a class="back-btn" href="<?php echo htmlspecialchars($backHref); ?>">&#8592; Back to EIP</a>
+  <?php if (!empty($availCats)): ?>
+    <div class="sidebar-hdr">Categories</div>
+    <?php
+    $portalRoot = '?portal=' . urlencode($portal) . '&baseVar=' . urlencode($baseVar) . '&eID=' . urlencode($eID);
+    foreach ($availCats as $ck => $cn):
+        $catLink = $portalRoot . '&cat=' . urlencode($ck);
+        $isActive = ($cat === $ck);
+    ?>
+    <a class="sidebar-link<?php echo $isActive ? ' active' : ''; ?>"
+       href="<?php echo htmlspecialchars($catLink); ?>">
+      <?php echo htmlspecialchars($cn); ?>
+    </a>
+    <?php endforeach; ?>
+  <?php endif; ?>
 </div>
 <div class="main-content">
-<?php if (empty($items)): ?>
-  <div class="card">
-    <div class="icon">&#128193;</div>
-    <h2>No Items Available Yet</h2>
-    <p>
-      There are no <strong><?php echo htmlspecialchars($catDisplay); ?></strong> items in
-      <strong><?php echo htmlspecialchars($portalDisplay); ?></strong> at this time.<br><br>
-      Items will appear here as they are added.
-    </p>
+<?php if ($showCatSelect): ?>
+  <div class="section-title">Select a category:</div>
+  <div class="cat-grid">
+    <?php foreach ($availCats as $ck => $cn):
+        $catLink  = '?portal=' . urlencode($portal) . '&cat=' . urlencode($ck)
+                  . '&baseVar=' . urlencode($baseVar) . '&eID=' . urlencode($eID);
+        $icon     = isset($catIcons[$ck]) ? $catIcons[$ck] : '&#128193;';
+        $cnt      = count($reportMap[$portal][$ck]);
+    ?>
+    <a class="cat-tile" href="<?php echo htmlspecialchars($catLink); ?>">
+      <div class="tile-icon"><?php echo $icon; ?></div>
+      <div class="tile-name"><?php echo htmlspecialchars($cn); ?></div>
+      <div class="tile-count"><?php echo $cnt; ?> report<?php echo $cnt !== 1 ? 's' : ''; ?></div>
+    </a>
+    <?php endforeach; ?>
   </div>
+<?php elseif (empty($items)): ?>
+  <p style="font-size:13px;color:#555;">No reports available<?php echo $catDisplay ? ' for ' . htmlspecialchars($catDisplay) : ''; ?> at this time.</p>
 <?php else: ?>
+  <?php if ($catDisplay): ?>
+    <div class="section-title"><?php echo htmlspecialchars($catDisplay); ?></div>
+  <?php endif; ?>
   <div class="report-list">
     <?php foreach ($items as $item):
-        $params  = array('baseVar' => $baseVar, 'eID' => $eID, 'portal' => $portal);
-        $url     = htmlspecialchars($item['file'] . '?' . http_build_query($params));
-        $target  = ' target="' . (!empty($item['target']) ? htmlspecialchars($item['target']) : '_self') . '"';
-        $icon    = !empty($item['icon'])   ? $item['icon'] : '&#128202;';
+        $params = array('baseVar' => $baseVar, 'eID' => $eID, 'portal' => $portal);
+        $url    = htmlspecialchars($item['file'] . '?' . http_build_query($params));
+        $tgt    = ' target="' . (!empty($item['target']) ? htmlspecialchars($item['target']) : '_self') . '"';
+        $icon   = !empty($item['icon']) ? $item['icon'] : '&#128202;';
     ?>
-    <a class="report-row" href="<?php echo $url; ?>"<?php echo $target; ?>>
+    <a class="report-row" href="<?php echo $url; ?>"<?php echo $tgt; ?>>
       <div class="report-icon"><?php echo $icon; ?></div>
       <div class="report-info">
         <div class="report-title"><?php echo htmlspecialchars($item['title']); ?></div>

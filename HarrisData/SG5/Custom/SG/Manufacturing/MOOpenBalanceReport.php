@@ -152,39 +152,33 @@ body { box-sizing:border-box !important; }
 body > table { width:100% !important; max-width:none !important; table-layout:auto !important; }
 td.content { width:calc(100vw - 155px) !important; max-width:none !important; box-sizing:border-box !important; }
 #morr-grid { width:100% !important; min-width:100% !important; }
-#morr-grid thead th { background-color:#1840A8 !important; color:#fff !important;
-                      font-weight:bold !important; }
+#morr-grid thead th { background-color:#374151 !important; color:#fff !important; font-weight:bold !important; }
 #morr-grid tbody .morr-row:nth-child(odd)  { background:#F7F7F7; }
 #morr-grid tbody .morr-row:nth-child(even) { background:#FFFFFF; }
-#morr-grid tbody .morr-row:hover           { background:#FFF9C4 !important; }
-#morr-grid tbody td a { color:#1840A8 !important; text-decoration:none !important;
-                        font-weight:bold !important; }
+#morr-grid tbody .morr-row:hover           { background:#EFF6FF !important; }
+#morr-grid tbody td { color:#111827 !important; }
+#morr-grid tbody td a { color:#2563EB !important; text-decoration:none !important; font-weight:bold !important; }
 #morr-grid tbody td a:hover { text-decoration:underline !important; }
-.refresh-fill { background:#1840A8 !important; }
-.refresh-dot  { background:#1DA032 !important; }
+#morr-grid tbody td.morr-negative { color:#CC1F20 !important; font-weight:bold !important; }
+.refresh-fill { background:#3B82F6 !important; }
+.refresh-dot  { background:#16A34A !important; }
 </style>
 
-<!-- Full-width gradient title bar -->
+<!-- Full-width gray gradient title bar -->
 <div style="position:relative; left:-155px; width:calc(100% + 155px); box-sizing:border-box;
             display:flex; align-items:center;
             padding:10px 14px 10px calc(155px + 14px);
-            background:linear-gradient(to right,
-                #1DA032 0%,
-                #1840A8 20%,
-                #7B1FA2 40%,
-                #CC1F20 60%,
-                #E86200 80%,
-                #FFD000 100%);
-            border-bottom:3px solid rgba(0,0,0,0.22);
+            background:linear-gradient(to right,#111827,#1F2937,#374151,#4B5563,#6B7280);
+            border-bottom:3px solid rgba(0,0,0,0.15);
             gap:10px; margin-bottom:6px;">
   <h1 style="font-size:22px;color:#fff !important;margin:0;flex:1;font-weight:bold !important;
               text-shadow:0 1px 3px rgba(0,0,0,0.4);">
     MO Receipt Report
   </h1>
   <a href="<?php echo htmlspecialchars($_sgnHome . '/Welcome.php?baseVar=' . rawurlencode($_sgnBv) . '&eID=' . rawurlencode($_sgnEid) . '&portal=9999999999', ENT_QUOTES); ?>"
-     style="padding:4px 14px;font-size:12px;font-weight:700;background:rgba(0,0,0,0.28);
+     style="padding:4px 14px;font-size:12px;font-weight:700;background:#06B6D4;
             color:#fff !important;text-decoration:none !important;border-radius:4px;
-            border:1px solid rgba(255,255,255,0.4);white-space:nowrap;display:inline-block;">&#8592; Back to EIP</a>
+            border:1px solid #0891B2;white-space:nowrap;display:inline-block;">&#8592; Back to EIP</a>
   <a href="https://screen-graphics.com/"
      style="padding:4px 14px;font-size:12px;font-weight:700;background:#CC1F20;
             color:#fff !important;text-decoration:none !important;border-radius:4px;
@@ -203,25 +197,26 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 .refresh-dot { width:8px; height:8px; border-radius:50%;
                animation:pulse 2s infinite; flex-shrink:0; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-.refresh-progress { flex:1; max-width:160px; height:4px; background:#dde3f0;
+.refresh-progress { flex:1; max-width:160px; height:4px; background:rgba(255,255,255,0.18);
                     border-radius:2px; overflow:hidden; }
 .refresh-fill { height:100%; border-radius:2px; transition:width 1s linear; }
 .refresh-pill { background:#fff; border:1px solid #ddd; border-radius:12px;
-                padding:2px 10px; font-size:11px; font-weight:600; white-space:nowrap; }
+                padding:2px 10px; font-size:11px; font-weight:700; white-space:nowrap;
+                color:#2563EB !important; }
 </style>
 
-<div style="display:flex;align-items:stretch;border-bottom:2px solid #E86200;">
+<div style="display:flex;align-items:stretch;border-bottom:2px solid #D1D5DB;">
   <div style="flex:1;display:flex;flex-direction:column;">
 
     <!-- Refresh status bar -->
-    <div style="background:#F7F7F7;border-bottom:1px solid #E86200;padding:4px 14px;
-                display:flex;align-items:center;gap:14px;font-size:11px;color:#444;flex:1;">
+    <div style="background:#2563EB;border-bottom:1px solid #1d4ed8;padding:4px 14px;
+                display:flex;align-items:center;gap:14px;font-size:11px;color:#fff;flex:1;">
       <div class="refresh-dot" id="morr-dot"></div>
-      <span id="morr-status">Live &ndash; auto-refreshes every 10 min (M&ndash;F, 7:00am&ndash;6:00pm CT)</span>
+      <span id="morr-status">Live &ndash; auto-refreshes every 10 min</span>
       <div class="refresh-progress"><div class="refresh-fill" id="morr-prog" style="width:100%"></div></div>
       <span>Next refresh in: <strong id="morr-cd">10:00</strong></span>
       <span class="refresh-pill">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-      <span class="refresh-pill" style="background:#fff3e0;border-color:#E86200;color:#8b4000;">As of: <?php echo date('D, M j, Y'); ?></span>
+      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">As of: <?php echo date('D, M j, Y'); ?></span>
     </div>
 
     <!-- Filter bar -->
@@ -239,7 +234,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       </label>
       <label style="white-space:nowrap;font-weight:600;">Status:
         <select id="morr-fst"
-                style="padding:2px 4px;border:1px solid #b0bac8;border-radius:3px;
+                style="padding:2px 4px;border:1px solid #bbb;border-radius:3px;
                        font-size:12px;margin-left:4px;">
           <option value="">All</option>
           <?php foreach (array_keys($statusOptions) as $v): ?>
@@ -259,7 +254,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 
   <!-- Right: Refresh directly above Export -->
   <div style="display:flex;flex-direction:column;align-items:stretch;justify-content:center;
-              gap:4px;padding:6px 10px;background:#F7F7F7;border-left:2px solid #E86200;">
+              gap:4px;padding:6px 10px;background:#F7F7F7;border-left:2px solid #D1D5DB;">
     <button onclick="location.reload();"
             style="font-size:12px;padding:3px 14px;cursor:pointer;border:1px solid #4a0f6e;
                    border-radius:3px;background:#7B1FA2;color:#fff;font-weight:bold;
@@ -340,8 +335,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       </td>
       <td class="colcode" align="right"><?php echo morr_int($r['ORDQTY']); ?></td>
       <td class="colcode" align="right"><?php echo morr_int($r['QTYRCVD']); ?></td>
-      <td class="colcode" align="right"
-          style="<?php echo $balance !== 0 ? 'color:#CC1F20;font-weight:bold;' : ''; ?>">
+      <td class="colcode morr-<?php echo $balance !== 0 ? 'negative' : 'colcode'; ?>" align="right">
         <?php echo morr_int($balance); ?>
       </td>
     </tr>
@@ -362,6 +356,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
     var statEl = document.getElementById('morr-status');
     var cdEl   = document.getElementById('morr-cd');
     var progEl = document.getElementById('morr-prog');
+    var tzAbbr = new Date().toLocaleTimeString('en-US', {timeZoneName:'short'}).split(' ').pop();
 
     function getCtTime() {
         var now = new Date();
@@ -386,13 +381,13 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
     function updateBar() {
         var active = inWindow();
         if (active) {
-            if (dotEl)  { dotEl.style.background = '#1a7a3c'; dotEl.style.animation = 'pulse 2s infinite'; }
-            if (statEl) statEl.textContent = 'Live – auto-refreshes every 10 min (M–F, 7:00am–6:00pm CT)';
+            if (dotEl)  { dotEl.style.background = '#16A34A'; dotEl.style.animation = 'pulse 2s infinite'; }
+            if (statEl) statEl.textContent = 'Live – auto-refreshes every 10 min (M–F, 7:00am–6:00pm ' + tzAbbr + ')';
             if (progEl) progEl.style.width = (countdown / AUTO_SECS * 100).toFixed(1) + '%';
             if (cdEl)   cdEl.textContent   = fmt(countdown);
         } else {
             if (dotEl)  { dotEl.style.background = '#888'; dotEl.style.animation = 'none'; }
-            if (statEl) statEl.textContent = 'Auto-refresh paused – outside M–F 7:00am–6:00pm CT. Use Refresh Now.';
+            if (statEl) statEl.textContent = 'Auto-refresh paused – outside M–F 7:00am–6:00pm ' + tzAbbr + '. Use Refresh Now.';
             if (progEl) progEl.style.width = '0%';
             if (cdEl)   cdEl.textContent   = '—';
             countdown = AUTO_SECS;
