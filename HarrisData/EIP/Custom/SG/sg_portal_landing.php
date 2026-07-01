@@ -185,6 +185,11 @@ $reportMap = array(
                 'desc'  => 'Items with net shortage. Auto-refreshes every 10 minutes',
                 'file'  => 'Manufacturing/MORequirements.php',
             ),
+            array(
+                'title' => 'MO Receipt Report',
+                'desc'  => 'Open MOs with received qty that are not fully closed. Action badges (Check & Verify / Close / Final Tag & Close); filter by Action and Status; sortable; export to Excel; auto-refreshes every 10 min',
+                'file'  => 'Manufacturing/MOOpenBalanceReport.php',
+            ),
         ),
         'PUR' => array(
             array(
