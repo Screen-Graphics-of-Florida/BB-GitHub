@@ -19,12 +19,18 @@ $portalNames = array(
 );
 
 $catNames = array(
-    'ACCT'   => 'Accounting',
-    'INVMGMT'=> 'Inventory Management',
-    'MFG'    => 'Manufacturing',
-    'OE'     => 'Order Entry',
-    'PLN'    => 'Planning',
-    'PUR'    => 'Purchasing',
+    'ACCT'    => 'Accounting',
+    'INVMGMT' => 'Inventory Management',
+    'MFG'     => 'Manufacturing',
+    'OE'      => 'Order Entry',
+    'PLN'     => 'Planning',
+    'PUR'     => 'Purchasing',
+);
+
+// SGMGMT uses its own sub-category labels (add future sections here — sidebar auto-updates)
+$mgmtCatNames = array(
+    'COMPANY'  => 'Company Sales Analysis',
+    'CUSTOMER' => 'Customer Analysis',
 );
 
 // Reports keyed by portal => cat => [ [title, desc, file], ... ]
@@ -96,7 +102,7 @@ $reportMap = array(
         ),
     ),
     'SGMGMT' => array(
-        '' => array(
+        'COMPANY' => array(
             array(
                 'title' => 'Bookings Dashboard',
                 'desc'  => 'D/W/M/Y bookings by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
@@ -133,41 +139,12 @@ $reportMap = array(
                 'file'  => 'Management/CustClassSales5Yr.php',
             ),
         ),
-        'OE' => array(
+        'CUSTOMER' => array(
             array(
-                'title' => 'Bookings Dashboard',
-                'desc'  => 'D/W/M/Y bookings by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/BookingsDashboard.php',
-            ),
-            array(
-                'title' => 'Shipments Dashboard',
-                'desc'  => 'Orders shipped today + D/W/M/Y invoice totals by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/ShipmentsDashboard.php',
-            ),
-            array(
-                'title' => 'Sales Dashboard',
-                'desc'  => 'D/W/M/Y sales by salesperson. Auto-refreshes every 15 min (M-F, 7am-6pm ET)',
-                'file'  => 'Order%20Entry/SalesDashboard.php',
-            ),
-            array(
-                'title' => 'Current Revenue vs Goal',
-                'desc'  => 'YTD revenue vs $18.3M annual goal with % completion. Drill down by ship-to class code with pie chart; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
-                'file'  => 'Management/RevenueVsGoal.php',
-            ),
-            array(
-                'title' => 'New Account Revenue vs Goal',
-                'desc'  => 'YTD invoiced revenue from new accounts vs $4M goal with % completion. Click customer # to open in EIP; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
-                'file'  => 'Management/NewAccountsRevenue.php',
-            ),
-            array(
-                'title' => 'Bottom 50% Customer Revenue Growth',
-                'desc'  => 'Revenue growth of bottom-half customers. Compares same YTD period last year vs this year; sortable detail table; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
-                'file'  => 'Management/BottomHalfRevenue.php',
-            ),
-            array(
-                'title' => 'Daily Sales Cust Class Past 5 Years',
-                'desc'  => 'YTD invoiced sales by customer class for past 5 years side-by-side. Click class code for 5-year pie chart; export to Excel; auto-refreshes at 4:30 pm & 5:00 pm ET (M-F)',
-                'file'  => 'Management/CustClassSales5Yr.php',
+                'title'  => 'Waste Pro — Program Sheet Pricing & Sales',
+                'desc'   => 'Side-by-side 2024 vs 2026 program pricing with actual invoiced sales for 2024, 2025 & 2026 YTD. Click any part # to drill into all WP items.',
+                'file'   => 'Management/WpProgramComparison.php',
+                'target' => '_blank',
             ),
         ),
     ),
@@ -214,18 +191,29 @@ $reportMap = array(
     ),
 );
 
+// SGMGMT always lands on Company Sales Analysis when no cat is specified
+if ($portal === 'SGMGMT' && $cat === '') {
+    $cat = 'COMPANY';
+}
+
+// Resolve display name — SGMGMT sub-cats use their own label map
+$activeCatNames = ($portal === 'SGMGMT') ? $mgmtCatNames : $catNames;
+
 $portalDisplay = isset($portalNames[$portal]) ? $portalNames[$portal] : $portal;
-$catDisplay    = isset($catNames[$cat])       ? $catNames[$cat]       : $cat;
+$catDisplay    = isset($activeCatNames[$cat])  ? $activeCatNames[$cat] : $cat;
 $pageTitle     = $portalDisplay . ($catDisplay ? ' - ' . $catDisplay : '');
 
 $items = isset($reportMap[$portal][$cat]) ? $reportMap[$portal][$cat] : array();
 
-// Build list of categories that have items for this portal
+// Build sidebar category list.
+// For SGMGMT, include ALL defined sub-categories even if currently empty,
+// so new sections added to $reportMap['SGMGMT'] appear automatically.
 $availCats = array();
 if (isset($reportMap[$portal])) {
+    $includeEmpty = ($portal === 'SGMGMT');
     foreach ($reportMap[$portal] as $ck => $cv) {
-        if ($ck !== '' && !empty($cv)) {
-            $availCats[$ck] = isset($catNames[$ck]) ? $catNames[$ck] : $ck;
+        if ($ck !== '' && (!empty($cv) || $includeEmpty)) {
+            $availCats[$ck] = isset($activeCatNames[$ck]) ? $activeCatNames[$ck] : $ck;
         }
     }
 }

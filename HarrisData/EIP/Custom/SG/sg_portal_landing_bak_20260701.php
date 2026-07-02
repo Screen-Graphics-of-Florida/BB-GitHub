@@ -139,14 +139,7 @@ $reportMap = array(
                 'file'  => 'Management/CustClassSales5Yr.php',
             ),
         ),
-        'CUSTOMER' => array(
-            array(
-                'title'  => 'Waste Pro — Program Sheet Pricing & Sales',
-                'desc'   => 'Side-by-side 2024 vs 2026 program pricing with actual invoiced sales for 2024, 2025 & 2026 YTD. Click any part # to drill into all WP items.',
-                'file'   => 'Management/WpProgramComparison.php',
-                'target' => '_blank',
-            ),
-        ),
+        'CUSTOMER' => array(),
     ),
     'SGRPT' => array(
         'ACCT' => array(
