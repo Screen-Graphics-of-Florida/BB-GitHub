@@ -12,11 +12,12 @@ require_once 'GenericDirectCallVariables.php';
 require_once 'SetLibraryList.php';
 
 date_default_timezone_set('America/Chicago');
-$conn   = $i5Connect->getConnection();
-$eiBase = 'https://portal.screen-graphics.com:5601';
-$today  = new DateTime();
-$runDt  = $today->format('m/d/Y g:i A');
-$todayY = date('Y-m-d');
+
+$page_title  = 'AR Aging Report';
+$refreshSecs = 600;
+$conn        = $i5Connect->getConnection();
+$eiBase      = 'https://portal.screen-graphics.com:5601';
+$todayY      = date('Y-m-d');
 
 function cymdFmt($v) {
     $v = (int)$v;
@@ -33,6 +34,24 @@ function isoFmt($s) {
 }
 function esc($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
+// Average Days To Pay: HDCUST.CMT#DY (running total days to pay) / CMT#IV (running total # payments)
+// is a HarrisData-maintained per-customer average covering ALL invoices (not just currently-open
+// ones), so it is the only accurate source for a true "days to pay" figure from this dataset alone.
+// Existence-checked first so an unexpected column name can never break the main query.
+$hasAvgPayCols = false;
+$ccStmt = db2_exec($conn,
+    "SELECT COUNT(*) AS CNT FROM QSYS2.SYSCOLUMNS
+     WHERE TABLE_SCHEMA='SGHDSDATA' AND TABLE_NAME='HDCUST'
+       AND COLUMN_NAME IN ('CMT#DY','CMT#IV')");
+if ($ccStmt) {
+    $ccRow = db2_fetch_assoc($ccStmt);
+    $hasAvgPayCols = ((int)$ccRow['CNT'] === 2);
+    db2_free_stmt($ccStmt);
+}
+$avgPaySelect = $hasAvgPayCols
+    ? "DECIMAL(COALESCE(c.CMT#DY,0),15,2) AS TOTDAYS, DECIMAL(COALESCE(c.CMT#IV,0),15,2) AS TOTPMTS,\n        "
+    : "";
+
 // Balance = IVIVAM - IVNPOS. IVDUED is DATE type, returned as YYYY-MM-DD by CHAR(col,ISO).
 // Aging buckets computed entirely in JavaScript so "Age As Of" date picker works client-side.
 $sql = "
@@ -46,7 +65,9 @@ $sql = "
         CHAR(h.IVDUED, ISO)                                       AS DUEDATE,
         DECIMAL(COALESCE(h.IVIVAM,0),15,2)                       AS INVAMT,
         DECIMAL(COALESCE(h.IVNPOS,0),15,2)                       AS PAIDAMT,
-        DECIMAL(COALESCE(h.IVIVAM,0)-COALESCE(h.IVNPOS,0),15,2) AS BALANCE
+        DECIMAL(COALESCE(h.IVIVAM,0)-COALESCE(h.IVNPOS,0),15,2) AS BALANCE,
+        $avgPaySelect
+        1 AS DUMMY
     FROM SGHDSDATA.HDINVC h
     LEFT JOIN SGHDSDATA.HDCUST c ON h.IVBLTO = c.CMCUST
     WHERE (COALESCE(h.IVIVAM,0) - COALESCE(h.IVNPOS,0)) <> 0
@@ -78,6 +99,12 @@ $rows = [];
 foreach ($rawRows as $r) {
     $balance = round((float)$r['BALANCE'], 2);
     $dueStr  = trim((string)$r['DUEDATE']);
+    $avgPay  = null;
+    if ($hasAvgPayCols) {
+        $totDays = (float)$r['TOTDAYS'];
+        $totPmts = (float)$r['TOTPMTS'];
+        if ($totPmts > 0) $avgPay = round($totDays / $totPmts, 1);
+    }
     $rows[] = [
         'custNum'    => (int)$r['CUSTNUM'],
         'custName'   => $r['CUSTNAME'],
@@ -91,10 +118,13 @@ foreach ($rawRows as $r) {
         'invAmt'     => round((float)$r['INVAMT'],  2),
         'paidAmt'    => round((float)$r['PAIDAMT'], 2),
         'balance'    => $balance,
+        'avgPay'     => $avgPay,
     ];
 }
 
+$rowCount = count($rows);
 $dataJson = json_encode($rows);
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -102,57 +132,61 @@ $dataJson = json_encode($rows);
 <meta charset="UTF-8">
 <title>AR Aging Report</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;overflow:hidden}
-body{font-family:'Segoe UI',Tahoma,sans-serif;font-size:12px;
-     background:#c0c0c0;color:#000;display:flex;flex-direction:column}
-.panel{background:#d4d0c8;border:2px outset #fff;margin:0;
-       display:flex;flex-direction:column;flex:1;overflow:hidden}
-.panel-title{background:linear-gradient(to right,#000080,#1084d0);
-             color:#fff;font-weight:bold;font-size:13px;padding:4px 8px}
-.fb{display:flex;align-items:center;gap:6px;padding:5px 8px;
-    background:#d4d0c8;border-bottom:1px solid #808080;flex-wrap:wrap}
-.fb label{font-size:11px;font-weight:bold}
-.fb select,.fb input[type=text],.fb input[type=date]{font-size:11px;padding:2px 4px;
-    border:1px inset #808080;background:#fff;height:22px}
-.fb input[type=text]{width:140px}
-.btn{padding:2px 10px;font-size:11px;cursor:pointer;
-     background:#d4d0c8;border:2px outset #fff}
-.btn:active{border:2px inset #808080}
-.rc{font-style:italic;font-size:11px;color:#444}
-.btn-xl{margin-left:auto;padding:2px 14px;font-size:11px;cursor:pointer;
-        background:#218a21;color:#fff;border:2px outset #4caf4c;font-weight:bold}
-.btn-xl:active{border:2px inset #1a6b1a}
-.tw{display:flex;gap:3px}
-.tb{padding:2px 12px;font-size:11px;cursor:pointer;
-    background:#d4d0c8;border:2px outset #fff}
-.tb.on{background:#000080;color:#fff;border:2px inset #00004a}
-.tbl-wrap{overflow:auto;flex:1}
-table{border-collapse:collapse;width:100%;font-size:11px}
-th{background:#000080!important;color:#fff!important;font-weight:bold!important;
-   padding:4px 6px;white-space:nowrap;position:sticky;top:0;z-index:10;
-   cursor:pointer;border:1px solid #00005a;user-select:none}
-th:hover{background:#0000aa!important}
-th.sa::after{content:' ▲';font-size:9px}
-th.sd::after{content:' ▼';font-size:9px}
-td{padding:3px 6px;border-bottom:1px solid #d4d4d4;white-space:nowrap}
-tr:nth-child(even) td{background:#f0f0f8}
-tr:hover td{background:#dce8ff}
-tr.sub td{background:#ccd8e8!important;font-weight:bold;
-          border-top:1px solid #808080;border-bottom:2px solid #808080}
-tr.gt td{background:#000080!important;color:#fff!important;font-weight:bold}
-.num{text-align:right}
-.neg{color:#c00000}
-.lnk{color:#00c;text-decoration:none;cursor:pointer}
-.lnk:hover{text-decoration:underline}
-.err{background:#fff0f0;border:2px solid #c00;padding:10px;margin:8px;
-     font-family:monospace;font-size:11px;white-space:pre-wrap}
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;color:#111827;}
+.arag-grid { width:100% !important; min-width:100% !important; border-collapse:collapse; font-size:11px; }
+.arag-grid thead th { background-color:#374151 !important; color:#fff !important; font-weight:bold !important;
+                      padding:4px 6px; white-space:nowrap; position:sticky; top:0; z-index:10;
+                      cursor:pointer; user-select:none; border:1px solid #4B5563; }
+.arag-grid thead th:hover { background-color:#4B5563 !important; }
+.arag-grid thead th.sa::after { content:' \25B2'; font-size:9px; }
+.arag-grid thead th.sd::after { content:' \25BC'; font-size:9px; }
+.arag-grid tbody td { padding:3px 6px; border-bottom:1px solid #E5E7EB; white-space:nowrap; color:#111827 !important; }
+.arag-grid tbody tr:nth-child(odd)  td { background:#F7F7F7; }
+.arag-grid tbody tr:nth-child(even) td { background:#FFFFFF; }
+.arag-grid tbody tr:hover td { background:#EFF6FF !important; }
+.arag-grid tbody td a { color:#2563EB !important; text-decoration:none !important; font-weight:bold !important; }
+.arag-grid tbody td a:hover { text-decoration:underline !important; }
+.arag-grid tbody td.num { text-align:right; }
+.arag-grid tbody td.neg { color:#CC1F20 !important; font-weight:bold !important; }
+.arag-grid tr.sub td { background:#DCE8FF !important; font-weight:bold; color:#111827 !important;
+                       border-top:1px solid #D1D5DB; border-bottom:2px solid #D1D5DB; }
+.arag-grid tr.gt td { background:#374151 !important; color:#fff !important; font-weight:bold; }
+.refresh-fill { background:#3B82F6 !important; }
+.refresh-dot  { background:#16A34A !important; }
 </style>
 </head>
 <body>
 
+<!-- Full-width title bar -->
+<div style="display:flex; align-items:center;
+            padding:10px 14px;
+            background:linear-gradient(to right,
+                #111827 0%,
+                #1F2937 25%,
+                #374151 55%,
+                #4B5563 78%,
+                #6B7280 100%);
+            border-bottom:3px solid rgba(0,0,0,0.15);
+            gap:10px; margin-bottom:6px;">
+  <h1 style="font-size:22px;color:#fff !important;margin:0;flex:1;font-weight:bold !important;
+              text-shadow:0 1px 3px rgba(0,0,0,0.4);">
+    AR Aging Report
+  </h1>
+  <a href="<?php echo htmlspecialchars($eiBase, ENT_QUOTES); ?>"
+     style="padding:4px 14px;font-size:12px;font-weight:700;background:#06B6D4;
+            color:#fff !important;text-decoration:none !important;border-radius:4px;
+            border:1px solid #0891B2;white-space:nowrap;display:inline-block;">&#8592; Back to EIP</a>
+  <a href="https://screen-graphics.com/"
+     style="padding:4px 14px;font-size:12px;font-weight:700;background:#CC1F20;
+            color:#fff !important;text-decoration:none !important;border-radius:4px;
+            border:1px solid #8b1010;white-space:nowrap;display:inline-block;">Logout</a>
+</div>
+
 <?php if ($sqlErr): ?>
-<div class="err"><strong>Query Error:</strong> <?= esc($sqlErr) ?>
+<div style="background:#fff0f0;border:2px solid #c00;padding:10px;margin:8px;
+            font-family:monospace;font-size:11px;white-space:pre-wrap;">
+<strong>Query Error:</strong> <?= esc($sqlErr) ?>
 
 <?php if ($diagCols): ?>
 <strong>HDINVC columns in SGHDSDATA:</strong>
@@ -170,86 +204,161 @@ SGHDSDATA.HDINVC not found.
 
 <?php else: ?>
 
-<div class="panel">
-  <div class="panel-title">AR Aging Report - As of <?= esc($runDt) ?></div>
+<style type="text/css">
+.refresh-dot { width:8px; height:8px; border-radius:50%; animation:pulse 2s infinite; flex-shrink:0; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.refresh-progress { flex:1; max-width:160px; height:4px; background:rgba(255,255,255,0.18); border-radius:2px; overflow:hidden; }
+.refresh-fill { height:100%; border-radius:2px; transition:width 1s linear; }
+.refresh-pill { background:#fff; border:1px solid #ddd; border-radius:12px;
+                padding:2px 10px; font-size:11px; font-weight:700; white-space:nowrap;
+                color:#2563EB !important; }
+</style>
 
-  <div class="fb">
-    <label>Customer:</label>
-    <select id="fCust"><option value="">All Customers</option></select>
+<div style="display:flex;align-items:stretch;border-bottom:2px solid #D1D5DB;">
 
-    <label>Bucket:</label>
-    <select id="fBkt">
-      <option value="">All Buckets</option>
-      <option value="c">Current</option>
-      <option value="1">1-30 Days</option>
-      <option value="2">31-60 Days</option>
-      <option value="3">61-90 Days</option>
-      <option value="4">Over 90 Days</option>
-    </select>
+  <!-- Left: two bars stacked -->
+  <div style="flex:1;display:flex;flex-direction:column;">
 
-    <label>Age As Of:</label>
-    <input type="date" id="fDate" value="<?= esc($todayY) ?>">
-
-    <label>Search:</label>
-    <input type="text" id="fSrch" placeholder="Invoice / Order / PO #">
-
-    <button class="btn" onclick="clearF()">Clear</button>
-
-    <div class="tw">
-      <button class="tb on" id="btnD" onclick="setView('d')">Detail</button>
-      <button class="tb"    id="btnS" onclick="setView('s')">Summary</button>
+    <!-- Refresh status bar -->
+    <div style="background:#2563EB;border-bottom:1px solid #1d4ed8;padding:4px 14px;
+                display:flex;align-items:center;gap:14px;font-size:11px;color:#fff;flex:1;">
+      <div class="refresh-dot" id="arag-dot"></div>
+      <span id="arag-status">Live &ndash; auto-refreshes every 10 min (M&ndash;F, 7:00am&ndash;6:00pm)</span>
+      <div class="refresh-progress"><div class="refresh-fill" id="arag-prog" style="width:100%"></div></div>
+      <span>Next refresh in: <strong id="arag-cd">10:00</strong></span>
+      <span class="refresh-pill">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
+      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">As of: <?php echo date('D, M j, Y'); ?></span>
     </div>
 
-    <span class="rc" id="cnt"></span>
-    <button class="btn-xl" onclick="exportXLSX()">Export to Excel</button>
+    <!-- Filter bar -->
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;
+                background:#F7F7F7;font-size:12px;flex:1;flex-wrap:wrap;">
+      <label style="white-space:nowrap;font-weight:600;">Customer:
+        <select id="fCust" style="padding:2px 4px;border:1px solid #bbb;border-radius:3px;
+                                   font-size:12px;margin-left:4px;">
+          <option value="">All Customers</option>
+        </select>
+      </label>
+
+      <label style="white-space:nowrap;font-weight:600;">Bucket:
+        <select id="fBkt" style="padding:2px 4px;border:1px solid #bbb;border-radius:3px;
+                                  font-size:12px;margin-left:4px;">
+          <option value="">All Buckets</option>
+          <option value="c">Current</option>
+          <option value="1">1-30 Days</option>
+          <option value="2">31-60 Days</option>
+          <option value="3">61-90 Days</option>
+          <option value="4">Over 90 Days</option>
+        </select>
+      </label>
+
+      <label style="white-space:nowrap;font-weight:600;">Age As Of:
+        <input type="date" id="fDate" value="<?= esc($todayY) ?>"
+               style="padding:2px 4px;border:1px solid #bbb;border-radius:3px;font-size:12px;margin-left:4px;">
+      </label>
+
+      <label style="white-space:nowrap;font-weight:600;">Search:
+        <input type="text" id="fSrch" placeholder="Invoice / Order / PO #"
+               style="padding:2px 4px;border:1px solid #bbb;border-radius:3px;font-size:12px;
+                      margin-left:4px;width:140px;">
+      </label>
+
+      <div style="display:flex;gap:3px;">
+        <button class="tb on" id="btnD" onclick="setView('d')"
+                style="padding:2px 12px;font-size:12px;cursor:pointer;border:1px solid #bbb;
+                       border-radius:3px;background:#fff;">Detail</button>
+        <button class="tb" id="btnS" onclick="setView('s')"
+                style="padding:2px 12px;font-size:12px;cursor:pointer;border:1px solid #bbb;
+                       border-radius:3px;background:#fff;">Summary</button>
+      </div>
+
+      <div style="display:flex;gap:3px;">
+        <button class="tb on" id="btnCrAll" onclick="setCredit('all')"
+                style="padding:2px 12px;font-size:12px;cursor:pointer;border:1px solid #bbb;
+                       border-radius:3px;background:#fff;">All Invoices</button>
+        <button class="tb" id="btnCrEx" onclick="setCredit('ex')"
+                style="padding:2px 12px;font-size:12px;cursor:pointer;border:1px solid #bbb;
+                       border-radius:3px;background:#fff;">Exclude Credits</button>
+        <button class="tb" id="btnCrOnly" onclick="setCredit('only')"
+                style="padding:2px 12px;font-size:12px;cursor:pointer;border:1px solid #bbb;
+                       border-radius:3px;background:#fff;">Credits Only</button>
+      </div>
+
+      <button id="clearBtn" onclick="clearF()"
+              style="padding:2px 12px;font-size:12px;cursor:pointer;border:1px solid #bbb;
+                     border-radius:3px;background:#fff;">Clear</button>
+
+      <b id="cnt" style="margin-left:auto;white-space:nowrap;font-size:12px;"></b>
+    </div>
+
   </div>
 
-  <div class="tbl-wrap">
-
-    <!-- DETAIL TABLE -->
-    <div id="secD">
-    <table id="dtTbl">
-      <thead><tr id="dtHdr">
-        <th data-k="custNum">Cust #</th>
-        <th data-k="custName">Customer Name</th>
-        <th data-k="invNum">Invoice #</th>
-        <th data-k="ordNum">Order #</th>
-        <th data-k="refNum">Reference</th>
-        <th data-k="invDate">Inv Date</th>
-        <th data-k="dueDate">Due Date</th>
-        <th data-k="invAmt"  class="num">Invoice Amt</th>
-        <th data-k="paidAmt" class="num">Amt Paid</th>
-        <th data-k="balance" class="num">Balance</th>
-        <th data-k="current" class="num">Current</th>
-        <th data-k="b1_30"   class="num">1-30 Days</th>
-        <th data-k="b31_60"  class="num">31-60 Days</th>
-        <th data-k="b61_90"  class="num">61-90 Days</th>
-        <th data-k="b90plus" class="num">Over 90</th>
-      </tr></thead>
-      <tbody id="dtBody"></tbody>
-    </table>
-    </div>
-
-    <!-- SUMMARY TABLE -->
-    <div id="secS" style="display:none">
-    <table id="smTbl">
-      <thead><tr id="smHdr">
-        <th data-k="custNum">Cust #</th>
-        <th data-k="custName">Customer Name</th>
-        <th data-k="invAmt"  class="num">Invoice Amt</th>
-        <th data-k="paidAmt" class="num">Amt Paid</th>
-        <th data-k="balance" class="num">Balance</th>
-        <th data-k="current" class="num">Current</th>
-        <th data-k="b1_30"   class="num">1-30 Days</th>
-        <th data-k="b31_60"  class="num">31-60 Days</th>
-        <th data-k="b61_90"  class="num">61-90 Days</th>
-        <th data-k="b90plus" class="num">Over 90</th>
-      </tr></thead>
-      <tbody id="smBody"></tbody>
-    </table>
-    </div>
-
+  <!-- Right: Refresh directly above Export, same column -->
+  <div style="display:flex;flex-direction:column;align-items:stretch;justify-content:center;
+              gap:4px;padding:6px 10px;background:#F7F7F7;border-left:2px solid #D1D5DB;">
+    <button onclick="location.reload();"
+            style="font-size:12px;padding:3px 14px;cursor:pointer;border:1px solid #4a0f6e;
+                   border-radius:3px;background:#7B1FA2;color:#fff;font-weight:bold;
+                   white-space:nowrap;text-align:center;">&#x21BB; Refresh</button>
+    <button onclick="exportXLSX();"
+            style="background:#1DA032;color:#fff;padding:3px 14px;border-radius:3px;font-size:12px;
+                   font-weight:bold;border:1px solid #14802a;cursor:pointer;white-space:nowrap;
+                   text-align:center;display:block;">
+      &#8595; Export to Excel
+    </button>
   </div>
+
+</div>
+
+<style>
+.tb.on { background:#2563EB !important; color:#fff !important; border-color:#1d4ed8 !important; }
+</style>
+
+<div style="overflow-x:auto;">
+
+  <!-- DETAIL TABLE -->
+  <div id="secD">
+  <table id="dtTbl" class="arag-grid">
+    <thead><tr id="dtHdr">
+      <th data-k="custNum">Cust #</th>
+      <th data-k="custName">Customer Name</th>
+      <th data-k="invNum">Invoice #</th>
+      <th data-k="ordNum">Order #</th>
+      <th data-k="refNum">Reference</th>
+      <th data-k="invDate">Inv Date</th>
+      <th data-k="dueDate">Due Date</th>
+      <th data-k="invAmt"  class="num">Invoice Amt</th>
+      <th data-k="paidAmt" class="num">Amt Paid</th>
+      <th data-k="balance" class="num">Balance</th>
+      <th data-k="current" class="num">Current</th>
+      <th data-k="b1_30"   class="num">1-30 Days</th>
+      <th data-k="b31_60"  class="num">31-60 Days</th>
+      <th data-k="b61_90"  class="num">61-90 Days</th>
+      <th data-k="b90plus" class="num">Over 90</th>
+    </tr></thead>
+    <tbody id="dtBody"></tbody>
+  </table>
+  </div>
+
+  <!-- SUMMARY TABLE -->
+  <div id="secS" style="display:none">
+  <table id="smTbl" class="arag-grid">
+    <thead><tr id="smHdr">
+      <th data-k="custNum">Cust #</th>
+      <th data-k="custName">Customer Name</th>
+      <th data-k="invAmt"  class="num">Invoice Amt</th>
+      <th data-k="paidAmt" class="num">Amt Paid</th>
+      <th data-k="balance" class="num">Balance</th>
+      <th data-k="current" class="num">Current</th>
+      <th data-k="b1_30"   class="num">1-30 Days</th>
+      <th data-k="b31_60"  class="num">31-60 Days</th>
+      <th data-k="b61_90"  class="num">61-90 Days</th>
+      <th data-k="b90plus" class="num">Over 90</th>
+    </tr></thead>
+    <tbody id="smBody"></tbody>
+  </table>
+  </div>
+
 </div>
 
 <script>
@@ -261,6 +370,7 @@ var SR  = [];   // visible sorted summary rows (indexed by openCustSm)
 var SK  = 'custName', SA = true;
 var SSK = 'custName', SSA = true;
 var CV  = 'd';
+var CRV = 'all';   // credit view: 'all' | 'ex' (exclude credits) | 'only' (credits only)
 
 // Age As Of date - defaults to server today, updated by date picker
 var AGO_DATE = (function(){
@@ -381,6 +491,8 @@ function filtered(){
     var fs=document.getElementById('fSrch').value.trim().toLowerCase();
     return ALL.filter(function(r){
         if(fc && String(r.custNum)!==fc) return false;
+        if(CRV==='ex'   && r.invAmt<0) return false;
+        if(CRV==='only' && r.invAmt>=0) return false;
         if(fb){
             var bk=getBkt(r);
             if(fb==='c' && !bk.c)  return false;
@@ -431,9 +543,11 @@ function renderDt(rows){
 
     function flush(){
         if(!sub) return;
+        var avgTxt=(sub.avgPay===null||sub.avgPay===undefined)?'':'Avg Days to Pay: '+sub.avgPay;
         h+='<tr class="sub">'
           +'<td colspan="2">'+esc(sub.nm)+' - Subtotal<\/td>'
-          +'<td colspan="5"><\/td>'
+          +'<td colspan="4"><\/td>'
+          +'<td>'+avgTxt+'<\/td>'
           +'<td class="'+nc(sub.ia)+'">'+fmtT(sub.ia)+'<\/td>'
           +'<td class="'+nc(sub.pa)+'">'+fmtT(sub.pa)+'<\/td>'
           +'<td class="'+nc(sub.ba)+'">'+fmtT(sub.ba)+'<\/td>'
@@ -450,7 +564,7 @@ function renderDt(rows){
         if(r.custNum!==prev){
             flush();
             prev=r.custNum;
-            sub={nm:r.custName,ia:0,pa:0,ba:0,c:0,b1:0,b2:0,b3:0,b4:0};
+            sub={nm:r.custName,ia:0,pa:0,ba:0,c:0,b1:0,b2:0,b3:0,b4:0,avgPay:r.avgPay};
         }
         sub.ia+=r.invAmt; sub.pa+=r.paidAmt; sub.ba+=r.balance;
         sub.c+=bk.c; sub.b1+=bk.b1; sub.b2+=bk.b2; sub.b3+=bk.b3; sub.b4+=bk.b4;
@@ -566,11 +680,21 @@ function setView(v){
     render();
 }
 
+/* ── credit view toggle ── */
+function setCredit(v){
+    CRV=v;
+    document.getElementById('btnCrAll').className='tb'+(v==='all'?' on':'');
+    document.getElementById('btnCrEx').className='tb'+(v==='ex'?' on':'');
+    document.getElementById('btnCrOnly').className='tb'+(v==='only'?' on':'');
+    render();
+}
+
 /* ── clear (resets date to today) ── */
 function clearF(){
     document.getElementById('fCust').value='';
     document.getElementById('fBkt').value='';
     document.getElementById('fSrch').value='';
+    setCredit('all');
     var t=new Date();
     var yy=t.getFullYear();
     var mm=String(t.getMonth()+1).padStart(2,'0');
@@ -609,9 +733,9 @@ function exportXLSX(){
         +'<fills count="5">'
         +'<fill><patternFill patternType="none"/></fill>'
         +'<fill><patternFill patternType="gray125"/></fill>'
-        +'<fill><patternFill patternType="solid"><fgColor rgb="FF000080"/></patternFill></fill>'
-        +'<fill><patternFill patternType="solid"><fgColor rgb="FFCCD8E8"/></patternFill></fill>'
-        +'<fill><patternFill patternType="solid"><fgColor rgb="FF00004A"/></patternFill></fill>'
+        +'<fill><patternFill patternType="solid"><fgColor rgb="FF374151"/></patternFill></fill>'
+        +'<fill><patternFill patternType="solid"><fgColor rgb="FFDCE8FF"/></patternFill></fill>'
+        +'<fill><patternFill patternType="solid"><fgColor rgb="FF111827"/></patternFill></fill>'
         +'</fills>'
         +'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
         +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
@@ -645,7 +769,7 @@ function exportXLSX(){
     fr.forEach(function(r){if(!grps[r.custNum]){grps[r.custNum]=[];ord.push(r.custNum);}grps[r.custNum].push(r);});
     var gt={ia:0,pa:0,ba:0,c:0,b1:0,b2:0,b3:0,b4:0};
     ord.forEach(function(cn){
-        var g=grps[cn],sub={ia:0,pa:0,ba:0,c:0,b1:0,b2:0,b3:0,b4:0};
+        var g=grps[cn],sub={ia:0,pa:0,ba:0,c:0,b1:0,b2:0,b3:0,b4:0,avgPay:g[0]?g[0].avgPay:null};
         g.forEach(function(r){
             var bk=getBkt(r);
             rows.push(xrow(rn++,[r.custNum,r.custName,r.invNum,r.ordNum,r.refNum,r.invDate,r.dueDate,
@@ -653,7 +777,8 @@ function exportXLSX(){
             sub.ia+=r.invAmt;sub.pa+=r.paidAmt;sub.ba+=r.balance;
             sub.c+=bk.c;sub.b1+=bk.b1;sub.b2+=bk.b2;sub.b3+=bk.b3;sub.b4+=bk.b4;
         });
-        rows.push(xrow(rn++,['',g[0].custName+' - Subtotal','','','','','',
+        var avgTxt=(sub.avgPay===null||sub.avgPay===undefined)?'':'Avg Days to Pay: '+sub.avgPay;
+        rows.push(xrow(rn++,['',g[0].custName+' - Subtotal','','','',''  ,avgTxt,
             sub.ia,sub.pa,sub.ba,sub.c,sub.b1,sub.b2,sub.b3,sub.b4],4,5));
         gt.ia+=sub.ia;gt.pa+=sub.pa;gt.ba+=sub.ba;
         gt.c+=sub.c;gt.b1+=sub.b1;gt.b2+=sub.b2;gt.b3+=sub.b3;gt.b4+=sub.b4;
@@ -697,8 +822,64 @@ document.getElementById('fDate').addEventListener('change',function(){
     render();
 });
 render();
+
+/* ── auto-refresh bar ── */
+(function () {
+    var AUTO_SECS = <?php echo (int)$refreshSecs; ?>;
+    var countdown = AUTO_SECS;
+    var dotEl  = document.getElementById('arag-dot');
+    var statEl = document.getElementById('arag-status');
+    var cdEl   = document.getElementById('arag-cd');
+    var progEl = document.getElementById('arag-prog');
+    var tzAbbr = new Date().toLocaleTimeString('en-US', {timeZoneName:'short'}).split(' ').pop();
+
+    function getCtTime() {
+        var now = new Date();
+        return new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+    }
+    function inWindow() {
+        var ct = getCtTime(), day = ct.getDay(), h = ct.getHours();
+        return day >= 1 && day <= 5 && h >= 7 && h < 18;
+    }
+    function fmtCd(s) {
+        var tot = Math.max(0, s);
+        var d = Math.floor(tot / 86400);
+        var h = Math.floor((tot % 86400) / 3600);
+        var m = Math.floor((tot % 3600) / 60);
+        var r = tot % 60;
+        var mm = (m < 10 ? '0' : '') + m;
+        var ss = (r < 10 ? '0' : '') + r;
+        if (d > 0) return d + (d === 1 ? ' day ' : ' days ') + (h < 10 ? '0' : '') + h + ':' + mm + ':' + ss;
+        if (h > 0) return h + ':' + mm + ':' + ss;
+        return m + ':' + ss;
+    }
+    function updateBar() {
+        var active = inWindow();
+        if (active) {
+            if (dotEl)  { dotEl.style.background = '#16A34A'; dotEl.style.animation = 'pulse 2s infinite'; }
+            if (statEl) statEl.textContent = 'Live – auto-refreshes every 10 min (M–F, 7:00am–6:00pm ' + tzAbbr + ')';
+            if (progEl) progEl.style.width = (countdown / AUTO_SECS * 100).toFixed(1) + '%';
+            if (cdEl)   cdEl.textContent   = fmtCd(countdown);
+        } else {
+            if (dotEl)  { dotEl.style.background = '#888'; dotEl.style.animation = 'none'; }
+            if (statEl) statEl.textContent = 'Auto-refresh paused – outside M–F 7:00am–6:00pm ' + tzAbbr + '. Use Refresh.';
+            if (progEl) progEl.style.width = '0%';
+            if (cdEl)   cdEl.textContent   = '—';
+            countdown = AUTO_SECS;
+        }
+    }
+    setInterval(function () {
+        if (inWindow()) {
+            countdown--;
+            if (countdown <= 0) { location.reload(); return; }
+        }
+        updateBar();
+    }, 1000);
+    updateBar();
+}());
 </script>
 
 <?php endif; ?>
+
 </body>
 </html>

@@ -34,24 +34,6 @@ function isoFmt($s) {
 }
 function esc($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
-// Average Days To Pay: HDCUST.CMT#DY (running total days to pay) / CMT#IV (running total # payments)
-// is a HarrisData-maintained per-customer average covering ALL invoices (not just currently-open
-// ones), so it is the only accurate source for a true "days to pay" figure from this dataset alone.
-// Existence-checked first so an unexpected column name can never break the main query.
-$hasAvgPayCols = false;
-$ccStmt = db2_exec($conn,
-    "SELECT COUNT(*) AS CNT FROM QSYS2.SYSCOLUMNS
-     WHERE TABLE_SCHEMA='SGHDSDATA' AND TABLE_NAME='HDCUST'
-       AND COLUMN_NAME IN ('CMT#DY','CMT#IV')");
-if ($ccStmt) {
-    $ccRow = db2_fetch_assoc($ccStmt);
-    $hasAvgPayCols = ((int)$ccRow['CNT'] === 2);
-    db2_free_stmt($ccStmt);
-}
-$avgPaySelect = $hasAvgPayCols
-    ? "DECIMAL(COALESCE(c.CMT#DY,0),15,2) AS TOTDAYS, DECIMAL(COALESCE(c.CMT#IV,0),15,2) AS TOTPMTS,\n        "
-    : "";
-
 // Balance = IVIVAM - IVNPOS. IVDUED is DATE type, returned as YYYY-MM-DD by CHAR(col,ISO).
 // Aging buckets computed entirely in JavaScript so "Age As Of" date picker works client-side.
 $sql = "
@@ -65,9 +47,7 @@ $sql = "
         CHAR(h.IVDUED, ISO)                                       AS DUEDATE,
         DECIMAL(COALESCE(h.IVIVAM,0),15,2)                       AS INVAMT,
         DECIMAL(COALESCE(h.IVNPOS,0),15,2)                       AS PAIDAMT,
-        DECIMAL(COALESCE(h.IVIVAM,0)-COALESCE(h.IVNPOS,0),15,2) AS BALANCE,
-        $avgPaySelect
-        1 AS DUMMY
+        DECIMAL(COALESCE(h.IVIVAM,0)-COALESCE(h.IVNPOS,0),15,2) AS BALANCE
     FROM SGHDSDATA.HDINVC h
     LEFT JOIN SGHDSDATA.HDCUST c ON h.IVBLTO = c.CMCUST
     WHERE (COALESCE(h.IVIVAM,0) - COALESCE(h.IVNPOS,0)) <> 0
@@ -99,12 +79,6 @@ $rows = [];
 foreach ($rawRows as $r) {
     $balance = round((float)$r['BALANCE'], 2);
     $dueStr  = trim((string)$r['DUEDATE']);
-    $avgPay  = null;
-    if ($hasAvgPayCols) {
-        $totDays = (float)$r['TOTDAYS'];
-        $totPmts = (float)$r['TOTPMTS'];
-        if ($totPmts > 0) $avgPay = round($totDays / $totPmts, 1);
-    }
     $rows[] = [
         'custNum'    => (int)$r['CUSTNUM'],
         'custName'   => $r['CUSTNAME'],
@@ -118,22 +92,29 @@ foreach ($rawRows as $r) {
         'invAmt'     => round((float)$r['INVAMT'],  2),
         'paidAmt'    => round((float)$r['PAIDAMT'], 2),
         'balance'    => $balance,
-        'avgPay'     => $avgPay,
     ];
 }
 
 $rowCount = count($rows);
 $dataJson = json_encode($rows);
 
+print "\n<html><head>";
+require_once ($headInclude);
+require_once ($genericHead);
+print "\n</head>";
+require_once 'Banner.php';
+require_once dirname(__FILE__) . '/../SgReportNav.php';
+
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>AR Aging Report</title>
+<table <?php echo $baseTable; ?>>
+<tr valign="top">
+<td class="content">
+
 <style>
-*{box-sizing:border-box;}
-body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;color:#111827;}
+table[summary="banner"] { display:none !important; }
+body { box-sizing:border-box !important; }
+body > table { width:100% !important; max-width:none !important; table-layout:auto !important; }
+td.content { width:calc(100vw - 155px) !important; max-width:none !important; box-sizing:border-box !important; }
 .arag-grid { width:100% !important; min-width:100% !important; border-collapse:collapse; font-size:11px; }
 .arag-grid thead th { background-color:#374151 !important; color:#fff !important; font-weight:bold !important;
                       padding:4px 6px; white-space:nowrap; position:sticky; top:0; z-index:10;
@@ -155,12 +136,11 @@ body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;col
 .refresh-fill { background:#3B82F6 !important; }
 .refresh-dot  { background:#16A34A !important; }
 </style>
-</head>
-<body>
 
-<!-- Full-width title bar -->
-<div style="display:flex; align-items:center;
-            padding:10px 14px;
+<!-- Full-width title bar: escapes the 155px nav offset to span 100vw -->
+<div style="position:relative; left:-155px; width:calc(100% + 155px); box-sizing:border-box;
+            display:flex; align-items:center;
+            padding:10px 14px 10px calc(155px + 14px);
             background:linear-gradient(to right,
                 #111827 0%,
                 #1F2937 25%,
@@ -173,7 +153,7 @@ body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;col
               text-shadow:0 1px 3px rgba(0,0,0,0.4);">
     AR Aging Report
   </h1>
-  <a href="<?php echo htmlspecialchars($eiBase, ENT_QUOTES); ?>"
+  <a href="<?php echo htmlspecialchars($_sgnHome . '/Welcome.php?baseVar=' . rawurlencode($_sgnBv) . '&eID=' . rawurlencode($_sgnEid) . '&portal=9999999999', ENT_QUOTES); ?>"
      style="padding:4px 14px;font-size:12px;font-weight:700;background:#06B6D4;
             color:#fff !important;text-decoration:none !important;border-radius:4px;
             border:1px solid #0891B2;white-space:nowrap;display:inline-block;">&#8592; Back to EIP</a>
@@ -543,11 +523,9 @@ function renderDt(rows){
 
     function flush(){
         if(!sub) return;
-        var avgTxt=(sub.avgPay===null||sub.avgPay===undefined)?'':'Avg Days to Pay: '+sub.avgPay;
         h+='<tr class="sub">'
           +'<td colspan="2">'+esc(sub.nm)+' - Subtotal<\/td>'
-          +'<td colspan="4"><\/td>'
-          +'<td>'+avgTxt+'<\/td>'
+          +'<td colspan="5"><\/td>'
           +'<td class="'+nc(sub.ia)+'">'+fmtT(sub.ia)+'<\/td>'
           +'<td class="'+nc(sub.pa)+'">'+fmtT(sub.pa)+'<\/td>'
           +'<td class="'+nc(sub.ba)+'">'+fmtT(sub.ba)+'<\/td>'
@@ -564,7 +542,7 @@ function renderDt(rows){
         if(r.custNum!==prev){
             flush();
             prev=r.custNum;
-            sub={nm:r.custName,ia:0,pa:0,ba:0,c:0,b1:0,b2:0,b3:0,b4:0,avgPay:r.avgPay};
+            sub={nm:r.custName,ia:0,pa:0,ba:0,c:0,b1:0,b2:0,b3:0,b4:0};
         }
         sub.ia+=r.invAmt; sub.pa+=r.paidAmt; sub.ba+=r.balance;
         sub.c+=bk.c; sub.b1+=bk.b1; sub.b2+=bk.b2; sub.b3+=bk.b3; sub.b4+=bk.b4;
@@ -769,7 +747,7 @@ function exportXLSX(){
     fr.forEach(function(r){if(!grps[r.custNum]){grps[r.custNum]=[];ord.push(r.custNum);}grps[r.custNum].push(r);});
     var gt={ia:0,pa:0,ba:0,c:0,b1:0,b2:0,b3:0,b4:0};
     ord.forEach(function(cn){
-        var g=grps[cn],sub={ia:0,pa:0,ba:0,c:0,b1:0,b2:0,b3:0,b4:0,avgPay:g[0]?g[0].avgPay:null};
+        var g=grps[cn],sub={ia:0,pa:0,ba:0,c:0,b1:0,b2:0,b3:0,b4:0};
         g.forEach(function(r){
             var bk=getBkt(r);
             rows.push(xrow(rn++,[r.custNum,r.custName,r.invNum,r.ordNum,r.refNum,r.invDate,r.dueDate,
@@ -777,8 +755,7 @@ function exportXLSX(){
             sub.ia+=r.invAmt;sub.pa+=r.paidAmt;sub.ba+=r.balance;
             sub.c+=bk.c;sub.b1+=bk.b1;sub.b2+=bk.b2;sub.b3+=bk.b3;sub.b4+=bk.b4;
         });
-        var avgTxt=(sub.avgPay===null||sub.avgPay===undefined)?'':'Avg Days to Pay: '+sub.avgPay;
-        rows.push(xrow(rn++,['',g[0].custName+' - Subtotal','','','',''  ,avgTxt,
+        rows.push(xrow(rn++,['',g[0].custName+' - Subtotal','','','','','',
             sub.ia,sub.pa,sub.ba,sub.c,sub.b1,sub.b2,sub.b3,sub.b4],4,5));
         gt.ia+=sub.ia;gt.pa+=sub.pa;gt.ba+=sub.ba;
         gt.c+=sub.c;gt.b1+=sub.b1;gt.b2+=sub.b2;gt.b3+=sub.b3;gt.b4+=sub.b4;
@@ -880,6 +857,10 @@ render();
 </script>
 
 <?php endif; ?>
+
+</td>
+</tr>
+</table>
 
 </body>
 </html>

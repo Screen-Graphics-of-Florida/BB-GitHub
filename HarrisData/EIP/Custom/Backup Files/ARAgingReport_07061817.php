@@ -125,15 +125,23 @@ foreach ($rawRows as $r) {
 $rowCount = count($rows);
 $dataJson = json_encode($rows);
 
+print "\n<html><head>";
+require_once ($headInclude);
+require_once ($genericHead);
+print "\n</head>";
+require_once 'Banner.php';
+require_once dirname(__FILE__) . '/../SgReportNav.php';
+
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>AR Aging Report</title>
+<table <?php echo $baseTable; ?>>
+<tr valign="top">
+<td class="content">
+
 <style>
-*{box-sizing:border-box;}
-body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;color:#111827;}
+table[summary="banner"] { display:none !important; }
+body { box-sizing:border-box !important; }
+body > table { width:100% !important; max-width:none !important; table-layout:auto !important; }
+td.content { width:calc(100vw - 155px) !important; max-width:none !important; box-sizing:border-box !important; }
 .arag-grid { width:100% !important; min-width:100% !important; border-collapse:collapse; font-size:11px; }
 .arag-grid thead th { background-color:#374151 !important; color:#fff !important; font-weight:bold !important;
                       padding:4px 6px; white-space:nowrap; position:sticky; top:0; z-index:10;
@@ -155,12 +163,11 @@ body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;col
 .refresh-fill { background:#3B82F6 !important; }
 .refresh-dot  { background:#16A34A !important; }
 </style>
-</head>
-<body>
 
-<!-- Full-width title bar -->
-<div style="display:flex; align-items:center;
-            padding:10px 14px;
+<!-- Full-width title bar: escapes the 155px nav offset to span 100vw -->
+<div style="position:relative; left:-155px; width:calc(100% + 155px); box-sizing:border-box;
+            display:flex; align-items:center;
+            padding:10px 14px 10px calc(155px + 14px);
             background:linear-gradient(to right,
                 #111827 0%,
                 #1F2937 25%,
@@ -173,7 +180,7 @@ body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;col
               text-shadow:0 1px 3px rgba(0,0,0,0.4);">
     AR Aging Report
   </h1>
-  <a href="<?php echo htmlspecialchars($eiBase, ENT_QUOTES); ?>"
+  <a href="<?php echo htmlspecialchars($_sgnHome . '/Welcome.php?baseVar=' . rawurlencode($_sgnBv) . '&eID=' . rawurlencode($_sgnEid) . '&portal=9999999999', ENT_QUOTES); ?>"
      style="padding:4px 14px;font-size:12px;font-weight:700;background:#06B6D4;
             color:#fff !important;text-decoration:none !important;border-radius:4px;
             border:1px solid #0891B2;white-space:nowrap;display:inline-block;">&#8592; Back to EIP</a>
@@ -880,6 +887,10 @@ render();
 </script>
 
 <?php endif; ?>
+
+</td>
+</tr>
+</table>
 
 </body>
 </html>
