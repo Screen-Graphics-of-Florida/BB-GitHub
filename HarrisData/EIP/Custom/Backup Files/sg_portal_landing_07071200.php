@@ -168,13 +168,6 @@ $reportMap = array(
                 'file'  => 'Manufacturing/MOOpenBalanceReport.php',
             ),
         ),
-        'OE' => array(
-            array(
-                'title' => 'Installs & Removals Report',
-                'desc'  => 'Install, removal, trip & travel charge lines by Ship-To, grouped with subtotals and a grand total. From/To date filter (defaults to current month); CO# and Invoice# open in EIP; export to Excel; refreshes once daily at 12:00 PM (M-F)',
-                'file'  => 'Order%20Entry/InstallsRemovalsReport.php',
-            ),
-        ),
         'PUR' => array(
             array(
                 'title' => 'PO Requirements Report',
