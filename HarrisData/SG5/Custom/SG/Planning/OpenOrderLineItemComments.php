@@ -444,13 +444,12 @@ function openAttachment(idx) {
 // ─── AUTO-REFRESH ─────────────────────────────────────────────────────────────
 const AUTO_SECS = 900;
 let countdown = AUTO_SECS;
+const TZ_ABBR = new Date().toLocaleTimeString('en-US', {timeZoneName:'short'}).split(' ').pop();
 
 function isAutoRefreshTime() {
-  const now   = new Date();
-  const ctStr = now.toLocaleString('en-US', { timeZone: 'America/Chicago' });
-  const ct    = new Date(ctStr);
-  const day   = ct.getDay(); // 0=Sun, 6=Sat
-  const h     = ct.getHours();
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 6=Sat
+  const h   = now.getHours();
   return day >= 1 && day <= 5 && h >= 7 && h < 16;
 }
 
@@ -476,13 +475,13 @@ function updateStatusBar() {
   if (auto) {
     dot.style.background = '#1a7a3c';
     dot.style.animation  = 'pulse 2s infinite';
-    stat.textContent     = 'Live — auto-refreshes every 15 min (M–F, 7:00am–4:00pm CT)';
+    stat.textContent     = 'Live — auto-refreshes every 15 min (M–F, 7:00am–4:00pm ' + TZ_ABBR + ')';
     fill.style.width     = ((countdown / AUTO_SECS) * 100) + '%';
     count.textContent    = fmtCountdown(countdown);
   } else {
     dot.style.background = '#888';
     dot.style.animation  = 'none';
-    stat.textContent     = 'Auto-refresh paused — outside M–F 7:00am–4:00pm CT. Use Refresh Now.';
+    stat.textContent     = 'Auto-refresh paused — outside M–F 7:00am–4:00pm ' + TZ_ABBR + '. Use Refresh Now.';
     fill.style.width     = '0%';
     count.textContent    = '—';
     countdown = AUTO_SECS;

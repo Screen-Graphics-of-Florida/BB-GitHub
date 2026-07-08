@@ -195,9 +195,14 @@ $reportMap = array(
             ),
             array(
                 'title'  => 'Open Order Line Item Comments',
-                'desc'   => 'Open order lines with ACK comments. Sortable, auto-refreshes every 15 min (7am–4pm CT)',
+                'desc'   => 'Open order lines with ACK comments. Sortable, auto-refreshes every 15 min (M-F, 7am-4pm local time)',
                 'file'   => 'Planning/OpenOrderLineItemComments.php',
                 'target' => '_blank',
+            ),
+            array(
+                'title' => 'Items Selected to Not Cost Roll',
+                'desc'  => 'Items flagged to skip cost rollup (Standard/Current/Future Cost), with std cost per unit and extended value. Filter by Part Type and Inactive code; sortable; export to Excel; auto-refreshes every 30 min',
+                'file'  => 'Planning/ItemsNotCostRollReport.php',
             ),
         ),
     ),
