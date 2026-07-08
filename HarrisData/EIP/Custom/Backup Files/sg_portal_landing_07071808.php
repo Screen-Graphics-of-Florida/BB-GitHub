@@ -181,11 +181,6 @@ $reportMap = array(
                 'desc'  => 'Items with negative availability (Qty Available < 0). Sortable; export to Excel; auto-refreshes every 10 min',
                 'file'  => 'Purchasing/PORequirementsReport.php',
             ),
-            array(
-                'title' => 'Open PO Variance Report',
-                'desc'  => 'Open PO lines where purchase cost/ea differs from standard cost. Sortable; filter by W/H and Item#; export to Excel; auto-refreshes every 10 min',
-                'file'  => 'Purchasing/OpenPOVarianceReport.php',
-            ),
         ),
         'PLN' => array(
             array(

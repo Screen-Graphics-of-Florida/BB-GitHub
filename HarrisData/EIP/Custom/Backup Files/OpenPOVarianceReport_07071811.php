@@ -326,11 +326,11 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
     $varEa   = (float)(isset($r['VAREA'])  ? $r['VAREA']  : 0);
     $item    = trim((string)$r['ITEM']);
     $desc    = trim((string)$r['ITEMDESC']);
-    // Negative = red; positive = green.
-    $ttlStyle = $varTtl < 0 ? 'color:#CC1F20 !important;font-weight:bold !important;'
-              : ($varTtl > 0 ? 'color:#1DA032 !important;font-weight:bold !important;' : '');
-    $eaStyle  = $varEa  < 0 ? 'color:#CC1F20 !important;'
-              : ($varEa  > 0 ? 'color:#1DA032 !important;' : '');
+    // Unfavorable (paying over standard) = red; favorable (under standard) = green.
+    $ttlStyle = $varTtl > 0 ? 'color:#CC1F20 !important;font-weight:bold !important;'
+              : ($varTtl < 0 ? 'color:#1DA032 !important;font-weight:bold !important;' : '');
+    $eaStyle  = $varEa  > 0 ? 'color:#CC1F20 !important;'
+              : ($varEa  < 0 ? 'color:#1DA032 !important;' : '');
     $itemUrl = $eiBase . '/harris-CGI/ItemSelect.d2w/REPORT'
              . '?baseVar=BaseConfiguration.icl&portal=ITEM'
              . '&eID=' . rawurlencode($eID)
