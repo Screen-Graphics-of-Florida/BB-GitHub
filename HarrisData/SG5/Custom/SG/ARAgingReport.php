@@ -4,8 +4,17 @@ error_reporting(E_ERROR | E_PARSE);
 // SG5: https://portal.screen-graphics.com:5610/Custom/SG/ARAgingReport.php
 // EIP: https://portal.screen-graphics.com:5601/Custom/SG/ARAgingReport.php
 //
+// TRUE point-in-time aging: balances are reconstructed as of the "Age As Of" date from
+// dated payment history, not derived from today's net-posted figure. For each invoice,
+//     balance as of D = IVIVAM - SUM(ARYPTD.YPAMT where YPBDAT <= D)   [joined on IVISEQ]
+// and only invoices with IVIVDT <= D (already issued as of D) are included. YPAMT is signed
+// (reversals negative, corrections included) and its per-invoice total reproduces IVNPOS for
+// 100% of invoices, so it is the authoritative paid-to-date source. Changing the date reloads
+// the page (?asof=YYYY-MM-DD) so the server recomputes balances.
+//
 // Tables: SGHDSDATA.HDINVC (master invoice, IV prefix)
 //         SGHDSDATA.HDCUST (customer master, CM prefix)
+//         SGHDSDATA.ARYPTD (A/R payment history, YP prefix; dated cash/credit application)
 
 require_once dirname(__FILE__) . '/../../GetURLParm.php';
 require_once 'GenericDirectCallVariables.php';
@@ -18,6 +27,16 @@ $refreshSecs = 600;
 $conn        = $i5Connect->getConnection();
 $eiBase      = 'https://portal.screen-graphics.com:5601';
 $todayY      = date('Y-m-d');
+
+// "Age As Of" date. Accepts ?asof=YYYY-MM-DD (from the date picker reload); defaults to today.
+// Validated to a real Y-m-d so it can be safely inlined into SQL as a CYMD integer.
+$asOfIso = isset($_GET['asof']) ? trim($_GET['asof']) : $todayY;
+$asOfDT  = DateTime::createFromFormat('Y-m-d', $asOfIso);
+if (!$asOfDT || $asOfDT->format('Y-m-d') !== $asOfIso) { $asOfDT = new DateTime($todayY); $asOfIso = $todayY; }
+// CYMD = (Year-1900)*10000 + Month*100 + Day  (never (int)-cast an IBM i DATE column)
+$asOfCymd = ((int)$asOfDT->format('Y') - 1900) * 10000
+          + (int)$asOfDT->format('n') * 100
+          + (int)$asOfDT->format('j');
 
 function cymdFmt($v) {
     $v = (int)$v;
@@ -52,25 +71,35 @@ $avgPaySelect = $hasAvgPayCols
     ? "DECIMAL(COALESCE(c.CMT#DY,0),15,2) AS TOTDAYS, DECIMAL(COALESCE(c.CMT#IV,0),15,2) AS TOTPMTS,\n        "
     : "";
 
-// Balance = IVIVAM - IVNPOS. IVDUED is DATE type, returned as YYYY-MM-DD by CHAR(col,ISO).
-// Aging buckets computed entirely in JavaScript so "Age As Of" date picker works client-side.
+// TRUE point-in-time balance. PAIDAMT = payments applied on/before the as-of date (sum of the
+// signed ARYPTD.YPAMT, joined on invoice sequence); BALANCE = invoice amount - that. Only invoices
+// already issued as of the date (IVIVDT <= asof) are considered. IVDUED is DATE type, returned as
+// YYYY-MM-DD by CHAR(col,ISO). Aging buckets are computed in JavaScript from due date vs the same
+// as-of date. $asOfCymd is a server-validated CYMD integer (safe to inline).
 $sql = "
     SELECT
-        TRIM(CHAR(h.IVBLTO))                                      AS CUSTNUM,
-        COALESCE(TRIM(c.CMCNA1),'')                               AS CUSTNAME,
-        TRIM(CHAR(h.IVAINV))                                      AS INVNUM,
-        INTEGER(COALESCE(h.IVIVDT,0))                             AS INVDATE,
-        TRIM(CHAR(h.IVORD))                                       AS ORDNUM,
-        TRIM(COALESCE(h.IVARPO,''))                               AS REFNUM,
-        CHAR(h.IVDUED, ISO)                                       AS DUEDATE,
-        DECIMAL(COALESCE(h.IVIVAM,0),15,2)                       AS INVAMT,
-        DECIMAL(COALESCE(h.IVNPOS,0),15,2)                       AS PAIDAMT,
-        DECIMAL(COALESCE(h.IVIVAM,0)-COALESCE(h.IVNPOS,0),15,2) AS BALANCE,
+        TRIM(CHAR(h.IVBLTO))                                        AS CUSTNUM,
+        COALESCE(TRIM(c.CMCNA1),'')                                 AS CUSTNAME,
+        TRIM(CHAR(h.IVAINV))                                        AS INVNUM,
+        INTEGER(COALESCE(h.IVIVDT,0))                               AS INVDATE,
+        TRIM(CHAR(h.IVORD))                                         AS ORDNUM,
+        TRIM(COALESCE(h.IVARPO,''))                                 AS REFNUM,
+        CHAR(h.IVDUED, ISO)                                         AS DUEDATE,
+        DECIMAL(COALESCE(h.IVIVAM,0),15,2)                          AS INVAMT,
+        DECIMAL(COALESCE(pp.PAIDASOF,0),15,2)                       AS PAIDAMT,
+        DECIMAL(COALESCE(h.IVIVAM,0)-COALESCE(pp.PAIDASOF,0),15,2)  AS BALANCE,
         $avgPaySelect
         1 AS DUMMY
     FROM SGHDSDATA.HDINVC h
     LEFT JOIN SGHDSDATA.HDCUST c ON h.IVBLTO = c.CMCUST
-    WHERE (COALESCE(h.IVIVAM,0) - COALESCE(h.IVNPOS,0)) <> 0
+    LEFT JOIN (
+        SELECT YPISEQ, SUM(YPAMT) AS PAIDASOF
+        FROM SGHDSDATA.ARYPTD
+        WHERE YPBDAT <= $asOfCymd
+        GROUP BY YPISEQ
+    ) pp ON pp.YPISEQ = h.IVISEQ
+    WHERE COALESCE(h.IVIVDT,0) <= $asOfCymd
+      AND (COALESCE(h.IVIVAM,0) - COALESCE(pp.PAIDASOF,0)) <> 0
     ORDER BY COALESCE(TRIM(c.CMCNA1),''), h.IVBLTO, h.IVAINV
 ";
 
@@ -133,7 +162,14 @@ $dataJson = json_encode($rows);
 <title>AR Aging Report</title>
 <style>
 *{box-sizing:border-box;}
-body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;color:#111827;}
+html{height:100%;}
+/* Full-height flex column: title bar + status/filter bars stay fixed, only the table body scrolls. */
+body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;color:#111827;
+     height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+/* Non-scrolling header pieces keep their natural height. */
+body > .arag-fixed { flex:0 0 auto; }
+/* The scroll region fills the rest and scrolls internally (min-height:0 lets it shrink in flex). */
+#scrollBox { flex:1 1 auto; min-height:0; overflow:auto; }
 .arag-grid { width:100% !important; min-width:100% !important; border-collapse:collapse; font-size:11px; }
 .arag-grid thead th { background-color:#374151 !important; color:#fff !important; font-weight:bold !important;
                       padding:4px 6px; white-space:nowrap; position:sticky; top:0; z-index:10;
@@ -159,7 +195,7 @@ body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;col
 <body>
 
 <!-- Full-width title bar -->
-<div style="display:flex; align-items:center;
+<div class="arag-fixed" style="display:flex; align-items:center;
             padding:10px 14px;
             background:linear-gradient(to right,
                 #111827 0%,
@@ -214,7 +250,7 @@ SGHDSDATA.HDINVC not found.
                 color:#2563EB !important; }
 </style>
 
-<div style="display:flex;align-items:stretch;border-bottom:2px solid #D1D5DB;">
+<div class="arag-fixed" style="display:flex;align-items:stretch;border-bottom:2px solid #D1D5DB;">
 
   <!-- Left: two bars stacked -->
   <div style="flex:1;display:flex;flex-direction:column;">
@@ -227,7 +263,7 @@ SGHDSDATA.HDINVC not found.
       <div class="refresh-progress"><div class="refresh-fill" id="arag-prog" style="width:100%"></div></div>
       <span>Next refresh in: <strong id="arag-cd">10:00</strong></span>
       <span class="refresh-pill">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">As of: <?php echo date('D, M j, Y'); ?></span>
+      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Aged as of: <?php echo $asOfDT->format('D, M j, Y'); ?></span>
     </div>
 
     <!-- Filter bar -->
@@ -253,7 +289,7 @@ SGHDSDATA.HDINVC not found.
       </label>
 
       <label style="white-space:nowrap;font-weight:600;">Age As Of:
-        <input type="date" id="fDate" value="<?= esc($todayY) ?>"
+        <input type="date" id="fDate" value="<?= esc($asOfIso) ?>"
                style="padding:2px 4px;border:1px solid #bbb;border-radius:3px;font-size:12px;margin-left:4px;">
       </label>
 
@@ -314,7 +350,7 @@ SGHDSDATA.HDINVC not found.
 .tb.on { background:#2563EB !important; color:#fff !important; border-color:#1d4ed8 !important; }
 </style>
 
-<div style="overflow-x:auto;">
+<div id="scrollBox">
 
   <!-- DETAIL TABLE -->
   <div id="secD">
@@ -361,10 +397,26 @@ SGHDSDATA.HDINVC not found.
 
 </div>
 
+<!-- Floating jump-to-top / jump-to-bottom controls (scroll the table body) -->
+<style>
+#aragJump { position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:6px; z-index:200; }
+#aragJump button { width:38px; height:38px; border-radius:50%; border:1px solid #1d4ed8;
+                   background:#2563EB; color:#fff; font-size:18px; font-weight:bold; cursor:pointer;
+                   box-shadow:0 2px 6px rgba(0,0,0,0.3); line-height:1; padding:0;
+                   display:flex; align-items:center; justify-content:center; }
+#aragJump button:hover { background:#1d4ed8; }
+</style>
+<div id="aragJump">
+  <button type="button" id="jumpTop" title="Go to top" onclick="aragScroll('top')">&#9650;</button>
+  <button type="button" id="jumpBot" title="Go to bottom" onclick="aragScroll('bot')">&#9660;</button>
+</div>
+
 <script>
 var ALL = <?= $dataJson ?>;
 var EIB = <?= json_encode($eiBase) ?>;
 var EID = <?= json_encode($eID) ?>;
+var ASOF_ISO  = <?= json_encode($asOfIso) ?>;                  // e.g. 2026-06-30 (for filename)
+var ASOF_DISP = <?= json_encode($asOfDT->format('D, M j, Y')) ?>;  // e.g. Tue, Jun 30, 2026 (for sheet)
 var VR  = [];   // visible sorted detail rows (indexed by openInv/openCust/openOrd)
 var SR  = [];   // visible sorted summary rows (indexed by openCustSm)
 var SK  = 'custName', SA = true;
@@ -695,12 +747,12 @@ function clearF(){
     document.getElementById('fBkt').value='';
     document.getElementById('fSrch').value='';
     setCredit('all');
-    var t=new Date();
-    var yy=t.getFullYear();
-    var mm=String(t.getMonth()+1).padStart(2,'0');
-    var dd=String(t.getDate()).padStart(2,'0');
-    document.getElementById('fDate').value=yy+'-'+mm+'-'+dd;
-    AGO_DATE=new Date(yy,t.getMonth(),t.getDate());
+    // If we're viewing a past snapshot, returning to "today" needs a server reload to rebuild
+    // current balances; otherwise just re-render with cleared client filters.
+    var srvAsof=<?= json_encode($asOfIso) ?>;
+    var todayIso=<?= json_encode($todayY) ?>;
+    if(srvAsof!==todayIso){ window.location.href=window.location.pathname; return; }
+    document.getElementById('fDate').value=todayIso;
     render();
 }
 
@@ -739,7 +791,7 @@ function exportXLSX(){
         +'</fills>'
         +'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
         +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-        +'<cellXfs count="8">'
+        +'<cellXfs count="9">'
         +'<xf numFmtId="0"   fontId="0" fillId="0" borderId="0" xfId="0"/>'
         +'<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
         +'<xf numFmtId="0"   fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1"/>'
@@ -748,6 +800,7 @@ function exportXLSX(){
         +'<xf numFmtId="164" fontId="2" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyNumberFormat="1"/>'
         +'<xf numFmtId="0"   fontId="1" fillId="4" borderId="0" xfId="0" applyFill="1" applyFont="1"/>'
         +'<xf numFmtId="164" fontId="1" fillId="4" borderId="0" xfId="0" applyFill="1" applyFont="1" applyNumberFormat="1"/>'
+        +'<xf numFmtId="0"   fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'  /* 8: bold title */
         +'</cellXfs>'
         +'</styleSheet>';
 
@@ -763,6 +816,10 @@ function exportXLSX(){
     }
 
     var rows=[],rn=1;
+    // Report title + aged-as-of date, then a blank row, above the column headers.
+    rows.push(xrow(rn++,['AR Aging Report'],8,8));
+    rows.push(xrow(rn++,['Aged As Of: '+ASOF_DISP],8,8));
+    rn++; // blank spacer row
     rows.push(xrow(rn++,HDR,2,3));
 
     var grps={},ord=[];
@@ -802,7 +859,7 @@ function exportXLSX(){
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
     a.href=url;
-    a.download='ARAgingReport_'+new Date().toISOString().slice(0,10)+'.xlsx';
+    a.download='ARAgingReport_AgedAsOf_'+ASOF_ISO+'.xlsx';
     document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
 }
 
@@ -811,17 +868,20 @@ document.getElementById('fCust').addEventListener('change',render);
 document.getElementById('fBkt').addEventListener('change',render);
 document.getElementById('fSrch').addEventListener('input',render);
 document.getElementById('fDate').addEventListener('change',function(){
+    // Reload so the server reconstructs true point-in-time balances for the chosen date.
     var val=this.value;
-    if(val){
-        var p=val.split('-');
-        AGO_DATE=new Date(+p[0],+p[1]-1,+p[2]);
-    } else {
-        AGO_DATE=new Date();
-    }
-    AGO_DATE.setHours(0,0,0,0);
-    render();
+    var u=new URL(window.location.href);
+    if(val){ u.searchParams.set('asof',val); } else { u.searchParams.delete('asof'); }
+    window.location.href=u.toString();
 });
 render();
+
+/* ── jump-to-top / jump-to-bottom (scrolls the internal table container) ── */
+function aragScroll(where){
+    var box=document.getElementById('scrollBox');
+    if(!box) return;
+    box.scrollTo({top: where==='top' ? 0 : box.scrollHeight, behavior:'smooth'});
+}
 
 /* ── auto-refresh bar ── */
 (function () {

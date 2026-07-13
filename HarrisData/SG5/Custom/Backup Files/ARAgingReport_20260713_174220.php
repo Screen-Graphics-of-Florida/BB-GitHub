@@ -415,8 +415,6 @@ SGHDSDATA.HDINVC not found.
 var ALL = <?= $dataJson ?>;
 var EIB = <?= json_encode($eiBase) ?>;
 var EID = <?= json_encode($eID) ?>;
-var ASOF_ISO  = <?= json_encode($asOfIso) ?>;                  // e.g. 2026-06-30 (for filename)
-var ASOF_DISP = <?= json_encode($asOfDT->format('D, M j, Y')) ?>;  // e.g. Tue, Jun 30, 2026 (for sheet)
 var VR  = [];   // visible sorted detail rows (indexed by openInv/openCust/openOrd)
 var SR  = [];   // visible sorted summary rows (indexed by openCustSm)
 var SK  = 'custName', SA = true;
@@ -791,7 +789,7 @@ function exportXLSX(){
         +'</fills>'
         +'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
         +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-        +'<cellXfs count="9">'
+        +'<cellXfs count="8">'
         +'<xf numFmtId="0"   fontId="0" fillId="0" borderId="0" xfId="0"/>'
         +'<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
         +'<xf numFmtId="0"   fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1"/>'
@@ -800,7 +798,6 @@ function exportXLSX(){
         +'<xf numFmtId="164" fontId="2" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyNumberFormat="1"/>'
         +'<xf numFmtId="0"   fontId="1" fillId="4" borderId="0" xfId="0" applyFill="1" applyFont="1"/>'
         +'<xf numFmtId="164" fontId="1" fillId="4" borderId="0" xfId="0" applyFill="1" applyFont="1" applyNumberFormat="1"/>'
-        +'<xf numFmtId="0"   fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'  /* 8: bold title */
         +'</cellXfs>'
         +'</styleSheet>';
 
@@ -816,10 +813,6 @@ function exportXLSX(){
     }
 
     var rows=[],rn=1;
-    // Report title + aged-as-of date, then a blank row, above the column headers.
-    rows.push(xrow(rn++,['AR Aging Report'],8,8));
-    rows.push(xrow(rn++,['Aged As Of: '+ASOF_DISP],8,8));
-    rn++; // blank spacer row
     rows.push(xrow(rn++,HDR,2,3));
 
     var grps={},ord=[];
@@ -859,7 +852,7 @@ function exportXLSX(){
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
     a.href=url;
-    a.download='ARAgingReport_AgedAsOf_'+ASOF_ISO+'.xlsx';
+    a.download='ARAgingReport_'+new Date().toISOString().slice(0,10)+'.xlsx';
     document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
 }
 

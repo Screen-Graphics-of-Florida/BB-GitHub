@@ -282,31 +282,6 @@ table.dtbl thead th.sortable:hover { background: #1a1a99; }
 .btn-export { margin-left: 4px; background: #d4edda; border-color: #5a9e6f; color: #155724; }
 .btn-export:hover { background: #b8dac4; }
 
-.scroll-fab {
-  position: fixed;
-  right: 16px;
-  bottom: 44px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  z-index: 50;
-}
-.fab {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1px solid #001f5c;
-  background: #003087;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 1px 1px 3px rgba(0,0,0,0.4);
-  opacity: 0.85;
-  line-height: 1;
-}
-.fab:hover { opacity: 1; background: #0048c0; }
-
 .footer {
   border-top: 1px solid #888;
   padding: 3px 14px;
@@ -477,22 +452,12 @@ function($rows) { ?>
 
 </div><!-- .content -->
 
-<div class="scroll-fab">
-  <button class="fab" title="Go to top" onclick="scrollContent('top')">&#9650;</button>
-  <button class="fab" title="Go to bottom" onclick="scrollContent('bottom')">&#9660;</button>
-</div>
-
 <div class="footer">
   <span>Source: SGHDSDATA/HDIMST, HDPCLS, HDIPLT, HDIWHS &nbsp;&mdash;&nbsp; Auto-refresh: 30 min</span>
   <span id="footerClock"></span>
 </div>
 
 <script>
-function scrollContent(where) {
-    var c = document.querySelector('.content');
-    if (!c) return;
-    c.scrollTo({ top: where === 'top' ? 0 : c.scrollHeight, behavior: 'smooth' });
-}
 function populateFilter(sel, tableId, colIdx) {
     var table = document.getElementById(tableId);
     if (!sel || !table) return;

@@ -162,14 +162,7 @@ $dataJson = json_encode($rows);
 <title>AR Aging Report</title>
 <style>
 *{box-sizing:border-box;}
-html{height:100%;}
-/* Full-height flex column: title bar + status/filter bars stay fixed, only the table body scrolls. */
-body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;color:#111827;
-     height:100vh;display:flex;flex-direction:column;overflow:hidden;}
-/* Non-scrolling header pieces keep their natural height. */
-body > .arag-fixed { flex:0 0 auto; }
-/* The scroll region fills the rest and scrolls internally (min-height:0 lets it shrink in flex). */
-#scrollBox { flex:1 1 auto; min-height:0; overflow:auto; }
+body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#fff;color:#111827;}
 .arag-grid { width:100% !important; min-width:100% !important; border-collapse:collapse; font-size:11px; }
 .arag-grid thead th { background-color:#374151 !important; color:#fff !important; font-weight:bold !important;
                       padding:4px 6px; white-space:nowrap; position:sticky; top:0; z-index:10;
@@ -195,7 +188,7 @@ body > .arag-fixed { flex:0 0 auto; }
 <body>
 
 <!-- Full-width title bar -->
-<div class="arag-fixed" style="display:flex; align-items:center;
+<div style="display:flex; align-items:center;
             padding:10px 14px;
             background:linear-gradient(to right,
                 #111827 0%,
@@ -250,7 +243,7 @@ SGHDSDATA.HDINVC not found.
                 color:#2563EB !important; }
 </style>
 
-<div class="arag-fixed" style="display:flex;align-items:stretch;border-bottom:2px solid #D1D5DB;">
+<div style="display:flex;align-items:stretch;border-bottom:2px solid #D1D5DB;">
 
   <!-- Left: two bars stacked -->
   <div style="flex:1;display:flex;flex-direction:column;">
@@ -350,7 +343,7 @@ SGHDSDATA.HDINVC not found.
 .tb.on { background:#2563EB !important; color:#fff !important; border-color:#1d4ed8 !important; }
 </style>
 
-<div id="scrollBox">
+<div style="overflow-x:auto;">
 
   <!-- DETAIL TABLE -->
   <div id="secD">
@@ -397,26 +390,10 @@ SGHDSDATA.HDINVC not found.
 
 </div>
 
-<!-- Floating jump-to-top / jump-to-bottom controls (scroll the table body) -->
-<style>
-#aragJump { position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:6px; z-index:200; }
-#aragJump button { width:38px; height:38px; border-radius:50%; border:1px solid #1d4ed8;
-                   background:#2563EB; color:#fff; font-size:18px; font-weight:bold; cursor:pointer;
-                   box-shadow:0 2px 6px rgba(0,0,0,0.3); line-height:1; padding:0;
-                   display:flex; align-items:center; justify-content:center; }
-#aragJump button:hover { background:#1d4ed8; }
-</style>
-<div id="aragJump">
-  <button type="button" id="jumpTop" title="Go to top" onclick="aragScroll('top')">&#9650;</button>
-  <button type="button" id="jumpBot" title="Go to bottom" onclick="aragScroll('bot')">&#9660;</button>
-</div>
-
 <script>
 var ALL = <?= $dataJson ?>;
 var EIB = <?= json_encode($eiBase) ?>;
 var EID = <?= json_encode($eID) ?>;
-var ASOF_ISO  = <?= json_encode($asOfIso) ?>;                  // e.g. 2026-06-30 (for filename)
-var ASOF_DISP = <?= json_encode($asOfDT->format('D, M j, Y')) ?>;  // e.g. Tue, Jun 30, 2026 (for sheet)
 var VR  = [];   // visible sorted detail rows (indexed by openInv/openCust/openOrd)
 var SR  = [];   // visible sorted summary rows (indexed by openCustSm)
 var SK  = 'custName', SA = true;
@@ -791,7 +768,7 @@ function exportXLSX(){
         +'</fills>'
         +'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
         +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-        +'<cellXfs count="9">'
+        +'<cellXfs count="8">'
         +'<xf numFmtId="0"   fontId="0" fillId="0" borderId="0" xfId="0"/>'
         +'<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
         +'<xf numFmtId="0"   fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1"/>'
@@ -800,7 +777,6 @@ function exportXLSX(){
         +'<xf numFmtId="164" fontId="2" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyNumberFormat="1"/>'
         +'<xf numFmtId="0"   fontId="1" fillId="4" borderId="0" xfId="0" applyFill="1" applyFont="1"/>'
         +'<xf numFmtId="164" fontId="1" fillId="4" borderId="0" xfId="0" applyFill="1" applyFont="1" applyNumberFormat="1"/>'
-        +'<xf numFmtId="0"   fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'  /* 8: bold title */
         +'</cellXfs>'
         +'</styleSheet>';
 
@@ -816,10 +792,6 @@ function exportXLSX(){
     }
 
     var rows=[],rn=1;
-    // Report title + aged-as-of date, then a blank row, above the column headers.
-    rows.push(xrow(rn++,['AR Aging Report'],8,8));
-    rows.push(xrow(rn++,['Aged As Of: '+ASOF_DISP],8,8));
-    rn++; // blank spacer row
     rows.push(xrow(rn++,HDR,2,3));
 
     var grps={},ord=[];
@@ -859,7 +831,7 @@ function exportXLSX(){
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
     a.href=url;
-    a.download='ARAgingReport_AgedAsOf_'+ASOF_ISO+'.xlsx';
+    a.download='ARAgingReport_'+new Date().toISOString().slice(0,10)+'.xlsx';
     document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
 }
 
@@ -875,13 +847,6 @@ document.getElementById('fDate').addEventListener('change',function(){
     window.location.href=u.toString();
 });
 render();
-
-/* ── jump-to-top / jump-to-bottom (scrolls the internal table container) ── */
-function aragScroll(where){
-    var box=document.getElementById('scrollBox');
-    if(!box) return;
-    box.scrollTo({top: where==='top' ? 0 : box.scrollHeight, behavior:'smooth'});
-}
 
 /* ── auto-refresh bar ── */
 (function () {
