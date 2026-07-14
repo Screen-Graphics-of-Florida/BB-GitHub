@@ -7,11 +7,6 @@ date_default_timezone_set('America/Chicago');
 $conn = $i5Connect->getConnection();
 $now  = new DateTime();
 
-// Base for EIP CGI drill-down links (CGI programs only exist on live EIP :5601).
-// $eID is supplied by the portal in the query string (parsed by GetURLParm.php).
-$eiBase = 'https://portal.screen-graphics.com:5601';
-$eID    = isset($eID) ? $eID : (isset($_GET['eID']) ? $_GET['eID'] : '');
-
 function cymdToDate($v) {
     $v = (int)$v;
     if ($v <= 0) return '';
@@ -441,13 +436,6 @@ table.dtbl tbody td {
 table.dtbl tbody td.r { text-align: right; }
 table.dtbl tbody tr:nth-child(even) td { background: #ece9d8; }
 table.dtbl tbody tr:hover td { background: #c8ddf8; }
-table.dtbl a.lnk {
-  color: #0033cc;
-  font-weight: 700;
-  text-decoration: none;
-  cursor: pointer;
-}
-table.dtbl a.lnk:hover { text-decoration: underline; }
 
 .tag-warn {
   background: #ff6b35;
@@ -681,16 +669,16 @@ function($rows) { ?>
     <th>Customer</th><th>Address</th><th>City</th><th>St</th><th>Zip</th>
   </tr></thead>
   <tbody>
-  <?php foreach ($rows as $i => $r):
+  <?php foreach ($rows as $r):
       $addr = '<span class="tag-warn">' . esc($r['CMCNA2']) . '</span>';
       if (trim($r['CMCNA3']) !== '') $addr .= ' ' . esc($r['CMCNA3']);
       if (trim($r['CMCNA4']) !== '') $addr .= ' ' . esc($r['CMCNA4']);
   ?>
   <tr>
-    <td><a class="lnk" href="javascript:openOrder7(<?php echo (int)$i; ?>)"><?php echo (int)$r['ORDNUM']; ?></a></td>
+    <td><?php echo (int)$r['ORDNUM']; ?></td>
     <td><?php echo cymdToDate($r['OEBDTE']); ?></td>
     <td><?php echo cymdToDate($r['OERQDT']); ?></td>
-    <td><a class="lnk" href="javascript:openCustomer7(<?php echo (int)$i; ?>)"><?php echo esc($r['OESHTO']); ?></a></td>
+    <td><?php echo esc($r['OESHTO']); ?></td>
     <td><?php echo esc($r['CMCNA1']); ?></td>
     <td><?php echo $addr; ?></td>
     <td><?php echo esc($r['CMCCTY']); ?></td>
@@ -777,41 +765,6 @@ function($rows) { ?>
 </div>
 
 <script>
-// ── EIP CGI drill-down for "Open CO's With PO Box Shipping" (Section 5) ───────
-var EI_BASE = <?php echo json_encode($eiBase); ?>;
-var EI_EID  = <?php echo json_encode($eID); ?>;
-var Q7_ROWS = <?php
-    $q7Rows = array();
-    foreach ($rows7 as $r) {
-        $q7Rows[] = array(
-            'ordNum'   => (string)(int)$r['ORDNUM'],
-            'shipTo'   => trim($r['OESHTO']),
-            'custName' => trim($r['CMCNA1'])
-        );
-    }
-    echo json_encode($q7Rows);
-?>;
-
-function openOrder7(i) {
-    var r = Q7_ROWS[i];
-    if (!r) return;
-    window.open(EI_BASE + '/harris-CGI/SelectOrder.d2w/REPORT'
-        + '?baseVar=BaseConfiguration.icl&portal=CUSTOMER'
-        + '&eID='            + EI_EID
-        + '&customerName='   + encodeURIComponent(r.custName)
-        + '&customerNumber=' + encodeURIComponent(r.shipTo)
-        + '&orderNumber='    + encodeURIComponent(r.ordNum), '_blank');
-}
-function openCustomer7(i) {
-    var r = Q7_ROWS[i];
-    if (!r) return;
-    window.open(EI_BASE + '/harris-CGI/CustomerSelect.d2w/REPORT'
-        + '?baseVar=BaseConfiguration.icl&portal=CUSTOMER'
-        + '&eID='            + EI_EID
-        + '&customerName='   + encodeURIComponent(r.custName)
-        + '&customerNumber=' + encodeURIComponent(r.shipTo), '_blank');
-}
-
 var AUTO_SECS = 1800;
 var countdown = AUTO_SECS;
 

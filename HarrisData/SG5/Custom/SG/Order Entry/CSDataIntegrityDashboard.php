@@ -7,6 +7,11 @@ date_default_timezone_set('America/Chicago');
 $conn = $i5Connect->getConnection();
 $now  = new DateTime();
 
+// Base for EIP CGI drill-down links (CGI programs only exist on live EIP :5601).
+// $eID is supplied by the portal in the query string (parsed by GetURLParm.php).
+$eiBase = 'https://portal.screen-graphics.com:5601';
+$eID    = isset($eID) ? $eID : (isset($_GET['eID']) ? $_GET['eID'] : '');
+
 function cymdToDate($v) {
     $v = (int)$v;
     if ($v <= 0) return '';
@@ -246,11 +251,33 @@ ORDER BY d.ODPCLS DESC, COMMENT ASC, d.\"ODORD#\" ASC, d.\"ODORL#\" ASC
 ";
 list($rows6, $err6) = runQ($conn, $sql6);
 
+// ── Q7: Open CO's With PO Box Shipping ───────────────────────────────────────
+$sql7 = "
+SELECT h.\"OEORD#\"                 AS ORDNUM,
+       h.OEBDTE                     AS OEBDTE,
+       h.OERQDT                     AS OERQDT,
+       TRIM(CHAR(h.OESHTO))         AS OESHTO,
+       COALESCE(TRIM(c.CMCNA1), '') AS CMCNA1,
+       COALESCE(TRIM(c.CMCNA2), '') AS CMCNA2,
+       COALESCE(TRIM(c.CMCNA3), '') AS CMCNA3,
+       COALESCE(TRIM(c.CMCNA4), '') AS CMCNA4,
+       COALESCE(TRIM(c.CMCCTY), '') AS CMCCTY,
+       COALESCE(TRIM(c.CMST), '')   AS CMST,
+       COALESCE(TRIM(c.CMZIP), '')  AS CMZIP
+FROM SGHDSDATA.OEORHD h
+JOIN SGHDSDATA.HDCUST c ON h.OESHTO = c.CMCUST
+WHERE h.OEORST = 'O'
+  AND (UPPER(c.CMCNA2) LIKE '%PO BOX%' OR UPPER(c.CMCNA2) LIKE '%P.O%')
+ORDER BY h.\"OEORD#\" ASC
+";
+list($rows7, $err7) = runQ($conn, $sql7);
+
 $runAt = $now->format('m/d/Y g:i:s A');
 
 // ── summary counts ───────────────────────────────────────────────────────────
 $totalIssues = count($rows1) + count($rows2) + count($rows3)
-             + count($rows4) + count($rows5) + count($rows6);
+             + count($rows4) + count($rows5) + count($rows6)
+             + count($rows7);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -414,6 +441,13 @@ table.dtbl tbody td {
 table.dtbl tbody td.r { text-align: right; }
 table.dtbl tbody tr:nth-child(even) td { background: #ece9d8; }
 table.dtbl tbody tr:hover td { background: #c8ddf8; }
+table.dtbl a.lnk {
+  color: #0033cc;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+table.dtbl a.lnk:hover { text-decoration: underline; }
 
 .tag-warn {
   background: #ff6b35;
@@ -637,7 +671,40 @@ function($rows) { ?>
 ?>
 
 <?php
-// ── Section 5: Line Items With No Cost ───────────────────────────────────────
+// ── Section 5: Open CO's With PO Box Shipping ────────────────────────────────
+renderSection('q7', "Open CO's With PO Box Shipping", $rows7, $err7,
+    'Ship-to address line contains a PO Box - verify a physical shipping address before shipping.',
+function($rows) { ?>
+<table class="dtbl">
+  <thead><tr>
+    <th>Order #</th><th>Order Date</th><th>Req Date</th><th>Ship-To #</th>
+    <th>Customer</th><th>Address</th><th>City</th><th>St</th><th>Zip</th>
+  </tr></thead>
+  <tbody>
+  <?php foreach ($rows as $i => $r):
+      $addr = '<span class="tag-warn">' . esc($r['CMCNA2']) . '</span>';
+      if (trim($r['CMCNA3']) !== '') $addr .= ' ' . esc($r['CMCNA3']);
+      if (trim($r['CMCNA4']) !== '') $addr .= ' ' . esc($r['CMCNA4']);
+  ?>
+  <tr>
+    <td><a class="lnk" href="javascript:openOrder7(<?php echo (int)$i; ?>)"><?php echo (int)$r['ORDNUM']; ?></a></td>
+    <td><?php echo cymdToDate($r['OEBDTE']); ?></td>
+    <td><?php echo cymdToDate($r['OERQDT']); ?></td>
+    <td><a class="lnk" href="javascript:openCustomer7(<?php echo (int)$i; ?>)"><?php echo esc($r['OESHTO']); ?></a></td>
+    <td><?php echo esc($r['CMCNA1']); ?></td>
+    <td><?php echo $addr; ?></td>
+    <td><?php echo esc($r['CMCCTY']); ?></td>
+    <td><?php echo esc($r['CMST']); ?></td>
+    <td><?php echo esc($r['CMZIP']); ?></td>
+  </tr>
+  <?php endforeach; ?>
+  </tbody>
+</table>
+<?php });
+?>
+
+<?php
+// ── Section 6: Line Items With No Cost ───────────────────────────────────────
 renderSection('q5', 'Order Entry Line Items With No Cost (open lines)', $rows5, $err5,
     'When these items become real item numbers, notify the user to change the product class on the item.',
 function($rows) { ?>
@@ -671,7 +738,7 @@ function($rows) { ?>
 ?>
 
 <?php
-// ── Section 6: QM Product Class ──────────────────────────────────────────────
+// ── Section 7: QM Product Class ──────────────────────────────────────────────
 renderSection('q6', 'QM Product Class On Open Customer Orders', $rows6, $err6, '',
 function($rows) { ?>
 <table class="dtbl">
@@ -710,6 +777,41 @@ function($rows) { ?>
 </div>
 
 <script>
+// ── EIP CGI drill-down for "Open CO's With PO Box Shipping" (Section 5) ───────
+var EI_BASE = <?php echo json_encode($eiBase); ?>;
+var EI_EID  = <?php echo json_encode($eID); ?>;
+var Q7_ROWS = <?php
+    $q7Rows = array();
+    foreach ($rows7 as $r) {
+        $q7Rows[] = array(
+            'ordNum'   => (string)(int)$r['ORDNUM'],
+            'shipTo'   => trim($r['OESHTO']),
+            'custName' => trim($r['CMCNA1'])
+        );
+    }
+    echo json_encode($q7Rows);
+?>;
+
+function openOrder7(i) {
+    var r = Q7_ROWS[i];
+    if (!r) return;
+    window.open(EI_BASE + '/harris-CGI/SelectOrder.d2w/REPORT'
+        + '?baseVar=BaseConfiguration.icl&portal=CUSTOMER'
+        + '&eID='            + EI_EID
+        + '&customerName='   + encodeURIComponent(r.custName)
+        + '&customerNumber=' + encodeURIComponent(r.shipTo)
+        + '&orderNumber='    + encodeURIComponent(r.ordNum), '_blank');
+}
+function openCustomer7(i) {
+    var r = Q7_ROWS[i];
+    if (!r) return;
+    window.open(EI_BASE + '/harris-CGI/CustomerSelect.d2w/REPORT'
+        + '?baseVar=BaseConfiguration.icl&portal=CUSTOMER'
+        + '&eID='            + EI_EID
+        + '&customerName='   + encodeURIComponent(r.custName)
+        + '&customerNumber=' + encodeURIComponent(r.shipTo), '_blank');
+}
+
 var AUTO_SECS = 1800;
 var countdown = AUTO_SECS;
 
@@ -725,7 +827,7 @@ function togglePanel(id) {
     }
 }
 function toggleAll(expand) {
-    ['q1','q2','q3','q4','q5','q6'].forEach(function(id) {
+    ['q1','q2','q3','q4','q5','q6','q7'].forEach(function(id) {
         var body = document.getElementById('body-' + id);
         var tog  = document.getElementById('tog-' + id);
         if (body) {
