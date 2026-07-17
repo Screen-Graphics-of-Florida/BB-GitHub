@@ -40,19 +40,6 @@ function incr_cymdYear($v) {
     return 1900 + $c * 100 + $yy;
 }
 
-// Normalize an IBM i CYMD value to a true YYYYMMDD integer for sorting.
-// e.g. 980403 -> 19980403, 1031124 -> 20031124. Returns 0 for blank/invalid.
-function incr_cymdKey($v) {
-    $v = (int)$v;
-    if ($v <= 0) return 0;
-    $c  = intval($v / 1000000);
-    $yy = intval(($v % 1000000) / 10000);
-    $mm = intval(($v % 10000)   / 100);
-    $dd = $v % 100;
-    if ($mm < 1 || $mm > 12 || $dd < 1 || $dd > 31) return 0;
-    return (1900 + $c * 100 + $yy) * 10000 + $mm * 100 + $dd;
-}
-
 function incr_h($s) {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
@@ -406,13 +393,13 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <td class="colcode" align="right"><?php echo incr_cur2($r['STDCOSTTOT']); ?></td>
       <td class="colcode" align="right"><?php echo incr_int($r['CMTOMFG']); ?></td>
       <td class="colcode" align="right"><?php echo incr_int($r['RESQTY']); ?></td>
-      <td class="colcode" data-val="<?php echo incr_cymdKey($r['DTLSSOLD']); ?>">
+      <td class="colcode" data-val="<?php echo (int)$r['DTLSSOLD']; ?>">
         <?php echo incr_h(incr_cYmdToDate($r['DTLSSOLD'])); ?>
       </td>
-      <td class="colcode" data-val="<?php echo incr_cymdKey($r['DTLSWD']); ?>">
+      <td class="colcode" data-val="<?php echo (int)$r['DTLSWD']; ?>">
         <?php echo incr_h(incr_cYmdToDate($r['DTLSWD'])); ?>
       </td>
-      <td class="colcode" data-val="<?php echo incr_cymdKey($r['DTLSCYCT']); ?>">
+      <td class="colcode" data-val="<?php echo (int)$r['DTLSCYCT']; ?>">
         <?php echo incr_h(incr_cYmdToDate($r['DTLSCYCT'])); ?>
       </td>
     </tr>
@@ -502,7 +489,9 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
     function cymdYear(v) {
         v = parseInt(v, 10) || 0;
         if (v <= 0) return 0;
-        return Math.floor(v / 10000);
+        var c  = Math.floor(v / 1000000);
+        var yy = Math.floor((v % 1000000) / 10000);
+        return 1900 + c * 100 + yy;
     }
 
     function yearOk(year, soldYear) {
