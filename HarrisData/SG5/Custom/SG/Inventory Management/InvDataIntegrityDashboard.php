@@ -9,6 +9,16 @@ $now  = new DateTime();
 
 function esc($s)    { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function fmtQty($n) { return number_format((float)$n, 0); }
+function fmtCymd($v) {
+    $v = (int)$v;
+    if ($v <= 0) return '';
+    $c  = intval($v / 1000000);
+    $yy = intval(($v % 1000000) / 10000);
+    $mm = intval(($v % 10000)   / 100);
+    $dd = $v % 100;
+    if ($mm < 1 || $mm > 12 || $dd < 1 || $dd > 31) return '';
+    return sprintf('%02d/%02d/%04d', $mm, $dd, 1900 + $c * 100 + $yy);
+}
 
 function runQ($conn, $sql) {
     $rows = array(); $err = '';
@@ -52,6 +62,7 @@ SELECT TRIM(i.IMPCLS)                              AS IMPCLS,
        TRIM(i.IMIMDS)                              AS IMIMDS,
        COALESCE(TRIM(w.IWWHS), '')                 AS IWWHS,
        COALESCE(CAST(w.IWOHQT AS DECIMAL(11,0)), 0) AS IWOHQT,
+       COALESCE(w.IWDTLS, 0)                       AS IWDTLS,
        TRIM(p.IPCEFL)                              AS IPCEFL,
        CASE WHEN TRIM(i.IMPCLS) IN ('OS2', 'OS1', 'COS')
                 THEN 'Add All 3 Cost Records & Set To Not Roll'
@@ -427,7 +438,7 @@ function($rows) { ?>
 <div class="filter-bar">
   <span class="flt-label">Filter:</span>
   <label class="flt-label">Error Description</label>
-  <select class="flt-sel" data-filter-table="tbl-q2" data-col="6" onchange="applyFilters('tbl-q2')">
+  <select class="flt-sel" data-filter-table="tbl-q2" data-col="7" onchange="applyFilters('tbl-q2')">
     <option value="">(All)</option>
   </select>
   <label class="flt-label">On Hand Qty</label>
@@ -447,6 +458,7 @@ function($rows) { ?>
     <th class="sortable" onclick="sortTable(this,'str')">Description<span class="sort-ind"></span></th>
     <th class="sortable" onclick="sortTable(this,'str')">Whs<span class="sort-ind"></span></th>
     <th class="sortable r" onclick="sortTable(this,'num')">On Hand Qty<span class="sort-ind"></span></th>
+    <th class="sortable" onclick="sortTable(this,'num')">Date Last Sold<span class="sort-ind"></span></th>
     <th class="sortable" onclick="sortTable(this,'str')">Cost Err<span class="sort-ind"></span></th>
     <th class="sortable" onclick="sortTable(this,'str')">Error Description<span class="sort-ind"></span></th>
   </tr></thead>
@@ -465,6 +477,7 @@ function($rows) { ?>
     <td><?php echo esc($r['IMIMDS']); ?></td>
     <td><?php echo esc($r['IWWHS']); ?></td>
     <td class="r"><?php echo fmtQty($r['IWOHQT']); ?></td>
+    <td data-sort="<?php echo (int)$r['IWDTLS']; ?>"><?php echo esc(fmtCymd($r['IWDTLS'])); ?></td>
     <td><?php echo esc($r['IPCEFL']); ?></td>
     <td><?php echo $tag; ?></td>
   </tr>
@@ -582,8 +595,9 @@ function sortTable(th, type) {
     var tbody = table.querySelector('tbody');
     var rows  = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
     rows.sort(function(a, b) {
-        var av = a.children[idx] ? a.children[idx].textContent.trim() : '';
-        var bv = b.children[idx] ? b.children[idx].textContent.trim() : '';
+        var ac = a.children[idx], bc = b.children[idx];
+        var av = ac ? (ac.getAttribute('data-sort') !== null ? ac.getAttribute('data-sort') : ac.textContent.trim()) : '';
+        var bv = bc ? (bc.getAttribute('data-sort') !== null ? bc.getAttribute('data-sort') : bc.textContent.trim()) : '';
         if (type === 'num') {
             av = parseFloat(av.replace(/,/g, '')) || 0;
             bv = parseFloat(bv.replace(/,/g, '')) || 0;
