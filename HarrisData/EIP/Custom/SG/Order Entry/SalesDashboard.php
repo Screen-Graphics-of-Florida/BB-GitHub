@@ -276,8 +276,9 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
     </div>
     <div class="nav-section">
       <div class="nav-header">SG Dashboards</div>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/BookingsDashboard.php">Bookings Dashboard <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/ShipmentsDashboard.php">Shipments Dashboard <span class="nw-badge">&#8599;</span></a>
+      <!-- Relative hrefs keep cross-dashboard nav on the port that served this page (live :5601 / SG5 :5610). -->
+      <a class="nav-item" href="BookingsDashboard.php">Bookings Dashboard <span class="nw-badge">&#8599;</span></a>
+      <a class="nav-item" href="ShipmentsDashboard.php">Shipments Dashboard <span class="nw-badge">&#8599;</span></a>
       <a class="nav-item active" href="#">Sales Dashboard <span class="nw-badge">&#8599;</span></a>
     </div>
   </nav>
@@ -454,7 +455,7 @@ function fmtLCD(n) {
 }
 const PERIOD_LABELS = { day:'Today', week:'This Week', month:'This Month', year:'This Year' };
 
-const DRILLDOWN_BASE = '<?php echo "https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/SalesDrilldown.php"; ?>';
+const DRILLDOWN_BASE = 'SalesDrilldown.php';   // relative: resolves against this page's host/port
 
 function drillDown(slsNum, slsName, period) {
   const url = DRILLDOWN_BASE
