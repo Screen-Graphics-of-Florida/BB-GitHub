@@ -1,6 +1,11 @@
 <?php
 // CS Inquiry Training Guide — video player
 // Source: Customer_Service_Inquiry_Training_Guide.mp4 (same directory)
+
+// Framework includes — provide $activeRole / $i5Connect / $eID / $portal for the EIP left nav.
+require_once dirname(__FILE__) . '/../../../GetURLParm.php';
+require_once 'GenericDirectCallVariables.php';
+require_once 'SetLibraryList.php';
 ?>
 <!DOCTYPE html>
 <html>
@@ -26,6 +31,7 @@ video {
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/../../SgReportNav.php'; ?>
 <video controls autoplay>
   <source src="Customer_Service_Inquiry_Training_Guide.mp4" type="video/mp4">
   Your browser does not support HTML5 video.

@@ -209,6 +209,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/../SgReportNav.php'; ?>
 <div class="topbar">
   <h1>Bookings Detail &mdash; <?php echo htmlspecialchars($slsName ?: 'Sls#'.$slsNum); ?> &mdash; <?php echo htmlspecialchars($pd['label']); ?></h1>
   <div class="meta"><?php echo htmlspecialchars($from); ?><?php echo $period !== 'day' ? ' through ' . $now->format('Y-m-d') : ''; ?> &nbsp;&bull;&nbsp; Source: SGHDSDATA/OEORHD, OEORDT</div>

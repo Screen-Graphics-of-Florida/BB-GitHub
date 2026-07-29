@@ -248,38 +248,10 @@ $asOfLabel   = 'As of: ' . $now->format('D, M j, Y');
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/../SgReportNav.php'; ?>
 
-<div class="topbar">
-  <div class="topbar-logo">Harris<span>Data</span> EIP</div>
-  <div class="topbar-right">
-    <a href="#">My Portal</a>
-    <a href="#">Help</a>
-    <span>sgadmin</span>
-    <a href="#">Logout</a>
-  </div>
-</div>
 
 <div class="layout">
-  <nav class="nav">
-    <div class="nav-section">
-      <div class="nav-header">My Portal</div>
-      <a class="nav-item" href="#">Event Calendar</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-header">Modules</div>
-      <a class="nav-item" href="#">Customer</a>
-      <a class="nav-item" href="#">Manufacturing</a>
-      <a class="nav-item" href="#">Receivables</a>
-      <a class="nav-item" href="#">Reports</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-header">SG Dashboards</div>
-      <a class="nav-item active" href="#">Bookings Dashboard <span class="nw-badge">&#8599;</span></a>
-      <!-- Relative hrefs keep cross-dashboard nav on the port that served this page (live :5601 / SG5 :5610). -->
-      <a class="nav-item" href="ShipmentsDashboard.php">Shipments Dashboard <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item" href="SalesDashboard.php">Sales Dashboard <span class="nw-badge">&#8599;</span></a>
-    </div>
-  </nav>
 
   <main class="main">
     <div class="page-header">

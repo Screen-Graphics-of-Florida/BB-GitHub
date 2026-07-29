@@ -1,4 +1,10 @@
 <?php
+// Framework includes — provide $activeRole / $i5Connect / $eID / $portal for the EIP left nav.
+// This page keeps its own $conn (remote ODBC) for data; these do not touch $conn.
+require_once dirname(__FILE__) . '/../../GetURLParm.php';
+require_once 'GenericDirectCallVariables.php';
+require_once 'SetLibraryList.php';
+
 $conn = @db2_connect(
     'DRIVER={IBM i Access ODBC Driver};SYSTEM=10.10.0.5;',
     '', '',
@@ -173,6 +179,7 @@ th.sort-desc::after{content:' \2193';opacity:1}
 .agg-row td:first-child{font-weight:700;color:#1e3a5f}
 </style>
 </head><body>
+<?php require_once dirname(__FILE__) . '/../SgReportNav.php'; ?>
 
 <div style="position:sticky;top:0;z-index:200">
 <div class="title-bar">

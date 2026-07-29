@@ -179,6 +179,7 @@ require_once ($headInclude);
 require_once ($genericHead);
 print "\n</head>";
 require_once 'Banner.php';
+require_once dirname(__FILE__) . '/../SgReportNav.php';
 
 ?>
 <table <?php echo $baseTable; ?>>

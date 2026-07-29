@@ -363,6 +363,7 @@ a.ord-link:hover { text-decoration: underline; color: #99ccff; }
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/../SgReportNav.php'; ?>
 
 <div class="topbar">
   <h1>Customer Service Inquiry</h1>

@@ -331,6 +331,7 @@ table.dtbl thead th.sortable:hover { background: #1a1a99; }
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/../SgReportNav.php'; ?>
 
 <div class="topbar">
   <h1>Inventory Data Integrity Dashboard</h1>

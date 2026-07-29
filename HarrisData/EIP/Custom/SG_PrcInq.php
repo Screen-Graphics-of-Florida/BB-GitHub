@@ -36,6 +36,7 @@ require_once ($headInclude);      // Required to tie into existing .css for the 
 require_once ($genericHead);      // Required to get the black bar across the top with Home, Contact Us, and Zone
 print "\n </head>";
 require_once 'Banner.php';        // Required to get the Screen Graphics logo
+require_once dirname(__FILE__) . '/SG/SgReportNav.php';   // Full role-based EIP left nav
 
 // Write page title and set up the form...
 print "\n <table $baseTable>";

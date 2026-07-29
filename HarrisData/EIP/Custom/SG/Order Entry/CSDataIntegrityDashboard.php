@@ -481,6 +481,7 @@ table.dtbl a.lnk:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/../SgReportNav.php'; ?>
 
 <div class="topbar">
   <h1>CS Data Integrity Dashboard</h1>

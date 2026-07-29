@@ -1,5 +1,7 @@
 <?php
 require_once dirname(__FILE__) . '/../GetURLParm.php';
+require_once 'GenericDirectCallVariables.php';   // needed for $i5Connect (EIP left nav)
+require_once 'SetLibraryList.php';               // needed for $activeRole (EIP left nav)
 
 $proto    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $host     = $_SERVER['HTTP_HOST'];
@@ -290,31 +292,14 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
 .cat-tile .tile-icon { font-size: 36px; margin-bottom: 12px; }
 .cat-tile .tile-name { font-size: 14px; font-weight: bold; color: #2a5a8c; text-align: center; }
 .cat-tile .tile-count { font-size: 11px; color: #888; margin-top: 4px; }
-.page-layout { display: flex; align-items: flex-start; }
-.sidebar {
-    width: 160px; flex-shrink: 0;
-    background: #1a3d5c; min-height: calc(100vh - 80px);
-    padding: 14px 10px;
-}
-.back-btn {
-    display: block; background: #2a5a8c; color: #cde0ff;
-    text-decoration: none; font-size: 12px; font-weight: 700;
-    padding: 8px 12px; border-radius: 4px; text-align: center;
-    border: 1px solid rgba(255,255,255,0.15); margin-bottom: 8px;
-}
-.back-btn:hover { background: #3a6a9c; color: white; }
-.sidebar-link {
-    display: block; color: #cde0ff; text-decoration: none;
-    font-size: 11px; padding: 5px 8px; border-radius: 3px; margin-bottom: 2px;
-}
-.sidebar-link:hover { background: rgba(255,255,255,0.12); color: white; }
-.sidebar-link.active { background: rgba(255,255,255,0.18); color: white; font-weight: bold; }
-.sidebar-hdr { color: #7aafd4; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 4px; padding: 0 4px; }
-.main-content { flex: 1; padding: 24px; }
+/* Category navigation now lives in the EIP left nav flyouts (SgReportNav.php) —
+   this page renders only its content, no second sidebar. */
+.main-content { padding: 24px; }
 .section-title { font-size: 16px; font-weight: bold; color: #1a3d5c; margin-bottom: 18px; }
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/SgReportNav.php'; ?>
 <div class="header">
   <div class="breadcrumb">
     <a href="<?php echo htmlspecialchars($backHref); ?>">EIP Home</a>
@@ -323,24 +308,6 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
   </div>
   <h1><?php echo htmlspecialchars($pageTitle); ?></h1>
   <div class="sub">Screen Graphics</div>
-</div>
-<div class="page-layout">
-<div class="sidebar">
-  <a class="back-btn" href="<?php echo htmlspecialchars($backHref); ?>">&#8592; Back to EIP</a>
-  <?php if (!empty($availCats)): ?>
-    <div class="sidebar-hdr">Categories</div>
-    <?php
-    $portalRoot = '?portal=' . urlencode($portal) . '&baseVar=' . urlencode($baseVar) . '&eID=' . urlencode($eID);
-    foreach ($availCats as $ck => $cn):
-        $catLink = $portalRoot . '&cat=' . urlencode($ck);
-        $isActive = ($cat === $ck);
-    ?>
-    <a class="sidebar-link<?php echo $isActive ? ' active' : ''; ?>"
-       href="<?php echo htmlspecialchars($catLink); ?>">
-      <?php echo htmlspecialchars($cn); ?>
-    </a>
-    <?php endforeach; ?>
-  <?php endif; ?>
 </div>
 <div class="main-content">
 <?php if ($showCatSelect): ?>
@@ -386,6 +353,5 @@ body { font-family: Arial, sans-serif; background: #f0f2f5; }
   </div>
 <?php endif; ?>
 </div><!-- /main-content -->
-</div><!-- /page-layout -->
 </body>
 </html>

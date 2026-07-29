@@ -295,6 +295,7 @@ tr:hover td:first-child { background: #eaf0fb; }
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/../SgReportNav.php'; ?>
 
 <div class="topbar">
   <h1>MO Material Components Issues</h1>

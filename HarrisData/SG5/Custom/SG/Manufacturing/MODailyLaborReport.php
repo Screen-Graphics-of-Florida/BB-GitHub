@@ -448,6 +448,7 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/../SgReportNav.php'; ?>
 
 <!-- ── Standard SG title bar (gray gradient + Back to EIP + Logout) ── -->
 <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;

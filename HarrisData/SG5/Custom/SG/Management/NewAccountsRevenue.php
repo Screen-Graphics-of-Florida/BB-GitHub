@@ -333,35 +333,10 @@ if ($pctComplete >= 100) {
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/../SgReportNav.php'; ?>
 
-<div class="topbar">
-  <div class="topbar-logo">Harris<span>Data</span> EIP</div>
-  <div class="topbar-right">
-    <a href="#">My Portal</a>
-    <a href="#">Help</a>
-    <span>sgadmin</span>
-    <a href="#">Logout</a>
-  </div>
-</div>
 
 <div class="layout">
-  <nav class="nav">
-    <div class="nav-section">
-      <div class="nav-header">My Portal</div>
-      <a class="nav-item" href="#">Event Calendar</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-header">SG Management</div>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Management/RevenueVsGoal.php" target="_blank">Revenue vs Goal <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item active" href="#">New Acct Rev vs Growth <span class="nw-badge">&#8599;</span></a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-header">SG Dashboards</div>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/BookingsDashboard.php" target="_blank">Bookings <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/ShipmentsDashboard.php" target="_blank">Shipments <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/SalesDashboard.php" target="_blank">Sales <span class="nw-badge">&#8599;</span></a>
-    </div>
-  </nav>
 
   <main class="main">
     <div class="page-header">

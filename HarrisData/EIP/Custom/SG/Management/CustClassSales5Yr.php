@@ -288,37 +288,10 @@ $periodLbl   = 'Jan 1 &ndash; ' . $now->format('M j');
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/../SgReportNav.php'; ?>
 
-<div class="topbar">
-  <div class="topbar-logo">Harris<span>Data</span> EIP</div>
-  <div class="topbar-right">
-    <a href="#">My Portal</a>
-    <a href="#">Help</a>
-    <span>sgadmin</span>
-    <a href="#">Logout</a>
-  </div>
-</div>
 
 <div class="layout">
-  <nav class="nav">
-    <div class="nav-section">
-      <div class="nav-header">My Portal</div>
-      <a class="nav-item" href="#">Event Calendar</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-header">SG Management</div>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Management/RevenueVsGoal.php">Revenue vs Goal <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Management/NewAccountsRevenue.php">New Acct Rev vs Goal <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Management/BottomHalfRevenue.php">Bottom Half Rev Growth <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item active" href="#">Daily Sales 5-Yr Report</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-header">SG Dashboards</div>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/BookingsDashboard.php">Bookings <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/ShipmentsDashboard.php">Shipments <span class="nw-badge">&#8599;</span></a>
-      <a class="nav-item" href="https://portal.screen-graphics.com:5610/Custom/SG/Order%20Entry/SalesDashboard.php">Sales <span class="nw-badge">&#8599;</span></a>
-    </div>
-  </nav>
 
   <main class="main">
     <div class="page-header">

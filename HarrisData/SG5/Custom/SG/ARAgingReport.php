@@ -193,6 +193,7 @@ body > .arag-fixed { flex:0 0 auto; }
 </style>
 </head>
 <body>
+<?php require_once dirname(__FILE__) . '/SgReportNav.php'; ?>
 
 <!-- Full-width title bar -->
 <div class="arag-fixed" style="display:flex; align-items:center;
