@@ -23,7 +23,7 @@ $yrStCymd     = dateToCymd($yrSt);
 $tomorrowCymd = dateToCymd($tomorrow);
 
 $conn   = $i5Connect->getConnection();
-$eiBase = 'https://portal.screen-graphics.com:5601';
+$eiBase = 'https://portal.screen-graphics.com:5610';
 
 // ─── QUERY 1: Orders shipped today ───────────────────────────────────────────
 // Ship date anchor = OEORHD.OESHDT; amount = ODQSTC × ODSLPR (pre-invoice).
