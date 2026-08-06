@@ -189,31 +189,12 @@ function writeBackup($conn, $sgList, $rsvList, $pgmList, $pgmlib) {
         $lines   = array_merge($lines, toInserts($rows, $table));
         $lines[] = '';
     }
-    $ts   = date('Ymd_His');
-    $name = 'SgApplyAll_pre_' . $ts . '.sql';
-    $body = implode("\n", $lines);
-
-    // Try several locations. The PHP job runs under the authenticated user's
-    // profile (Basic Auth + ProfileToken On), so that profile needs *WX on the
-    // target directory — the Custom tree is often owned by someone else, which
-    // is what made the old single-location write fail silently.
-    $candidates = array(
-        dirname(__FILE__) . '/../Backup Files',
-        dirname(__FILE__),
-        '/tmp',
-    );
-    $tried = array();
-    foreach ($candidates as $dir) {
-        if (!is_dir($dir))     { $tried[] = "$dir (not a directory)";  continue; }
-        if (!is_writable($dir)) { $tried[] = "$dir (not writable by " . get_current_user() . ')'; continue; }
-        $file = $dir . '/' . $name;
-        if (@file_put_contents($file, $body) !== false) {
-            return array($file, 'OK');
-        }
-        $e = error_get_last();
-        $tried[] = $dir . ' (write failed: ' . (isset($e['message']) ? $e['message'] : 'unknown') . ')';
-    }
-    return array($name, 'WRITE FAILED — tried: ' . implode('; ', $tried));
+    $ts      = date('Ymd_His');
+    $outDir  = dirname(__FILE__) . '/../Backup Files';
+    if (!is_dir($outDir)) $outDir = dirname(__FILE__);
+    $file    = $outDir . '/SgApplyAll_pre_' . $ts . '.sql';
+    $written = file_put_contents($file, implode("\n", $lines));
+    return [$file, $written !== false ? 'OK' : 'WRITE FAILED'];
 }
 
 // ============================================================
@@ -223,17 +204,10 @@ function writeBackup($conn, $sgList, $rsvList, $pgmList, $pgmlib) {
 $preview = [];
 
 // SYROLD: SG portals missing for any non-reserved role
-// Built with a plain loop, not array_map(fn() => ...) — EIP Live (sgeip, port 5601)
-// runs Zend Server 6 PHP, which cannot parse 7.4 arrow functions and returns a
-// bare HTTP 500 for the whole file. Keep this file parseable by the older PHP.
-$pcodeUnion = '';
-foreach (array_slice($pcodes, 1) as $p) {
-    $pcodeUnion .= " UNION ALL SELECT '$p' FROM SYSIBM.SYSDUMMY1";
-}
 $preview['SYROLD'] = (int)qval($conn,
     "SELECT COUNT(*) FROM SGHDSDATA.SYROLM m "
   . "CROSS JOIN (SELECT '$pcodes[0]' AS P FROM SYSIBM.SYSDUMMY1"
-  . $pcodeUnion . ") AS v "
+  . implode('', array_map(fn($p) => " UNION ALL SELECT '$p' FROM SYSIBM.SYSDUMMY1", array_slice($pcodes,1))) . ") AS v "
   . "WHERE m.RMROLE NOT IN ($rsvList) "
   . "  AND NOT EXISTS (SELECT 1 FROM SGHDSDATA.SYROLD WHERE RDROLE=m.RMROLE AND RTRIM(RDPORT)=v.P)");
 
@@ -266,7 +240,7 @@ $preview['SYPGMO'] = (int)qval($conn,
 $confirm = (isset($_GET['confirm']) && $_GET['confirm'] === 'PUSH');
 $cntOk = $cntSkip = $cntFail = 0;
 $log = [];
-$backupFile = ''; $backupStatus = ''; $backupAborted = false;
+$backupFile = ''; $backupStatus = '';
 
 function runSql($label, $sql) {
     global $conn, $cntOk, $cntSkip, $cntFail, $log;
@@ -284,25 +258,7 @@ function runSql($label, $sql) {
 if ($confirm) {
 
     // Backup first
-    // list(), not [$a,$b] — short destructuring is PHP 7.1+; see note at $pcodeUnion.
-    list($backupFile, $backupStatus) = writeBackup($conn, $sgList, $rsvList, $pgmList, $pgmlib);
-
-    // HARD STOP if the backup did not land. The page has always claimed "Backup is
-    // written automatically before any changes", but nothing enforced it — on
-    // 2026-08-03 a WRITE FAILED still went on to apply all 11 steps to SGHDSDATA
-    // with no way back. Never proceed unbacked.
-    // Override only if you accept that risk: append &nobackup=IACCEPT
-    $skipBackupGate = (isset($_GET['nobackup']) && $_GET['nobackup'] === 'IACCEPT');
-    if ($backupStatus !== 'OK' && !$skipBackupGate) {
-        $confirm = false;   // fall through to the preview screen below
-        $log[]   = ['FAIL', 'Pre-apply backup', $backupStatus];
-        $log[]   = ['FAIL', 'ABORTED', 'No changes were made. Fix the backup location first.'];
-        $cntFail += 2;
-        $backupAborted = true;
-    }
-}
-
-if ($confirm) {
+    [$backupFile, $backupStatus] = writeBackup($conn, $sgList, $rsvList, $pgmList, $pgmlib);
 
     // ----------------------------------------------------------
     // STEP 1: SYURLM — portal-level entries (one per $portals)
@@ -563,18 +519,6 @@ ul.steps { padding-left:20px; font-size:12px; line-height:1.8; }
   <div class="sub">SGHDSDATA + <?= htmlspecialchars($pgmlib) ?> &nbsp;|&nbsp; <?= date('Y-m-d H:i:s') ?></div>
 </div>
 
-<?php if ($backupAborted): ?>
-<div class="warn" style="border:2px solid #c62828">
-  <strong>ABORTED — nothing was changed.</strong><br>
-  The pre-apply backup could not be written, so no steps were run.<br><br>
-  <span style="font-family:monospace;font-size:11px"><?= htmlspecialchars($backupStatus) ?></span>
-  <br><br>
-  The PHP job runs under your signed-on user profile, so that profile needs *WX
-  authority on the target directory. Fix the authority (or point the backup at a
-  writable path) and run this again. The preview below is unchanged and safe to read.
-</div>
-<?php endif; ?>
-
 <?php if ($confirm): ?>
 
 <!-- ===== EXECUTE RESULTS ===== -->
@@ -649,10 +593,7 @@ ul.steps { padding-left:20px; font-size:12px; line-height:1.8; }
 <?php if (!empty($rsvArr)): ?>
 <div class="section">Reserved Roles — skipped (<?= count($rsvArr) ?> roles)</div>
 <div class="info" style="font-family:monospace">
-  <?php // plain loop, not an arrow function — see note at $pcodeUnion
-        $rsvShow = array();
-        foreach ($rsvArr as $rsvR) { $rsvShow[] = htmlspecialchars(trim($rsvR, "'")); }
-        echo implode(', ', $rsvShow); ?>
+  <?= implode(', ', array_map(fn($r) => htmlspecialchars(trim($r,"'")), $rsvArr)) ?>
 </div>
 <?php endif; ?>
 

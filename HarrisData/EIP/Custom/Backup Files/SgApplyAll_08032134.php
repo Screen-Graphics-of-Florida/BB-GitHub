@@ -14,18 +14,6 @@
 //
 // USERS list is still hardcoded (Step 8 SYPGMS). Add new users here manually.
 //
-// 2026-08-03: SGTRAIN (SG Training Guides) added to $portals. It was created ad hoc
-//   and so was never granted to any role but HD_ALL_SG — no SYROLD row and no SYPORR
-//   grid meant Portal By Role Maintenance had no checkboxes to show for it. Its
-//   SYURLM/SYPORT rows already match the canonical shape, so Steps 1-4 skip and
-//   Steps 5-7 fill in the per-role rows.
-// 2026-08-03: STEP 6/7 PRID now carries the target FPID ('SGINQ/PORTAL', 'SGINQ_OE')
-//   instead of the synthetic '$role/$port/$page/$seq'. Portal By Role Maintenance
-//   resolves its Description column through PRID, so the old form left that column
-//   blank on every SgApplyAll-created row. Menu rendering is unaffected either way —
-//   the nav joins on FPPORT/FPPAGE/FPSEQ, not PRID. Existing rows are NOT rewritten
-//   (the guards key on role/port/page/seq); use FixSyporrPrid.php for those.
-//
 // Preview:  https://portal.screen-graphics.com:5601/Custom/SG/SgApplyAll.php
 // Execute:  https://portal.screen-graphics.com:5601/Custom/SG/SgApplyAll.php?confirm=PUSH
 // Test pgm: append &pgmlib=SG5STDPGM
@@ -45,21 +33,12 @@ if (!$conn) die('DB error: ' . htmlspecialchars(db2_conn_errormsg()));
 // Configuration
 // ============================================================
 
-// Portals that use the standard 6-category grid ($cats below). Every portal here
-// gets the full uniform sub-item set for EVERY role, so per-role visibility can be
-// curated in Portal By Role Maintenance — an unchecked SYPORR row still has to
-// exist to be checkable, which is why empty categories are created deliberately.
-//
-// Do NOT add SGMGMT here: it uses its own COMPANY/CUSTOMER sub-categories
-// ($mgmtCatNames in sg_portal_landing.php), not $cats, so the 6-cat grid is
-// the wrong shape for it.
 $portals = [
-    'SGINQ'   => 'SG Inquiries',
-    'SGDASH'  => 'SG Dashboards',
-    'SGDINT'  => 'SG Data Integrity',
-    'SGRPT'   => 'SG Reports',
-    'SGSOP'   => 'SG SOPs',
-    'SGTRAIN' => 'SG Training Guides',
+    'SGINQ'  => 'SG Inquiries',
+    'SGDASH' => 'SG Dashboards',
+    'SGDINT' => 'SG Data Integrity',
+    'SGRPT'  => 'SG Reports',
+    'SGSOP'  => 'SG SOPs',
 ];
 $cats = [
     'ACCT'    => 'Accounting',
@@ -189,31 +168,12 @@ function writeBackup($conn, $sgList, $rsvList, $pgmList, $pgmlib) {
         $lines   = array_merge($lines, toInserts($rows, $table));
         $lines[] = '';
     }
-    $ts   = date('Ymd_His');
-    $name = 'SgApplyAll_pre_' . $ts . '.sql';
-    $body = implode("\n", $lines);
-
-    // Try several locations. The PHP job runs under the authenticated user's
-    // profile (Basic Auth + ProfileToken On), so that profile needs *WX on the
-    // target directory — the Custom tree is often owned by someone else, which
-    // is what made the old single-location write fail silently.
-    $candidates = array(
-        dirname(__FILE__) . '/../Backup Files',
-        dirname(__FILE__),
-        '/tmp',
-    );
-    $tried = array();
-    foreach ($candidates as $dir) {
-        if (!is_dir($dir))     { $tried[] = "$dir (not a directory)";  continue; }
-        if (!is_writable($dir)) { $tried[] = "$dir (not writable by " . get_current_user() . ')'; continue; }
-        $file = $dir . '/' . $name;
-        if (@file_put_contents($file, $body) !== false) {
-            return array($file, 'OK');
-        }
-        $e = error_get_last();
-        $tried[] = $dir . ' (write failed: ' . (isset($e['message']) ? $e['message'] : 'unknown') . ')';
-    }
-    return array($name, 'WRITE FAILED — tried: ' . implode('; ', $tried));
+    $ts      = date('Ymd_His');
+    $outDir  = dirname(__FILE__) . '/../Backup Files';
+    if (!is_dir($outDir)) $outDir = dirname(__FILE__);
+    $file    = $outDir . '/SgApplyAll_pre_' . $ts . '.sql';
+    $written = file_put_contents($file, implode("\n", $lines));
+    return [$file, $written !== false ? 'OK' : 'WRITE FAILED'];
 }
 
 // ============================================================
@@ -223,17 +183,10 @@ function writeBackup($conn, $sgList, $rsvList, $pgmList, $pgmlib) {
 $preview = [];
 
 // SYROLD: SG portals missing for any non-reserved role
-// Built with a plain loop, not array_map(fn() => ...) — EIP Live (sgeip, port 5601)
-// runs Zend Server 6 PHP, which cannot parse 7.4 arrow functions and returns a
-// bare HTTP 500 for the whole file. Keep this file parseable by the older PHP.
-$pcodeUnion = '';
-foreach (array_slice($pcodes, 1) as $p) {
-    $pcodeUnion .= " UNION ALL SELECT '$p' FROM SYSIBM.SYSDUMMY1";
-}
 $preview['SYROLD'] = (int)qval($conn,
     "SELECT COUNT(*) FROM SGHDSDATA.SYROLM m "
   . "CROSS JOIN (SELECT '$pcodes[0]' AS P FROM SYSIBM.SYSDUMMY1"
-  . $pcodeUnion . ") AS v "
+  . implode('', array_map(fn($p) => " UNION ALL SELECT '$p' FROM SYSIBM.SYSDUMMY1", array_slice($pcodes,1))) . ") AS v "
   . "WHERE m.RMROLE NOT IN ($rsvList) "
   . "  AND NOT EXISTS (SELECT 1 FROM SGHDSDATA.SYROLD WHERE RDROLE=m.RMROLE AND RTRIM(RDPORT)=v.P)");
 
@@ -266,7 +219,7 @@ $preview['SYPGMO'] = (int)qval($conn,
 $confirm = (isset($_GET['confirm']) && $_GET['confirm'] === 'PUSH');
 $cntOk = $cntSkip = $cntFail = 0;
 $log = [];
-$backupFile = ''; $backupStatus = ''; $backupAborted = false;
+$backupFile = ''; $backupStatus = '';
 
 function runSql($label, $sql) {
     global $conn, $cntOk, $cntSkip, $cntFail, $log;
@@ -284,28 +237,10 @@ function runSql($label, $sql) {
 if ($confirm) {
 
     // Backup first
-    // list(), not [$a,$b] — short destructuring is PHP 7.1+; see note at $pcodeUnion.
-    list($backupFile, $backupStatus) = writeBackup($conn, $sgList, $rsvList, $pgmList, $pgmlib);
-
-    // HARD STOP if the backup did not land. The page has always claimed "Backup is
-    // written automatically before any changes", but nothing enforced it — on
-    // 2026-08-03 a WRITE FAILED still went on to apply all 11 steps to SGHDSDATA
-    // with no way back. Never proceed unbacked.
-    // Override only if you accept that risk: append &nobackup=IACCEPT
-    $skipBackupGate = (isset($_GET['nobackup']) && $_GET['nobackup'] === 'IACCEPT');
-    if ($backupStatus !== 'OK' && !$skipBackupGate) {
-        $confirm = false;   // fall through to the preview screen below
-        $log[]   = ['FAIL', 'Pre-apply backup', $backupStatus];
-        $log[]   = ['FAIL', 'ABORTED', 'No changes were made. Fix the backup location first.'];
-        $cntFail += 2;
-        $backupAborted = true;
-    }
-}
-
-if ($confirm) {
+    [$backupFile, $backupStatus] = writeBackup($conn, $sgList, $rsvList, $pgmList, $pgmlib);
 
     // ----------------------------------------------------------
-    // STEP 1: SYURLM — portal-level entries (one per $portals)
+    // STEP 1: SYURLM — portal-level entries (5)
     // ----------------------------------------------------------
     foreach ($portals as $pcode => $pdesc) {
         $fuid   = "$pcode/PORTAL";
@@ -321,7 +256,7 @@ if ($confirm) {
     }
 
     // ----------------------------------------------------------
-    // STEP 2: SYURLM — category sub-items ($portals x $cats)
+    // STEP 2: SYURLM — category sub-items (30)
     // ----------------------------------------------------------
     foreach ($portals as $pcode => $pdesc) {
         foreach ($cats as $ccode => $cdesc) {
@@ -339,7 +274,7 @@ if ($confirm) {
     }
 
     // ----------------------------------------------------------
-    // STEP 3: SYPORT — top-level nav tabs (one per $portals)
+    // STEP 3: SYPORT — top-level nav tabs (5)
     // ----------------------------------------------------------
     foreach ($portals as $pcode => $pdesc) {
         $fpid = "$pcode/PORTAL";
@@ -353,7 +288,7 @@ if ($confirm) {
     }
 
     // ----------------------------------------------------------
-    // STEP 4: SYPORT — category sub-items ($portals x $cats)
+    // STEP 4: SYPORT — category sub-items (30)
     // ----------------------------------------------------------
     foreach ($portals as $pcode => $pdesc) {
         $catseq = 0;
@@ -394,10 +329,7 @@ if ($confirm) {
     foreach ($roles as $role) {
         if (in_array($role, $bypassRoles)) continue;
         foreach ($portals as $pcode => $pdesc) {
-            // PRID must be the target FPID/FUID, the way Harris writes it natively.
-            // Portal By Role Maintenance resolves its Description column through
-            // PRID, so the synthetic "$role/$pcode" form left that column blank.
-            $prid = "$pcode/PORTAL";
+            $prid = "$role/$pcode";
             runSql("SYPORR top $role/$pcode",
                 "INSERT INTO SGHDSDATA.SYPORR
                      (PRROLE,PRPORT,PRPAGE,PRSEQ,PRID,PRSEL,PRTSTP,PRTSUS,PRTSPT)
@@ -416,13 +348,10 @@ if ($confirm) {
     foreach ($roles as $role) {
         if (in_array($role, $bypassRoles)) continue;
         foreach ($portals as $pcode => $pdesc) {
-            // Iterate $cats (not 1..6) so PRSEQ lines up with the FPSEQ assigned by
-            // STEP 4 and PRID carries the real FPID — same reason as STEP 6.
-            $i = 0;
-            foreach ($cats as $ccode => $cdesc) {
-                $i++;
-                $prid = "{$pcode}_{$ccode}";
-                runSql("SYPORR sub $role/$pcode/$i $ccode",
+            for ($i = 1; $i <= 6; $i++) {
+                $seqstr = number_format($i, 2);
+                $prid   = "$role/$pcode/$pcode/$seqstr";
+                runSql("SYPORR sub $role/$pcode/$i",
                     "INSERT INTO SGHDSDATA.SYPORR
                          (PRROLE,PRPORT,PRPAGE,PRSEQ,PRID,PRSEL,PRTSTP,PRTSUS,PRTSPT)
                      SELECT '$role','$pcode','$pcode',$i,'$prid','Y',
@@ -563,18 +492,6 @@ ul.steps { padding-left:20px; font-size:12px; line-height:1.8; }
   <div class="sub">SGHDSDATA + <?= htmlspecialchars($pgmlib) ?> &nbsp;|&nbsp; <?= date('Y-m-d H:i:s') ?></div>
 </div>
 
-<?php if ($backupAborted): ?>
-<div class="warn" style="border:2px solid #c62828">
-  <strong>ABORTED — nothing was changed.</strong><br>
-  The pre-apply backup could not be written, so no steps were run.<br><br>
-  <span style="font-family:monospace;font-size:11px"><?= htmlspecialchars($backupStatus) ?></span>
-  <br><br>
-  The PHP job runs under your signed-on user profile, so that profile needs *WX
-  authority on the target directory. Fix the authority (or point the backup at a
-  writable path) and run this again. The preview below is unchanged and safe to read.
-</div>
-<?php endif; ?>
-
 <?php if ($confirm): ?>
 
 <!-- ===== EXECUTE RESULTS ===== -->
@@ -613,8 +530,8 @@ ul.steps { padding-left:20px; font-size:12px; line-height:1.8; }
   skipped. Backup is written automatically before any changes.<br><br>
   <strong>What this applies:</strong>
   <ul class="steps">
-    <li>Steps 1–2: SYURLM — <?= count($portals) ?> portal + <?= count($portals)*count($cats) ?> sub-item URL definitions</li>
-    <li>Steps 3–4: SYPORT — <?= count($portals) ?> portal + <?= count($portals)*count($cats) ?> sub-item navigation entries</li>
+    <li>Steps 1–2: SYURLM — 5 portal + 30 sub-item URL definitions</li>
+    <li>Steps 3–4: SYPORT — 5 portal + 30 sub-item navigation entries</li>
     <li>Step 5: SYROLD — SG portals added to all <?= count($roles) ?> non-reserved roles</li>
     <li>Steps 6–7: SYPORR — SG portal top-level + sub-item rows (non-bypass roles)</li>
     <li>Step 8: SYPORR — native portal rows for every role in whitelist mode <em>(prevents portals disappearing)</em></li>
@@ -638,8 +555,8 @@ ul.steps { padding-left:20px; font-size:12px; line-height:1.8; }
   ?>
   <tr>
     <td><?= htmlspecialchars($role) ?></td>
-    <td style="color:<?= $hasSG===count($portals)?'#2e7d32':'#c62828' ?>">
-      <?= $hasSG ?>/<?= count($portals) ?></td>
+    <td style="color:<?= $hasSG===5?'#2e7d32':'#c62828' ?>">
+      <?= $hasSG ?>/5</td>
     <td style="color:<?= $gaps>0?'#c62828':($gaps<0?'#999':'#2e7d32') ?>">
       <?= $gaps < 0 ? 'bypass — skip' : ($gaps > 0 ? "$gaps missing" : 'OK') ?></td>
   </tr>
@@ -649,10 +566,7 @@ ul.steps { padding-left:20px; font-size:12px; line-height:1.8; }
 <?php if (!empty($rsvArr)): ?>
 <div class="section">Reserved Roles — skipped (<?= count($rsvArr) ?> roles)</div>
 <div class="info" style="font-family:monospace">
-  <?php // plain loop, not an arrow function — see note at $pcodeUnion
-        $rsvShow = array();
-        foreach ($rsvArr as $rsvR) { $rsvShow[] = htmlspecialchars(trim($rsvR, "'")); }
-        echo implode(', ', $rsvShow); ?>
+  <?= implode(', ', array_map(fn($r) => htmlspecialchars(trim($r,"'")), $rsvArr)) ?>
 </div>
 <?php endif; ?>
 
