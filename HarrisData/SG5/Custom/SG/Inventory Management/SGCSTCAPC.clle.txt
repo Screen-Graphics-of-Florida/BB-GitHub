@@ -1,0 +1,105 @@
+/* ==================================================================== */
+/*  SGCSTCAPC  -  Nightly item cost history capture                     */
+/*                                                                      */
+/*  Calls SGOBJ/SGCSTCAP, the stored procedure created by               */
+/*  BuildCostHistory.php. That procedure compares SGHDSDATA/HDMCMM      */
+/*  against SGOBJ/SGCSTHST and writes a row only where a cost value     */
+/*  actually changed.                                                   */
+/*                                                                      */
+/*  Typical night: closes ~20 rows, opens ~20. Cost-roll day: a few     */
+/*  thousand. Either way it runs in seconds.                            */
+/*                                                                      */
+/*  Safe to run more than once a day - the procedure is idempotent.     */
+/*                                                                      */
+/*  Source   : SGSRC/QCLSRC     member SGCSTCAPC                        */
+/*  Compile  : CRTBNDCL PGM(SGPGM/SGCSTCAPC) SRCFILE(SGSRC/QCLSRC)      */
+/*  Schedule : see ADDJOBSCDE at the bottom of this member              */
+/* ==================================================================== */
+
+             PGM
+
+             DCL        VAR(&PLANT)  TYPE(*DEC) LEN(3 0) VALUE(1)
+             DCL        VAR(&CLOSED) TYPE(*INT) LEN(4)
+             DCL        VAR(&OPENED) TYPE(*INT) LEN(4)
+             DCL        VAR(&CLOSEDC) TYPE(*CHAR) LEN(10)
+             DCL        VAR(&OPENEDC) TYPE(*CHAR) LEN(10)
+             DCL        VAR(&MSG)    TYPE(*CHAR) LEN(132)
+
+             /* --- trap anything unexpected --------------------------- */
+             MONMSG     MSGID(CPF0000 MCH0000 SQL0000) EXEC(GOTO CMDLBL(ERROR))
+
+             /* --- do the capture ------------------------------------- */
+             CALL       PGM(SGOBJ/SGCSTCAP) PARM(&PLANT &CLOSED &OPENED)
+
+             /* --- log the outcome to the joblog ---------------------- */
+             CHGVAR     VAR(&CLOSEDC) VALUE(&CLOSED)
+             CHGVAR     VAR(&OPENEDC) VALUE(&OPENED)
+             CHGVAR     VAR(&MSG) VALUE('Cost history capture OK - closed ' +
+                          *TCAT &CLOSEDC *TCAT ' rows, opened ' +
+                          *TCAT &OPENEDC *TCAT ' rows.')
+             SNDPGMMSG  MSG(&MSG) TOPGMQ(*EXT) MSGTYPE(*INFO)
+             SNDMSG     MSG(&MSG) TOUSR(*SYSOPR)
+
+             RETURN
+
+             /* --- failure path --------------------------------------- */
+ ERROR:      SNDMSG     MSG('SGCSTCAPC FAILED - item cost history was NOT +
+                          captured today. Check the joblog for this job.') +
+                          TOUSR(*SYSOPR) MSGTYPE(*INFO)
+             MONMSG     MSGID(CPF0000)
+
+             ENDPGM
+
+
+/* ==================================================================== */
+/*  ONE-TIME SETUP                                                      */
+/* ==================================================================== */
+/*                                                                      */
+/*  1. Create the source member and paste everything above the          */
+/*     "ONE-TIME SETUP" banner:                                         */
+/*                                                                      */
+/*        CRTSRCPF FILE(SGSRC/QCLSRC) RCDLEN(112)   (if not present)    */
+/*        STRSEU   SRCFILE(SGSRC/QCLSRC) SRCMBR(SGCSTCAPC)              */
+/*                 TYPE(CLLE) OPTION(2)                                 */
+/*                                                                      */
+/*  2. Compile into SGPGM:                                              */
+/*                                                                      */
+/*        CRTBNDCL PGM(SGPGM/SGCSTCAPC)                                 */
+/*                 SRCFILE(SGSRC/QCLSRC) SRCMBR(SGCSTCAPC)              */
+/*                 TEXT('Nightly item cost history capture')            */
+/*                                                                      */
+/*  3. Test it by hand once, then check the result:                     */
+/*                                                                      */
+/*        CALL PGM(SGPGM/SGCSTCAPC)                                     */
+/*                                                                      */
+/*  4. Schedule it. 01:00 every day, seven days a week - costs are      */
+/*     maintained on weekends occasionally and the job is cheap:        */
+/*                                                                      */
+/*        ADDJOBSCDE JOB(SGCSTCAP)                                      */
+/*                   CMD(CALL PGM(SGPGM/SGCSTCAPC))                     */
+/*                   FRQ(*WEEKLY) SCDDAY(*ALL) SCDTIME(010000)          */
+/*                   TEXT('Item cost history - daily capture')          */
+/*                                                                      */
+/*  5. Confirm it is registered:                                        */
+/*                                                                      */
+/*        WRKJOBSCDE JOB(SGCSTCAP)                                      */
+/*                                                                      */
+/* ==================================================================== */
+/*  NOTES                                                               */
+/* ==================================================================== */
+/*                                                                      */
+/*  Library list: the program qualifies every object explicitly          */
+/*  (SGOBJ/SGCSTCAP, and SGHDSDATA inside the procedure), so it does     */
+/*  not depend on the job description's library list.                    */
+/*                                                                      */
+/*  Grain: this captures END-OF-DAY state. Two changes to the same item  */
+/*  between runs show as one change, exactly as the SEQUEL snapshots     */
+/*  behaved. If intraday detail is ever wanted, raise the schedule       */
+/*  frequency - the procedure already tolerates running many times a     */
+/*  day - and add a timestamp column to SGCSTHST.                        */
+/*                                                                      */
+/*  A missed night is self-healing. The next run compares live values    */
+/*  against the last stored ones and writes the change with that day's   */
+/*  date. Only the exact date of the change is lost, not the change.     */
+/*                                                                      */
+/* ==================================================================== */

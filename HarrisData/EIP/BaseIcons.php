@@ -74,6 +74,7 @@ $commentTrlImageLrg= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgC
 $commentView= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}smComment.gif\" title=\"Display comments\" alt=\"Comments\">";
 $compDispImageSml= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}compDisp.gif\" title=\"Inventory Use-Up Item\" alt=\"CD\">";
 $compMatlImage= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}smOpenBox.gif\" title=\"Display component material\" alt=\"Component Material\">";
+$compTranImageSml= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}compDisp.gif\" title=\"Retransmit to AvaTax\" alt=\"Retransmit\">";
 $copyAllImageLrg= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgCopy.gif\" title=\"Copy all records\" alt=\"Copy All\">";
 $copyAllImageSml= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}smCopy.gif\" title=\"Copy all\" alt=\"Copy All\">";
 $copyBiLevelImageLrg= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgCopy.gif\" title=\"Bi-Level Copy\" alt=\"Bi-Level Copy\">";
@@ -214,6 +215,7 @@ $releaseBatchImage= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgSq
 $releaseCustomerImage= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgSqRefresh.gif\" title=\"Release Customer\" alt=\"Release\">";
 $releaseImage= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}approved.gif\" title=\"Release To Production\" alt=\"Release\">";
 $reloadImage= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgSqRefresh.gif\" title=\"Refresh Page\" alt=\"Refresh\">";
+$reopenMfgOrder= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}available.gif\" title=\"Reopen Mfg Order\" alt=\"Reopen Mfg Order\">";
 $reportBatchImageSml= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgSqPrint.gif\" title=\"Click here to print information\" alt=\"Printable Version\">";
 $reportImageSml= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgSqPrint.gif\" title=\"Click here to print information from Interface table\" alt=\"Printable Version\">";
 $resetPaps= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}smR.gif\" title=\"Click here to reset the paper switch\" alt=\"Reset Paper Switch\">";

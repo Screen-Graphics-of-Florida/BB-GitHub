@@ -74,6 +74,7 @@ $commentTrlImageLrg= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgC
 $commentView= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}smComment.gif\" title=\"Display comments\" alt=\"Comments\">";
 $compDispImageSml= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}compDisp.gif\" title=\"Inventory Use-Up Item\" alt=\"CD\">";
 $compMatlImage= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}smOpenBox.gif\" title=\"Display component material\" alt=\"Component Material\">";
+$compTranImageSml= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}compDisp.gif\" title=\"Retransmit to AvaTax\" alt=\"Retransmit\">";
 $copyAllImageLrg= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgCopy.gif\" title=\"Copy all records\" alt=\"Copy All\">";
 $copyAllImageSml= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}smCopy.gif\" title=\"Copy all\" alt=\"Copy All\">";
 $copyBiLevelImageLrg= (string) "<img border=\"0\" src=\"{$homeURL}{$imagePath}lgCopy.gif\" title=\"Bi-Level Copy\" alt=\"Bi-Level Copy\">";

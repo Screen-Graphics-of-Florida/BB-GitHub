@@ -1,0 +1,82 @@
+             PGM
+
+             RUNSQL     SQL('CALL SGPGM.SGCSTCAP(1)') COMMIT(*NONE)
+
+             ENDPGM
+
+
+==========================================================================
+SETUP  (do not paste this section into the source member)
+==========================================================================
+
+1. Create the source file if it does not already exist:
+
+     CRTSRCPF FILE(SGSRC/QCLSRC) RCDLEN(112)
+
+2. Key the member -- only the four lines above, ending at ENDPGM:
+
+     STRSEU SRCFILE(SGSRC/QCLSRC) SRCMBR(SGCSTCAPC) TYPE(CLLE) OPTION(2)
+
+3. Compile into SGPGM:
+
+     CRTBNDCL PGM(SGPGM/SGCSTCAPC) SRCFILE(SGSRC/QCLSRC)
+              SRCMBR(SGCSTCAPC)
+              TEXT('Nightly item cost history capture')
+
+4. Test once. It should return silently -- no message screen. Confirm it
+   ran by checking the log:
+
+     CALL PGM(SGPGM/SGCSTCAPC)
+     RUNQRY *NONE SGOBJ/SGCSTLOG
+
+   A fresh row with LGSTAT = 'O' means success. Run the same day and it
+   reports 0 closed / 0 opened -- the procedure is idempotent, so a retry
+   after a failure is always safe.
+
+5. Register SGPGM/SGCSTCAPC in Robot Scheduler, 01:00 daily, seven days a
+   week. Runtime is well under a second.
+
+
+==========================================================================
+DESIGN NOTES
+==========================================================================
+
+Why RUNSQL and not CALL PGM
+  SGCSTCAP is an SQL stored procedure. It is a *PGM object, but a native
+  CL CALL fails with MCH3601 "Pointer not set for location referenced" --
+  the SQL runtime has to build its parameter structure. RUNSQL is the
+  supported way to drive it from CL.
+
+Why the procedure has no OUT parameters
+  RUNSQL cannot receive them. The procedure writes rows closed, rows
+  opened, elapsed time, status and any error text to SGOBJ/SGCSTLOG
+  instead.
+
+Why there is no MONMSG
+  Deliberate. If this program trapped errors and ended normally, Robot
+  would report success on a night when nothing was captured. Letting it
+  abend is what makes a failure visible. The procedure's own SQL exit
+  handler still writes a FAILED row to SGOBJ/SGCSTLOG with the message
+  text, so the alert and the reason are both available.
+
+Why there is no completion message
+  SNDPGMMSG TOPGMQ(*EXT) forces a "Display Program Messages" screen that
+  waits for Enter in an interactive job. Robot records completion, and
+  SGCSTLOG records what changed, so the message added nothing.
+
+Grain
+  Captures END-OF-DAY state. Two changes to the same item between runs
+  appear as one -- the same behaviour the SEQUEL snapshots had.
+
+A missed night is self-healing
+  The next run compares live values against the last stored ones and
+  writes the change with that day's date. Only the exact date of the
+  change is lost, never the change itself.
+
+Objects
+  SGOBJ/SGCSTHST    change-only cost history
+  SGOBJ/SGCSTHSTL1  index, current-row lookups
+  SGOBJ/SGCSTHSTL2  index, changed-on-date lookups
+  SGOBJ/SGCSTLOG    capture run log
+  SGPGM/SGCSTCAP    SQL stored procedure, the capture itself
+  SGPGM/SGCSTCAPC   this CL, what Robot calls

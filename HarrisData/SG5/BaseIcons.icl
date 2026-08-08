@@ -74,6 +74,7 @@ commentTrlImageLrg="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)l
 commentView="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)smComment.gif"" title=""Display comments"" alt=""Comments"">"
 compDispImageSml="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)compDisp.gif"" title=""Inventory Use-Up Item"" alt=""CD"">"
 compMatlImage="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)smOpenBox.gif"" title=""Display component material"" alt=""Component Material"">"
+compTranImageSml="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)compDisp.gif"" title=""Retransmit to AvaTax"" alt=""Retransmit"">"
 copyAllImageLrg="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgCopy.gif"" title=""Copy all records"" alt=""Copy All"">"
 copyAllImageSml="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)smCopy.gif"" title=""Copy all"" alt=""Copy All"">"
 copyBiLevelImageLrg="<img border=""$(imageBorder)"" src=""$(homeURL)$(imagePath)lgCopy.gif"" title=""Bi-Level Copy"" alt=""Bi-Level Copy"">"
