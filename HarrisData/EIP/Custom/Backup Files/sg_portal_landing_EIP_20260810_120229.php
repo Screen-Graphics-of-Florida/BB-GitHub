@@ -40,11 +40,6 @@ $reportMap = array(
     'SGINQ' => array(
         'MFG' => array(
             array(
-                'title' => 'Kits Structure Report',
-                'desc'  => 'Complete kit product structures. Component qty on hand, sold YTD, issued YTD, kit issued YTD, mfg YTD and qty committed to MOs; item pattern (94-*) and product class filters; single or all BOM levels; export to Excel',
-                'file'  => 'Order%20Entry/KitsStructureReport.php',
-            ),
-            array(
                 'title' => 'MO Daily Labor Report',
                 'desc'  => 'Today\'s labor detail by MO. Filter by Emp#, MO#, or Work Center; sortable; export to Excel; auto-refreshes every 10 min (M-F, 7am-5pm ET)',
                 'file'  => 'Manufacturing/MODailyLaborReport.php',
