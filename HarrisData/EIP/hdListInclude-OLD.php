@@ -89,10 +89,7 @@ $stmtSQL = "Select PDXML From SYDSGN Where PDTBID=$tblID and PDPGID=$pagID and P
 $sqlResult = db2_exec($i5Connect->getConnection(), $stmtSQL);
 if (is_resource($sqlResult)) {
     ($row = db2_fetch_array($sqlResult));
-	//error_log("xml from sql in hdlistinclude: >>".$row[0]."<< END");
-	//error_log("xml from sql in hdlistinclude hexed: >>".bin2hex($row[0])."<< END");
-    $hdList = simplexml_load_string($row[0]); // trim for workaround
-	//error_log("created obj from xml parse: >>".var_export($hdList, true)."<< END");
+    $hdList = simplexml_load_string($row[0]);
 } else {
     print "Design Page for Table $tblID not found";
     exit();

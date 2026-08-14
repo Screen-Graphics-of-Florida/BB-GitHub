@@ -21,16 +21,6 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $filterDate)) {
 // how far back the window reaches.
 $includeTerm = (isset($_GET['incterm']) && $_GET['incterm'] === '1');
 
-// Work center 99999 ("ALL MISC. BENCH WORK", dept 207) is where indirect time is
-// booked. Those rows never carry earned hours, so leaving them in drags every
-// efficiency figure down — measured 2026-08-13, Aug 1-13 read 76.6% with them and
-// 148.9% without, because indirect was 531.6 of 1,095.3 clocked hours. Excluded by
-// default; the toggle puts them back into the grid, the totals and the export.
-// NB: WC 64007 shares the description "ALL MISC. BENCH WORK" but is real
-// production work — match on the number, never on the description.
-define('MOLR_INDIRECT_WC', '99999');
-$includeInd = (isset($_GET['incind']) && $_GET['incind'] === '1');
-
 // Date range: the filter date is the START; the range runs through the current
 // date (or through the chosen date if a future date is picked). Plain string
 // comparison is safe here — both sides are zero-padded YYYY-MM-DD.
@@ -201,9 +191,6 @@ $whereParts = array("T01.LDDATE BETWEEN DATE('$safeStart') AND DATE('$safeEnd')"
 
 if ($activeEmpPred !== '') {
     $whereParts[] = $activeEmpPred;
-}
-if (!$includeInd) {
-    $whereParts[] = "RTRIM(T01.LDWC) <> '" . molr_esc(MOLR_INDIRECT_WC) . "'";
 }
 if ($filterEName !== '') {
     $safe = molr_esc($filterEName);
@@ -556,12 +543,6 @@ unset($termParams['export']);
 $termParams['incterm'] = $includeTerm ? '0' : '1';
 $termToggleURL         = '?' . http_build_query($termParams);
 
-// Same for the indirect (WC 99999) toggle.
-$indParams = $_GET;
-unset($indParams['export']);
-$indParams['incind'] = $includeInd ? '0' : '1';
-$indToggleURL        = '?' . http_build_query($indParams);
-
 $jsRows = array();
 foreach ($rows as $r) {
     $jsRows[] = array('moNum' => trim((string)$r['LDORD']));
@@ -678,15 +659,6 @@ body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;
 .btn-term:hover    { background: #fdf3d8; color: #7a5c00; }
 .btn-term.on       { background: #d4a017; color: #fff; border-color: #a67c00; }
 .btn-term.on:hover { background: #b98d12; color: #fff; }
-
-/* ── Include-indirect (WC 99999) toggle ── */
-.btn-ind    { background: #fff; color: #4a5568; border: 1px solid #8d9bb0;
-              padding: 4px 11px; border-radius: 3px; font-size: 12px;
-              font-weight: 700; cursor: pointer; text-decoration: none;
-              display: inline-block; white-space: nowrap; }
-.btn-ind:hover    { background: #eef1f6; color: #4a5568; }
-.btn-ind.on       { background: #4a5568; color: #fff; border-color: #2d3748; }
-.btn-ind.on:hover { background: #3a4453; color: #fff; }
 
 .btn-clear  { background: #6c7a8d; color: #fff; border: none;
               padding: 5px 10px; border-radius: 3px; font-size: 12px;
@@ -836,7 +808,7 @@ td.term-emp { font-style: italic; color: #7a5c00; }
       <div class="refresh-progress" style="background:rgba(255,255,255,0.18);"><div class="refresh-fill" id="molr-prog" style="width:100%;background:#3B82F6;"></div></div>
       <span>Next refresh in: <strong id="molr-cd">15:00</strong></span>
       <span class="refresh-pill" style="color:#2563EB;">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Showing: <?php echo $displayRange; ?><?php if ($includeTerm): ?> &middot; incl. terminated since <?php echo molr_h($displayDate); ?><?php endif; ?><?php echo $includeInd ? ' &middot; incl. INDIRECT' : ' &middot; excl. INDIRECT'; ?></span>
+      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Showing: <?php echo $displayRange; ?><?php if ($includeTerm): ?> &middot; incl. terminated since <?php echo molr_h($displayDate); ?><?php endif; ?></span>
     </div>
     <?php else: ?>
     <div style="background:#2563EB;border-bottom:1px solid #1d4ed8;padding:4px 14px;display:flex;align-items:center;gap:14px;font-size:11px;color:#fff;">
@@ -844,7 +816,7 @@ td.term-emp { font-style: italic; color: #7a5c00; }
       <span>Auto-refresh paused &ndash; outside M&ndash;F 7:00am&ndash;5:00pm ET. Use Refresh.</span>
       <span style="flex:1"></span>
       <span class="refresh-pill" style="color:#2563EB;">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Showing: <?php echo $displayRange; ?><?php if ($includeTerm): ?> &middot; incl. terminated since <?php echo molr_h($displayDate); ?><?php endif; ?><?php echo $includeInd ? ' &middot; incl. INDIRECT' : ' &middot; excl. INDIRECT'; ?></span>
+      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Showing: <?php echo $displayRange; ?><?php if ($includeTerm): ?> &middot; incl. terminated since <?php echo molr_h($displayDate); ?><?php endif; ?></span>
     </div>
     <?php endif; ?>
     <div class="filter-bar" style="background:#F7F7F7;border-bottom:none;">
@@ -934,15 +906,6 @@ td.term-emp { font-style: italic; color: #7a5c00; }
         : 'Click to also include employees terminated on or after ' . $displayDate; ?>">
     <?php echo $includeTerm ? '&#10003;' : '&#43;'; ?>
     Incl. Terminated Since <?php echo molr_h($displayDate); ?>
-  </a>
-  <input type="hidden" name="incind" value="<?php echo $includeInd ? '1' : '0'; ?>">
-  <a class="btn-ind<?php echo $includeInd ? ' on' : ''; ?>"
-     href="<?php echo molr_h($indToggleURL); ?>"
-     title="<?php echo $includeInd
-        ? 'Indirect time (work center ' . MOLR_INDIRECT_WC . ') is included in the rows, totals and efficiency — click to exclude it'
-        : 'Indirect time (work center ' . MOLR_INDIRECT_WC . ') is excluded from the rows, totals and efficiency — click to include it'; ?>">
-    <?php echo $includeInd ? '&#10003;' : '&#43;'; ?>
-    Incl. INDIRECT (WC <?php echo MOLR_INDIRECT_WC; ?>)
   </a>
   <a class="btn-clear" href="?">Clear</a>
       <b style="margin-left:auto;white-space:nowrap;font-size:12px;color:#111827;">

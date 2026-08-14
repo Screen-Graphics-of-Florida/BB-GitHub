@@ -16,27 +16,9 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $filterDate)) {
     $filterDate = date('Y-m-d');
 }
 
-// Toggle: also include employees terminated on or after the From Date, so the
-// people who actually worked during the selected window stay visible no matter
-// how far back the window reaches.
+// Toggle: also include employees terminated at any point in the current year.
 $includeTerm = (isset($_GET['incterm']) && $_GET['incterm'] === '1');
-
-// Work center 99999 ("ALL MISC. BENCH WORK", dept 207) is where indirect time is
-// booked. Those rows never carry earned hours, so leaving them in drags every
-// efficiency figure down — measured 2026-08-13, Aug 1-13 read 76.6% with them and
-// 148.9% without, because indirect was 531.6 of 1,095.3 clocked hours. Excluded by
-// default; the toggle puts them back into the grid, the totals and the export.
-// NB: WC 64007 shares the description "ALL MISC. BENCH WORK" but is real
-// production work — match on the number, never on the description.
-define('MOLR_INDIRECT_WC', '99999');
-$includeInd = (isset($_GET['incind']) && $_GET['incind'] === '1');
-
-// Date range: the filter date is the START; the range runs through the current
-// date (or through the chosen date if a future date is picked). Plain string
-// comparison is safe here — both sides are zero-padded YYYY-MM-DD.
-$todayYmd  = date('Y-m-d');
-$startDate = $filterDate;
-$endDate   = ($filterDate > $todayYmd) ? $filterDate : $todayYmd;
+$curYear     = (int)date('Y');
 
 // ── Auto-refresh: M–F, 7 am–5 pm Eastern ─────────────────────────────────────
 $estNow      = new DateTime('now', new DateTimeZone('America/New_York'));
@@ -70,28 +52,6 @@ function molr_date($v) {
     if (!$v) return '';
     $d = DateTime::createFromFormat('Y-m-d', (string)$v);
     return $d ? $d->format('m/d/Y') : (string)$v;
-}
-/**
- * Efficiency = earned (standard) hours / hours actually worked.
- * 1.00 std against 1.00 worked = 100%; 1.00 std against 1.25 worked = 80%.
- * Returns null when it is not meaningful — no hours worked, or a negative
- * correction row — so callers can render a dash instead of a bogus number.
- */
-function molr_eff($earned, $worked) {
-    $w = (float)$worked;
-    if ($w <= 0) return null;
-    return ((float)$earned / $w) * 100.0;
-}
-/** Colour band for an efficiency figure. Mirrors the variance convention. */
-function molr_eff_class($pct) {
-    if ($pct === null)  return '';
-    if ($pct >= 100)    return ' eff-good';
-    if ($pct >= 90)     return ' eff-warn';
-    return ' eff-bad';
-}
-/** "92.4%" or an em dash. */
-function molr_eff_txt($pct) {
-    return ($pct === null) ? '&mdash;' : number_format($pct, 1) . '%';
 }
 /**
  * HREMPL.EMTRDT is NUMERIC(7,0) in CYMD form: leading century digit (1 = 20xx,
@@ -144,66 +104,39 @@ if (isset($hremplCols['EMFNAM']) && isset($hremplCols['EMLNAM'])) {
 // 11 numbers are reused across old and new hires — so this filter is also what
 // keeps the LEFT JOIN from fanning out and double-counting hours.
 //
-// With $includeTerm on, anyone terminated ON OR AFTER the From Date is let back
-// in — they were still on the payroll for part of the selected window, so their
-// hours belong in it. This tracks the range instead of the calendar, so it never
-// goes stale at year end.
-//
-// EMTRDT is CYMD (century digit + YYMMDD), which sorts correctly as a plain
-// integer: a 19xx date is 6 digits / century 0 and a 20xx date is 7 digits /
-// century 1, so ">=" needs no special-casing for the four pre-2000 dates on file.
-$sy = (int)substr($startDate, 0, 4);
-$sm = (int)substr($startDate, 5, 2);
-$sd = (int)substr($startDate, 8, 2);
-$termFromCymd = ($sy >= 2000 ? 1000000 : 0) + ($sy % 100) * 10000 + $sm * 100 + $sd;
+// With $includeTerm on, employees terminated anywhere in the current year are
+// let back in. CYMD bounds for e.g. 2026 are 1260000..1269999, which cleanly
+// excludes the four pre-2000 (6-digit, century 0) termination dates on file.
+$termLo = ($curYear >= 2000 ? 1000000 : 0) + ($curYear % 100) * 10000;
+$termHi = $termLo + 9999;
 
 if (!isset($hremplCols['EMTRDT'])) {
     $activeEmpPred = '';
     $termSelExpr   = '0';
-    $empPickOrder  = "E.EMEMPL";
 } elseif ($hremplCols['EMTRDT'] === 'DATE' || $hremplCols['EMTRDT'] === 'TIMESTAMP') {
-    $safeStartD    = molr_esc($startDate);
     $activeEmpPred = $includeTerm
-        ? "(T04.EMTRDT IS NULL OR T04.EMTRDT >= DATE('$safeStartD'))"
+        ? "(T04.EMTRDT IS NULL OR YEAR(T04.EMTRDT) = $curYear)"
         : "T04.EMTRDT IS NULL";
     $termSelExpr   = "T04.EMTRDT";
-    $empPickOrder  = "CASE WHEN E.EMTRDT IS NULL THEN 0 ELSE 1 END, E.EMTRDT DESC";
 } else {
     $activeEmpPred = $includeTerm
-        ? "(T04.EMTRDT IS NULL OR T04.EMTRDT = 0 OR T04.EMTRDT >= $termFromCymd)"
+        ? "(T04.EMTRDT IS NULL OR T04.EMTRDT = 0 OR T04.EMTRDT BETWEEN $termLo AND $termHi)"
         : "(T04.EMTRDT IS NULL OR T04.EMTRDT = 0)";
     $termSelExpr   = "COALESCE(T04.EMTRDT, 0)";
-    $empPickOrder  = "CASE WHEN E.EMTRDT = 0 THEN 0 ELSE 1 END, E.EMTRDT DESC";
 }
 
-// ── One HREMPL row per employee number ────────────────────────────────────────
-// EMEMPL is NOT unique: 11 numbers are reused across an old and a new hire (and
-// 41782 is stored twice outright), so joining HREMPL raw multiplies labor rows
-// and inflates every total. Measured 2026-08-13: a From Date of 2010-01-01 gave
-// 411,025 joined rows against 410,478 real ones, 169,561.81 hours instead of
-// 166,194.73. Collapsing to one row per number — the active row if there is one,
-// otherwise the most recent termination — makes the join 1:1 at any From Date.
-$empCte = "
-    EMP1 AS (
-        SELECT * FROM (
-            SELECT E.*,
-                   ROW_NUMBER() OVER (PARTITION BY E.EMEMPL
-                                      ORDER BY $empPickOrder) AS MOLR_RN
-              FROM SGHDSDATA.HREMPL E
-        ) Z
-        WHERE MOLR_RN = 1
-    )";
-
 // ── Build WHERE ───────────────────────────────────────────────────────────────
+// The date filter is the START of the range; the range always runs through the
+// current date (or through the chosen date if a future date is picked).
+$todayYmd   = date('Y-m-d');
+$startDate  = $filterDate;
+$endDate    = ($filterDate > $todayYmd) ? $filterDate : $todayYmd;
 $safeStart  = molr_esc($startDate);
 $safeEnd    = molr_esc($endDate);
 $whereParts = array("T01.LDDATE BETWEEN DATE('$safeStart') AND DATE('$safeEnd')");
 
 if ($activeEmpPred !== '') {
     $whereParts[] = $activeEmpPred;
-}
-if (!$includeInd) {
-    $whereParts[] = "RTRIM(T01.LDWC) <> '" . molr_esc(MOLR_INDIRECT_WC) . "'";
 }
 if ($filterEName !== '') {
     $safe = molr_esc($filterEName);
@@ -234,19 +167,13 @@ $where = implode(' AND ', $whereParts);
 // TOTALS lines stay correct even when the visible detail is trimmed.
 define('MOLR_MAX_ROWS', 20000);
 
-// EARNED hours = what the standard says the job should have taken. Setup rows
-// are measured against LDSUHR, everything else against the computed STDHRS.
-// Variance and efficiency are both derived from it so they can never disagree:
-//   VARIANCE   = EARNED - WORKED   (negative = over standard = bad)
-//   EFFICIENCY = EARNED / WORKED   (100% = exactly on standard)
-$earnExpr = "CASE WHEN LDLBTY='S' THEN LDSUHR ELSE STDHRS END";
-$varExpr  = "(($earnExpr) - LDWHRS)";
-$vcExpr   = "CASE WHEN LDLBTY='S' THEN (LDSUHR - LDWHRS) * LDSSR
-                  ELSE (STDHRS - LDWHRS) * LDSLR END";
+$varExpr = "CASE WHEN LDLBTY='S' THEN LDSUHR - LDWHRS
+                 ELSE STDHRS - LDWHRS END";
+$vcExpr  = "CASE WHEN LDLBTY='S' THEN (LDSUHR - LDWHRS) * LDSSR
+                 ELSE (STDHRS - LDWHRS) * LDSLR END";
 
 $baseCte = "
-    WITH $empCte,
-    BASE AS (
+    WITH BASE AS (
         SELECT
             T01.LDDATE,
             T01.LDEMP,
@@ -295,7 +222,7 @@ $baseCte = "
             ON  T01.LDWC   = T03.WCWC
             AND T01.LDDEPT = T03.WCDEPT
             AND T01.LDPLT  = T03.WCPLT
-        LEFT JOIN EMP1 T04
+        LEFT JOIN SGHDSDATA.HREMPL T04
             ON T01.LDEMP = T04.EMEMPL
         LEFT JOIN SGHDSDATA.PREXAC T05
             ON TRIM(T03.WCDEPT) = TRIM(T05.EADEPT)
@@ -310,7 +237,6 @@ $detailSelect = "
         LDSEQN, LDMPON, LDPN, LDLBTY, LABORDEF,
         CALCSUHRS, MSDHRSCODE, STDHRS, LDWHRS,
         $varExpr AS VARIANCE,
-        $earnExpr AS EARNEDHRS,
         OHCQTY, LDQTYC, LDRSCR,
         $vcExpr AS VARCOST
     FROM BASE
@@ -327,7 +253,6 @@ $sqlTotals = $baseCte . "
         SUM(STDHRS)    AS STDHRS,
         SUM(LDWHRS)    AS LDWHRS,
         SUM($varExpr)  AS VARIANCE,
-        SUM($earnExpr) AS EARNEDHRS,
         SUM(OHCQTY)    AS OHCQTY,
         SUM(LDQTYC)    AS LDQTYC,
         SUM(LDRSCR)    AS LDRSCR,
@@ -377,10 +302,9 @@ if ($deptStmt) {
 $empOptions   = array();
 // Same active/terminated rule as the grid, so the picker matches what's shown.
 $empActiveSql = ($activeEmpPred !== '') ? " AND $activeEmpPred" : '';
-$empSql = "WITH $empCte
-           SELECT DISTINCT T01.LDEMP AS LDEMP, $nameExpr AS EMPNAME
+$empSql = "SELECT DISTINCT T01.LDEMP AS LDEMP, $nameExpr AS EMPNAME
            FROM SGHDSDATA.HDMLDM T01
-           LEFT JOIN EMP1 T04
+           LEFT JOIN SGHDSDATA.HREMPL T04
                ON T01.LDEMP = T04.EMEMPL
            WHERE T01.LDEMP > 0$empActiveSql
            ORDER BY EMPNAME ASC, LDEMP ASC";
@@ -402,7 +326,6 @@ function molr_new_tot() {
         'STDHRS'    => 0.0,
         'LDWHRS'    => 0.0,
         'VARIANCE'  => 0.0,
-        'EARNEDHRS' => 0.0,
         'OHCQTY'    => 0,
         'LDQTYC'    => 0,
         'LDRSCR'    => 0,
@@ -414,7 +337,6 @@ function molr_add_tot(&$t, $r) {
     $t['STDHRS']    += (float)$r['STDHRS'];
     $t['LDWHRS']    += (float)$r['LDWHRS'];
     $t['VARIANCE']  += (float)$r['VARIANCE'];
-    $t['EARNEDHRS'] += (float)$r['EARNEDHRS'];
     $t['OHCQTY']    += (int)$r['OHCQTY'];
     $t['LDQTYC']    += (int)$r['LDQTYC'];
     $t['LDRSCR']    += (int)$r['LDRSCR'];
@@ -436,13 +358,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         'Date', 'Emp #', 'Emp Name', 'Term Date', 'MO #', 'Dept #', 'Dept Name', 'Work Ctr #', 'WC Description',
         'Seq', 'Std Crew Sz', 'Part #', 'Labor Typ', 'Labor Definition',
         'Std Setup Hrs', 'Hrs Ref', 'Direct Std Hrs', 'Hrs Worked',
-        'Variance Hrs', 'Efficiency %', 'Curr Ord Qty', 'Qty Completed', 'Qty Scrapped',
+        'Variance Hrs', 'Curr Ord Qty', 'Qty Completed', 'Qty Scrapped',
         'Labor Var Cost',
     ));
 
-    // Emits a TOTALS line in the same 24-column shape as the data rows.
+    // Emits a TOTALS line in the same 23-column shape as the data rows.
     $csvTot = function ($out, $label, $t) {
-        $pct = molr_eff($t['EARNEDHRS'], $t['LDWHRS']);
         fputcsv($out, array(
             $label, '', '', '', '', '', '', '', '', '', '', '', '', '',
             number_format((float)$t['CALCSUHRS'], 2, '.', ''),
@@ -450,7 +371,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             number_format((float)$t['STDHRS'],   2, '.', ''),
             number_format((float)$t['LDWHRS'],   2, '.', ''),
             number_format((float)$t['VARIANCE'], 2, '.', ''),
-            ($pct === null ? '' : number_format($pct, 1, '.', '')),
             (int)$t['OHCQTY'],
             (int)$t['LDQTYC'],
             (int)$t['LDRSCR'],
@@ -458,26 +378,18 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         ));
     };
 
-    // Per-date totals are computed up front so each day's TOTALS line can lead
-    // its rows, matching the on-screen layout.
-    $grand   = molr_new_tot();
-    $csvDayT = array();
-    foreach ($rows as $r) {
-        $d = trim((string)$r['LDDATE']);
-        if (!isset($csvDayT[$d])) { $csvDayT[$d] = molr_new_tot(); }
-        molr_add_tot($csvDayT[$d], $r);
-        molr_add_tot($grand, $r);
-    }
-    if (!empty($rows)) { $csvTot($out, 'GRAND TOTALS', $grand); }
-
+    $grand    = molr_new_tot();
+    $dayTot   = molr_new_tot();
     $prevDate = null;
     foreach ($rows as $r) {
         $thisDate = trim((string)$r['LDDATE']);
-        if ($thisDate !== $prevDate) {
-            $csvTot($out, 'TOTALS ' . molr_date($thisDate), $csvDayT[$thisDate]);
-            $prevDate = $thisDate;
+        if ($prevDate !== null && $thisDate !== $prevDate) {
+            $csvTot($out, 'TOTALS ' . molr_date($prevDate), $dayTot);
+            $dayTot = molr_new_tot();
         }
-        $rowPct = molr_eff($r['EARNEDHRS'], $r['LDWHRS']);
+        $prevDate = $thisDate;
+        molr_add_tot($dayTot, $r);
+        molr_add_tot($grand,  $r);
         fputcsv($out, array(
             molr_date($r['LDDATE']),
             (int)$r['LDEMP'],
@@ -498,12 +410,15 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             number_format((float)$r['STDHRS'],    2, '.', ''),
             number_format((float)$r['LDWHRS'],    2, '.', ''),
             number_format((float)$r['VARIANCE'],  2, '.', ''),
-            ($rowPct === null ? '' : number_format($rowPct, 1, '.', '')),
             (int)$r['OHCQTY'],
             (int)$r['LDQTYC'],
             (int)$r['LDRSCR'],
             number_format((float)$r['VARCOST'],   2, '.', ''),
         ));
+    }
+    if ($prevDate !== null) {
+        $csvTot($out, 'TOTALS ' . molr_date($prevDate), $dayTot);
+        $csvTot($out, 'GRAND TOTALS', $grand);
     }
     fclose($out);
     exit;
@@ -556,12 +471,6 @@ unset($termParams['export']);
 $termParams['incterm'] = $includeTerm ? '0' : '1';
 $termToggleURL         = '?' . http_build_query($termParams);
 
-// Same for the indirect (WC 99999) toggle.
-$indParams = $_GET;
-unset($indParams['export']);
-$indParams['incind'] = $includeInd ? '0' : '1';
-$indToggleURL        = '?' . http_build_query($indParams);
-
 $jsRows = array();
 foreach ($rows as $r) {
     $jsRows[] = array('moNum' => trim((string)$r['LDORD']));
@@ -574,28 +483,13 @@ $displayRange   = ($startDate === $endDate)
     : $displayDate . ' &ndash; ' . $displayEndDate;
 
 /**
- * Renders one 23-column TOTALS row.
- * Sign convention: VARIANCE = earned - worked, so a NEGATIVE number means they
- * went over standard and is shown red; positive (under standard) is green.
+ * Renders one 22-column TOTALS row.
  * $cls   extra class on the <tr> ('' = grand totals, 'date-totals' = per-date)
  * $label text for the left-hand label cell
  */
 function molr_totals_row($label, $t, $cls = '', $dgroup = '') {
-    $varClass = $t['VARIANCE'] < 0 ? ' unfav' : ($t['VARIANCE'] > 0 ? ' fav' : '');
-    $vcClass  = $t['VARCOST']  < 0 ? ' unfav' : ($t['VARCOST']  > 0 ? ' fav' : '');
-    $pct      = molr_eff($t['EARNEDHRS'], $t['LDWHRS']);
-
-    // Headline efficiency: bar + number, so the day reads at a glance.
-    $effCell = '<td class="R' . molr_eff_class($pct) . '">';
-    if ($pct === null) {
-        $effCell .= '&mdash;';
-    } else {
-        $w = max(0, min(100, $pct));   // bar caps at 100% so it stays readable
-        $effCell .= '<div class="effbar"><span style="width:' . number_format($w, 1) . '%"></span></div>'
-                 .  '<b>' . number_format($pct, 1) . '%</b>';
-    }
-    $effCell .= '</td>';
-
+    $varClass = $t['VARIANCE'] > 0 ? ' unfav' : ($t['VARIANCE'] < 0 ? ' fav' : '');
+    $vcClass  = $t['VARCOST']  > 0 ? ' unfav' : ($t['VARCOST']  < 0 ? ' fav' : '');
     echo '<tr class="totals-row' . ($cls !== '' ? ' ' . $cls : '') . '"'
        . ($cls === '' ? ' data-totals="1"' : ' data-subtotal="1"')
        . ($dgroup !== '' ? ' data-dgroup="' . molr_h($dgroup) . '"' : '') . '>'
@@ -606,7 +500,6 @@ function molr_totals_row($label, $t, $cls = '', $dgroup = '') {
        . '<td class="R">' . molr_dec($t['STDHRS'])   . '</td>'
        . '<td class="R">' . molr_dec($t['LDWHRS'])   . '</td>'
        . '<td class="R' . $varClass . '">' . molr_dec($t['VARIANCE']) . '</td>'
-       . $effCell
        . '<td class="R">' . molr_int($t['OHCQTY'])   . '</td>'
        . '<td class="R">' . molr_int($t['LDQTYC'])   . '</td>'
        . '<td class="R">' . molr_int($t['LDRSCR'])   . '</td>'
@@ -679,15 +572,6 @@ body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;
 .btn-term.on       { background: #d4a017; color: #fff; border-color: #a67c00; }
 .btn-term.on:hover { background: #b98d12; color: #fff; }
 
-/* ── Include-indirect (WC 99999) toggle ── */
-.btn-ind    { background: #fff; color: #4a5568; border: 1px solid #8d9bb0;
-              padding: 4px 11px; border-radius: 3px; font-size: 12px;
-              font-weight: 700; cursor: pointer; text-decoration: none;
-              display: inline-block; white-space: nowrap; }
-.btn-ind:hover    { background: #eef1f6; color: #4a5568; }
-.btn-ind.on       { background: #4a5568; color: #fff; border-color: #2d3748; }
-.btn-ind.on:hover { background: #3a4453; color: #fff; }
-
 .btn-clear  { background: #6c7a8d; color: #fff; border: none;
               padding: 5px 10px; border-radius: 3px; font-size: 12px;
               cursor: pointer; text-decoration: none; display: inline-block; }
@@ -729,7 +613,6 @@ col.c-href  { width: 42px; }
 col.c-dsh   { width: 62px; }
 col.c-hw    { width: 62px; }
 col.c-var   { width: 64px; }
-col.c-eff   { width: 62px; }
 col.c-coq   { width: 66px; }
 col.c-qtyc  { width: 66px; }
 col.c-qtys  { width: 60px; }
@@ -769,18 +652,8 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
 
 .mo-link { color: #003087; text-decoration: none; font-weight: 700; }
 .mo-link:hover { text-decoration: underline; color: #0050c0; }
-/* Over standard (negative variance) = unfavourable = red. Under = green. */
 .unfav { color: #cc0000; font-weight: 700; }
 .fav   { color: #177a17; }
-
-/* ── Efficiency ── */
-.eff-good { color: #177a17; font-weight: 700; }
-.eff-warn { color: #b06000; font-weight: 700; }
-.eff-bad  { color: #cc0000; font-weight: 700; }
-.effbar { display: block; height: 4px; width: 100%; background: #ccd6e4;
-          border-radius: 2px; overflow: hidden; margin: 0 0 2px; }
-.effbar span { display: block; height: 100%; border-radius: 2px;
-               background: currentColor; }
 
 /* Employee terminated this year (only visible with the toggle on) */
 td.term-emp { font-style: italic; color: #7a5c00; }
@@ -836,7 +709,7 @@ td.term-emp { font-style: italic; color: #7a5c00; }
       <div class="refresh-progress" style="background:rgba(255,255,255,0.18);"><div class="refresh-fill" id="molr-prog" style="width:100%;background:#3B82F6;"></div></div>
       <span>Next refresh in: <strong id="molr-cd">15:00</strong></span>
       <span class="refresh-pill" style="color:#2563EB;">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Showing: <?php echo $displayRange; ?><?php if ($includeTerm): ?> &middot; incl. terminated since <?php echo molr_h($displayDate); ?><?php endif; ?><?php echo $includeInd ? ' &middot; incl. INDIRECT' : ' &middot; excl. INDIRECT'; ?></span>
+      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Showing: <?php echo $displayRange; ?><?php if ($includeTerm): ?> &middot; incl. terminated <?php echo $curYear; ?><?php endif; ?></span>
     </div>
     <?php else: ?>
     <div style="background:#2563EB;border-bottom:1px solid #1d4ed8;padding:4px 14px;display:flex;align-items:center;gap:14px;font-size:11px;color:#fff;">
@@ -844,7 +717,7 @@ td.term-emp { font-style: italic; color: #7a5c00; }
       <span>Auto-refresh paused &ndash; outside M&ndash;F 7:00am&ndash;5:00pm ET. Use Refresh.</span>
       <span style="flex:1"></span>
       <span class="refresh-pill" style="color:#2563EB;">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Showing: <?php echo $displayRange; ?><?php if ($includeTerm): ?> &middot; incl. terminated since <?php echo molr_h($displayDate); ?><?php endif; ?><?php echo $includeInd ? ' &middot; incl. INDIRECT' : ' &middot; excl. INDIRECT'; ?></span>
+      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Showing: <?php echo $displayRange; ?><?php if ($includeTerm): ?> &middot; incl. terminated <?php echo $curYear; ?><?php endif; ?></span>
     </div>
     <?php endif; ?>
     <div class="filter-bar" style="background:#F7F7F7;border-bottom:none;">
@@ -929,20 +802,10 @@ td.term-emp { font-style: italic; color: #7a5c00; }
   <a class="btn-term<?php echo $includeTerm ? ' on' : ''; ?>"
      href="<?php echo molr_h($termToggleURL); ?>"
      title="<?php echo $includeTerm
-        ? 'Currently including employees terminated on or after ' . $displayDate
-          . ' — click to show active employees only'
-        : 'Click to also include employees terminated on or after ' . $displayDate; ?>">
+        ? 'Currently including employees terminated during ' . $curYear . ' — click to show active employees only'
+        : 'Click to also include employees terminated during ' . $curYear; ?>">
     <?php echo $includeTerm ? '&#10003;' : '&#43;'; ?>
-    Incl. Terminated Since <?php echo molr_h($displayDate); ?>
-  </a>
-  <input type="hidden" name="incind" value="<?php echo $includeInd ? '1' : '0'; ?>">
-  <a class="btn-ind<?php echo $includeInd ? ' on' : ''; ?>"
-     href="<?php echo molr_h($indToggleURL); ?>"
-     title="<?php echo $includeInd
-        ? 'Indirect time (work center ' . MOLR_INDIRECT_WC . ') is included in the rows, totals and efficiency — click to exclude it'
-        : 'Indirect time (work center ' . MOLR_INDIRECT_WC . ') is excluded from the rows, totals and efficiency — click to include it'; ?>">
-    <?php echo $includeInd ? '&#10003;' : '&#43;'; ?>
-    Incl. INDIRECT (WC <?php echo MOLR_INDIRECT_WC; ?>)
+    Incl. Terminated <?php echo $curYear; ?>
   </a>
   <a class="btn-clear" href="?">Clear</a>
       <b style="margin-left:auto;white-space:nowrap;font-size:12px;color:#111827;">
@@ -1001,7 +864,7 @@ td.term-emp { font-style: italic; color: #7a5c00; }
     <col class="c-seq"><col class="c-crew"><col class="c-part">
     <col class="c-ltyp"><col class="c-ldef">
     <col class="c-ssu"><col class="c-href"><col class="c-dsh">
-    <col class="c-hw"><col class="c-var"><col class="c-eff">
+    <col class="c-hw"><col class="c-var">
     <col class="c-coq"><col class="c-qtyc"><col class="c-qtys">
     <col class="c-vc">
   </colgroup>
@@ -1024,8 +887,7 @@ td.term-emp { font-style: italic; color: #7a5c00; }
       <th class="C">Hrs<br>Ref</th>
       <th class="R">Direct<br>Std Hrs</th>
       <th class="R">Hrs<br>Worked</th>
-      <th class="R" title="Earned (standard) hours minus hours worked. Negative = over standard.">Variance<br>Hrs</th>
-      <th class="R" title="Earned (standard) hours &divide; hours worked. 100% = exactly on standard.">Effic<br>%</th>
+      <th class="R">Variance<br>Hrs</th>
       <th class="R">Curr<br>Ord Qty</th>
       <th class="R">Qty<br>Complt</th>
       <th class="R">Qty<br>Scrpd</th>
@@ -1041,7 +903,7 @@ td.term-emp { font-style: italic; color: #7a5c00; }
 
 <?php if (empty($rows) && !$sqlErr): ?>
   <tr>
-    <td colspan="23" class="empty">
+    <td colspan="22" class="empty">
       No labor records found for <?php echo $displayRange; ?>
       <?php if ($filterEName !== '' || $filterOrd !== '' || $filterDept !== '' || $filterDName !== '' || $filterWc !== ''): ?>
         with the current filter
@@ -1056,17 +918,15 @@ foreach ($rows as $idx => $r):
     $dtRaw    = trim((string)$r['LDDATE']);
     $variance = (float)$r['VARIANCE'];
     $varcost  = (float)$r['VARCOST'];
-    // Negative variance = over standard = unfavourable = red.
-    $varClass = $variance < 0 ? ' unfav' : ($variance > 0 ? ' fav' : '');
-    $vcClass  = $varcost  < 0 ? ' unfav' : ($varcost  > 0 ? ' fav' : '');
-    $rowPct   = molr_eff($r['EARNEDHRS'], $r['LDWHRS']);
+    $varClass = $variance > 0 ? ' unfav' : ($variance < 0 ? ' fav' : '');
+    $vcClass  = $varcost  > 0 ? ' unfav' : ($varcost  < 0 ? ' fav' : '');
 
-    // Each day opens with its light-blue TOTALS line
-    if ($dtRaw !== $prevDate) {
-        molr_totals_row('TOTALS &mdash; ' . molr_h(molr_date($dtRaw)),
-                        $dateTots[$dtRaw], 'date-totals', $dtRaw);
-        $prevDate = $dtRaw;
+    // Close out the previous date with its light-blue TOTALS line
+    if ($prevDate !== null && $dtRaw !== $prevDate) {
+        molr_totals_row('TOTALS &mdash; ' . molr_h(molr_date($prevDate)),
+                        $dateTots[$prevDate], 'date-totals', $prevDate);
     }
+    $prevDate = $dtRaw;
 ?>
   <tr data-dgroup="<?php echo molr_h($dtRaw); ?>">
     <td class="C" data-val="<?php echo molr_h($dtRaw); ?>">
@@ -1120,11 +980,6 @@ foreach ($rows as $idx => $r):
     <td class="R<?php echo $varClass; ?>" data-val="<?php echo $variance; ?>">
       <?php echo molr_dec($variance); ?>
     </td>
-    <?php // No data-val when blank, so the em dash sorts last instead of as zero ?>
-    <td class="R<?php echo molr_eff_class($rowPct); ?>"
-        <?php if ($rowPct !== null): ?>data-val="<?php echo round($rowPct, 1); ?>"<?php endif; ?>>
-      <?php echo molr_eff_txt($rowPct); ?>
-    </td>
     <td class="R" data-val="<?php echo (int)$r['OHCQTY']; ?>">
       <?php echo molr_int($r['OHCQTY']); ?>
     </td>
@@ -1139,6 +994,13 @@ foreach ($rows as $idx => $r):
     </td>
   </tr>
 <?php endforeach; ?>
+<?php
+// Close out the final date group
+if ($prevDate !== null) {
+    molr_totals_row('TOTALS &mdash; ' . molr_h(molr_date($prevDate)),
+                    $dateTots[$prevDate], 'date-totals', $prevDate);
+}
+?>
   </tbody>
 </table>
 </div>
@@ -1193,7 +1055,7 @@ function molrOpenMO(idx) {
         return 0;
     }
 
-    // Rows are grouped by date, each group led by its own TOTALS line.
+    // Rows are grouped by date, each group closed by its own TOTALS line.
     // Sorting re-orders rows *within* each date group so the subtotals stay
     // correct; sorting on the Date column re-orders the groups themselves.
     function sortBy(col) {
@@ -1228,8 +1090,8 @@ function molrOpenMO(idx) {
 
         if (totRow) { tbody.appendChild(totRow); }
         groups.forEach(function (g) {
-            if (g.sub) { tbody.appendChild(g.sub); }   // day TOTALS leads its rows
             g.rows.forEach(function (tr) { tbody.appendChild(tr); });
+            if (g.sub) { tbody.appendChild(g.sub); }
         });
         // Keep the grand totals pinned at the top
         if (totRow) { tbody.insertBefore(totRow, tbody.firstChild); }

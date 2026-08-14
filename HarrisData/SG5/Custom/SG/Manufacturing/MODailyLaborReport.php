@@ -16,6 +16,28 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $filterDate)) {
     $filterDate = date('Y-m-d');
 }
 
+// Toggle: also include employees terminated on or after the From Date, so the
+// people who actually worked during the selected window stay visible no matter
+// how far back the window reaches.
+$includeTerm = (isset($_GET['incterm']) && $_GET['incterm'] === '1');
+
+// Work center 99999 ("ALL MISC. BENCH WORK", dept 207) is where indirect time is
+// booked. Those rows never carry earned hours, so leaving them in drags every
+// efficiency figure down — measured 2026-08-13, Aug 1-13 read 76.6% with them and
+// 148.9% without, because indirect was 531.6 of 1,095.3 clocked hours. Excluded by
+// default; the toggle puts them back into the grid, the totals and the export.
+// NB: WC 64007 shares the description "ALL MISC. BENCH WORK" but is real
+// production work — match on the number, never on the description.
+define('MOLR_INDIRECT_WC', '99999');
+$includeInd = (isset($_GET['incind']) && $_GET['incind'] === '1');
+
+// Date range: the filter date is the START; the range runs through the current
+// date (or through the chosen date if a future date is picked). Plain string
+// comparison is safe here — both sides are zero-padded YYYY-MM-DD.
+$todayYmd  = date('Y-m-d');
+$startDate = $filterDate;
+$endDate   = ($filterDate > $todayYmd) ? $filterDate : $todayYmd;
+
 // ── Auto-refresh: M–F, 7 am–5 pm Eastern ─────────────────────────────────────
 $estNow      = new DateTime('now', new DateTimeZone('America/New_York'));
 $estDow      = (int)$estNow->format('N');
@@ -49,14 +71,143 @@ function molr_date($v) {
     $d = DateTime::createFromFormat('Y-m-d', (string)$v);
     return $d ? $d->format('m/d/Y') : (string)$v;
 }
+/**
+ * Efficiency = earned (standard) hours / hours actually worked.
+ * 1.00 std against 1.00 worked = 100%; 1.00 std against 1.25 worked = 80%.
+ * Returns null when it is not meaningful — no hours worked, or a negative
+ * correction row — so callers can render a dash instead of a bogus number.
+ */
+function molr_eff($earned, $worked) {
+    $w = (float)$worked;
+    if ($w <= 0) return null;
+    return ((float)$earned / $w) * 100.0;
+}
+/** Colour band for an efficiency figure. Mirrors the variance convention. */
+function molr_eff_class($pct) {
+    if ($pct === null)  return '';
+    if ($pct >= 100)    return ' eff-good';
+    if ($pct >= 90)     return ' eff-warn';
+    return ' eff-bad';
+}
+/** "92.4%" or an em dash. */
+function molr_eff_txt($pct) {
+    return ($pct === null) ? '&mdash;' : number_format($pct, 1) . '%';
+}
+/**
+ * HREMPL.EMTRDT is NUMERIC(7,0) in CYMD form: leading century digit (1 = 20xx,
+ * 0 = 19xx) then YYMMDD. 1260730 -> 07/30/2026. 0 = not terminated.
+ */
+function molr_cymd($v) {
+    $n = (int)$v;
+    if ($n <= 0) return '';
+    $cent = intdiv($n, 1000000);
+    $rest = $n % 1000000;
+    $y    = ($cent >= 1 ? 2000 : 1900) + intdiv($rest, 10000);
+    $m    = intdiv($rest % 10000, 100);
+    $d    = $rest % 100;
+    if ($m < 1 || $m > 12 || $d < 1 || $d > 31) return '';
+    return sprintf('%02d/%02d/%04d', $m, $d, $y);
+}
+
+// ── DB connection ─────────────────────────────────────────────────────────────
+$conn   = $i5Connect->getConnection();
+$rows   = array();
+$sqlErr = '';
+
+// ── HREMPL column catalog ─────────────────────────────────────────────────────
+// Read the real column list/types from the catalog rather than assuming them,
+// so the EMTRDT test and the name expression below are built from actual state.
+$hremplCols = array();
+$colStmt = db2_exec($conn,
+    "SELECT TRIM(COLUMN_NAME) AS COLUMN_NAME, TRIM(DATA_TYPE) AS DATA_TYPE
+       FROM QSYS2.SYSCOLUMNS
+      WHERE TABLE_SCHEMA = 'SGHDSDATA' AND TABLE_NAME = 'HREMPL'",
+    array('cursor' => DB2_SCROLLABLE));
+if ($colStmt) {
+    while ($c = db2_fetch_assoc($colStmt)) {
+        $hremplCols[strtoupper(trim((string)$c['COLUMN_NAME']))] =
+            strtoupper(trim((string)$c['DATA_TYPE']));
+    }
+    db2_free_stmt($colStmt);
+}
+
+// Employee name = EMFNAM <space> EMLNAM (falls back to EMRNAM if not present)
+if (isset($hremplCols['EMFNAM']) && isset($hremplCols['EMLNAM'])) {
+    $nameExpr = "TRIM(TRIM(T04.EMFNAM) CONCAT ' ' CONCAT TRIM(T04.EMLNAM))";
+} else {
+    $nameExpr = "TRIM(T04.EMRNAM)";
+}
+
+// Terminated employees: EMTRDT holds a termination date. Keep only rows whose
+// employee has EMTRDT = 0 or NULL (NULL also covers labor rows with no HREMPL
+// match, which the LEFT JOIN must not drop). EMEMPL is NOT unique in HREMPL —
+// 11 numbers are reused across old and new hires — so this filter is also what
+// keeps the LEFT JOIN from fanning out and double-counting hours.
+//
+// With $includeTerm on, anyone terminated ON OR AFTER the From Date is let back
+// in — they were still on the payroll for part of the selected window, so their
+// hours belong in it. This tracks the range instead of the calendar, so it never
+// goes stale at year end.
+//
+// EMTRDT is CYMD (century digit + YYMMDD), which sorts correctly as a plain
+// integer: a 19xx date is 6 digits / century 0 and a 20xx date is 7 digits /
+// century 1, so ">=" needs no special-casing for the four pre-2000 dates on file.
+$sy = (int)substr($startDate, 0, 4);
+$sm = (int)substr($startDate, 5, 2);
+$sd = (int)substr($startDate, 8, 2);
+$termFromCymd = ($sy >= 2000 ? 1000000 : 0) + ($sy % 100) * 10000 + $sm * 100 + $sd;
+
+if (!isset($hremplCols['EMTRDT'])) {
+    $activeEmpPred = '';
+    $termSelExpr   = '0';
+    $empPickOrder  = "E.EMEMPL";
+} elseif ($hremplCols['EMTRDT'] === 'DATE' || $hremplCols['EMTRDT'] === 'TIMESTAMP') {
+    $safeStartD    = molr_esc($startDate);
+    $activeEmpPred = $includeTerm
+        ? "(T04.EMTRDT IS NULL OR T04.EMTRDT >= DATE('$safeStartD'))"
+        : "T04.EMTRDT IS NULL";
+    $termSelExpr   = "T04.EMTRDT";
+    $empPickOrder  = "CASE WHEN E.EMTRDT IS NULL THEN 0 ELSE 1 END, E.EMTRDT DESC";
+} else {
+    $activeEmpPred = $includeTerm
+        ? "(T04.EMTRDT IS NULL OR T04.EMTRDT = 0 OR T04.EMTRDT >= $termFromCymd)"
+        : "(T04.EMTRDT IS NULL OR T04.EMTRDT = 0)";
+    $termSelExpr   = "COALESCE(T04.EMTRDT, 0)";
+    $empPickOrder  = "CASE WHEN E.EMTRDT = 0 THEN 0 ELSE 1 END, E.EMTRDT DESC";
+}
+
+// ── One HREMPL row per employee number ────────────────────────────────────────
+// EMEMPL is NOT unique: 11 numbers are reused across an old and a new hire (and
+// 41782 is stored twice outright), so joining HREMPL raw multiplies labor rows
+// and inflates every total. Measured 2026-08-13: a From Date of 2010-01-01 gave
+// 411,025 joined rows against 410,478 real ones, 169,561.81 hours instead of
+// 166,194.73. Collapsing to one row per number — the active row if there is one,
+// otherwise the most recent termination — makes the join 1:1 at any From Date.
+$empCte = "
+    EMP1 AS (
+        SELECT * FROM (
+            SELECT E.*,
+                   ROW_NUMBER() OVER (PARTITION BY E.EMEMPL
+                                      ORDER BY $empPickOrder) AS MOLR_RN
+              FROM SGHDSDATA.HREMPL E
+        ) Z
+        WHERE MOLR_RN = 1
+    )";
 
 // ── Build WHERE ───────────────────────────────────────────────────────────────
-$safeDate   = molr_esc($filterDate);
-$whereParts = array("T01.LDDATE = DATE('$safeDate')");
+$safeStart  = molr_esc($startDate);
+$safeEnd    = molr_esc($endDate);
+$whereParts = array("T01.LDDATE BETWEEN DATE('$safeStart') AND DATE('$safeEnd')");
 
+if ($activeEmpPred !== '') {
+    $whereParts[] = $activeEmpPred;
+}
+if (!$includeInd) {
+    $whereParts[] = "RTRIM(T01.LDWC) <> '" . molr_esc(MOLR_INDIRECT_WC) . "'";
+}
 if ($filterEName !== '') {
     $safe = molr_esc($filterEName);
-    $whereParts[] = "TRIM(T04.EMRNAM) = '$safe'";
+    $whereParts[] = "$nameExpr = '$safe'";
 }
 if ($filterOrd !== '') {
     $safe = molr_esc($filterOrd);
@@ -77,12 +228,30 @@ if ($filterWc !== '') {
 $where = implode(' AND ', $whereParts);
 
 // ── Main SQL (CTE) ────────────────────────────────────────────────────────────
-$sql = "
-    WITH BASE AS (
+// HDMLDM holds ~525k rows going back to 2010, so an early From Date can select
+// far more than a browser can render. The detail grid is capped at MOLR_MAX_ROWS
+// and the totals come from a separate GROUP BY that is never capped — so the
+// TOTALS lines stay correct even when the visible detail is trimmed.
+define('MOLR_MAX_ROWS', 20000);
+
+// EARNED hours = what the standard says the job should have taken. Setup rows
+// are measured against LDSUHR, everything else against the computed STDHRS.
+// Variance and efficiency are both derived from it so they can never disagree:
+//   VARIANCE   = EARNED - WORKED   (negative = over standard = bad)
+//   EFFICIENCY = EARNED / WORKED   (100% = exactly on standard)
+$earnExpr = "CASE WHEN LDLBTY='S' THEN LDSUHR ELSE STDHRS END";
+$varExpr  = "(($earnExpr) - LDWHRS)";
+$vcExpr   = "CASE WHEN LDLBTY='S' THEN (LDSUHR - LDWHRS) * LDSSR
+                  ELSE (STDHRS - LDWHRS) * LDSLR END";
+
+$baseCte = "
+    WITH $empCte,
+    BASE AS (
         SELECT
             T01.LDDATE,
             T01.LDEMP,
-            TRIM(T04.EMRNAM)  AS EMRNAM,
+            $nameExpr         AS EMPNAME,
+            $termSelExpr      AS EMTRDT,
             TRIM(T01.LDORD)   AS LDORD,
             TRIM(T03.WCDEPT)  AS WCDEPT,
             TRIM(T05.EANAME)  AS EANAME,
@@ -126,28 +295,47 @@ $sql = "
             ON  T01.LDWC   = T03.WCWC
             AND T01.LDDEPT = T03.WCDEPT
             AND T01.LDPLT  = T03.WCPLT
-        LEFT JOIN SGHDSDATA.HREMPL T04
+        LEFT JOIN EMP1 T04
             ON T01.LDEMP = T04.EMEMPL
         LEFT JOIN SGHDSDATA.PREXAC T05
             ON TRIM(T03.WCDEPT) = TRIM(T05.EADEPT)
         WHERE $where
-    )
+    )";
+
+// Detail rows. $sql is uncapped and feeds the Excel export (Excel can take the
+// full set); $sqlDetail is the capped copy the HTML grid uses.
+$detailSelect = "
     SELECT
-        LDDATE, LDEMP, EMRNAM, LDORD, WCDEPT, EANAME, LDWC, WCDESC,
+        LDDATE, LDEMP, EMPNAME, EMTRDT, LDORD, WCDEPT, EANAME, LDWC, WCDESC,
         LDSEQN, LDMPON, LDPN, LDLBTY, LABORDEF,
         CALCSUHRS, MSDHRSCODE, STDHRS, LDWHRS,
-        CASE WHEN LDLBTY='S' THEN LDSUHR - LDWHRS
-             ELSE STDHRS - LDWHRS END                        AS VARIANCE,
+        $varExpr AS VARIANCE,
+        $earnExpr AS EARNEDHRS,
         OHCQTY, LDQTYC, LDRSCR,
-        CASE WHEN LDLBTY='S' THEN (LDSUHR - LDWHRS) * LDSSR
-             ELSE (STDHRS - LDWHRS) * LDSLR END             AS VARCOST
+        $vcExpr AS VARCOST
     FROM BASE
-    ORDER BY LDORD ASC, LDSEQN ASC, LDEMP ASC
-";
+    ORDER BY LDDATE ASC, LDORD ASC, LDSEQN ASC, LDEMP ASC";
 
-$conn   = $i5Connect->getConnection();
-$rows   = array();
-$sqlErr = '';
+$sql       = $baseCte . $detailSelect;
+$sqlDetail = $sql . "\n    FETCH FIRST " . (MOLR_MAX_ROWS + 1) . " ROWS ONLY";
+
+// Per-date totals over the FULL filtered set (never capped).
+$sqlTotals = $baseCte . "
+    SELECT
+        LDDATE,
+        SUM(CALCSUHRS) AS CALCSUHRS,
+        SUM(STDHRS)    AS STDHRS,
+        SUM(LDWHRS)    AS LDWHRS,
+        SUM($varExpr)  AS VARIANCE,
+        SUM($earnExpr) AS EARNEDHRS,
+        SUM(OHCQTY)    AS OHCQTY,
+        SUM(LDQTYC)    AS LDQTYC,
+        SUM(LDRSCR)    AS LDRSCR,
+        SUM($vcExpr)   AS VARCOST,
+        COUNT(*)       AS NROWS
+    FROM BASE
+    GROUP BY LDDATE
+    ORDER BY LDDATE ASC";
 
 // ── Work-center dropdown options ──────────────────────────────────────────────
 $wcOptions = array();
@@ -186,22 +374,51 @@ if ($deptStmt) {
 }
 
 // ── Employee dropdown options (number + name) ────────────────────────────────
-$empOptions = array();
-$empSql = "SELECT DISTINCT T01.LDEMP AS LDEMP, TRIM(T04.EMRNAM) AS EMRNAM
+$empOptions   = array();
+// Same active/terminated rule as the grid, so the picker matches what's shown.
+$empActiveSql = ($activeEmpPred !== '') ? " AND $activeEmpPred" : '';
+$empSql = "WITH $empCte
+           SELECT DISTINCT T01.LDEMP AS LDEMP, $nameExpr AS EMPNAME
            FROM SGHDSDATA.HDMLDM T01
-           LEFT JOIN SGHDSDATA.HREMPL T04
+           LEFT JOIN EMP1 T04
                ON T01.LDEMP = T04.EMEMPL
-           WHERE T01.LDEMP > 0
-           ORDER BY EMRNAM ASC, LDEMP ASC";
+           WHERE T01.LDEMP > 0$empActiveSql
+           ORDER BY EMPNAME ASC, LDEMP ASC";
 $empStmt = db2_exec($conn, $empSql, array('cursor' => DB2_SCROLLABLE));
 if ($empStmt) {
     while ($e = db2_fetch_assoc($empStmt)) {
         $empOptions[] = array(
             'num'  => (int)$e['LDEMP'],
-            'name' => trim((string)$e['EMRNAM']),
+            'name' => trim((string)$e['EMPNAME']),
         );
     }
     db2_free_stmt($empStmt);
+}
+
+// ── Totals helpers ────────────────────────────────────────────────────────────
+function molr_new_tot() {
+    return array(
+        'CALCSUHRS' => 0.0,
+        'STDHRS'    => 0.0,
+        'LDWHRS'    => 0.0,
+        'VARIANCE'  => 0.0,
+        'EARNEDHRS' => 0.0,
+        'OHCQTY'    => 0,
+        'LDQTYC'    => 0,
+        'LDRSCR'    => 0,
+        'VARCOST'   => 0.0,
+    );
+}
+function molr_add_tot(&$t, $r) {
+    $t['CALCSUHRS'] += (float)$r['CALCSUHRS'];
+    $t['STDHRS']    += (float)$r['STDHRS'];
+    $t['LDWHRS']    += (float)$r['LDWHRS'];
+    $t['VARIANCE']  += (float)$r['VARIANCE'];
+    $t['EARNEDHRS'] += (float)$r['EARNEDHRS'];
+    $t['OHCQTY']    += (int)$r['OHCQTY'];
+    $t['LDQTYC']    += (int)$r['LDQTYC'];
+    $t['LDRSCR']    += (int)$r['LDRSCR'];
+    $t['VARCOST']   += (float)$r['VARCOST'];
 }
 
 // ── CSV / Excel export ────────────────────────────────────────────────────────
@@ -216,17 +433,56 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         . date('Ymd_His') . '.csv"');
     $out = fopen('php://output', 'w');
     fputcsv($out, array(
-        'Date', 'Emp #', 'Emp Name', 'MO #', 'Dept #', 'Dept Name', 'Work Ctr #', 'WC Description',
+        'Date', 'Emp #', 'Emp Name', 'Term Date', 'MO #', 'Dept #', 'Dept Name', 'Work Ctr #', 'WC Description',
         'Seq', 'Std Crew Sz', 'Part #', 'Labor Typ', 'Labor Definition',
         'Std Setup Hrs', 'Hrs Ref', 'Direct Std Hrs', 'Hrs Worked',
-        'Variance Hrs', 'Curr Ord Qty', 'Qty Completed', 'Qty Scrapped',
+        'Variance Hrs', 'Efficiency %', 'Curr Ord Qty', 'Qty Completed', 'Qty Scrapped',
         'Labor Var Cost',
     ));
+
+    // Emits a TOTALS line in the same 24-column shape as the data rows.
+    $csvTot = function ($out, $label, $t) {
+        $pct = molr_eff($t['EARNEDHRS'], $t['LDWHRS']);
+        fputcsv($out, array(
+            $label, '', '', '', '', '', '', '', '', '', '', '', '', '',
+            number_format((float)$t['CALCSUHRS'], 2, '.', ''),
+            '',
+            number_format((float)$t['STDHRS'],   2, '.', ''),
+            number_format((float)$t['LDWHRS'],   2, '.', ''),
+            number_format((float)$t['VARIANCE'], 2, '.', ''),
+            ($pct === null ? '' : number_format($pct, 1, '.', '')),
+            (int)$t['OHCQTY'],
+            (int)$t['LDQTYC'],
+            (int)$t['LDRSCR'],
+            number_format((float)$t['VARCOST'],  2, '.', ''),
+        ));
+    };
+
+    // Per-date totals are computed up front so each day's TOTALS line can lead
+    // its rows, matching the on-screen layout.
+    $grand   = molr_new_tot();
+    $csvDayT = array();
     foreach ($rows as $r) {
+        $d = trim((string)$r['LDDATE']);
+        if (!isset($csvDayT[$d])) { $csvDayT[$d] = molr_new_tot(); }
+        molr_add_tot($csvDayT[$d], $r);
+        molr_add_tot($grand, $r);
+    }
+    if (!empty($rows)) { $csvTot($out, 'GRAND TOTALS', $grand); }
+
+    $prevDate = null;
+    foreach ($rows as $r) {
+        $thisDate = trim((string)$r['LDDATE']);
+        if ($thisDate !== $prevDate) {
+            $csvTot($out, 'TOTALS ' . molr_date($thisDate), $csvDayT[$thisDate]);
+            $prevDate = $thisDate;
+        }
+        $rowPct = molr_eff($r['EARNEDHRS'], $r['LDWHRS']);
         fputcsv($out, array(
             molr_date($r['LDDATE']),
             (int)$r['LDEMP'],
-            trim((string)$r['EMRNAM']),
+            trim((string)$r['EMPNAME']),
+            molr_cymd($r['EMTRDT']),
             trim((string)$r['LDORD']),
             trim((string)$r['WCDEPT']),
             trim((string)$r['EANAME']),
@@ -242,6 +498,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             number_format((float)$r['STDHRS'],    2, '.', ''),
             number_format((float)$r['LDWHRS'],    2, '.', ''),
             number_format((float)$r['VARIANCE'],  2, '.', ''),
+            ($rowPct === null ? '' : number_format($rowPct, 1, '.', '')),
             (int)$r['OHCQTY'],
             (int)$r['LDQTYC'],
             (int)$r['LDRSCR'],
@@ -253,38 +510,38 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 }
 
 // ── Normal page load ──────────────────────────────────────────────────────────
-$stmt = db2_exec($conn, $sql, array('cursor' => DB2_SCROLLABLE));
+$stmt = db2_exec($conn, $sqlDetail, array('cursor' => DB2_SCROLLABLE));
 if ($stmt) {
     while ($r = db2_fetch_assoc($stmt)) { $rows[] = $r; }
     db2_free_stmt($stmt);
 } else {
     $sqlErr = db2_stmt_errormsg();
 }
+
+// One row over the cap means the grid is trimmed; drop it and flag it.
+$truncated = (count($rows) > MOLR_MAX_ROWS);
+if ($truncated) { $rows = array_slice($rows, 0, MOLR_MAX_ROWS); }
 $rowCount = count($rows);
 
-// ── Grand totals ──────────────────────────────────────────────────────────────
-$tot = array(
-    'CALCSUHRS' => 0.0,
-    'STDHRS'    => 0.0,
-    'LDWHRS'    => 0.0,
-    'VARIANCE'  => 0.0,
-    'OHCQTY'    => 0,
-    'LDQTYC'    => 0,
-    'LDRSCR'    => 0,
-    'VARCOST'   => 0.0,
-);
-foreach ($rows as $r) {
-    $tot['CALCSUHRS'] += (float)$r['CALCSUHRS'];
-    $tot['STDHRS']    += (float)$r['STDHRS'];
-    $tot['LDWHRS']    += (float)$r['LDWHRS'];
-    $tot['VARIANCE']  += (float)$r['VARIANCE'];
-    $tot['OHCQTY']    += (int)$r['OHCQTY'];
-    $tot['LDQTYC']    += (int)$r['LDQTYC'];
-    $tot['LDRSCR']    += (int)$r['LDRSCR'];
-    $tot['VARCOST']   += (float)$r['VARCOST'];
+// ── Grand totals + per-date subtotals (from the uncapped GROUP BY) ────────────
+$tot         = molr_new_tot();
+$dateTots    = array();   // 'YYYY-MM-DD' => totals array, in date order
+$dateRowCnt  = array();   // 'YYYY-MM-DD' => rows behind that date's totals
+$totalRowCnt = 0;
+$totStmt = db2_exec($conn, $sqlTotals, array('cursor' => DB2_SCROLLABLE));
+if ($totStmt) {
+    while ($t = db2_fetch_assoc($totStmt)) {
+        $d = trim((string)$t['LDDATE']);
+        $dateTots[$d]   = molr_new_tot();
+        molr_add_tot($dateTots[$d], $t);
+        $dateRowCnt[$d] = (int)$t['NROWS'];
+        $totalRowCnt   += (int)$t['NROWS'];
+        molr_add_tot($tot, $t);
+    }
+    db2_free_stmt($totStmt);
+} elseif (!$sqlErr) {
+    $sqlErr = db2_stmt_errormsg();
 }
-$totVarClass = $tot['VARIANCE'] > 0 ? ' unfav' : ($tot['VARIANCE'] < 0 ? ' fav' : '');
-$totVcClass  = $tot['VARCOST']  > 0 ? ' unfav' : ($tot['VARCOST']  < 0 ? ' fav' : '');
 
 $eiBase = 'https://portal.screen-graphics.com:5601';
 
@@ -292,12 +549,70 @@ $exportParams           = $_GET;
 $exportParams['export'] = 'csv';
 $exportURL              = '?' . http_build_query($exportParams);
 
+// Toggle link for the "include terminated this year" button — preserves every
+// other filter currently in the URL.
+$termParams = $_GET;
+unset($termParams['export']);
+$termParams['incterm'] = $includeTerm ? '0' : '1';
+$termToggleURL         = '?' . http_build_query($termParams);
+
+// Same for the indirect (WC 99999) toggle.
+$indParams = $_GET;
+unset($indParams['export']);
+$indParams['incind'] = $includeInd ? '0' : '1';
+$indToggleURL        = '?' . http_build_query($indParams);
+
 $jsRows = array();
 foreach ($rows as $r) {
     $jsRows[] = array('moNum' => trim((string)$r['LDORD']));
 }
 
-$displayDate = molr_date($filterDate);
+$displayDate    = molr_date($startDate);
+$displayEndDate = molr_date($endDate);
+$displayRange   = ($startDate === $endDate)
+    ? $displayDate
+    : $displayDate . ' &ndash; ' . $displayEndDate;
+
+/**
+ * Renders one 23-column TOTALS row.
+ * Sign convention: VARIANCE = earned - worked, so a NEGATIVE number means they
+ * went over standard and is shown red; positive (under standard) is green.
+ * $cls   extra class on the <tr> ('' = grand totals, 'date-totals' = per-date)
+ * $label text for the left-hand label cell
+ */
+function molr_totals_row($label, $t, $cls = '', $dgroup = '') {
+    $varClass = $t['VARIANCE'] < 0 ? ' unfav' : ($t['VARIANCE'] > 0 ? ' fav' : '');
+    $vcClass  = $t['VARCOST']  < 0 ? ' unfav' : ($t['VARCOST']  > 0 ? ' fav' : '');
+    $pct      = molr_eff($t['EARNEDHRS'], $t['LDWHRS']);
+
+    // Headline efficiency: bar + number, so the day reads at a glance.
+    $effCell = '<td class="R' . molr_eff_class($pct) . '">';
+    if ($pct === null) {
+        $effCell .= '&mdash;';
+    } else {
+        $w = max(0, min(100, $pct));   // bar caps at 100% so it stays readable
+        $effCell .= '<div class="effbar"><span style="width:' . number_format($w, 1) . '%"></span></div>'
+                 .  '<b>' . number_format($pct, 1) . '%</b>';
+    }
+    $effCell .= '</td>';
+
+    echo '<tr class="totals-row' . ($cls !== '' ? ' ' . $cls : '') . '"'
+       . ($cls === '' ? ' data-totals="1"' : ' data-subtotal="1"')
+       . ($dgroup !== '' ? ' data-dgroup="' . molr_h($dgroup) . '"' : '') . '>'
+       . '<td class="C" colspan="3">' . $label . '</td>'
+       . str_repeat('<td></td>', 10)
+       . '<td class="R">' . molr_dec($t['CALCSUHRS']) . '</td>'
+       . '<td></td>'
+       . '<td class="R">' . molr_dec($t['STDHRS'])   . '</td>'
+       . '<td class="R">' . molr_dec($t['LDWHRS'])   . '</td>'
+       . '<td class="R' . $varClass . '">' . molr_dec($t['VARIANCE']) . '</td>'
+       . $effCell
+       . '<td class="R">' . molr_int($t['OHCQTY'])   . '</td>'
+       . '<td class="R">' . molr_int($t['LDQTYC'])   . '</td>'
+       . '<td class="R">' . molr_int($t['LDRSCR'])   . '</td>'
+       . '<td class="R' . $vcClass . '">' . molr_curr($t['VARCOST']) . '</td>'
+       . '</tr>';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -355,6 +670,24 @@ body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;
               padding: 5px 14px; border-radius: 3px; font-size: 12px;
               font-weight: 700; cursor: pointer; }
 .btn-apply:hover  { background: #002060; }
+/* ── Include-terminated toggle ── */
+.btn-term   { background: #fff; color: #7a5c00; border: 1px solid #d4a017;
+              padding: 4px 11px; border-radius: 3px; font-size: 12px;
+              font-weight: 700; cursor: pointer; text-decoration: none;
+              display: inline-block; white-space: nowrap; }
+.btn-term:hover    { background: #fdf3d8; color: #7a5c00; }
+.btn-term.on       { background: #d4a017; color: #fff; border-color: #a67c00; }
+.btn-term.on:hover { background: #b98d12; color: #fff; }
+
+/* ── Include-indirect (WC 99999) toggle ── */
+.btn-ind    { background: #fff; color: #4a5568; border: 1px solid #8d9bb0;
+              padding: 4px 11px; border-radius: 3px; font-size: 12px;
+              font-weight: 700; cursor: pointer; text-decoration: none;
+              display: inline-block; white-space: nowrap; }
+.btn-ind:hover    { background: #eef1f6; color: #4a5568; }
+.btn-ind.on       { background: #4a5568; color: #fff; border-color: #2d3748; }
+.btn-ind.on:hover { background: #3a4453; color: #fff; }
+
 .btn-clear  { background: #6c7a8d; color: #fff; border: none;
               padding: 5px 10px; border-radius: 3px; font-size: 12px;
               cursor: pointer; text-decoration: none; display: inline-block; }
@@ -396,6 +729,7 @@ col.c-href  { width: 42px; }
 col.c-dsh   { width: 62px; }
 col.c-hw    { width: 62px; }
 col.c-var   { width: 64px; }
+col.c-eff   { width: 62px; }
 col.c-coq   { width: 66px; }
 col.c-qtyc  { width: 66px; }
 col.c-qtys  { width: 60px; }
@@ -419,6 +753,11 @@ tr.totals-row td {
     border-top: 2px solid #2471a3; border-bottom: 2px solid #2471a3;
     padding: 4px 5px; white-space: nowrap; }
 
+/* ── Per-date subtotal row (light blue) ── */
+tr.totals-row.date-totals td {
+    background: #cfe6fa;
+    border-top: 2px solid #6aa8d8; border-bottom: 2px solid #6aa8d8; }
+
 /* ── Data rows ── */
 th.L, td.L { text-align: left; }
 th.R, td.R { text-align: right; }
@@ -430,11 +769,30 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
 
 .mo-link { color: #003087; text-decoration: none; font-weight: 700; }
 .mo-link:hover { text-decoration: underline; color: #0050c0; }
+/* Over standard (negative variance) = unfavourable = red. Under = green. */
 .unfav { color: #cc0000; font-weight: 700; }
 .fav   { color: #177a17; }
+
+/* ── Efficiency ── */
+.eff-good { color: #177a17; font-weight: 700; }
+.eff-warn { color: #b06000; font-weight: 700; }
+.eff-bad  { color: #cc0000; font-weight: 700; }
+.effbar { display: block; height: 4px; width: 100%; background: #ccd6e4;
+          border-radius: 2px; overflow: hidden; margin: 0 0 2px; }
+.effbar span { display: block; height: 100%; border-radius: 2px;
+               background: currentColor; }
+
+/* Employee terminated this year (only visible with the toggle on) */
+td.term-emp { font-style: italic; color: #7a5c00; }
+.term-tag { background: #fdf0cf; border: 1px solid #e0be6a; color: #7a5c00;
+            border-radius: 3px; padding: 0 3px; font-size: 9px;
+            font-style: normal; font-weight: 700; white-space: nowrap; }
 .err   { background: #fdd; color: #900; padding: 8px 12px;
          border-radius: 4px; margin-bottom: 8px;
          font-family: monospace; font-size: 12px; }
+.warn  { background: #fff3cd; color: #856404; border: 1px solid #f0c060;
+         padding: 8px 12px; border-radius: 4px; margin-bottom: 8px;
+         font-size: 12px; line-height: 1.5; }
 .empty { text-align: center; padding: 40px; color: #888; font-size: 14px; }
 
 /* ── Standard refresh bar (matches BookingsDashboard.php) ── */
@@ -478,7 +836,7 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
       <div class="refresh-progress" style="background:rgba(255,255,255,0.18);"><div class="refresh-fill" id="molr-prog" style="width:100%;background:#3B82F6;"></div></div>
       <span>Next refresh in: <strong id="molr-cd">15:00</strong></span>
       <span class="refresh-pill" style="color:#2563EB;">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">As of: <?php echo date('D, M j, Y'); ?></span>
+      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Showing: <?php echo $displayRange; ?><?php if ($includeTerm): ?> &middot; incl. terminated since <?php echo molr_h($displayDate); ?><?php endif; ?><?php echo $includeInd ? ' &middot; incl. INDIRECT' : ' &middot; excl. INDIRECT'; ?></span>
     </div>
     <?php else: ?>
     <div style="background:#2563EB;border-bottom:1px solid #1d4ed8;padding:4px 14px;display:flex;align-items:center;gap:14px;font-size:11px;color:#fff;">
@@ -486,15 +844,19 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
       <span>Auto-refresh paused &ndash; outside M&ndash;F 7:00am&ndash;5:00pm ET. Use Refresh.</span>
       <span style="flex:1"></span>
       <span class="refresh-pill" style="color:#2563EB;">Last refresh: <strong><?php echo date('g:i:s A'); ?></strong></span>
-      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">As of: <?php echo date('D, M j, Y'); ?></span>
+      <span class="refresh-pill" style="background:#fff3cd;border-color:#f0c060;color:#856404;">Showing: <?php echo $displayRange; ?><?php if ($includeTerm): ?> &middot; incl. terminated since <?php echo molr_h($displayDate); ?><?php endif; ?><?php echo $includeInd ? ' &middot; incl. INDIRECT' : ' &middot; excl. INDIRECT'; ?></span>
     </div>
     <?php endif; ?>
     <div class="filter-bar" style="background:#F7F7F7;border-bottom:none;">
   <span class="filter-lbl">Filter:</span>
   <div class="filter-group">
-    <label for="molr-fdate">Date</label>
+    <label for="molr-fdate">From Date</label>
     <input type="date" id="molr-fdate" name="fdate"
-           value="<?php echo molr_h($filterDate); ?>">
+           value="<?php echo molr_h($filterDate); ?>"
+           title="Shows all labor from this date through the current date">
+    <span style="font-size:11px;color:#5a6478;white-space:nowrap;">
+      thru <b style="color:#003087;"><?php echo molr_h($displayEndDate); ?></b>
+    </span>
   </div>
   <div class="filter-group">
     <label for="molr-fename">Emp Name</label>
@@ -562,8 +924,34 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
       <?php endforeach; ?>
     </select>
   </div>
+  <!-- Keeps the toggle alive when one of the other filters auto-submits -->
+  <input type="hidden" name="incterm" value="<?php echo $includeTerm ? '1' : '0'; ?>">
+  <a class="btn-term<?php echo $includeTerm ? ' on' : ''; ?>"
+     href="<?php echo molr_h($termToggleURL); ?>"
+     title="<?php echo $includeTerm
+        ? 'Currently including employees terminated on or after ' . $displayDate
+          . ' — click to show active employees only'
+        : 'Click to also include employees terminated on or after ' . $displayDate; ?>">
+    <?php echo $includeTerm ? '&#10003;' : '&#43;'; ?>
+    Incl. Terminated Since <?php echo molr_h($displayDate); ?>
+  </a>
+  <input type="hidden" name="incind" value="<?php echo $includeInd ? '1' : '0'; ?>">
+  <a class="btn-ind<?php echo $includeInd ? ' on' : ''; ?>"
+     href="<?php echo molr_h($indToggleURL); ?>"
+     title="<?php echo $includeInd
+        ? 'Indirect time (work center ' . MOLR_INDIRECT_WC . ') is included in the rows, totals and efficiency — click to exclude it'
+        : 'Indirect time (work center ' . MOLR_INDIRECT_WC . ') is excluded from the rows, totals and efficiency — click to include it'; ?>">
+    <?php echo $includeInd ? '&#10003;' : '&#43;'; ?>
+    Incl. INDIRECT (WC <?php echo MOLR_INDIRECT_WC; ?>)
+  </a>
   <a class="btn-clear" href="?">Clear</a>
-      <b style="margin-left:auto;white-space:nowrap;font-size:12px;color:#111827;"><?php echo $rowCount; ?>&nbsp;row<?php echo $rowCount !== 1 ? 's' : ''; ?></b>
+      <b style="margin-left:auto;white-space:nowrap;font-size:12px;color:#111827;">
+        <?php if ($truncated): ?>
+          <?php echo number_format($rowCount); ?>&nbsp;of&nbsp;<?php echo number_format($totalRowCnt); ?>&nbsp;rows
+        <?php else: ?>
+          <?php echo number_format($rowCount); ?>&nbsp;row<?php echo $rowCount !== 1 ? 's' : ''; ?>
+        <?php endif; ?>
+      </b>
     </div><!-- /filter-bar -->
   </div><!-- /left column -->
 
@@ -595,6 +983,16 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
 <?php if ($sqlErr): ?>
 <div class="err">Query error: <?php echo molr_h($sqlErr); ?></div>
 <?php endif; ?>
+<?php if ($truncated): ?>
+<div class="warn">
+  Showing the first <b><?php echo number_format(MOLR_MAX_ROWS); ?></b> of
+  <b><?php echo number_format($totalRowCnt); ?></b> labor rows for
+  <?php echo $displayRange; ?>.
+  <b>The TOTALS lines below cover all <?php echo number_format($totalRowCnt); ?> rows</b>,
+  not just the ones displayed. Narrow the date range or add a filter to see every
+  detail row on screen &mdash; or use <b>Export to Excel</b>, which is never trimmed.
+</div>
+<?php endif; ?>
 <div class="tbl-wrap">
 <table id="molr-grid">
   <colgroup>
@@ -603,7 +1001,7 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
     <col class="c-seq"><col class="c-crew"><col class="c-part">
     <col class="c-ltyp"><col class="c-ldef">
     <col class="c-ssu"><col class="c-href"><col class="c-dsh">
-    <col class="c-hw"><col class="c-var">
+    <col class="c-hw"><col class="c-var"><col class="c-eff">
     <col class="c-coq"><col class="c-qtyc"><col class="c-qtys">
     <col class="c-vc">
   </colgroup>
@@ -626,7 +1024,8 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
       <th class="C">Hrs<br>Ref</th>
       <th class="R">Direct<br>Std Hrs</th>
       <th class="R">Hrs<br>Worked</th>
-      <th class="R">Variance<br>Hrs</th>
+      <th class="R" title="Earned (standard) hours minus hours worked. Negative = over standard.">Variance<br>Hrs</th>
+      <th class="R" title="Earned (standard) hours &divide; hours worked. 100% = exactly on standard.">Effic<br>%</th>
       <th class="R">Curr<br>Ord Qty</th>
       <th class="R">Qty<br>Complt</th>
       <th class="R">Qty<br>Scrpd</th>
@@ -636,26 +1035,14 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
   <tbody>
 
 <?php if (!empty($rows)): ?>
-  <!-- Grand totals row -->
-  <tr class="totals-row" data-totals="1">
-    <td class="C" colspan="3">TOTALS</td>
-    <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-    <td></td><td></td><td class="R"><?php echo molr_dec($tot['CALCSUHRS']); ?></td>
-    <td></td>
-    <td class="R"><?php echo molr_dec($tot['STDHRS']); ?></td>
-    <td class="R"><?php echo molr_dec($tot['LDWHRS']); ?></td>
-    <td class="R<?php echo $totVarClass; ?>"><?php echo molr_dec($tot['VARIANCE']); ?></td>
-    <td class="R"><?php echo molr_int($tot['OHCQTY']); ?></td>
-    <td class="R"><?php echo molr_int($tot['LDQTYC']); ?></td>
-    <td class="R"><?php echo molr_int($tot['LDRSCR']); ?></td>
-    <td class="R<?php echo $totVcClass; ?>"><?php echo molr_curr($tot['VARCOST']); ?></td>
-  </tr>
+  <!-- Grand totals row (pinned at the top) -->
+  <?php molr_totals_row('TOTALS &mdash; ALL DATES', $tot); ?>
 <?php endif; ?>
 
 <?php if (empty($rows) && !$sqlErr): ?>
   <tr>
-    <td colspan="22" class="empty">
-      No labor records found for <?php echo molr_h($displayDate); ?>
+    <td colspan="23" class="empty">
+      No labor records found for <?php echo $displayRange; ?>
       <?php if ($filterEName !== '' || $filterOrd !== '' || $filterDept !== '' || $filterDName !== '' || $filterWc !== ''): ?>
         with the current filter
       <?php endif; ?>.
@@ -663,21 +1050,38 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
   </tr>
 <?php endif; ?>
 
-<?php foreach ($rows as $idx => $r):
-    $dtRaw    = (string)$r['LDDATE'];
+<?php
+$prevDate = null;
+foreach ($rows as $idx => $r):
+    $dtRaw    = trim((string)$r['LDDATE']);
     $variance = (float)$r['VARIANCE'];
     $varcost  = (float)$r['VARCOST'];
-    $varClass = $variance > 0 ? ' unfav' : ($variance < 0 ? ' fav' : '');
-    $vcClass  = $varcost  > 0 ? ' unfav' : ($varcost  < 0 ? ' fav' : '');
+    // Negative variance = over standard = unfavourable = red.
+    $varClass = $variance < 0 ? ' unfav' : ($variance > 0 ? ' fav' : '');
+    $vcClass  = $varcost  < 0 ? ' unfav' : ($varcost  > 0 ? ' fav' : '');
+    $rowPct   = molr_eff($r['EARNEDHRS'], $r['LDWHRS']);
+
+    // Each day opens with its light-blue TOTALS line
+    if ($dtRaw !== $prevDate) {
+        molr_totals_row('TOTALS &mdash; ' . molr_h(molr_date($dtRaw)),
+                        $dateTots[$dtRaw], 'date-totals', $dtRaw);
+        $prevDate = $dtRaw;
+    }
 ?>
-  <tr>
+  <tr data-dgroup="<?php echo molr_h($dtRaw); ?>">
     <td class="C" data-val="<?php echo molr_h($dtRaw); ?>">
       <?php echo molr_h(molr_date($dtRaw)); ?>
     </td>
     <td class="R" data-val="<?php echo (int)$r['LDEMP']; ?>">
       <?php echo (int)$r['LDEMP']; ?>
     </td>
-    <td class="L"><?php echo molr_h(trim((string)$r['EMRNAM'])); ?></td>
+    <?php $termOn = molr_cymd($r['EMTRDT']); ?>
+    <td class="L<?php echo $termOn !== '' ? ' term-emp' : ''; ?>"
+        <?php if ($termOn !== ''): ?>title="Terminated <?php echo molr_h($termOn); ?>"<?php endif; ?>>
+      <?php echo molr_h(trim((string)$r['EMPNAME'])); ?><?php
+        if ($termOn !== '') { echo ' <span class="term-tag">T ' . molr_h($termOn) . '</span>'; }
+      ?>
+    </td>
     <td class="L">
       <a class="mo-link" href="javascript:molrOpenMO(<?php echo $idx; ?>)">
         <?php echo molr_h(trim((string)$r['LDORD'])); ?>
@@ -715,6 +1119,11 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
     </td>
     <td class="R<?php echo $varClass; ?>" data-val="<?php echo $variance; ?>">
       <?php echo molr_dec($variance); ?>
+    </td>
+    <?php // No data-val when blank, so the em dash sorts last instead of as zero ?>
+    <td class="R<?php echo molr_eff_class($rowPct); ?>"
+        <?php if ($rowPct !== null): ?>data-val="<?php echo round($rowPct, 1); ?>"<?php endif; ?>>
+      <?php echo molr_eff_txt($rowPct); ?>
     </td>
     <td class="R" data-val="<?php echo (int)$r['OHCQTY']; ?>">
       <?php echo molr_int($r['OHCQTY']); ?>
@@ -773,33 +1182,56 @@ function molrOpenMO(idx) {
         return isNaN(n) ? t.toLowerCase() : n;
     }
 
+    function cmp(a, b, col) {
+        var va = cellVal(a.cells[col]);
+        var vb = cellVal(b.cells[col]);
+        if (va === null && vb === null) return 0;
+        if (va === null) return  1;
+        if (vb === null) return -1;
+        if (va < vb) return -state.dir;
+        if (va > vb) return  state.dir;
+        return 0;
+    }
+
+    // Rows are grouped by date, each group led by its own TOTALS line.
+    // Sorting re-orders rows *within* each date group so the subtotals stay
+    // correct; sorting on the Date column re-orders the groups themselves.
     function sortBy(col) {
         state.dir = (state.col === col) ? -state.dir : 1;
         state.col = col;
 
         var all    = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
         var totRow = null;
-        var data   = [];
+        var groups = [];        // [{key, rows:[], sub:tr}]
+        var byKey  = {};
         all.forEach(function (tr) {
-            if (tr.getAttribute('data-totals') === '1') { totRow = tr; }
-            else { data.push(tr); }
+            if (tr.getAttribute('data-totals') === '1') { totRow = tr; return; }
+            var key = tr.getAttribute('data-dgroup');
+            if (key === null) return;               // e.g. the "no rows" message
+            if (!byKey[key]) { byKey[key] = { key: key, rows: [], sub: null }; groups.push(byKey[key]); }
+            if (tr.getAttribute('data-subtotal') === '1') { byKey[key].sub = tr; }
+            else { byKey[key].rows.push(tr); }
         });
 
-        data.sort(function (a, b) {
-            var va = cellVal(a.cells[col]);
-            var vb = cellVal(b.cells[col]);
-            if (va === null && vb === null) return 0;
-            if (va === null) return  1;
-            if (vb === null) return -1;
-            if (va < vb) return -state.dir;
-            if (va > vb) return  state.dir;
-            return 0;
-        });
+        if (col === 0) {
+            // Date column: order the groups, leave each group's rows alone
+            groups.sort(function (a, b) {
+                if (a.key < b.key) return -state.dir;
+                if (a.key > b.key) return  state.dir;
+                return 0;
+            });
+        } else {
+            groups.forEach(function (g) {
+                g.rows.sort(function (a, b) { return cmp(a, b, col); });
+            });
+        }
 
-        // Re-insert: totals first, then sorted data
         if (totRow) { tbody.appendChild(totRow); }
-        data.forEach(function (tr) { tbody.appendChild(tr); });
-        // Move totals to top
+        groups.forEach(function (g) {
+            if (g.sub) { tbody.appendChild(g.sub); }   // day TOTALS leads its rows
+            g.rows.forEach(function (tr) { tbody.appendChild(tr); });
+        });
+        // Keep the grand totals pinned at the top
         if (totRow) { tbody.insertBefore(totRow, tbody.firstChild); }
 
         for (var i = 0; i < ths.length; i++) {
