@@ -782,6 +782,10 @@ tr:hover:not(.totals-row) td { background: #eaf0fb; }
 .effbar span { display: block; height: 100%; border-radius: 2px;
                background: currentColor; }
 
+/* No hours worked on the transaction = yellow row */
+tr.zero-hrs:not(.totals-row) td        { background: #fff3a8; }
+tr.zero-hrs:not(.totals-row):hover td  { background: #ffe873; }
+
 /* Employee terminated this year (only visible with the toggle on) */
 td.term-emp { font-style: italic; color: #7a5c00; }
 .term-tag { background: #fdf0cf; border: 1px solid #e0be6a; color: #7a5c00;
@@ -1060,6 +1064,8 @@ foreach ($rows as $idx => $r):
     $varClass = $variance < 0 ? ' unfav' : ($variance > 0 ? ' fav' : '');
     $vcClass  = $varcost  < 0 ? ' unfav' : ($varcost  > 0 ? ' fav' : '');
     $rowPct   = molr_eff($r['EARNEDHRS'], $r['LDWHRS']);
+    // Nothing clocked against the transaction gets flagged yellow
+    $zeroHrs  = (abs((float)$r['LDWHRS']) < 0.005) ? ' class="zero-hrs"' : '';
 
     // Each day opens with its light-blue TOTALS line
     if ($dtRaw !== $prevDate) {
@@ -1068,7 +1074,7 @@ foreach ($rows as $idx => $r):
         $prevDate = $dtRaw;
     }
 ?>
-  <tr data-dgroup="<?php echo molr_h($dtRaw); ?>">
+  <tr data-dgroup="<?php echo molr_h($dtRaw); ?>"<?php echo $zeroHrs; ?>>
     <td class="C" data-val="<?php echo molr_h($dtRaw); ?>">
       <?php echo molr_h(molr_date($dtRaw)); ?>
     </td>
