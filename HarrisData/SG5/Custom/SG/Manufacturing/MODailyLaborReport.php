@@ -31,6 +31,20 @@ $includeTerm = (isset($_GET['incterm']) && $_GET['incterm'] === '1');
 define('MOLR_INDIRECT_WC', '99999');
 $includeInd = (isset($_GET['incind']) && $_GET['incind'] === '1');
 
+// ── Standards scorecard ───────────────────────────────────────────────────────
+// A "job" is one labor transaction — the same unit the grid counts as a row. A
+// job MEETS STANDARD when earned (standard) hours are at least the hours
+// actually worked, i.e. efficiency >= 100%, which is the identical test already
+// behind the Effic % column. The score is
+//        jobs meeting standard / jobs reported to
+// and an employee gets a green light at or above MOLR_STD_THRESHOLD percent.
+//
+// Jobs with no clocked time are NOT in the denominator: a transaction with
+// 0.00 hours worked has no efficiency to measure (molr_eff() returns null for
+// it and the grid paints the row yellow), so counting it as a miss would
+// penalise a data-entry gap as if it were slow work.
+define('MOLR_STD_THRESHOLD', 80.0);
+
 // Date range: the filter date is the START; the range runs through the current
 // date (or through the chosen date if a future date is picked). Plain string
 // comparison is safe here — both sides are zero-padded YYYY-MM-DD.
@@ -93,6 +107,35 @@ function molr_eff_class($pct) {
 function molr_eff_txt($pct) {
     return ($pct === null) ? '&mdash;' : number_format($pct, 1) . '%';
 }
+/** Percent of jobs meeting standard, or null when no jobs were reported to. */
+function molr_std_pct($met, $den) {
+    $d = (int)$den;
+    if ($d <= 0) return null;
+    return (100.0 * (int)$met) / $d;
+}
+/** 'yes' at or above the threshold, 'no' below it, 'none' with nothing to judge. */
+function molr_std_state($pct) {
+    if ($pct === null) return 'none';
+    return ($pct >= MOLR_STD_THRESHOLD) ? 'yes' : 'no';
+}
+/** One light: coloured dot + YES/NO + the ratio behind it. */
+function molr_std_cell($met, $den, $extraCls = '') {
+    $pct   = molr_std_pct($met, $den);
+    $state = molr_std_state($pct);
+    $lbl   = ($state === 'yes') ? 'YES' : (($state === 'no') ? 'NO' : '&mdash;');
+    $sortV = ($pct === null) ? '' : ' data-val="' . round($pct, 2) . '"';
+    $out   = '<td class="C std-cell std-' . $state
+           . ($extraCls !== '' ? ' ' . $extraCls : '') . '"' . $sortV . '>'
+           . '<span class="std-dot"></span><span class="std-lbl">' . $lbl . '</span>';
+    if ($pct === null) {
+        $out .= '<span class="std-sub">no jobs</span>';
+    } else {
+        $out .= '<span class="std-sub">' . number_format($pct, 1) . '% &middot; '
+             .  molr_int($met) . '/' . molr_int($den) . '</span>';
+    }
+    return $out . '</td>';
+}
+
 /**
  * HREMPL.EMTRDT is NUMERIC(7,0) in CYMD form: leading century digit (1 = 20xx,
  * 0 = 19xx) then YYMMDD. 1260730 -> 07/30/2026. 0 = not terminated.
@@ -244,7 +287,7 @@ $varExpr  = "(($earnExpr) - LDWHRS)";
 $vcExpr   = "CASE WHEN LDLBTY='S' THEN (LDSUHR - LDWHRS) * LDSSR
                   ELSE (STDHRS - LDWHRS) * LDSLR END";
 
-$baseCte = "
+$baseCteTmpl = "
     WITH $empCte,
     BASE AS (
         SELECT
@@ -299,8 +342,12 @@ $baseCte = "
             ON T01.LDEMP = T04.EMEMPL
         LEFT JOIN SGHDSDATA.PREXAC T05
             ON TRIM(T03.WCDEPT) = TRIM(T05.EADEPT)
-        WHERE $where
+        WHERE {{WHERE}}
     )";
+
+// The grid/export copy. The scorecard below re-uses the same template with a
+// different date scope, so earned hours can never be computed two ways.
+$baseCte = str_replace('{{WHERE}}', $where, $baseCteTmpl);
 
 // Detail rows. $sql is uncapped and feeds the Excel export (Excel can take the
 // full set); $sqlDetail is the capped copy the HTML grid uses.
@@ -336,6 +383,73 @@ $sqlTotals = $baseCte . "
     FROM BASE
     GROUP BY LDDATE
     ORDER BY LDDATE ASC";
+
+// ── Standards scorecard: period windows + queries ─────────────────────────────
+// The four periods are anchored on the report's THRU date, not on the From
+// Date, so the scorecard always answers "how are they doing right now" no
+// matter how far back the grid's window has been dragged. Every other filter
+// on the page (employee, MO, dept, work center, terminated, INDIRECT) does
+// carry through, so scoping the report to a department scopes the scorecard
+// with it.
+$stdAnchor    = $endDate;
+$stdAnchorTs  = strtotime($stdAnchor);
+$stdDay       = $stdAnchor;
+// Week runs Sunday through Saturday. date('w') is 0 for Sunday.
+$stdWeekStart = date('Y-m-d', strtotime('-' . (int)date('w', $stdAnchorTs) . ' days', $stdAnchorTs));
+$stdWeekEnd   = date('Y-m-d', strtotime('+6 days', strtotime($stdWeekStart)));
+$stdMonStart  = date('Y-m-01', $stdAnchorTs);
+$stdMonEnd    = date('Y-m-t',  $stdAnchorTs);
+$stdYearStart = date('Y-01-01', $stdAnchorTs);
+$stdYearEnd   = date('Y-12-31', $stdAnchorTs);
+
+// Same filters as the grid, but scoped to the whole calendar year — the widest
+// of the four periods. $whereParts[0] is the grid's date predicate by
+// construction, so swapping element 0 keeps every other filter intact.
+$stdWhereParts    = $whereParts;
+$stdWhereParts[0] = "T01.LDDATE BETWEEN DATE('" . molr_esc($stdYearStart) . "')"
+                  . " AND DATE('" . molr_esc($stdYearEnd) . "')";
+$stdCte = str_replace('{{WHERE}}', implode(' AND ', $stdWhereParts), $baseCteTmpl);
+
+// A job counts toward the denominator only if time was clocked against it, and
+// toward the numerator only if it also came in at or under standard.
+$stdDen = "CASE WHEN LDWHRS > 0 THEN 1 ELSE 0 END";
+$stdMet = "CASE WHEN LDWHRS > 0 AND ($earnExpr) >= LDWHRS THEN 1 ELSE 0 END";
+
+/** SUM() pair for one window, e.g. molr_std_sums('D', '2026-08-18', '2026-08-18'). */
+function molr_std_sums($pfx, $from, $to) {
+    global $stdDen, $stdMet;
+    $win = "LDDATE BETWEEN DATE('" . molr_esc($from) . "') AND DATE('" . molr_esc($to) . "')";
+    return "SUM(CASE WHEN $win THEN $stdDen ELSE 0 END) AS {$pfx}_DEN,
+"
+         . "        SUM(CASE WHEN $win THEN $stdMet ELSE 0 END) AS {$pfx}_MET";
+}
+
+$sqlStd = $stdCte . "
+    SELECT
+        LDEMP,
+        MAX(EMPNAME) AS EMPNAME,
+        MAX(EMTRDT)  AS EMTRDT,
+        " . molr_std_sums('D', $stdDay,       $stdDay)       . ",
+        " . molr_std_sums('W', $stdWeekStart, $stdWeekEnd)   . ",
+        " . molr_std_sums('M', $stdMonStart,  $stdMonEnd)    . ",
+        " . molr_std_sums('Y', $stdYearStart, $stdYearEnd)   . "
+    FROM BASE
+    GROUP BY LDEMP
+    HAVING SUM($stdDen) > 0
+    ORDER BY MAX(EMPNAME) ASC, LDEMP ASC";
+
+// Day-by-day strip for the anchor month, so a one-job day is visibly one job
+// rather than a bare red light.
+$sqlStdDays = $stdCte . "
+    SELECT LDEMP, LDDATE,
+           SUM($stdDen) AS DEN,
+           SUM($stdMet) AS MET
+    FROM BASE
+    WHERE LDDATE BETWEEN DATE('" . molr_esc($stdMonStart) . "')
+                     AND DATE('" . molr_esc($stdMonEnd)   . "')
+    GROUP BY LDEMP, LDDATE
+    HAVING SUM($stdDen) > 0
+    ORDER BY LDEMP, LDDATE";
 
 // ── Work-center dropdown options ──────────────────────────────────────────────
 $wcOptions = array();
@@ -542,6 +656,64 @@ if ($totStmt) {
 } elseif (!$sqlErr) {
     $sqlErr = db2_stmt_errormsg();
 }
+
+// ── Standards scorecard data ──────────────────────────────────────────────────
+$stdRows   = array();   // one row per employee, with the four period counts
+$stdByEmp  = array();   // emp # => that row, for the dot beside the grid name
+$stdDays   = array();   // emp # => array of ['d'=>date,'den'=>n,'met'=>n]
+$stdGreen  = array('D' => 0, 'W' => 0, 'M' => 0, 'Y' => 0);
+$stdScored = array('D' => 0, 'W' => 0, 'M' => 0, 'Y' => 0);
+
+$stdStmt = db2_exec($conn, $sqlStd, array('cursor' => DB2_SCROLLABLE));
+if ($stdStmt) {
+    while ($sr = db2_fetch_assoc($stdStmt)) {
+        $emp = (int)$sr['LDEMP'];
+        $row = array(
+            'emp'   => $emp,
+            'name'  => trim((string)$sr['EMPNAME']),
+            'term'  => molr_cymd($sr['EMTRDT']),
+            'D_DEN' => (int)$sr['D_DEN'], 'D_MET' => (int)$sr['D_MET'],
+            'W_DEN' => (int)$sr['W_DEN'], 'W_MET' => (int)$sr['W_MET'],
+            'M_DEN' => (int)$sr['M_DEN'], 'M_MET' => (int)$sr['M_MET'],
+            'Y_DEN' => (int)$sr['Y_DEN'], 'Y_MET' => (int)$sr['Y_MET'],
+        );
+        // Headline counts skip anyone with no jobs in that period, so "3 of 5"
+        // never quietly counts people who were not at work.
+        foreach (array('D', 'W', 'M', 'Y') as $k) {
+            $pct = molr_std_pct($row[$k . '_MET'], $row[$k . '_DEN']);
+            if ($pct === null) continue;
+            $stdScored[$k]++;
+            if ($pct >= MOLR_STD_THRESHOLD) { $stdGreen[$k]++; }
+        }
+        $stdRows[]       = $row;
+        $stdByEmp[$emp]  = $row;
+    }
+    db2_free_stmt($stdStmt);
+} elseif (!$sqlErr) {
+    $sqlErr = db2_stmt_errormsg();
+}
+
+$stdDayStmt = db2_exec($conn, $sqlStdDays, array('cursor' => DB2_SCROLLABLE));
+if ($stdDayStmt) {
+    while ($sd = db2_fetch_assoc($stdDayStmt)) {
+        $emp = (int)$sd['LDEMP'];
+        if (!isset($stdDays[$emp])) { $stdDays[$emp] = array(); }
+        $stdDays[$emp][] = array(
+            'd'   => trim((string)$sd['LDDATE']),
+            'den' => (int)$sd['DEN'],
+            'met' => (int)$sd['MET'],
+        );
+    }
+    db2_free_stmt($stdDayStmt);
+}
+
+// Labels for the four period columns.
+$stdPeriodLbl = array(
+    'D' => array('Day',    molr_date($stdDay)),
+    'W' => array('Week',   molr_date($stdWeekStart) . ' &ndash; ' . molr_date($stdWeekEnd)),
+    'M' => array('Month',  date('F Y', $stdAnchorTs)),
+    'Y' => array('Annual', date('Y', $stdAnchorTs)),
+);
 
 $eiBase = 'https://portal.screen-graphics.com:5601';
 
@@ -799,6 +971,104 @@ td.term-emp { font-style: italic; color: #7a5c00; }
          font-size: 12px; line-height: 1.5; }
 .empty { text-align: center; padding: 40px; color: #888; font-size: 14px; }
 
+/* ── Standards scorecard ── */
+.btn-std   { background: #fff; color: #14532d; border: 1px solid #16A34A;
+             padding: 4px 11px; border-radius: 3px; font-size: 12px;
+             font-weight: 700; cursor: pointer; white-space: nowrap;
+             display: inline-flex; align-items: center; gap: 6px; }
+.btn-std:hover { background: #eafaf0; }
+.btn-std .std-dot { width: 9px; height: 9px; }
+
+/* The light itself. One rule set, used in the overlay and beside grid names. */
+.std-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+           background: #cbd5e1; border: 1px solid #94a3b8; vertical-align: middle;
+           flex-shrink: 0; }
+.std-yes  .std-dot { background: #16A34A; border-color: #12833c;
+                     box-shadow: 0 0 0 2px rgba(22,163,74,.18); }
+.std-no   .std-dot { background: #DC2626; border-color: #b01c1c;
+                     box-shadow: 0 0 0 2px rgba(220,38,38,.18); }
+.std-none .std-dot { background: #cbd5e1; border-color: #94a3b8; box-shadow: none; }
+
+.std-cell { white-space: nowrap; padding: 5px 8px; line-height: 1.25;
+            border-left: 1px solid #e4e8ef; }
+.std-cell .std-lbl { font-weight: 700; font-size: 11px; margin-left: 5px;
+                     letter-spacing: .3px; }
+.std-yes  .std-lbl { color: #12833c; }
+.std-no   .std-lbl { color: #b01c1c; }
+.std-none .std-lbl { color: #94a3b8; }
+.std-cell .std-sub { display: block; font-size: 10px; color: #5a6478;
+                     margin-top: 1px; font-weight: 400; }
+tr.std-row.std-y-no  td.std-name { box-shadow: inset 3px 0 0 #DC2626; }
+tr.std-row.std-y-yes td.std-name { box-shadow: inset 3px 0 0 #16A34A; }
+
+/* Overlay shell */
+.std-ov { position: fixed; inset: 0; background: rgba(15,23,42,.55);
+          display: none; z-index: 9000; padding: 24px;
+          align-items: flex-start; justify-content: center; }
+.std-ov.open { display: flex; }
+.std-panel { background: #fff; border-radius: 6px; width: 100%;
+             max-width: 1180px; max-height: calc(100vh - 48px);
+             display: flex; flex-direction: column; overflow: hidden;
+             box-shadow: 0 18px 50px rgba(0,0,0,.4); }
+.std-head { background: linear-gradient(to right,#111827 0%,#1F2937 30%,#374151 65%,#4B5563 100%);
+            color: #fff; padding: 10px 14px; display: flex; align-items: center; gap: 12px; }
+.std-head h2 { font-size: 16px; margin: 0; font-weight: 700; flex-shrink: 0; }
+.std-head .std-rule { font-size: 11px; color: #cbd5e1; line-height: 1.4; }
+.std-head .std-rule b { color: #6EE7A0; }
+.std-close { margin-left: auto; background: #CC1F20; color: #fff; border: 1px solid #8b1010;
+             border-radius: 4px; padding: 4px 14px; font-size: 12px; font-weight: 700;
+             cursor: pointer; flex-shrink: 0; }
+.std-close:hover { background: #a81718; }
+
+.std-sum { background: #F7F7F7; border-bottom: 2px solid #D1D5DB; padding: 7px 14px;
+           display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; }
+.std-chip { background: #fff; border: 1px solid #c8d0de; border-radius: 12px;
+            padding: 3px 11px; font-size: 11px; white-space: nowrap;
+            display: inline-flex; align-items: center; gap: 6px; }
+.std-chip b { color: #003087; font-size: 12px; }
+.std-chip .std-chip-lbl { color: #5a6478; font-weight: 700; text-transform: uppercase;
+                          letter-spacing: .4px; font-size: 10px; }
+.std-note { color: #5a6478; margin-left: auto; font-size: 11px; }
+
+.std-body { overflow: auto; flex: 1; }
+#molr-std-tbl { border-collapse: collapse; width: 100%; min-width: 900px; }
+#molr-std-tbl thead th { background: #003087; color: #fff; padding: 5px 8px;
+    font-size: 10px; font-weight: 700; line-height: 1.3; position: sticky; top: 0;
+    z-index: 2; cursor: pointer; user-select: none; vertical-align: bottom;
+    border-left: 1px solid #24468f; }
+#molr-std-tbl thead th:hover { background: #002060; }
+#molr-std-tbl thead th .std-th-sub { display: block; font-weight: 400; font-size: 9px;
+    color: #b8cfee; margin-top: 2px; white-space: nowrap; }
+#molr-std-tbl thead th.sort-asc::after  { content: ' B2'; font-size: 8px; }
+#molr-std-tbl thead th.sort-desc::after { content: ' BC'; font-size: 8px; }
+#molr-std-tbl td { padding: 5px 8px; border-bottom: 1px solid #e4e8ef; font-size: 11px;
+                   white-space: nowrap; vertical-align: middle; }
+#molr-std-tbl tbody tr.std-row:nth-child(even) td { background: #f4f7fc; }
+#molr-std-tbl tbody tr.std-row:hover td { background: #eaf0fb; }
+td.std-name { font-weight: 700; color: #1a2233; cursor: pointer; }
+td.std-name:hover { color: #003087; text-decoration: underline; }
+td.std-name .std-caret { color: #94a3b8; font-size: 9px; margin-right: 4px;
+                         display: inline-block; width: 8px; }
+tr.std-row.expanded td.std-name .std-caret { color: #003087; }
+
+/* Day-by-day strip */
+tr.std-strip { display: none; }
+tr.std-strip.open { display: table-row; }
+tr.std-strip td { background: #eef2f9 !important; padding: 8px 12px; white-space: normal; }
+.std-strip-wrap { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-start; }
+.std-chipday { border-radius: 3px; padding: 2px 5px; font-size: 9px; line-height: 1.25;
+               text-align: center; min-width: 46px; border: 1px solid; }
+.std-chipday b { display: block; font-size: 10px; }
+.std-chipday.std-yes { background: #dcfce7; border-color: #86d9a4; color: #12833c; }
+.std-chipday.std-no  { background: #fee2e2; border-color: #f0a0a0; color: #b01c1c; }
+.std-strip-lbl { font-size: 10px; color: #5a6478; margin-bottom: 5px; font-weight: 700;
+                 text-transform: uppercase; letter-spacing: .4px; }
+.std-empty { text-align: center; padding: 34px; color: #888; font-size: 13px; }
+
+/* The light beside each employee name in the main grid */
+.std-tag { display: inline-flex; align-items: center; margin-right: 5px;
+           cursor: pointer; vertical-align: middle; }
+
 /* ── Standard refresh bar (matches BookingsDashboard.php) ── */
 .refresh-bar { background: #e8f0fb; border-bottom: 1px solid #bdd0ee; padding: 4px 14px; display: flex; align-items: center; gap: 14px; font-size: 11px; color: #5a6478; flex-shrink: 0; }
 .refresh-dot { width: 8px; height: 8px; border-radius: 50%; background: #1a7a3c; animation: pulse 2s infinite; flex-shrink: 0; }
@@ -948,6 +1218,22 @@ td.term-emp { font-style: italic; color: #7a5c00; }
     <?php echo $includeInd ? '&#10003;' : '&#43;'; ?>
     Incl. INDIRECT (WC <?php echo MOLR_INDIRECT_WC; ?>)
   </a>
+  <?php
+    // The button carries the headline it opens: how many of the people who
+    // reported jobs today are at or above the threshold. No count is shown when
+    // nobody has reported yet, rather than a misleading "0 of 0".
+    $stdBtnState = ($stdScored['D'] > 0 && $stdGreen['D'] === $stdScored['D']) ? 'std-yes'
+                 : (($stdScored['D'] > 0) ? 'std-no' : 'std-none');
+  ?>
+  <button type="button" class="btn-std <?php echo $stdBtnState; ?>"
+          onclick="molrStdOpen()"
+          title="Per-employee standards scorecard &mdash; a green light needs <?php echo number_format(MOLR_STD_THRESHOLD, 0); ?>% of jobs to meet standard">
+    <span class="std-dot"></span>Standards<?php
+      if ($stdScored['D'] > 0) {
+          echo ' <b>' . (int)$stdGreen['D'] . '/' . (int)$stdScored['D'] . '</b>';
+      }
+    ?>
+  </button>
   <a class="btn-clear" href="?">Clear</a>
       <b style="margin-left:auto;white-space:nowrap;font-size:12px;color:#111827;">
         <?php if ($truncated): ?>
@@ -1081,10 +1367,34 @@ foreach ($rows as $idx => $r):
     <td class="R" data-val="<?php echo (int)$r['LDEMP']; ?>">
       <?php echo (int)$r['LDEMP']; ?>
     </td>
-    <?php $termOn = molr_cymd($r['EMTRDT']); ?>
+    <?php
+      $termOn  = molr_cymd($r['EMTRDT']);
+      // Light beside the name, tinted by this employee's ANNUAL standing, with
+      // all four periods in the tooltip. Clicking it opens the scorecard on
+      // that person rather than making the reader hunt for the row.
+      $eNum    = (int)$r['LDEMP'];
+      $eStd    = isset($stdByEmp[$eNum]) ? $stdByEmp[$eNum] : null;
+      $eTag    = '';
+      if ($eStd !== null) {
+          $bits = array();
+          foreach (array('D','W','M','Y') as $k) {
+              $kp = molr_std_pct($eStd[$k . '_MET'], $eStd[$k . '_DEN']);
+              $bits[] = $stdPeriodLbl[$k][0] . ': '
+                      . ($kp === null ? 'no jobs'
+                         : number_format($kp, 1) . '% (' . (int)$eStd[$k . '_MET']
+                           . '/' . (int)$eStd[$k . '_DEN'] . ')');
+          }
+          $eTag = '<span class="std-tag std-' . molr_std_state(
+                       molr_std_pct($eStd['Y_MET'], $eStd['Y_DEN'])) . '"'
+                . ' onclick="molrStdOpen(' . $eNum . ');return false;"'
+                . ' title="' . molr_h(implode(' · ', $bits)
+                    . ' — green at ' . number_format(MOLR_STD_THRESHOLD, 0) . '%')
+                . '"><span class="std-dot"></span></span>';
+      }
+    ?>
     <td class="L<?php echo $termOn !== '' ? ' term-emp' : ''; ?>"
         <?php if ($termOn !== ''): ?>title="Terminated <?php echo molr_h($termOn); ?>"<?php endif; ?>>
-      <?php echo molr_h(trim((string)$r['EMPNAME'])); ?><?php
+      <?php echo $eTag; ?><?php echo molr_h(trim((string)$r['EMPNAME'])); ?><?php
         if ($termOn !== '') { echo ' <span class="term-tag">T ' . molr_h($termOn) . '</span>'; }
       ?>
     </td>
@@ -1148,6 +1458,117 @@ foreach ($rows as $idx => $r):
   </tbody>
 </table>
 </div>
+</div>
+
+<!-- ── Standards scorecard overlay ─────────────────────────────────────────── -->
+<div class="std-ov" id="molr-std-ov" role="dialog" aria-modal="true"
+     aria-label="Standards scorecard">
+  <div class="std-panel">
+    <div class="std-head">
+      <h2>Standards Scorecard</h2>
+      <div class="std-rule">
+        A job meets standard when earned hours cover the hours worked (efficiency
+        &ge;&nbsp;100%).<br>
+        Score = jobs meeting standard &divide; jobs reported to &mdash;
+        <b>green at <?php echo number_format(MOLR_STD_THRESHOLD, 0); ?>% or above</b>,
+        red below. Jobs with no clocked time are not counted either way.
+      </div>
+      <button type="button" class="std-close" onclick="molrStdClose()">&times; Close</button>
+    </div>
+
+    <div class="std-sum">
+      <?php foreach (array('D','W','M','Y') as $k):
+              $lbl = $stdPeriodLbl[$k]; ?>
+      <span class="std-chip">
+        <span class="std-chip-lbl"><?php echo molr_h($lbl[0]); ?></span>
+        <b><?php echo (int)$stdGreen[$k]; ?>&nbsp;of&nbsp;<?php echo (int)$stdScored[$k]; ?></b>
+        green
+      </span>
+      <?php endforeach; ?>
+      <span class="std-note">
+        <?php echo molr_h($stdPeriodLbl['D'][1]); ?> &middot;
+        week <?php echo $stdPeriodLbl['W'][1]; ?> &middot;
+        <?php echo molr_h($stdPeriodLbl['M'][1]); ?> &middot;
+        <?php echo molr_h($stdPeriodLbl['Y'][1]); ?>
+        <?php echo $includeInd ? ' &middot; incl. INDIRECT' : ' &middot; excl. INDIRECT'; ?>
+      </span>
+    </div>
+
+    <div class="std-body">
+      <?php if (empty($stdRows)): ?>
+        <div class="std-empty">
+          No labor reported in <?php echo molr_h(date('Y', $stdAnchorTs)); ?>
+          for the current filter.
+        </div>
+      <?php else: ?>
+      <table id="molr-std-tbl">
+        <thead>
+          <tr>
+            <th class="R" style="width:58px;">Emp&nbsp;#</th>
+            <th class="L" style="width:190px;">Employee</th>
+            <?php foreach (array('D','W','M','Y') as $k): ?>
+            <th class="C" style="width:130px;">
+              <?php echo molr_h($stdPeriodLbl[$k][0]); ?>
+              <span class="std-th-sub"><?php echo $stdPeriodLbl[$k][1]; ?></span>
+            </th>
+            <?php endforeach; ?>
+          </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($stdRows as $sr):
+                $emp    = (int)$sr['emp'];
+                $yPct   = molr_std_pct($sr['Y_MET'], $sr['Y_DEN']);
+                $yState = molr_std_state($yPct);
+                $days   = isset($stdDays[$emp]) ? $stdDays[$emp] : array(); ?>
+          <tr class="std-row std-y-<?php echo $yState; ?>"
+              data-emp="<?php echo $emp; ?>">
+            <td class="R" data-val="<?php echo $emp; ?>"><?php echo $emp; ?></td>
+            <td class="std-name" onclick="molrStdToggle(this)"
+                data-val="<?php echo molr_h(strtolower($sr['name'])); ?>">
+              <span class="std-caret">&#9654;</span><?php echo molr_h($sr['name']); ?>
+              <?php if ($sr['term'] !== ''): ?>
+                <span class="term-tag">T <?php echo molr_h($sr['term']); ?></span>
+              <?php endif; ?>
+            </td>
+            <?php
+              echo molr_std_cell($sr['D_MET'], $sr['D_DEN']);
+              echo molr_std_cell($sr['W_MET'], $sr['W_DEN']);
+              echo molr_std_cell($sr['M_MET'], $sr['M_DEN']);
+              echo molr_std_cell($sr['Y_MET'], $sr['Y_DEN']);
+            ?>
+          </tr>
+          <tr class="std-strip" data-strip="<?php echo $emp; ?>">
+            <td colspan="6">
+              <div class="std-strip-lbl">
+                Day by day &mdash; <?php echo molr_h($stdPeriodLbl['M'][1]); ?>
+                (met / reported)
+              </div>
+              <?php if (empty($days)): ?>
+                <div style="font-size:11px;color:#5a6478;">
+                  No jobs reported this month.
+                </div>
+              <?php else: ?>
+              <div class="std-strip-wrap">
+                <?php foreach ($days as $dRec):
+                        $dPct = molr_std_pct($dRec['met'], $dRec['den']); ?>
+                <span class="std-chipday std-<?php echo molr_std_state($dPct); ?>"
+                      title="<?php echo molr_h(molr_date($dRec['d'])); ?> &mdash; <?php
+                        echo (int)$dRec['met'] . ' of ' . (int)$dRec['den']
+                           . ' jobs met standard (' . number_format((float)$dPct, 1) . '%)'; ?>">
+                  <b><?php echo molr_h(date('n/j', strtotime($dRec['d']))); ?></b>
+                  <?php echo (int)$dRec['met']; ?>/<?php echo (int)$dRec['den']; ?>
+                </span>
+                <?php endforeach; ?>
+              </div>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+      <?php endif; ?>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1255,6 +1676,122 @@ function molrOpenMO(idx) {
     ths[3].className += ' sort-asc';
 }());
 
+// ── Standards scorecard overlay ──────────────────────────────────────────────
+var MOLR_STD_OPEN = false;
+
+function molrStdOpen(emp) {
+    var ov = document.getElementById('molr-std-ov');
+    if (!ov) return;
+    ov.classList.add('open');
+    MOLR_STD_OPEN = true;
+    document.body.style.overflow = 'hidden';
+
+    // Opened from a grid light: expand that person and bring them into view.
+    if (emp !== undefined && emp !== null) {
+        var row = ov.querySelector('tr.std-row[data-emp="' + emp + '"]');
+        if (row) {
+            var nameCell = row.querySelector('td.std-name');
+            if (nameCell && !row.classList.contains('expanded')) { molrStdToggle(nameCell); }
+            row.scrollIntoView({ block: 'center' });
+        }
+    }
+}
+
+function molrStdClose() {
+    var ov = document.getElementById('molr-std-ov');
+    if (!ov) return;
+    ov.classList.remove('open');
+    MOLR_STD_OPEN = false;
+    document.body.style.overflow = '';
+}
+
+// Show/hide one employee's day-by-day strip.
+function molrStdToggle(cell) {
+    var row = cell.closest ? cell.closest('tr') : cell.parentNode;
+    if (!row) return;
+    var emp   = row.getAttribute('data-emp');
+    var strip = document.querySelector('tr.std-strip[data-strip="' + emp + '"]');
+    if (!strip) return;
+    var opening = !strip.classList.contains('open');
+    strip.classList.toggle('open', opening);
+    row.classList.toggle('expanded', opening);
+    var caret = cell.querySelector('.std-caret');
+    if (caret) { caret.innerHTML = opening ? '&#9660;' : '&#9654;'; }
+}
+
+(function () {
+    var ov = document.getElementById('molr-std-ov');
+    if (!ov) return;
+
+    // Click the backdrop (not the panel) to dismiss.
+    ov.addEventListener('click', function (e) {
+        if (e.target === ov) { molrStdClose(); }
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && MOLR_STD_OPEN) { molrStdClose(); }
+    });
+
+    // ── Sorting. Each employee's strip row must travel with its own row, so
+    //    the pair is moved together rather than the <tr>s being sorted flat.
+    var tbl = document.getElementById('molr-std-tbl');
+    if (!tbl) return;
+    var tbody = tbl.querySelector('tbody');
+    var ths   = tbl.querySelectorAll('thead th');
+    var st    = { col: 1, dir: 1 };
+
+    function val(td) {
+        if (!td) return null;
+        if (td.hasAttribute('data-val')) {
+            var raw = td.getAttribute('data-val');
+            if (raw === '') return null;
+            var n = parseFloat(raw);
+            return isNaN(n) ? raw.toLowerCase() : n;
+        }
+        return null;   // a period with no jobs has no data-val, and sorts last
+    }
+
+    function sortBy(col) {
+        st.dir = (st.col === col) ? -st.dir : 1;
+        st.col = col;
+
+        var pairs = [];
+        Array.prototype.forEach.call(tbody.querySelectorAll('tr.std-row'), function (r) {
+            var emp = r.getAttribute('data-emp');
+            pairs.push({
+                row:   r,
+                strip: tbody.querySelector('tr.std-strip[data-strip="' + emp + '"]')
+            });
+        });
+
+        pairs.sort(function (a, b) {
+            var va = val(a.row.cells[col]), vb = val(b.row.cells[col]);
+            if (va === null && vb === null) return 0;
+            if (va === null) return  1;      // blanks last, either direction
+            if (vb === null) return -1;
+            if (va < vb) return -st.dir;
+            if (va > vb) return  st.dir;
+            return 0;
+        });
+
+        pairs.forEach(function (pr) {
+            tbody.appendChild(pr.row);
+            if (pr.strip) { tbody.appendChild(pr.strip); }
+        });
+
+        for (var i = 0; i < ths.length; i++) {
+            ths[i].className = ths[i].className.replace(/\s*sort-(asc|desc)/g, '');
+        }
+        ths[col].className += (st.dir === 1 ? ' sort-asc' : ' sort-desc');
+    }
+
+    for (var i = 0; i < ths.length; i++) {
+        (function (col) {
+            ths[col].addEventListener('click', function () { sortBy(col); });
+        }(i));
+    }
+    ths[1].className += ' sort-asc';
+}());
+
 // ── Auto-refresh countdown ────────────────────────────────────────────────────
 <?php if ($autoRefresh): ?>
 (function () {
@@ -1275,7 +1812,13 @@ function molrOpenMO(idx) {
         return m + ':' + ss;
     }
     function tick() {
-        if (secs <= 0) { location.reload(); return; }
+        // Never reload out from under an open scorecard — hold the countdown at
+        // zero until it is closed, then refresh.
+        if (secs <= 0) {
+            if (MOLR_STD_OPEN) { setTimeout(tick, 1000); return; }
+            location.reload();
+            return;
+        }
         if (cd)   cd.textContent   = fmt(secs);
         if (prog) prog.style.width = (secs / total * 100).toFixed(1) + '%';
         secs--;
