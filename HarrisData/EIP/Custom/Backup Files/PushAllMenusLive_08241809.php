@@ -67,36 +67,10 @@ $roles = [
     'EBORRELL','ENAPOLES','HD_ALL','HD_ALL_SG','HD_CUST','HD_EMPL',
     'HD_FIX','HD_HRADMIN','HD_MOBILE','HD_SECURE','HD_SLSM','HD_VEND',
     'INSTALLER','INVENTORY','LARIANN','MCRESPO','MFGVP','PLANNING',
-    'PLANPRDPUR','PRODMANAGR','PRODUCTION','PURCHASING','QC01','RECEIVING',
+    'PLANPRDFUR','PRODMANAGR','PRODUCTION','PURCHASING','QC01','RECEIVING',
     'RESTRRECPT','SALES','SALESADMIN','SHIPPING','SHOPLEADER','SHOPREPORT',
     'TEMPUSER','TIFFANY','TVWILLIAMS','USERTEST','WIDGET','WIDGETS',
 ];
-
-// 2026-08-24: this list previously held 'PLANPRDFUR', a typo for 'PLANPRDPUR'.
-// Because the list is hardcoded and never checked against SYROLM, the push created
-// 5 SYROLD + 35 SYPORR rows for a role that does not exist. HarrisData lists roles
-// from SYROLM, so the phantom was invisible in Portal By Role Maintenance and could
-// not be deleted through the UI. The guard below drops any role with no SYROLM row
-// so a future typo cannot repeat it. SgApplyAll.php avoids this by building its
-// role list from SYROLM directly, which is the better pattern.
-$rolesChecked = [];
-$rolesSkipped = [];
-foreach ($roles as $r) {
-    $rs   = str_replace("'", "''", $r);
-    $stmt = @db2_exec($conn,
-        "SELECT COUNT(*) FROM SGHDSDATA.SYROLM WHERE RTRIM(RMROLE)='$rs'");
-    $n = 0;
-    if ($stmt !== false && ($row = db2_fetch_row($stmt))) $n = (int)db2_result($stmt, 0);
-    if ($n > 0) $rolesChecked[] = $r; else $rolesSkipped[] = $r;
-}
-$roles = $rolesChecked;
-if ($rolesSkipped) {
-    echo '<div style="background:#fff3cd;border:1px solid #e0a800;padding:10px 14px;'
-       . 'margin:10px 0;font-family:monospace;font-size:12px">'
-       . '<strong>Skipped - no SYROLM row (check spelling):</strong> '
-       . htmlspecialchars(implode(', ', $rolesSkipped)) . '</div>';
-}
-
 $bypassRoles = ['HD_ALL_SG'];
 
 $users = [

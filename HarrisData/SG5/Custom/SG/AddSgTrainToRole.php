@@ -21,6 +21,14 @@
 // Schema override: append &schema=S5HDSDATA  (default: port 5610 -> S5HDSDATA,
 //                                                      otherwise SGHDSDATA)
 
+// 2026-08-24: PRID now carries the target FPID read from SYPORT ('SGTRAIN/PORTAL',
+//   'SGTRAIN_ACCT' ...) instead of the synthetic "$role/$PORTAL/..." form this script
+//   used to write. The old form left the Description column blank in Portal By Role
+//   Maintenance and stopped the top-level entry rendering, so roles saw the flyout
+//   children with no parent. Matches the fix SgApplyAll.php took on 2026-08-03.
+//   Child PRSEL now mirrors the role's existing SGDASH grant at the same sequence
+//   rather than defaulting every department to 'Y'.
+
 $PORTAL = 'SGTRAIN';
 $BYPASS = 'HD_ALL_SG';   // same bypass role SgApplyAll.php excludes
 
@@ -70,11 +78,16 @@ $portRows = qrows($conn,
   . "ORDER BY FPPAGE, FPSEQ");
 $portErr  = (isset($portRows[0]['__error'])) ? $portRows[0]['__error'] : '';
 $subSeqs  = array();
+$subFpid  = array();   // FPSEQ => FPID for the flyout children
+$topFpid  = '';        // FPID of the top-level entry ('SGTRAIN/PORTAL')
 $topCount = 0;
 if (!$portErr) {
     foreach ($portRows as $pr) {
-        if ($pr['FPPAGE'] === '') $topCount++;
-        else $subSeqs[] = (int)$pr['FPSEQ'];
+        if ($pr['FPPAGE'] === '') { $topCount++; $topFpid = $pr['FPID']; }
+        else {
+            $subSeqs[] = (int)$pr['FPSEQ'];
+            $subFpid[(int)$pr['FPSEQ']] = $pr['FPID'];
+        }
     }
 }
 
@@ -136,7 +149,10 @@ if ($role !== '' && isset($_GET['confirm']) && $_GET['confirm'] === 'ADD' && !$p
                        'role is in BYPASS mode (0 SYPORR rows) - SYROLD alone is enough; '
                      . 'adding SYPORR here would hide all its other portals');
     } else {
-        $prid = "$role/$PORTAL";
+        // PRID must be the target FPID as Harris writes it natively ('SGTRAIN/PORTAL').
+        // The old synthetic "$role/$PORTAL" form left the Description column blank and
+        // stopped the top-level entry from rendering. See SgApplyAll.php 2026-08-03.
+        $prid = str_replace("'", "''", $topFpid);
         runSql($conn, "SYPORR top $role/$PORTAL",
             "INSERT INTO $schema.SYPORR
                  (PRROLE,PRPORT,PRPAGE,PRSEQ,PRID,PRSEL,PRTSTP,PRTSUS,PRTSPT)
@@ -149,13 +165,26 @@ if ($role !== '' && isset($_GET['confirm']) && $_GET['confirm'] === 'ADD' && !$p
                    AND RTRIM(PRPAGE)='')", $log);
 
         // One row per real SYPORT child; PRSEQ mirrors the child's FPSEQ.
+        // One row per real SYPORT child. PRID is the child's own FPID
+        // ('SGTRAIN_ACCT' etc). PRSEL mirrors this role's existing SGDASH grant at
+        // the same sequence, so departmental access carries over instead of every
+        // role being granted all six. Defaults to 'Y' if the role has no SGDASH row.
         foreach ($subSeqs as $i) {
-            $seqstr = number_format($i, 2);
-            $sprid  = "$role/$PORTAL/$PORTAL/$seqstr";
+            $sprid = str_replace("'", "''", isset($subFpid[$i]) ? $subFpid[$i] : '');
+            if ($sprid === '') {
+                $log[] = array('FAIL', "SYPORR sub $role/$PORTAL/$i",
+                               'no FPID found in SYPORT for this sequence - row skipped');
+                continue;
+            }
             runSql($conn, "SYPORR sub $role/$PORTAL/$i",
                 "INSERT INTO $schema.SYPORR
                      (PRROLE,PRPORT,PRPAGE,PRSEQ,PRID,PRSEL,PRTSTP,PRTSUS,PRTSPT)
-                 SELECT '$roleSafe','$PORTAL','$PORTAL',$i,'$sprid','Y',
+                 SELECT '$roleSafe','$PORTAL','$PORTAL',$i,'$sprid',
+                        COALESCE((SELECT RTRIM(S.PRSEL) FROM $schema.SYPORR S
+                                   WHERE RTRIM(S.PRROLE)='$roleSafe'
+                                     AND RTRIM(S.PRPORT)='SGDASH'
+                                     AND RTRIM(S.PRPAGE)='SGDASH'
+                                     AND S.PRSEQ=$i),'Y'),
                         CURRENT_TIMESTAMP,'BBUSCH',''
                  FROM SYSIBM.SYSDUMMY1
                  WHERE NOT EXISTS (
@@ -164,11 +193,14 @@ if ($role !== '' && isset($_GET['confirm']) && $_GET['confirm'] === 'ADD' && !$p
                        AND RTRIM(PRPAGE)='$PORTAL' AND PRSEQ=$i)", $log);
         }
 
-        // Belt & suspenders: any pre-existing SGTRAIN row left at PRSEL='' hides it.
+        // Belt & suspenders: a top-level row left at PRSEL='' hides the parent entry
+        // while its children still render (the "submenus show, top menu doesn't"
+        // failure). Restricted to PRPAGE='' on purpose - blanket-setting the child
+        // rows would grant departments the role was never meant to have.
         $u = @db2_exec($conn,
             "UPDATE $schema.SYPORR SET PRSEL='Y'
              WHERE RTRIM(PRROLE)='$roleSafe' AND RTRIM(PRPORT)='$PORTAL'
-               AND RTRIM(PRSEL)<>'Y'");
+               AND RTRIM(PRPAGE)='' AND RTRIM(PRSEL)<>'Y'");
         if ($u === false) $log[] = array('FAIL', 'PRSEL fix', db2_stmt_errormsg());
         else {
             $n = db2_num_rows($u);
