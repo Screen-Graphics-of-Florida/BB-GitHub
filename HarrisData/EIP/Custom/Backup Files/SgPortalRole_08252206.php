@@ -22,17 +22,6 @@
 // A role:   .../Custom/SG/SgPortalRole.php?role=MCRESPO
 // Schema override: &schema=S5HDSDATA   (default: port 5610 -> test, else live)
 
-// Framework headers - needed so the guard below can identify the signed-in profile.
-// Without these, $userProfile does not exist and every request would be denied.
-require_once dirname(__FILE__) . '/../GetURLParm.php';
-require_once 'GenericDirectCallVariables.php';
-require_once 'SetLibraryList.php';
-
-// This page can rewrite any role's menu, so it is restricted to the profiles ticked
-// for SGPORTROLE in Program Option Security.
-require_once dirname(__FILE__) . '/SgRequireAccess.php';
-sgRequireAccess('SGPORTROLE');
-
 // ── SG portals this page manages ────────────────────────────────────────────
 // Fallback only - the real list is derived from SYPORT below, once connected.
 $SG_PORTALS = array('SGDASH', 'SGDINT', 'SGINQ', 'SGRPT', 'SGSOP', 'SGTRAIN');
@@ -339,20 +328,7 @@ a.rl:hover { text-decoration:underline; }
   <h1>SG Portal Access by Role</h1>
   <div class="sub">Schema <?= h($schema) ?>
     &nbsp;|&nbsp; <?= $isLive ? 'EIP LIVE' : 'SG5 TEST' ?>
-    &nbsp;|&nbsp; port <?= h($port) ?>
-    &nbsp;|&nbsp; signed in as <strong><?= h(isset($userProfile) ? $userProfile : '?') ?></strong>
-    <?= isset($activeRole) ? ' (' . h($activeRole) . ')' : '' ?></div>
-  <div style="margin-top:8px">
-    <a class="btn" style="background:#06B6D4" href="<?= htmlspecialchars(
-        (isset($homeURL) ? rtrim($homeURL, '/') : '') . '/Welcome.php?baseVar='
-      . rawurlencode(isset($baseVar) ? $baseVar : '') . '&eID='
-      . rawurlencode(isset($eID) ? $eID : '') . '&portal=9999999999', ENT_QUOTES) ?>">&#8592; Back to EIP</a>
-    <?php // EIP's own New Session - SYURLM ADDITIONALBROWSERSESSION/REPORT.
-          // Prompts for credentials, so you can come back as a different profile. ?>
-    <a class="btn" style="background:#CC1F20" target="_blank" href="<?= htmlspecialchars(
-        (isset($homeURL) ? rtrim($homeURL, '/') : '')
-      . (isset($phpPath) ? $phpPath : '/') . 'Signon.php?newSession=Y', ENT_QUOTES) ?>">Sign in as another user</a>
-  </div>
+    &nbsp;|&nbsp; port <?= h($port) ?></div>
 </div>
 
 <?php if ($isLive): ?>

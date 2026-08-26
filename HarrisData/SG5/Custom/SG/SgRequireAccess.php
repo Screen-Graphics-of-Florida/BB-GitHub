@@ -61,6 +61,49 @@ function sgAccessConn() {
     return @db2_connect('*LOCAL', '', '');
 }
 
+function sgAccessLog($conn, $mode, $user, $pgmid, $opt, $why) {
+    // error_log() does not reach error_log.Q1YYMMDD00 on this box (verified
+    // 2026-08-25 - a confirmed denial produced no log line), so denials go to a
+    // table instead. Queryable, and it survives log rotation.
+    if (!$conn) $conn = sgAccessConn();
+    if (!$conn) return;
+    @db2_exec($conn,
+        "CREATE TABLE SGOBJ.SGACCLOG ("
+      . " ALSTMP TIMESTAMP, ALUSER CHAR(10), ALPGM CHAR(10), ALOPT SMALLINT,"
+      . " ALMODE CHAR(6), ALREASN CHAR(60), ALURL VARCHAR(512), ALIP CHAR(45))");
+    $u = str_replace("'", "''", substr($user,  0, 10));
+    $p = str_replace("'", "''", substr($pgmid, 0, 10));
+    $r = str_replace("'", "''", substr($why,   0, 60));
+    $m = str_replace("'", "''", substr($mode,  0, 6));
+    $url = isset($_SERVER['REQUEST_URI']) ? substr($_SERVER['REQUEST_URI'], 0, 512) : '';
+    $url = str_replace("'", "''", $url);
+    $ip  = isset($_SERVER['REMOTE_ADDR']) ? substr($_SERVER['REMOTE_ADDR'], 0, 45) : '';
+    $ip  = str_replace("'", "''", $ip);
+    @db2_exec($conn,
+        "INSERT INTO SGOBJ.SGACCLOG "
+      . "(ALSTMP,ALUSER,ALPGM,ALOPT,ALMODE,ALREASN,ALURL,ALIP) VALUES "
+      . "(CURRENT_TIMESTAMP,'$u','$p'," . (int)$opt . ",'$m','$r','$url','$ip')");
+}
+
+function sgAccessHome() {
+    // Same source the report template's "Back to EIP" button uses (SgReportNav.php):
+    // $homeURL / $baseVar / $eID, set by the framework header includes.
+    $home = isset($GLOBALS['homeURL']) ? rtrim((string)$GLOBALS['homeURL'], '/') : '';
+    if ($home === '') {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host   = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'portal.screen-graphics.com';
+        $home   = $scheme . '://' . $host;
+    }
+    $bv  = isset($GLOBALS['baseVar']) ? (string)$GLOBALS['baseVar'] : '';
+    $eid = isset($GLOBALS['eID'])     ? (string)$GLOBALS['eID']     : '';
+    // No session context (typical when the URL was pasted straight in) - send them to
+    // the portal root, which lands on login. Never javascript:history.back(): from a
+    // directly-entered URL that walks into the logout path and ejects them from EIP.
+    if ($bv === '' || $eid === '') return $home . '/';
+    return $home . '/Welcome.php?baseVar=' . rawurlencode($bv)
+         . '&eID=' . rawurlencode($eid) . '&portal=9999999999';
+}
+
 function sgAccessDeny($pgmid, $user, $why) {
     $p = htmlspecialchars($pgmid);
     $u = htmlspecialchars($user === '' ? '(not identified)' : $user);
@@ -81,7 +124,8 @@ function sgAccessDeny($pgmid, $user, $why) {
        . 'Access is granted in HarrisData under <strong>Program Option Security</strong> '
        . 'for this program. Ask whoever administers EIP security to tick your profile '
        . 'if you need it.'
-       . '<br><a class="btn" href="javascript:history.back()">Go back</a>'
+       . '<br><a class="btn" href="' . htmlspecialchars(sgAccessHome(), ENT_QUOTES)
+       . '">&#8592; Back to EIP</a>'
        . '</div></div></body></html>';
     error_log("SgRequireAccess: DENIED user=$u pgm=$p reason=$why");
     exit;
@@ -128,9 +172,10 @@ function sgRequireAccess($pgmid, $opt = 1) {
     if ($allowed) return;
 
     if (!empty($SG_ACCESS_AUDIT_ONLY)) {
-        error_log("SgRequireAccess: AUDIT would deny user=$user pgm=$pgmid reason=$why");
+        sgAccessLog(null, 'AUDIT', $user, $pgmid, $opt, $why);
         return;
     }
+    sgAccessLog(null, 'DENY', $user, $pgmid, $opt, $why);
     sgAccessDeny($pgmid, $user, $why);
 }
 

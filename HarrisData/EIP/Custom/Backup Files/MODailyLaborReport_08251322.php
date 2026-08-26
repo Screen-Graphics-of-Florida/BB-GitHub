@@ -2,13 +2,6 @@
 require_once dirname(__FILE__) . '/../../GetURLParm.php';
 require_once 'GenericDirectCallVariables.php';
 require_once 'SetLibraryList.php';
-
-// Enforce Program Option Security for MODLYLBR. Without this the page runs for
-// anyone holding the URL, whatever SYPGMS says. Must come after SetLibraryList.php,
-// which is what populates $userProfile.
-require_once dirname(__FILE__) . '/../SgRequireAccess.php';
-sgRequireAccess('MODLYLBR');
-
 date_default_timezone_set('America/Chicago');
 
 // ── Filter params ─────────────────────────────────────────────────────────────

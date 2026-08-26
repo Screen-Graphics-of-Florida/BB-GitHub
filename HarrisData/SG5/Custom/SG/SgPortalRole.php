@@ -22,7 +22,19 @@
 // A role:   .../Custom/SG/SgPortalRole.php?role=MCRESPO
 // Schema override: &schema=S5HDSDATA   (default: port 5610 -> test, else live)
 
+// Framework headers - needed so the guard below can identify the signed-in profile.
+// Without these, $userProfile does not exist and every request would be denied.
+require_once dirname(__FILE__) . '/../GetURLParm.php';
+require_once 'GenericDirectCallVariables.php';
+require_once 'SetLibraryList.php';
+
+// This page can rewrite any role's menu, so it is restricted to the profiles ticked
+// for SGPORTROLE in Program Option Security.
+require_once dirname(__FILE__) . '/SgRequireAccess.php';
+sgRequireAccess('SGPORTROLE');
+
 // ── SG portals this page manages ────────────────────────────────────────────
+// Fallback only - the real list is derived from SYPORT below, once connected.
 $SG_PORTALS = array('SGDASH', 'SGDINT', 'SGINQ', 'SGRPT', 'SGSOP', 'SGTRAIN');
 $BYPASS     = 'HD_ALL_SG';
 $AUDIT      = 'SGOBJ.SGPRAUDIT';
@@ -61,6 +73,17 @@ function qval($conn, $sql) {
     return $r ? db2_result($stmt, 0) : null;
 }
 function h($v) { return htmlspecialchars(trim((string)$v)); }
+
+// 2026-08-25: this list used to be hardcoded, which silently hid SGMGMT - it was
+// granted in SYROLD but filtered out before the role was even looked at. Derive it
+// from SYPORT so any SG portal, present or future, appears without a code change.
+$derived = array();
+foreach (qrows($conn,
+    "SELECT DISTINCT RTRIM(FPPORT) AS FPPORT FROM $schema.SYPORT "
+  . "WHERE RTRIM(FPPORT) LIKE 'SG%' ORDER BY 1") as $r) {
+    if (!isset($r['__error'])) $derived[] = $r['FPPORT'];
+}
+if ($derived) $SG_PORTALS = $derived;
 
 $portalList = "'" . implode("','", $SG_PORTALS) . "'";
 
@@ -101,12 +124,19 @@ function currentSel($conn, $schema, $roleSafe, $portalList) {
     }
     return $out;
 }
+// Portals this role has been granted, in the sequence set in green screen HSYRLM.
+// SYROLD is maintained there, by hand - which portals a role gets and the order they
+// appear in. This page never inserts, deletes or renumbers a SYROLD row.
 function grantedPortals($conn, $schema, $roleSafe, $portalList) {
     $out = array();
     foreach (qrows($conn,
-        "SELECT RTRIM(RDPORT) AS RDPORT FROM $schema.SYROLD "
-      . "WHERE RTRIM(RDROLE)='$roleSafe' AND RTRIM(RDPORT) IN ($portalList)") as $r) {
-        if (!isset($r['__error'])) $out[$r['RDPORT']] = true;
+        "SELECT RTRIM(RDPORT) AS RDPORT, RDSEQN FROM $schema.SYROLD "
+      . "WHERE RTRIM(RDROLE)='$roleSafe' AND RTRIM(RDPORT) IN ($portalList) "
+      // RDSEQN 0.00 means unassigned in HSYRLM - the portal is listed there but not
+      // given to the role. Treat it as not granted.
+      . "  AND COALESCE(RDSEQN,0) <> 0 "
+      . "ORDER BY RDSEQN, RDPORT") as $r) {
+        if (!isset($r['__error'])) $out[$r['RDPORT']] = $r['RDSEQN'];
     }
     return $out;
 }
@@ -154,39 +184,28 @@ if ($role !== '' && isset($_POST['apply']) && !$defErr) {
 
         foreach ($SG_PORTALS as $p) {
             if (!isset($defs[$p]) || !$defs[$p]['top']) continue;
+            // Only portals already granted in SYROLD. Nothing here can grant a portal.
+            if (!isset($gr[$p])) continue;
             $pSafe   = str_replace("'", "''", $p);
             $kids    = $defs[$p]['kids'];
             $wantP   = isset($want[$p]) && is_array($want[$p]) ? $want[$p] : array();
             $anyKid  = false;
             foreach ($kids as $seq => $d) if (!empty($wantP[$seq])) $anyKid = true;
 
-            // -- SYROLD grant follows "any child ticked" -------------------
-            if ($anyKid && !isset($gr[$p])) {
-                $ok = @db2_exec($conn,
-                    "INSERT INTO $schema.SYROLD
-                         (RDROLE,RDPORT,RDSEQN,RDRESV,RDTSTP,RDTSUS,RDTSWS,RDTSPT)
-                     SELECT '$roleSafe','$pSafe',
-                            COALESCE((SELECT MAX(RDSEQN) FROM $schema.SYROLD
-                                       WHERE RTRIM(RDROLE)='$roleSafe'),0)+1,
-                            '',CURRENT_TIMESTAMP,'BBUSCH','BBUSCH',''
-                     FROM SYSIBM.SYSDUMMY1");
-                $log[] = ($ok === false)
-                    ? array('FAIL', "SYROLD $p", db2_stmt_errormsg())
-                    : array('OK', "SYROLD $p", 'granted');
-            } elseif (!$anyKid && isset($gr[$p])) {
-                $ok = @db2_exec($conn,
-                    "DELETE FROM $schema.SYROLD
-                      WHERE RTRIM(RDROLE)='$roleSafe' AND RTRIM(RDPORT)='$pSafe'");
-                $log[] = ($ok === false)
-                    ? array('FAIL', "SYROLD $p", db2_stmt_errormsg())
-                    : array('OK', "SYROLD $p", 'revoked');
-            }
+            // SYROLD is deliberately untouched. Which portals a role gets, and the
+            // sequence they appear in, is maintained in green screen HSYRLM by hand.
+            // This page only decides which sub-items within an already-granted portal
+            // are selected.
 
             // -- Top-level row: present and PRSEL='Y' whenever any child is on
             $topFpid = str_replace("'", "''", $defs[$p]['top']['FPID']);
             $topSeq  = (int)$defs[$p]['top']['FPSEQ'];
             $haveTop = isset($cur[$p . '|TOP']);
-            if ($anyKid) {
+            // Only touch the parent when it is actually wrong - otherwise every Apply
+            // reported six no-op updates as though it had changed something.
+            $topWasY = $haveTop && strtoupper(trim((string)$cur[$p . '|TOP']['PRSEL'])) === 'Y';
+            $topWasId = $haveTop ? trim((string)$cur[$p . '|TOP']['PRID']) : '';
+            if ($anyKid && (!$haveTop || !$topWasY || $topWasId !== trim($defs[$p]['top']['FPID']))) {
                 $sql = $haveTop
                     ? "UPDATE $schema.SYPORR SET PRSEL='Y', PRID='$topFpid'
                         WHERE RTRIM(PRROLE)='$roleSafe' AND RTRIM(PRPORT)='$pSafe'
@@ -199,14 +218,16 @@ if ($role !== '' && isset($_POST['apply']) && !$defErr) {
                 $log[] = ($ok === false)
                     ? array('FAIL', "$p top", db2_stmt_errormsg())
                     : array('OK', "$p top", ($haveTop ? 'set PRSEL=Y' : 'inserted') . " ($topFpid)");
-            } elseif ($haveTop) {
+            } elseif (!$anyKid && $haveTop && $topWasY) {
+                // No sub-items selected. Deselect the parent rather than deleting the
+                // row - reversible, and it leaves your SYROLD grant visible.
                 $ok = @db2_exec($conn,
-                    "DELETE FROM $schema.SYPORR
+                    "UPDATE $schema.SYPORR SET PRSEL=''
                       WHERE RTRIM(PRROLE)='$roleSafe' AND RTRIM(PRPORT)='$pSafe'
                         AND RTRIM(PRPAGE)=''");
                 $log[] = ($ok === false)
                     ? array('FAIL', "$p top", db2_stmt_errormsg())
-                    : array('OK', "$p top", 'removed');
+                    : array('OK', "$p top", 'deselected - no sub-items ticked');
             }
 
             // -- Children --------------------------------------------------
@@ -252,10 +273,14 @@ foreach (qrows($conn,
     $r['SG']   = (int)qval($conn,
         "SELECT COUNT(*) FROM $schema.SYPORR WHERE RTRIM(PRROLE)='$rs' "
       . "AND RTRIM(PRPORT) IN ($portalList) AND RTRIM(PRSEL)='Y'");
+    // How many profiles actually run this role. A role with 0 affects nobody - editing
+    // one of those is how an afternoon gets spent changing grants nothing reads.
+    $r['USERS'] = (int)qval($conn,
+        "SELECT COUNT(*) FROM $schema.SYUSER WHERE RTRIM(USROLE)='$rs'");
     $roles[] = $r;
 }
 
-$cur = $gr = array();
+$cur = $gr = $profiles = array();
 $mode = 0; $isReserved = false;
 if ($role !== '') {
     $cur  = currentSel($conn, $schema, $roleSafe, $portalList);
@@ -263,6 +288,9 @@ if ($role !== '') {
     $mode = roleMode($conn, $schema, $roleSafe);
     $isReserved = (strtoupper(trim((string)qval($conn,
         "SELECT RMRESV FROM $schema.SYROLM WHERE RTRIM(RMROLE)='$roleSafe'"))) === 'Y');
+    $profiles = qrows($conn,
+        "SELECT RTRIM(USUSER) AS U, RTRIM(USDESC) AS D FROM $schema.SYUSER "
+      . "WHERE RTRIM(USROLE)='$roleSafe' ORDER BY USUSER");
 }
 db2_close($conn);
 ?>
@@ -311,7 +339,20 @@ a.rl:hover { text-decoration:underline; }
   <h1>SG Portal Access by Role</h1>
   <div class="sub">Schema <?= h($schema) ?>
     &nbsp;|&nbsp; <?= $isLive ? 'EIP LIVE' : 'SG5 TEST' ?>
-    &nbsp;|&nbsp; port <?= h($port) ?></div>
+    &nbsp;|&nbsp; port <?= h($port) ?>
+    &nbsp;|&nbsp; signed in as <strong><?= h(isset($userProfile) ? $userProfile : '?') ?></strong>
+    <?= isset($activeRole) ? ' (' . h($activeRole) . ')' : '' ?></div>
+  <div style="margin-top:8px">
+    <a class="btn" style="background:#06B6D4" href="<?= htmlspecialchars(
+        (isset($homeURL) ? rtrim($homeURL, '/') : '') . '/Welcome.php?baseVar='
+      . rawurlencode(isset($baseVar) ? $baseVar : '') . '&eID='
+      . rawurlencode(isset($eID) ? $eID : '') . '&portal=9999999999', ENT_QUOTES) ?>">&#8592; Back to EIP</a>
+    <?php // EIP's own New Session - SYURLM ADDITIONALBROWSERSESSION/REPORT.
+          // Prompts for credentials, so you can come back as a different profile. ?>
+    <a class="btn" style="background:#CC1F20" target="_blank" href="<?= htmlspecialchars(
+        (isset($homeURL) ? rtrim($homeURL, '/') : '')
+      . (isset($phpPath) ? $phpPath : '/') . 'Signon.php?newSession=Y', ENT_QUOTES) ?>">Sign in as another user</a>
+  </div>
 </div>
 
 <?php if ($isLive): ?>
@@ -348,6 +389,21 @@ a.rl:hover { text-decoration:underline; }
 
 <?php elseif ($role !== ''): ?>
   <div class="section">SG portal access &mdash; <?= h($role) ?></div>
+  <?php
+    $plist = array();
+    if (!empty($profiles)) foreach ($profiles as $pf) {
+        if (!isset($pf['__error'])) $plist[] = $pf['U'] . ($pf['D'] !== '' ? ' (' . $pf['D'] . ')' : '');
+    }
+  ?>
+  <?php if ($plist): ?>
+  <div class="info"><strong>Profiles running this role (<?= count($plist) ?>):</strong>
+    <?= h(implode(', ', $plist)) ?><br>
+    Changes here affect those profiles at their next sign-in.</div>
+  <?php else: ?>
+  <div class="warn"><strong>No profile is assigned to this role.</strong> Nothing you change
+    here will affect anyone signing in - check <code>SYUSER.USROLE</code> for the profile you
+    are actually testing with before editing.</div>
+  <?php endif; ?>
   <?php if ($isReserved): ?>
   <div class="live"><?= h($role) ?> is a reserved role (SYROLM.RMRESV='Y'). This page will
     not modify it.</div>
@@ -357,23 +413,43 @@ a.rl:hover { text-decoration:underline; }
     hide all of them except what you tick. Grant or revoke this role through SYROLD
     instead. Nothing on this page will write to it.</div>
   <?php else: ?>
-  <div class="info">Tick a sub-item to grant it, untick to restrict. The top-level menu
-    entry and the SYROLD grant are managed automatically: a portal appears when at least
-    one of its sub-items is ticked and disappears when none are. PRID always comes from
-    SYPORT, so the Description column stays populated.</div>
+  <div class="info">Portals listed are the ones granted to this role in <strong>SYROLD</strong>,
+    in the sequence set in green screen <strong>HSYRLM</strong> - this page never adds,
+    removes or renumbers them. Tick a sub-item to select it, untick to restrict. The only
+    thing managed for you is the top-level <strong>SYPORR</strong> row, which is selected
+    whenever at least one sub-item is: leaving it unselected is what hides a parent menu
+    while its children still render. PRID always comes from SYPORT.</div>
+  <?php if (!$gr): ?>
+  <div class="warn">This role has no SG portals granted in SYROLD, so there is nothing to
+    select. Grant the portals in green screen HSYRLM first, then come back here.</div>
+  <?php endif; ?>
   <?php endif; ?>
 
   <form method="post" action="?schema=<?= urlencode($schema) ?>">
   <input type="hidden" name="role" value="<?= h($role) ?>">
   <table>
-    <tr><th style="width:70px">Grant</th><th>Portal</th><th>Sub-item</th>
+    <tr><th style="width:70px">Seq</th><th>Portal</th><th>Sub-item</th>
         <th class="mono">PRID (from SYPORT)</th><th style="width:90px">Now</th></tr>
-    <?php foreach ($SG_PORTALS as $p):
-        if (!isset($defs[$p])) continue;
-        $topOn = isset($cur[$p . '|TOP']) && strtoupper($cur[$p . '|TOP']['PRSEL']) === 'Y'; ?>
+    <?php foreach ($gr as $p => $seq):
+        if (!isset($defs[$p])) { ?>
       <tr class="pgroup">
-        <td><?= isset($gr[$p]) ? 'SYROLD' : '&mdash;' ?></td>
-        <td colspan="2"><?= h($p) ?><?= $defs[$p]['top'] ? '' : ' (no top-level SYPORT row)' ?></td>
+        <td class="mono"><?= h(number_format((float)$seq, 2)) ?></td>
+        <td colspan="4"><?= h($p) ?>
+          <span style="color:#CC1F20;font-weight:normal"> &mdash; granted in SYROLD but has
+          no rows in SYPORT, so it has no sub-items to select</span></td>
+      </tr>
+    <?php continue; }
+        $topOn = isset($cur[$p . '|TOP']) && strtoupper($cur[$p . '|TOP']['PRSEL']) === 'Y';
+        $kidsOn = 0;
+        foreach ($defs[$p]['kids'] as $sq => $dd)
+            if (isset($cur[$p . '|' . $sq]) && strtoupper($cur[$p . '|' . $sq]['PRSEL']) === 'Y') $kidsOn++; ?>
+      <tr class="pgroup">
+        <td class="mono"><?= h(number_format((float)$seq, 2)) ?></td>
+        <td colspan="2"><?= h($p) ?><?= $defs[$p]['top'] ? '' : ' (no top-level SYPORT row)' ?>
+          <?php if ($kidsOn === 0): ?>
+            <span style="color:#CC1F20;font-weight:normal"> &mdash; no sub-items selected,
+            this portal shows an empty flyout</span>
+          <?php endif; ?></td>
         <td class="mono"><?= $defs[$p]['top'] ? h($defs[$p]['top']['FPID']) : '' ?></td>
         <td><?= $topOn ? 'parent Y' : 'parent off' ?></td>
       </tr>
@@ -406,7 +482,7 @@ a.rl:hover { text-decoration:underline; }
   <div class="section">Roles in <?= h($schema) ?>.SYROLM (<?= count($roles) ?>)</div>
   <table>
     <tr><th>Role</th><th>Description</th><th>Reserved</th><th>Menu mode</th>
-        <th>SG sub-items granted</th><th></th></tr>
+        <th>SG sub-items granted</th><th>Profiles</th><th></th></tr>
     <?php foreach ($roles as $rr): ?>
     <tr>
       <td class="mono"><?= h($rr['R']) ?></td>
@@ -414,6 +490,7 @@ a.rl:hover { text-decoration:underline; }
       <td><?= (strtoupper(trim($rr['V'])) === 'Y') ? 'Y' : '' ?></td>
       <td><?= h($rr['MODE']) ?></td>
       <td><?= (int)$rr['SG'] ?></td>
+      <td<?= ((int)$rr['USERS'] === 0) ? ' style="color:#CC1F20"' : '' ?>><?= (int)$rr['USERS'] ?></td>
       <td><a class="rl" href="?role=<?= urlencode($rr['R']) ?>&schema=<?= urlencode($schema) ?>">open &rsaquo;</a></td>
     </tr>
     <?php endforeach; ?>

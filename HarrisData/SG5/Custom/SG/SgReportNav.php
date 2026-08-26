@@ -7,7 +7,16 @@
 
 global $activeRole, $homeURL, $phpPath, $cGIPath, $helpPath,
        $baseVar, $eID, $portal, $i5Connect, $profileHandle,
-       $newsLink, $browser;
+       $newsLink, $browser, $dataBaseID;
+
+// 2026-08-25: the menu queries below qualified every table as SGHDSDATA, so on SG5 Test
+// this nav was built from LIVE menu data - between refreshes Test would show Live's
+// menu and a menu change could not be tested. Derive the schema from the framework's
+// own $dataBaseID instead ("S5" on Test, "SG" on Live) rather than naming schemas here.
+$_sgnSchema = (isset($dataBaseID) && trim((string)$dataBaseID) !== '')
+            ? trim((string)$dataBaseID) . 'HDSDATA' : '';
+// Last resort only: unqualified, resolved by the job's library list.
+$_sgnQ = ($_sgnSchema !== '') ? $_sgnSchema . '.' : '';
 
 $_sgnHome = isset($homeURL)       ? rtrim($homeURL, '/') : 'https://portal.screen-graphics.com:5601';
 $_sgnPhp  = isset($phpPath)       ? $phpPath             : '/';
@@ -84,7 +93,7 @@ if (!empty($_sgnRole) && isset($i5Connect)) {
     // Whitelist vs bypass mode
     $_sgnPorr = 0;
     $_sc = @db2_exec($_sgnConn,
-        "SELECT COUNT(*) FROM SGHDSDATA.SYPORR WHERE PRROLE='$role_safe'");
+        "SELECT COUNT(*) FROM {$_sgnQ}SYPORR WHERE PRROLE='$role_safe'");
     if ($_sc) { $_r = db2_fetch_row($_sc); if ($_r) $_sgnPorr = (int)db2_result($_sc, 0); }
 
     // TYPE 1 = top-level portal entry (FPPAGE blank)
@@ -94,11 +103,11 @@ if (!empty($_sgnRole) && isset($i5Connect)) {
           . "       RTRIM(FPDESC) AS FPDESC, RTRIM(FUDESC) AS FUDESC, "
           . "       RTRIM(FUURL)  AS FUURL,  RTRIM(FUTRGT) AS FUTRGT, "
           . "       CASE WHEN RTRIM(FPPAGE)='' THEN 1 ELSE 2 END AS LVL "
-          . "FROM SGHDSDATA.SYROLD "
-          . "INNER JOIN SGHDSDATA.SYPORT ON FPPORT=RDPORT "
-          . "INNER JOIN SGHDSDATA.SYURLM ON FUID=FPID ";
+          . "FROM {$_sgnQ}SYROLD "
+          . "INNER JOIN {$_sgnQ}SYPORT ON FPPORT=RDPORT "
+          . "INNER JOIN {$_sgnQ}SYURLM ON FUID=FPID ";
     if ($_sgnPorr > 0) {
-        $sql .= "INNER JOIN SGHDSDATA.SYPORR "
+        $sql .= "INNER JOIN {$_sgnQ}SYPORR "
               . "ON RDROLE=PRROLE AND FPPORT=PRPORT AND FPPAGE=PRPAGE AND FPSEQ=PRSEQ ";
     }
     $sql .= "WHERE RDROLE='$role_safe' "
