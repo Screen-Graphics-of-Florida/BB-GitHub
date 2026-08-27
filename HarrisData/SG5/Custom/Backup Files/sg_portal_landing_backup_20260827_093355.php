@@ -61,11 +61,6 @@ $reportMap = array(
                 'desc'  => 'Search open and closed orders by order #, invoice #, customer name, phone, P/O#, city/state, or item #/description',
                 'file'  => 'Order%20Entry/CustServiceInquiry.php',
             ),
-            array(
-                'title' => 'Buyer Pattern',
-                'desc'  => 'Customers who habitually order in the next quarter, so those orders can be pulled into the current quarter. Five call tiers, dollars at stake, repeat products stopped or reduced by item, and opportunity by customer class; drills from the headline down to the actual order lines; open unshipped orders shown alongside; export any view to Excel',
-                'file'  => 'Order%20Entry/BuyerPattern.php',
-            ),
         ),
     ),
     'SGDASH' => array(

@@ -1,0 +1,1975 @@
+     H Debug(*Yes) TruncNbr(*Yes) AlwNull(*UsrCtl)
+     H DftActGrp(*No) ActGrp(*Caller)
+     H Option(*SrcStmt : *NoDebugIO)  ExprOpts(*ResDecPos)
+     H BndDir('SGSRC/XML850R_AR')
+     F**********************************************************************
+     F*  Author         - Chris Hutchinson / Pro I.T. Resource Group, Inc. *
+     F*                   chutchinson@proitrg.com  |  800-545-7630         *
+     F*                        www.proitrg.com     |  336-420-0329         *
+     F*  Program Name   - XML850R_AR                                       *
+     F*  Program Date   - 05/14/2019                                       *
+     F*  Source Library - QRPGLESRC/SGSRC                                  *
+     F*  Object Lirary  - SGPGM                                            *
+     F*  Program Descr  - Process incoming cXML order transactions for     *
+     F*                   imported orders - new only - change requests     *
+     F*                   have not been implemented yet.                   *
+     F*                                                                    *
+     F*  NOTE:  Elements with attributes were broken down as on page 67    *
+     F*         of Scott Klement's "Web Services and XML for RPGers.pdf"   *
+     F*         at 'https://www.scottklement.com/presentations/Web%20      *
+     F*         Services%20and%20XML%20for%20RPGers.pdf'                   *
+     F*                                                                    *
+     F**********************************************************************
+     F*                                                                    *
+     F*  MODIFICATIONS                                                     *
+     F*                                                                    *
+     F*  10/14/2020  CDH   Modified the path handling to use the download  *
+     F*                    path specified in ARPEGGIO SFTP software for    *
+     F*                    the server definition defined for the retailer. *
+     F*                                                                    *
+     F*  06/05/2023  CDH   Modified the date required for the order coming *
+     F*                    in to be handled with the new logic Bill        *
+     F*                    provided.  It is now based on the part class or *
+     F*                    the item to determine the number of days added  *
+     F*                    to the date required.  It also accounts for     *
+     F*                    holidays as specified in the user defined code  *
+     F*                    table.                                          *
+     F*                                                                    *
+     F**********************************************************************
+
+      * HarrisData Customer Master File
+     FHDCUST    IF   E           K Disk
+
+      * HarrisData Item Master File
+     FHDIMST    IF   E           K Disk
+
+      * HarrisData Item Plant Master File
+     FHDIPLT    IF   E           K Disk
+
+      * HarrisData Iterm Warehouse Master File
+     FHDIWHS    IF   E           K Disk
+
+      * HarrisData Order Flags Master
+     FHDORFG    IF   E           K Disk
+
+      * HarrisData Ship Via Master
+     FHDSHPV    IF   E           K Disk
+
+      * HarrisData Cost Summary Master File
+     FHDMCMM    IF   E           K Disk
+
+      * HarrisData Tax Definition File
+     FHDTAXD    IF   E           K Disk
+
+      * HarrisData Order Header Work File
+     FOEHDWK    UF A E           K Disk
+
+      * HarrisData Order Detail Work File
+     FOEDTWK    O    E             Disk    Block(*NO)
+
+      * HarrisData Order Comment Work File
+     FOECMWK    UF A E           K Disk    Block(*NO)
+
+      * Arpeggio SFTP Software - Server Definition File
+      * (for download path)
+     FAFSVR1P   IF   E           K Disk
+
+      * XML Orders Header Master
+     FXMLOEHD   O    E             Disk    Block(*NO)
+
+      * XML Orders Header Master
+     FXMLOEDT   O    E             Disk    Block(*NO)
+
+      * Program Fields *
+     D NumParams       s              1s 0
+     D ProcessMode     s              1a
+     D fileName        s            256a
+     D ifsFile         s            256a
+     D Length          s              3s 0
+     D RestofLen       s              3s 0
+     D orderCounter    s              2s 0
+     D lineCounter     s              3s 0
+     D BuyerOrdLn      s              5s 0
+     D TempID          s             12a                                        OEHDWK/H1SHTO
+     D TempDate        s               d    DatFmt(*ISO)
+     D AddDays         s              2s 0
+     D DaysOff         s              7s 0
+     D TodayISO        s               d    DatFmt(*ISO)
+     D LastDtlDate     s               d    DatFmt(*ISO)
+     D posstart        s              3s 0
+     D X               s              5s 0
+     D F               s              2s 0
+     D DFL             s              1a    Dim(20)
+     D APID            s              2a    Inz('OE')
+     D FGORTY          s              1a
+     D Day_of_Week     s              1s 0
+     D HDPCust#        s              7s 0
+     D xmlMode         s              1a
+     D xmlFASetID      s             10a
+     D xmlFATransID    s             10a
+     D OrdTotal        s             11p 2
+     D DQ#NAM          s             10a   Inz('OEDTAQ')
+     D DQ#LIB          s             10a   Inz('*LIBL')
+     D DQ#LEN          s              5s 0 Inz(81)
+     D GiftMSG         s            256a
+     D ShipToFnd       s              1a   Inz('N')
+     D STTxCd          s              1a
+     D STPlaceId       s             20a
+     D STName1         s             30a
+     D STName2         s             30a
+     D STNameFL        s             30a
+     D STAdr1          s             30a
+     D STAdr2          s             30a
+     D STAdr3          s             30a
+     D STCity          s             30a
+     D STState         s              2a
+     D STZip           s             10a
+     D STCountry       s              3a
+     D STEmail         s            100a
+     D STPhone         s             15a
+     D BillToNum       s              7s 0
+     D BTPlaceId       s             20a
+     D BTName1         s             30a
+     D BTName2         s             30a
+     D BTAdr1          s             30a
+     D BTAdr2          s             30a
+     D BTAdr3          s             30a
+     D BTCity          s             30a
+     D BTState         s              2a
+     D BTZip           s             10a
+     D BTCntry         s              3a
+     D BTEmail         s            100a
+     D BTPhone         s             15a
+     D CSPlaceId       s             20a
+     D CSName1         s             30a
+     D CSName2         s             30a
+     D CSAdr1          s             30a
+     D CSAdr2          s             30a
+     D CSAdr3          s             30a
+     D CSCity          s             30a
+     D CSState         s              2a
+     D CSZip           s             10a
+     D CSEmail         s            100a
+     D CSPhone         s             15a
+     D IVPlaceId       s             20a
+     D IVName1         s             30a
+     D IVName2         s             30a
+     D IVAdr1          s             30a
+     D IVAdr2          s             30a
+     D IVAdr3          s             30a
+     D IVCity          s             30a
+     D IVState         s              2a
+     D IVZip           s             10a
+     D IVEmail         s            100a
+     D IVPhone         s             15a
+     D UsePath         s             15a
+     D Cmd             s            500a
+     D CmdLen          s             15p 5
+     D DropShip        s              7s 0
+     D FAPath          s            155a   Varying
+     D FAFile          s            100a   Varying
+     D FAFull          s            256a   Varying
+     D RightNow        s               Z
+     D Avail           s             13p 4
+     D from            s            100a
+     D To              s            100a
+     D replyTo         s            100a
+     D subject         s            100a
+     D text            s           9999a
+     D distribution    s            100a
+     D email           s               O   class(*java:RPGMail)
+     D Alert           s             10a
+     D AlertSubj       s            200a
+     D AlertMsg        s           9999a
+     D pass            s             10i 0
+     D StockItem       s              1a
+     D orderAction     s             10a
+     D CMSVSV          s              2a
+     D WorkDate        s              6a
+     D NullInd         s              2b 0
+     D UDCDays         s              2s 0
+
+     D XMLorderId      s             20a
+     D LastOrder       s              8s 0
+     D CurDate         s               D   DatFmt(*ISO)
+     D CurTime         s               T
+     D Transact        s             10a
+     D HWLinCnt        s              5s 0
+     D lineTotal       s             10i 0
+     D OrderTotal      s             10i 0
+     D CustomItem      s              1a
+     D DebugFlag       s              1a
+     D SaveDesc        s            300a
+     D CharPos         s              3s 0
+     D ProcessedItems  s              3s 0
+
+     D O1IMDS          s             30a
+     D O1BITEM         s             35a
+     D O1VITEM         s             35a
+     D O1ITEM          s             15a
+     D O1CUOM          s              3a   Inz('EA')
+     D O1PUOM          s              3a   Inz('EA')
+     D O1QUOM          s              3a   Inz('EA')
+     D O1ORL#          s              3P 0
+     D O1QORD          s             13p 4
+     D O1RQDTA         s             25a
+     D O1RQDTD         s               D   DatFmt(*ISO-)
+     D O1COST          s             13p 5
+     D O1SLPR          s             13p 5
+     D O1SLPRXLT       s             13a
+     D O1SVSV          s              2a
+     D O1CNCDT         s              8a
+     D O1DLVDT         s              8a
+
+     D ErrFlag         s              1a
+     D ErrDescr        s            100a
+     D RecsWrtn        s              1a
+
+
+     D HWPO#           s             22a                                        OEHDWK/H1ORRF
+     D HWOrdDate       s             25a                                        yyyymmdd
+     D HWMerchDpt      s             10a
+     D HWShpToID       s             15a                                        OEHDWK/H1SHTO
+     D HWBillToID      s             12a                                        OEHDWK/H1BLTO
+     D HWLineCnt       s              3s 0
+     D HWCustID        s             12a                                        OEHDWK/H1BLTO
+     D HWInvToID       s             12a                                        OEHDWK/H1BLTO
+     D HWShipCd        s             15a                                        OEHDWK/H1SVSV-H1SVDS
+     D HWControl       s              5a
+     D HWSlsDiv        s             10a
+     D HWCustOrd       s             15a                                        ???????
+     D HWBuyCntrct     s             10a                                        ???????
+     D HWReqShpD       s             10a
+     D HWPOType        s              2a
+     D HWGiftMSG       s            256a
+
+     D xmlWHndl        s             64a   Inz(*blanks)
+     D xmlOCTL         s              8p 0
+     D xmlFRT          s              9p 2
+     D xmlCHRG         s              9p 2
+     D xmlUPDTOT       s              1a
+
+     D CustOrdLn       s              3s 0
+     D CustRqDt        s              7s 0
+     D CustDesc        s             30a
+     D CustCmt         s             60a
+     D CustQOrd        s             13s 4
+     D CustSlPr        s             13s 5
+
+      * XML Acknowledgement Variables *
+
+      * Customer#
+     D XMLACKCUST      s             20A
+      * Acknowledgement Date (YYYY-MM-DD)
+     D XMLACKDATE      s               D   datfmt(*ISO)
+      * Ack. Order ID
+     D XMLACKORDR      s             20A
+      * Ack. Customer PO#
+     D XMLCUSTPO       s             22A
+      * Ack. Type
+     D XMLACKTYPE      s              6A
+      * Customer PO Date
+     D XMLCUSTPD       s               D   datfmt(*ISO)
+
+
+     D HOEUMC_W        PR                  ExtPgm('HOEUMC_W')
+     D  xmlWHndl                     64a
+     D  xmlDBID                       2a
+     D  xmlOCTL                       8p 0
+     D  xmlFRT                        9p 2
+     D  xmlCHRG                       9p 2
+     D  xmlUPDTOT                     1a
+
+     D Ack             PR                  ExtPgm('XMLACKR')
+     D  xmlRetailer                  15a
+     D  HWPO#                        22a
+     D  ErrFlag                       1a
+     D  ErrDescr                    100a   Options(*NoPass)
+
+     D XML850R_AR      PR                  ExtPgm('XML850R_AR')
+     D  xmlDBID                       2a
+     D  xmlRetailer                  15a
+     D  xmlFile                     100a
+     D  xmlSvrDfn                    10a   Options(*NOPASS)
+
+     D XML850R_AR      PI
+     D  xmlDBID                       2a
+     D  xmlRetailer                  15a
+     D  xmlFile                     100a
+     D  xmlSvrDfn                    10a   Options(*NOPASS)
+
+     D error           DS                  LikeDS(Error_Info)
+
+     D DTAQ          E DS                  ExtName(OEDTAQPL)
+
+
+      * Prototype for Send Data Queue (QSNDDTAQ) API
+     D QSNDDTAQ        PR                  ExtPgm('QSNDDTAQ')
+     D  DQ#NAM                       10a   Const
+     D  DQ#LIB                       10a   Const
+     D  DQ#LEN                        5p 0 Const
+     D  Data                      32766a   Options(*varsize)
+
+      * QCmdExc Parameters *
+     D ExecCmd         PR                  EXTPGM('QCMDEXC')
+     D  Cmd                         500a
+     D  CmdLen                       15p 5
+
+      * Prototypes for RPGMail *
+      /copy RPGMail/qsource,RPGMailCP
+      /copy RPGMail/qsource,ErrorCP
+
+       // QMHSNDPM prototype + work fields - log alert send failures (3c)
+       dcl-pr SndPgmMsg ExtPgm('QMHSNDPM');
+         p_MsgID      char(7)     const;
+         p_MsgFile    char(20)    const;
+         p_MsgData    char(32767) const options(*varsize);
+         p_MsgDataLen int(10)     const;
+         p_MsgType    char(10)    const;
+         p_CallStkEnt char(10)    const;
+         p_CallStkCnt int(10)     const;
+         p_MsgKey     char(4);
+         p_ErrCode    char(32767) options(*varsize);
+       end-pr;
+
+       dcl-s MsgKey char(4);
+       dcl-s LogTxt char(512);
+       dcl-ds ApiErr qualified;
+         BytesProv  int(10) inz(8);
+         BytesAvail int(10) inz(0);
+       end-ds;
+
+
+
+
+
+      ************************
+      ** XML Data TEMPLATES **
+      ************************
+
+     D*-------------------
+     D*| Header Template |
+     D*-------------------
+
+       dcl-ds Sender_T Qualified Template ;
+         dcl-ds Credential likeDS(Credential_T) ;
+         UserAgent Char(20) ;
+       // end-ds ;          ---> NOT specified after a DS is declared with likeDS!!!
+       end-ds Sender_T ;
+
+       dcl-ds Credential_T Qualified Template ;
+         domain       Char(20) ;
+         Identity     Char(20) ;
+         SharedSecret Char(15) ;
+       end-ds;
+
+      **********************************
+      * XML Data Structure Definitions *
+      **********************************
+       dcl-ds cXML Qualified ;
+         payloadID       Char(50) ;
+         version         Char(10) ;
+
+         dcl-ds Header ;
+
+           dcl-ds From ;
+             dcl-ds Credential ;
+               domain   Char(20) ;
+               Identity Char(20) ;
+             end-ds Credential ;
+           end-ds From ;
+
+           dcl-ds To ;
+             dcl-ds Credential ;
+               domain   Char(20) ;
+               Identity Char(20) ;
+             end-ds Credential ;
+           end-ds To ;
+
+           dcl-ds Sender ;
+             dcl-ds Credential likeDS(Credential_T) inz(*likeDS) ;
+      //       end-ds Credential ;        ---> Not used on a data structure declared with likeDS!!!
+           end-ds Sender ;
+
+         end-ds Header ;
+
+         dcl-ds Request ;
+           deploymentMode   Char(10) ;
+
+           dcl-ds OrderRequest Dim(50);
+             dcl-ds OrderRequestHeader ;
+               orderDate     Char(25) ;
+               orderID       Char(15) ;
+               numoforderID    Int(10);
+               orderType      Char(8) ;
+               orderVersion  Zoned(2:0) ;
+               type           Char(10) ;
+               dcl-ds Total ;
+                 dcl-ds Money ;
+                   alternateAmount    Char(10) ;        // Was Zoned(8:2) but they don't send it
+                   alternateCurrency  Char(10) ;
+                   currency           Char(3) ;
+                   dsvalue            Char(50) ;
+                 end-ds Money ;
+               end-ds Total ;
+               dcl-ds ShipTo ;
+                 dcl-ds Address ;
+                   addressID        Char(25) ;
+                   isoCountryCode   Char(5) ;
+                   dcl-ds Name ;
+                     xml_lang       Char(2);          // Was xml:lang; Works w/case convert
+                     dsvalue       Char(50);
+                   end-ds Name ;
+                   dcl-ds PostalAddress ;
+                     name       Char(10) ;
+                     DeliverTo  Char(30) Dim(2) ;
+                     Street     Char(30) ;
+                     City       Char(15) ;
+                     State      Char(2) ;
+                     PostalCode Char(10) ;
+                     dcl-ds Country ;
+                       isoCountryCode   Char(2)  ;
+                       dsvalue          Char(50) ;
+                     end-ds Country ;
+                   end-ds PostalAddress ;
+                   dcl-ds Email ;
+                     name          Char(10) ;
+                     preferredLang Char(5) ;
+                     dsvalue       Char(50) ;
+                   end-ds Email ;
+                   dcl-ds Phone ;
+                     name        Char(10);
+                     dcl-ds TelephoneNumber ;
+                       dcl-ds CountryCode ;
+                         isoCountryCode  Char(2)  ;
+                         dsvalue         Char(1) ;
+                       end-ds CountryCode ;
+                       AreaOrCityCode  Zoned(3:0) ;
+                       Number          Zoned(10:0) ;
+                     end-ds TelephoneNumber ;
+                   end-ds Phone ;
+                   dcl-ds Fax ;
+                     name          Char(10) ;
+                     dcl-ds TelephoneNumber ;
+                       dcl-ds CountryCode ;
+                         isoCountryCode    Char(2)  ;
+                         dsvalue           Char(1) ;
+                       end-ds CountryCode ;
+                       AreaOrCityCode    Zoned(3:0) ;
+                       Number            Zoned(10:0)  ;
+                     end-ds TelephoneNumber ;
+                   end-ds Fax ;
+                 end-ds Address;
+               end-ds ShipTo;
+
+               dcl-ds BillTo ;
+                 dcl-ds Address ;
+                   addressID       Char(4) ;
+                   isoCountryCode  Char(2) ;
+                   dcl-ds Name ;
+                     xml_lang      Char(2) ;
+                     dsvalue      Char(32) ;
+                   end-ds Name ;
+                   dcl-ds PostalAddress ;
+                     name          Char(30) ;
+                     Street        Char(50) ;
+                     City          Char(30) ;
+                     State         Char(2) ;
+                     PostalCode    Char(10) ;
+                     dcl-ds Country ;
+                       isoCountryCode  Char(2) ;
+                       dsvalue         Char(25) ;
+                     end-ds Country ;
+                   end-ds PostalAddress ;
+                 end-ds Address ;
+               end-ds BillTo ;
+               dcl-ds PaymentTerm ;
+                 payInNumberOfDays     Zoned(3:0) ;
+               end-ds PaymentTerm ;
+               Comments     Char(250) ;
+               dcl-ds Extrinsic ;
+                 name     Char(15) ;
+                 dsvalue  Char(50) ;
+               end-ds  Extrinsic ;
+             end-ds OrderRequestHeader ;
+
+             dcl-ds ItemOut Dim(500) ;
+               quantity              Char(13) ;
+               requestedDeliveryDate   Char(25) ;
+               lineNumber            Zoned(5:0) ;
+               dcl-ds ItemID ;
+                 SupplierPartID          Char(15) ;
+                 SupplierPartAuxiliaryID Char(15) ;
+               end-ds ItemID ;
+
+               dcl-ds ItemDetail ;
+                 dcl-ds UnitPrice ;
+                   dcl-ds Money ;
+                     alternateCurrency  Char(5)   ;
+                   alternateAmount    Char(10) ;     // Was Zoned(5:2) but they don't provide it
+                     currency           Char(3)   ;
+                     dsvalue            Char(13) ;
+                   end-ds Money ;
+                 end-ds UnitPrice ;
+                 dcl-ds Description ;
+                   xml_lang    Char(2) ;
+                   dsvalue    Char(300) ;
+                 end-ds Description;
+                 UnitOfMeasure Char(2) ;
+                 dcl-ds Classification ;
+                   domain         Char(10) ;
+                   Classification Char(10) ;
+                 end-ds Classification ;
+                 ManufacturerPartID Char(15) ;
+                 dcl-ds Extrinsic ;
+                   name  Char(25) Dim(5) ;
+                 end-ds Extrinsic ;
+
+               end-ds ItemDetail ;
+             end-ds ItemOut ;
+
+
+           end-ds OrderRequest ;
+         end-ds Request ;
+       end-ds cXML ;
+
+
+
+      * Constants *
+     D Up              C                   'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+     D Lo              C                   'abcdefghijklmnopqrstuvwxyz'
+     D CrLf            C                   Const(x'0d25')
+
+      * Search/Replace Constants
+     D apos            C                   'andapos;'
+     D quot            C                   'andquot;'
+     D amper           C                   'andamp;'
+     D lt              C                   'andlt;'
+     D gt              C                   'andgt;'
+
+
+      * -------------------- Main Module -----------------------------*
+
+      /Free
+
+       // Prepare email for alerts...
+       Monitor;
+         RPGMail_init();
+       On-error;
+         error = Error_catch();
+       EndMon;
+
+       // Reset the error flag.
+       ErrFlag = 'N';
+
+       // Check the number of parameters.  4 parameters mean this is a
+       // production run.  The 4th parameter is the server definition
+       // used by ARPEGGIOL.  This is not passed if this is a test run
+       // of an archived inbound order.
+       NumParams = %Parms;
+       If NumParams < 4;
+         // Testing an /orders/archived inbound/amerigas/orders/
+         // {filename} order
+         ProcessMode = 'T';
+       Else;
+         // Executing a production run of an amerigas order
+         ProcessMode = 'L';
+       EndIf;
+
+
+       Exsr getXMLData;
+
+       // Process UP TO 50 orders per cXML file (per the "Dim"
+       // statement on the SGOrder Data Structure spec)
+       Exsr loadDB2Data;
+
+       // If this is a production order, archive the order.
+       If ProcessMode = 'L';
+         Exsr exitProgram;
+       EndIf;
+
+       *InLR = *On;
+
+
+       //---------------------------------------------------------------*
+       //  getXMLData Subroutine will pull all XML variables out and    *
+       //  put them into their appropriate production data fields       *
+       //---------------------------------------------------------------*
+
+       BegSr getXMLData;
+
+         //* * * * * * * * * * * * * * * //
+         //* This runs for AMERIGAS only //
+         //* * * * * * * * * * * * * * * //
+         BillToNum = 1590000;
+         H1BlTO    = 1590000;
+
+         usepath = XMLRetailer;
+
+         // Pull extraneous data required based on the trading
+         // partner being processed...
+         Exec SQL
+           Select Substr(UDCDESC3,1,1), Dec(UDCDESC2,7,0)
+             Into :xmlMode, :HDPCust#
+             From ProITRG/UDCDETAIL
+           Where UDCSYSTEMD = 'XML' And UDCKEY = :XMLRetailer;
+
+         If SQLCod <> 0;
+           // Notify somebody of an error trying to process :XMLRetailer!!!
+           // Don't know how this could happen if the user got this far.
+           Alert = 'XMLNOCUST';
+           Select;
+           When ProcessMode = 'T';
+             AlertSubj = '*** Testing Archived Inbound Order file ' +
+                         %Trim(xmlFile) + ' ***';
+           When xmlMode = 'T';
+             AlertSubj = '*** Test Order file ' + %Trim(xmlFile) +
+                         ' sent in by ' + %Trim(xmlRetailer) +
+                         '***';
+           Other;
+             AlertSubj = 'Republic Order ' + %Trim(xmlFile) +
+                    ' Alert';
+           EndSL;
+
+           AlertMsg = %Trim(AlertMsg) +
+                       '--> This file cannot be processed. ' +
+                       'No HD primary customer number in the User' +
+                       ' Defined Codes file for ' +
+                       %Trim(xmlretailer) + '.';
+           Exsr Notify ;
+           *InLR = *On;
+           Return;
+         EndIf;
+
+         // Pull the path used for the download to extract the filename
+         // if this is a production order.
+         If ProcessMode = 'L';
+           Chain xmlSvrDfn AFSVR1P ;
+
+           Length = %len(%Trim(SFDWNFLR)) ;
+           If Length = 0 ;
+             Alert = 'XMLORDERS';
+             AlertSubj = 'Amerigas order file ' + %Trim(xmlFile) +
+                        ' Alert';
+
+             AlertMsg = 'This file cannot be processed. ' +
+                        'No path in the ' + %Trim(xmlSvrDfn) +
+                        ' server definition in ARPSFTP.' ;
+             Exsr Notify ;
+             *InLR = *On ;
+             Return ;
+           EndIf;
+         EndIf;
+
+
+         // ProcessMode takes precedence over xmlMode because
+         // ProcessMode is what we're doing at a higher level
+         // ...production order a testing an order from archived
+         // inboud.  xmlMode is which we're processing for the
+         // retailer - a test order they sent or a production order
+         // they sent.
+         Select;
+         When ProcessMode = 'T' Or xmlMode = 'T';
+           filename = '/orders/archive inbound/' +
+                      %Trim(xmlRetailer) + '/orders/' +
+                      %Trim(xmlFile);
+         Other;
+           RestofLen = %len(xmlFile) - Length;
+           ifsFile = %Subst(xmlFile:Length + 1:RestofLen);
+           filename = '/orders/inbound/'  +
+                      %Trim(xmlRetailer) + '/' + %Trim(ifsFile);
+
+         EndSL;
+
+
+         //--------------------------------------------------------------------*
+         //  Original Code.  XML-INTO can't handle the "NIL" variables so this *
+         //  was changed to a DATA-INTO opcode with the XMLNSC specified which *
+         //  CAN handle the "NIL" element values. (ex. <AreaOrCityCode/>)      *
+         //--------------------------------------------------------------------*
+         //                                                                    *
+         //         XML-INTO(EH) cXML %xml(%Trim(fileName):                    *
+         //                      'case=convert doc=file datasubf=dsvalue +     *
+         //                       allowextra=yes allowmissing=yes +            *
+         //                       countprefix=numof ns=merge');                *
+         //                                                                    *
+         //--------------------------------------------------------------------*
+
+         //  DATA-INTO cXML %Data(fileName :           *
+
+           XML-INTO cXML %xml(%Trim(fileName):
+                      'case=convert doc=file datasubf=dsvalue +
+                       allowextra=yes allowmissing=yes +
+                       countprefix=numof ns=merge');
+
+       EndSr;
+
+       //---------------------------------------------------------------*
+       //  loadDB2Data subroutine will populate all the data required   *
+       //  for HarrisDatas' normal order processing.                    *
+       //---------------------------------------------------------------*
+
+       BegSr loadDB2Data;
+
+         orderTotal = cXML.Request.OrderRequest(1).
+                      OrderRequestHeader.numofOrderID;
+
+         For orderCounter = 1 to orderTotal;
+
+           // Check to see if this is a Change or Cancel request.
+           // If it is, just email customer service and don't
+           // process the order.
+           If %Trim(cXML.Request.OrderRequest(orderCounter).
+              OrderRequestHeader.orderType) = 'regular' AND
+              %Trim(cXML.Request.OrderRequest(orderCounter).
+              OrderRequestHeader.type) = 'new';
+
+             Exsr writeOrder;
+
+           Else;
+
+             // Notify Customer Service of Order Type we
+             // can't handle...
+
+             orderAction = cXML.Request.OrderRequest(orderCounter).
+                           OrderRequestHeader.type;
+
+             // Convert orderAction to uppercase with SQL
+             Exec SQL
+                Set :orderAction = Upper(:orderAction);
+
+             Alert = 'ORDUPDATE';
+             AlertSubj = 'Amerigas Order Alert for file ' +
+                         %Trim(xmlFile) + '.  Order type ' +
+                         %Trim(orderAction) +
+                        ' - PO# ' + %Trim(%Char(cXML.Request.
+                        OrderRequest(orderCounter).
+                     OrderRequestHeader.orderID));
+             AlertMsg = 'Program XML850R_AR does not know it ' +
+                        'should process this order type.';
+             Exsr Notify;
+
+           EndIf;
+
+         EndFor;
+
+       EndSr;
+       //---------------------------------------------------------------*
+
+
+
+       //---------------------------------------------------------------*
+       //* writeOrder loads the fields for the transaction header
+       //---------------------------------------------------------------*
+       BegSr writeOrder;
+
+         Clear OEHDWKR;
+         Clear XMLOEHDR;
+
+         // Write the header for the order...
+         XMLOrderID = cXML.Request.OrderRequest(orderCounter).
+                      OrderRequestHeader.orderID;
+
+         Exsr NxtHDOrd;
+
+         HWPO# = cXML.Request.
+                 OrderRequest(orderCounter).
+                 OrderRequestHeader.orderID;
+         HWPO# = %XLate(Lo:Up:HWPO#);
+
+         If HWPO# = '4100022893';
+           DebugFlag = 'Y';
+         EndIf;
+
+         HWOrdDate = %Char(%Date(%Subst(cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.orderDate:1:10):*ISO-));
+         If %Upper(%Subst(cXML.Request.OrderRequest(orderCounter).
+               OrderRequestHeader.ShipTo.Address.addressID:1:7)) =
+               'ADBUYER';
+            HWShpToID = %Subst(cXML.Request.OrderRequest(orderCounter).
+                        OrderRequestHeader.ShipTo.Address.addressID:8:15);
+         Else;
+            HWShpToID = cXML.Request.
+                        OrderRequest(orderCounter).
+                        OrderRequestHeader.ShipTo.
+                        Address.addressID;
+         EndIf;
+         If cXML.Request.
+            OrderRequest(orderCounter).
+            OrderRequestHeader.ShipTo.
+            Address.PostalAddress.
+            DeliverTo(1) <> *Blanks;
+           STName1 = %Trim(cXML.Request.
+                     OrderRequest(Ordercounter).
+                     OrderRequestHeader.ShipTo.Address.
+                     PostalAddress.DeliverTo(1));
+         Else;
+           STName1 = %Trim(cXML.Request.
+                     OrderRequest(OrderCounter).
+                     OrderRequestHeader.ShipTo.Address.
+                     Name.dsvalue);
+         EndIf;
+
+         STName1    = %XLate(Lo:Up:STName1);
+         STAdr1     = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.ShipTo.
+                     Address.PostalAddress.DeliverTo(2);
+         STAdr1     = %XLate(Lo:Up:STAdr1);
+         STAdr2    = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.ShipTo.
+                     Address.PostalAddress.Street;
+         STAdr2    = %XLate(Lo:Up:STAdr2);
+         // STAdr3    = cXML.Request.
+         //             OrderRequest(orderCounter).
+         //             OrderRequestHeader.ShipTo.
+         //             Address.PostalAddress.Street;
+         // STAdr3    = %XLate(Lo:Up:STAdr3);
+         STAdr3 = *Blanks;
+         STCity    = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.ShipTo.
+                     Address.PostalAddress.City;
+         STCity    = %XLate(Lo:Up:STCity);
+         STState   = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.ShipTo.
+                     Address.PostalAddress.State;
+         STState   = %XLate(Lo:Up:STState);
+         STZip     = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.ShipTo.
+                     Address.PostalAddress.PostalCode;
+         STCountry = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.ShipTo.
+                     Address.PostalAddress.
+                     Country.isoCountryCode;
+         STCountry = %XLate(Lo:Up:STCountry);
+
+         Monitor;
+           // All ShipTos won't provide a phone number
+
+           STPhone   = %Char(cXML.Request.
+                             OrderRequest(orderCounter).
+                             OrderRequestHeader.ShipTo.
+                             Address.Phone.TelephoneNumber.
+                             AreaOrCityCode) +
+                       %Char(cXML.Request.
+                             OrderRequest(orderCounter).
+                             OrderRequestHeader.ShipTo.
+                             Address.Phone.TelephoneNumber.
+                             Number);
+         On-Error;
+           STPhone = *Blanks;
+         EndMon;
+
+         BTName1   = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.BillTo.
+                     Address.Name.dsvalue;
+         BTName1   = %XLate(Lo:Up:BTName1);
+         BTAdr1    = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.BillTo.
+                     Address.PostalAddress.Street;
+         BTAdr1    = %XLate(Lo:Up:BTAdr1);
+         BTCity    = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.BillTo.
+                     Address.PostalAddress.City;
+         BTCity    = %XLate(Lo:Up:BTCity);
+         BTState   = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.BillTo.
+                     Address.PostalAddress.State;
+         BTState   = %XLate(Lo:Up:BTState);
+         BTZip     = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.BillTo.
+                     Address.PostalAddress.PostalCode;
+         BTCntry   = cXML.Request.
+                     OrderRequest(orderCounter).
+                     OrderRequestHeader.BillTo.
+                     Address.PostalAddress.
+                     Country.isoCountryCode;
+         BTCntry   = %XLate(Lo:Up:STCountry);
+
+         // Determine the ShipTo as follows...
+         // (Preferred)
+         // - Pull the Customer whose addressID in the cXML document
+         //   that matches the CMUDF4 field on HDCUST and has a BillTo
+         //   of :BillToNum
+         // (Secondary option)
+         // - If that doesn't exist, pull the Customer whose addressID
+         //   in the cXML document matches the CMUDF4 field on HDCUST
+         //   and use that BillTo and ShipTo
+         // (Tertiary option)
+         // - If neither of those exist, set up the order as a drop
+         //   ship with the information provided in the cXML document
+         //   and notify orders@screen-graphics.com of the issue.
+
+         ShipToFnd = 'N';
+
+         Exec SQL
+         Select CMCUST, CMSV, CMCTXC Into :H1ShTo, :CMSVSV, :STTXCD
+           From HDCUST
+           Where CMUDF4 = :HWShpToID
+             And CMBLTO = :BillToNum;
+
+         If SQLCod = 0;
+           ShipToFnd = 'Y';
+         EndIf;
+
+         If ShipToFnd = 'N';
+           Exec SQL
+           Select CMCUST, CMBLTO, CMSV, CMCTXC
+             Into :H1ShTo, :H1BlTo, :CMSVSV, :STTXCD
+             From HDCUST
+            Where CMUDF4 = :HWShpToID;
+
+           If SQLCod = 0;
+             ShipToFnd = 'Y';
+           EndIf;
+         EndIf;
+
+         If ShipToFnd = 'N';
+           H1ShTo = BillToNum;
+
+           // Figure the Drop Ship Number for this Order
+           Exec SQL
+           Select DSNMBR Into :DropShip
+             From HDDSHP
+            Where DSVCF = 'C' And DSVNCS = :HDPCust#
+              And DSNAME = :STName1  And DSADR1 = :STADR1
+              And DSADR2 = :STADR2 And DSADR3 = :STADR3
+              And DSCITY = :STCITY And DSST = :STSTATE
+              And DSZIP  = :STZIP And DSCTRY = :STCOUNTRY
+              And DSCNTC = :CMCNTC And DSCTTC = :CMCTTC
+              And DSLOC1 = :CMLOC1 And DSLOC2 = :CMLOC2
+              And DSLOC3 = :CMLOC3;
+
+           If SQLCod <> 0;
+
+             Exec SQL
+             Select Max(DSNMBR) Into :DropShip from HDDSHP;
+
+             DropShip += 1;
+
+             Exec SQL
+             Insert Into HDDSHP
+             (DSVCF, DSVNCS, DSNMBR, DSNAME, DSADR1, DSADR2, DSADR3,
+              DSCITY, DSST, DSZIP, DSCTRY, DSCNTC, DSCTTC, DSLOC1,
+              DSLOC2, DSLOC3, DSDATE, DSPURG, DSNAMEU, DSADR1U,
+              DSADR2U, DSADR3U, DSCITYU)
+             Values('C', :HDPCust#, :DropShip, :STName1, :STAdr1,
+                :STAdr2, :STAdr3, :STCity, :STState, :STZip,
+                :STCOUNTRY, :CMCNTC, :CMCTTC, :CMLOC1, :CMLOC2,
+                :CMLOC3, :H1RQDT, 'Y', UCASE(:STName1),
+                UCASE(:STADR1), UCASE(:STAdr2), UCASE(:STAdr3),
+                UCASE(:STCity));
+
+             H1DSHP = DropShip;
+
+             // *** Notify bbusch@screen-graphics.com of ***
+             // *** the new customer that needs to get   ***
+             // *** set up using the drop ship info      ***
+             Alert = 'XMLDrpShp';
+             Select;
+             When ProcessMode = 'T';
+               AlertSubj = 'Test file ' + %Trim(xmlFile) +
+                            ' sent by Amerigas added a Drop Ship';
+             Other;
+               AlertSubj = 'Amerigas order added a Drop Ship';
+             EndSL;
+
+             AlertMsg = 'Amerigas file ' + %Trim(xmlFile)
+                        + CrLf;
+             AlertMsg = %Trim(AlertMsg) + 'HarrisData Order: '
+                        + %Char(LastOrder)
+                        + CrLf;
+             AlertMsg = %Trim(AlertMsg) + 'Imported Order: '
+                        + HWPO# + CrLf;
+             AlertMsg = %Trim(AlertMsg) + 'New Drop Ship: '
+                        + %Char(DropShip) + CrLf + CrLf;
+             AlertMsg = %Trim(AlertMsg) + 'Code: '
+                        + HWShpToID + CrLf;
+             AlertMsg = %Trim(AlertMsg) + 'Address: '
+                        + %Trim(STName1) + CrLf;
+             AlertMsg = %Trim(AlertMsg) + '         ' + %Trim(STAdr1) +
+                        CrLf;
+             AlertMsg = %Trim(AlertMsg) + '         ' + %Trim(STAdr2) +
+                        CrLf;
+             AlertMsg = %Trim(AlertMsg) + '         ' + %Trim(STAdr3) +
+                        CrLf;
+             AlertMsg = %Trim(AlertMsg) + '         ' + %Trim(STCity) +
+                        ', ' + %Trim(STState) + '  ' + %Trim(STZip) +
+                        CrLf + CrLf;
+             AlertMsg = %Trim(AlertMsg) + 'Issue: CMUDF4 info right?'
+                        + CrLf;
+             Exsr Notify;
+           Else;
+
+             H1DSHP = DropShip;
+
+           EndIf;
+
+         EndIf;
+
+
+
+         CustomItem = 'N';
+
+         // Write the detail for the order...
+         For lineCounter = 1 to 500;
+
+           Clear OEDTWKR;
+           Clear XMLOEDTR;
+
+           // If the line is not there it will throw an error, exit
+           // at that point because all items have been processed.
+
+           Monitor;
+
+             BuyerOrdLn = cXML.Request.
+                          OrderRequest(orderCounter).
+                          ItemOut(lineCounter).
+                          lineNumber;
+
+             // If BuyerOrdLn > 999;
+             O1OrL# = lineCounter;
+           //   Else;
+           //      O1OrL# = BuyerOrdLn;
+           //   EndIf;
+
+           On-Error;
+             Leave;
+           EndMon;
+
+           O1VItem = cXML.Request.
+                     OrderRequest(orderCounter).
+                     ItemOut(lineCounter).ItemID.
+                     SupplierPartID;
+           O1VItem = %XLate(Lo:Up:O1VItem);
+
+           // Exit the loop if the last line was just processed...
+           If O1VItem = *Blanks;
+             Leave;
+           EndIf;
+
+           O1ITEM = O1VITEM;
+
+           O1BItem = cXML.Request.
+                     OrderRequest(orderCounter).
+                     ItemOut(lineCounter).ItemID.
+                     SupplierPartID;
+           O1BItem = %XLate(Lo:Up:O1BItem);
+
+           Monitor;
+             O1QOrd  = %Dec(%XLATE('$*,':'   ':cXML.Request.
+                       OrderRequest(orderCounter).
+                       ItemOut(lineCounter).
+                       quantity) : 13 : 4);
+           //  On-Error 105;
+           On-Error;
+             O1QOrd = 1;
+           EndMon;
+
+           O1QUOM  = 'EA';
+
+           // ************************************************************* //
+           // If the item is NOT found on HDIMST it is to be processed as a //
+           // custom, non-stock item ...per Bill Busch 10/15/2019           //
+           // ************************************************************* //
+
+           // Description is longer than HD's OEORDT ODIMDS field, so
+           // check to see if the description includes IMIMDS and, if
+           // so write the remainder of the SAVEDESC after the ";" to
+           // OECMWK.
+           Chain O1ITEM HDIMST;
+
+           // Item is not on HDIMST so set it as a 'CUSTOM ITEM'
+           If NOT %Found(HDIMST);
+             CustomItem = 'Y';
+             O1OREC = 'N';
+             O1ITEM = 'CUSTOM ITEM';
+             O1PCLS = '9MIS';
+             O1STUM = 'EA';
+             O1PRUM = 'EA';
+             O1ORUF = 1.0000;
+             O1TAXC = 'Y';
+           Else;
+             CustomItem = 'N';
+             O1IMDS = IMIMDS;
+             O1OREC = 'S';
+             O1PCLS = IMPCLS;
+             O1STUM = IMUOMS;
+           EndIf;
+
+           SaveDesc = cXML.Request.OrderRequest(orderCounter).
+                      ItemOut(lineCounter).ItemDetail.Description;
+
+           SaveDesc = %Subst(SaveDesc:3:298);
+
+           // Search/Replace any invalid XML characters in the description
+
+           // apostrophe...
+           CharPos = %Scan(apos: SaveDesc);
+           DoW CharPos > 0;
+             SaveDesc = %Replace('''': SaveDesc: CharPos:
+                           %len(apos));
+             CharPos = %Scan(apos: SaveDesc: CharPos + 1);
+           EndDo;
+
+           // quote...
+           CharPos = %Scan(quot: SaveDesc);
+           DoW CharPos > 0;
+             SaveDesc = %Replace('"': SaveDesc: CharPos:
+                           %len(quot));
+             CharPos = %Scan(quot: SaveDesc: CharPos + 1);
+           EndDo;
+
+           // ampersand...
+           CharPos = %Scan(amper: SaveDesc);
+           DoW CharPos > 0;
+             SaveDesc = %Replace('&': SaveDesc: CharPos:
+                           %len(amper));
+             CharPos = %Scan(amper: SaveDesc: CharPos + 1);
+           EndDo;
+
+           // less than...
+           CharPos = %Scan(lt: SaveDesc);
+           DoW CharPos > 0;
+             SaveDesc = %Replace('<': SaveDesc: CharPos:
+                           %len(lt));
+             CharPos = %Scan(lt: SaveDesc: CharPos + 1);
+           EndDo;
+
+           // greater than...
+           CharPos = %Scan(gt: SaveDesc);
+           DoW CharPos > 0;
+             SaveDesc = %Replace('>': SaveDesc: CharPos:
+                           %len(gt));
+             CharPos = %Scan(gt: SaveDesc: CharPos + 1);
+           EndDo;
+
+
+           Clear OECMWKR;
+
+           If CustomItem = 'N';
+             CharPos = %Scan('; ':SaveDesc);
+             If CharPos > 0;
+               SaveDesc = %Subst(SaveDesc : CharPos + 1 :
+                          %Len(%Trim(SaveDesc)) - CharPos + 1);
+               Exsr WriteCmt;
+             EndIf;
+           Else;
+             Exsr WriteCmt;
+           EndIf;
+
+           O1SlPrXlt = %XLATE('$*,':'   ':cXML.Request.
+                       OrderRequest(orderCounter).
+                       ItemOut(lineCounter).ItemDetail.
+                       UnitPrice.Money.dsvalue);
+
+           O1SlPr = %Dec(O1SlPrXlt:13:5);
+
+           O1CUOM = 'EA';
+
+
+           // Populate the OEDTWK fields...
+           O1OCTL = LastOrder;
+           O1ORL# = lineCounter;
+
+           O1MNCD = 'A';
+           O1BLKT = 'N';
+           O1PLT = 5;
+           O1TAXC = 'N';
+           O1LPOV = 'Y';
+           O1CPOV = 'Y';
+           O1STKL = 'Y';
+           O1LLTC = 'N';
+           If H1DSHP = 0;
+             O1DSHP = 'N';
+           Else;
+             O1DSHP = 'Y';
+           EndIf;
+           O1GNPO = 'N';
+
+           // Get the default warehouse for this trading partner...
+           Chain HDPCust# HDCUSTR;
+
+           If ShipToFnd = 'Y';
+             O1SVSV = CMSVSV;
+           Else;
+             O1SVSV = CMSV;
+           EndIf;
+
+           // Populate O1SVDS on OEDTWK for HOEPIC pick ticket Ship Via
+           Chain O1SVSV HDSHPV;
+           If %Found(HDSHPV);
+             O1SVDS = SVSVDS;
+           Else;
+             O1SVDS = *Blanks;
+           EndIf;
+
+           O1WH   = CMWH#;
+           O1BOAL = *Blanks;
+           O1OCTL = LastOrder;
+           O1LOC# = CMLOC#;
+           O1SHTO = H1SHTO;
+           O1ORST = 'O';
+
+
+           Chain (O1ITEM:O1WH) HDIWHS;
+           If %Found(HDIWHS);
+             O1PGRP = IWPGRP;
+             O1PRUM = IWUOMP;
+             O1ORUF = IWPCPP;
+             O1TAXC = IWTXCD;
+             // Per Bill Busch 10/15/2019 ... ALWAYS USE PLANT 1 for anything
+             // coming in via XML
+             // O1PLT  = IWPLT;
+             O1PLT = 1;
+           Else;
+             O1PGRP = *Blanks;
+             O1PRUM = 'EA';
+             O1PLT  = 1;
+             O1ORUF = 1.0000;
+             O1TAXC = STTxCd;
+           EndIf;
+
+           // Does this item follow the Stock Item naming nomenclature...
+           CharPos = %Scan('-' : O1BItem : 2);
+
+           If %Subst(O1BItem:1:1) = '9' And CharPos > 0;
+             StockItem = 'Y';
+           EndIf;
+
+           Chain (O1PLT:O1ITEM) HDIPLT;
+
+           // Determine Availability for THIS item...
+           If %Found(HDIPLT);
+             Avail = (IWOHQT + IWQOO) - (IWRESQ + IPCMTO);
+           Else;
+             // If it's not on HDIPLT make Availability = 0
+             // Item wasn't found on HDIPLT...
+             Select;
+             When ProcessMode = 'T';
+               AlertSubj = 'Testing Amerigas archive order file ' +
+                           %Trim(xmlFile);
+             When xmlMode = 'T';
+               AlertSubj = 'Amerigas sent in test order ' + HWPO#;
+             Other;
+               AlertSubj = 'Amerigas Order Alert: Stock Item Not Set Up';
+             EndSL;
+             AlertMsg = 'HarrisData Order: '
+                        + %Char(LastOrder) + CrLf;
+             AlertMsg = %Trim(AlertMsg) + 'Coupa Order: '
+                        + HWPO# + CrLf;
+             AlertMsg = %Trim(AlertMsg) + 'Order Line: '
+                        + %Char(O1OrL#) + CrLf;
+             AlertMsg = %Trim(AlertMsg) + 'Item: '
+                        + O1BItem + CrLf;
+             AlertMsg = %Trim(AlertMsg) + 'Issue: Configuration'
+                        + CrLf;
+             AlertMsg = %Trim(AlertMsg) +
+                       'Details: Stock item was not found ' +
+                       'on the HarrisData Item Plant file.';
+
+             Exsr Notify;
+
+             Avail = 0;
+
+           EndIf;
+
+           // Regardless of whether or not the item follows the naming convention of a stock item,
+           // if this item has available quantity greater than or equal to the ordered quantity
+           // this item will be considered a stock item.
+
+           If Avail >= O1QOrd;
+             StockItem = 'Y';
+           EndIf;
+
+           // (Standalone stock-availability alert removed; the short-stock
+           //  alert now fires once inside the day-count rules below.)
+
+
+           // ---------------------------------------------------------
+           // Change per Bill on 5/17/2023... add days to item required
+           // date based on availability and custom or non-custom item
+           // ... AddDays will control how many days to add to the
+           // current date to determine the calculated required date.
+           //
+           // Added the use of the UDC table 10/19/2025 because there
+           // are some items that aren't following the generic rules.
+           // Those items will get the number of days specified in the
+           // UDC table added where everything else will fall through
+           // the generic logic defined here.
+           // ---------------------------------------------------------
+
+
+           // Clear AddDays for each item so CalcReqD is accurate for each line
+           AddDays = 0;
+
+           // -----------------------------------------------------------
+           // Availability FIRST, then the UDC override (per Bill).
+           // Avail was computed above from HDIPLT:
+           //   Avail = (IWOHQT + IWQOO) - (IWRESQ + IPCMTO);
+           // If available -> honor the per-item UDC override (or the
+           // in-stock default of 1 day). If short -> fall through to the
+           // generic day-count rules below.
+           // -----------------------------------------------------------
+
+           If Avail >= O1QOrd;
+
+             // Available -> honor the per-item UDC override
+             Exec SQL
+             Select Coalesce(Cast(UDCDESC1 As Decimal(2,0)), 0)
+               Into :UDCDays :NullInd
+             from ProITRG/UDCDETAIL
+             Where UDCSYSTEMD = 'ORDERLINES' And UDCCODED = 'REQUIREDDAY'
+               And UDCKEY = :O1BItem;
+
+             If UDCDays > 0;      // on the UDC table
+               AddDays = UDCDays;
+             Else;                // not on the table -> in-stock default
+               AddDays = 1;
+             EndIf;
+
+           Else;
+
+             // Not available -> generic day-count rules
+             Select;
+
+             When impcls = 'DCCU' Or
+                  impcls = 'DCSG';
+
+               // KIT (Digital Cut) - product class DCCU / DCSG -> 5 days
+               AddDays = 5;
+
+             When impcls = 'KITS';
+
+               // KIT (Digital / Screen Print) - product class KITS -> 10 days
+               AddDays = 10;
+
+             When (%Subst(O1BItem:1:1) = '9' And
+                   %Subst(O1BItem:3:1) = '-') Or
+                   %Subst(O1BItem:1:3) = '3M0';
+
+               // Stock item, NOT in stock -> 5 business days and notify CS
+               AddDays = 5;
+
+               Alert = 'XMLAvail';
+               If xmlMode = 'T';
+                 AlertSubj = '*** TEST ***';
+               EndIf;
+               AlertSubj = %Trim(AlertSubj) + ' ' +
+                           'Import Order Alert: STOCK ITEM AVAILBILITY';
+               AlertMsg = 'Import Order Customer: ' + xmlRetailer + CrLf;
+               AlertMsg = %Trim(AlertMsg) + 'HarrisData Order: '
+                          + %Char(LastOrder) + CrLf;
+               AlertMsg = %Trim(AlertMsg) + 'Coupa Order: '
+                          + HWPO# + CrLF;
+               AlertMsg = %Trim(AlertMsg) + 'Order Line: '
+                          + %Char(O1OrL#) + CrLf;
+               AlertMsg = %Trim(AlertMsg) + 'Item: '
+                          + O1BItem + CrLf;
+               AlertMsg = %Trim(AlertMsg) + 'Issue: Availability'
+                          + CrLf;
+               AlertMsg = %Trim(AlertMsg) + 'Details: ' +
+                          %Char(O1QOrd) +
+                          ' Ordered Only ' + %Char(Avail) +
+                          ' are available.';
+               Exsr Notify;
+
+             Other;
+
+               // Custom / non-stock item -> 10 days
+               AddDays = 10;
+
+             EndSl;
+
+           EndIf;
+
+
+           //********************************//
+           // Calculate the required date... //
+           //********************************//
+           Exsr CalcReqD;
+           //********************************//
+
+           Chain (O1Plt:1:O1ITEM) HDMCMM;
+           If %Found(HDMCMM);
+             O1UCC1 = CMUCC1;
+             O1UCC2 = CMUCC2;
+             O1UCC3 = CMUCC3;
+             O1UCC4 = CMUCC4;
+             O1UCC5 = CMUCC5;
+             O1COST = O1UCC1 + O1UCC2 + O1UCC3 + O1UCC4 + O1UCC5;
+           EndIf;
+
+           O1LIST = O1QORD * O1SlPr;
+           OrdTotal += O1List;
+           O1QAFG = '1';
+           O1UDA1 = %Subst(giftMSG:1:15);
+           O1UDA1 = %XLate(Lo:Up:O1UDA1);
+           O1UDA2 = %Subst(giftMSG:16:15);
+           O1UDA2 = %XLate(Lo:Up:O1UDA2);
+           O1UDA3 = %Subst(giftMSG:31:15);
+           O1UDA3 = %XLate(Lo:Up:O1UDA3);
+           O1UDA4 = %Subst(giftMSG:45);
+           O1UDA4 = %XLate(Lo:Up:O1UDA4);
+
+
+           Write OEDTWKR;
+
+           If ProcessMode = 'L';
+             XDOBAT = HWPO#;
+             XDSNDR = cXML.Header.From.Credential.Identity;
+             // XDXORD = %Dec(XMLOrderID:11:0);
+             XDXORD = 0;
+             XDPO   = HWPO#;
+             XDHDOR = LastOrder;
+             XDOLIN = lineCounter;
+             XDLNIID = %Char(lineCounter);
+             XDMLin = %Char(cXML.Request.OrderRequest(orderCounter).
+                      ItemOut(lineCounter).lineNumber) ;
+
+             XDQtyO = %Dec(%XLATE('$*,':'   ':cXML.Request.
+                      OrderRequest(orderCounter).
+                      ItemOut(lineCounter).
+                      quantity) : 13 : 4);
+
+             XDUOM  = 'EA';
+             XDDESC = O1IMDS;
+             XDMSKU = cXML.Request.OrderRequest(orderCounter).
+                      ItemOut(lineCounter).ItemID.SupplierPartID;
+
+             XDUCST = O1SlPr;
+             XDLSHP = O1SvSv;
+             XDLSHP = %XLate(Lo:Up:XDLSHP);
+             XDEShp = %char(LastDtlDate:*ymd0);
+
+             Write XMLOEDTR;
+
+           EndIf;
+
+         EndFor;
+
+         // No line set a date -> fall back to the next business day
+         If H1RqDt = 0;
+           H1RqDt = %Dec(%Char(LastDtlDate:*CYMD0):7:0);
+         EndIf;
+
+         // Notify Bill Busch if the order didn't have anything to process
+         // in it. Skip the rest of the processing and do NOT write to
+         // OEHDWK
+         // If ProcessedItems = 0;
+         // Notify Bill via email.  End processing and move the file
+         // to the archive
+         //   Alert = 'XMLNODTL';
+         //   If xmlMode = 'T';
+         //      AlertSubj = '*** TEST ***' ;
+         //   EndIf;
+         //   AlertSubj = %Trim(AlertSubj) + ' ' +
+         //              'Imported Order Alert:  Order has no detail';
+         //   AlertMsg = 'Customer: ' + xmlRetailer + CrLf;
+         //   AlertMsg = 'Imported File: ' +  %Trim(ifsFile) + CrLf;
+         //   AlertMsg = %Trim(AlertMsg) + 'Imported Order: '
+         //              + HWPO# + CrLf;
+         //   AlertMsg = %Trim(AlertMsg) + 'Issue: No Items Ordered'
+         //              + CrLf;
+         //   Exsr Notify;
+
+         // Exit the subroutine and let the exitProgram routine archive
+         // the file and exit to process the next order.
+         //   LeaveSR;
+
+         // EndIf;
+
+
+         // Write the OEHDWK record with the order total...
+
+         H1OCTL = LastOrder;
+         H1ORD# = LastOrder;
+         H1MNCD = 'A';
+         H1BLTO = HDPCust#;
+
+         Chain H1BLTO HDCUSTR;
+
+         H1Bank = 7;
+         H1Loc# = CMLoc#;
+
+         H1SLSM = CMSLSM;
+
+         Clear HDTAXDR;
+         Chain (STState: 0: 0: 0: 0: 0) HDTAXDR;
+
+         H1STTX = TDSTCD;
+         If ShipToFnd <> 'Y';
+           H1CTXC = CMCTXC;
+         Else;
+           H1CTXC = STTxCd;
+         EndIf;
+         H1CNTX = CMCNTC;
+         H1CTTX = CMCTTC;
+         H1LOC1 = CMLOC1;
+         H1LOC2 = CMLOC2;
+         H1LOC3 = CMLOC3;
+         H1BDTE = %dec(%char(%date(%Subst(HWOrdDate:1:10):*iso-):*cymd0):7:0);
+         H1ORTY = CMORTY;
+
+         H1ORRF = HWPO#;
+         H1CTRM = CMCTRM;
+         If ShipToFnd = 'Y';
+           H1SVSV = CMSVSV;
+         Else;
+           H1SVSV = CMSV;
+         EndIf;
+
+         // Pull the Ship Via Description
+         Chain H1SVSV HDSHPV;
+         If %Found(HDSHPV);
+           H1SVDS = SVSVDS;
+         Else;
+           H1SVDS = *Blanks;
+         EndIf;
+
+         H1BOAL = *Blanks;
+         H1OTOT = OrdTotal;
+         H1FBCD = 'OR';
+
+         // Set Order Flags (Pulled directly from HOEOEM)
+
+         FGORTY = CMORTY;
+
+      /End-Free
+     C*
+     C     KFG           KLIST
+     C                   KFLD                    APID
+     C                   KFLD                    FGORTY
+     C*
+     C                   CLEAR                   DFL
+     C     KFG           SETLL     HDORFGR
+     C                   DOU       1=2
+     C     KFG           READE     HDORFGR
+     C                   IF        %EOF(HDORFG)
+     C                   LEAVE
+     C                   ENDIF
+     C                   Z-ADD     FGFGFG        F
+     C                   MOVEL     FGFGOP        DFL(F)
+     C                   ENDDO
+     C*
+     C                   MOVEA     DFL           H1OEF
+     C*
+      /Free
+
+         Write OEHDWKR;
+
+
+
+         // Calculate taxes and add them to the order...
+         xmlOCTL   = LastOrder;
+         xmlFRT    = 0.00;
+         xmlCHRG   = 0.00;
+         xmlUPDTOT = 'R';
+         HOEUMC_W(xmlWHndl : xmlDBID : xmlOCTL : xmlFRT : xmlCHRG :
+                  xmlUPDTOT);
+
+
+         // Notify customerservice@screen-graphics.com if this order had any
+         // "CUSTOM ITEMS" on it.  Specify all the normal detail information
+         // but specify each "CUSTOM ITEM" detail line by number with its
+         // full description, quanitity, price, and extended price.
+
+         If CustomItem = 'Y';
+           Exsr AlertCustom;
+         EndIf;
+
+
+         // Submit the order to the Data Queue...
+         OQTTYP = 'ORVW';
+         OQTURN = 0;
+         OQORD# = LastOrder;
+         OQOCTL = LastOrder;
+         OQTSTP = %TimeStamp();
+         OQTSUS = %SUBST(XMLRetailer:1:10);
+         OQTSWS = 'XML850R_AR';
+         OQPGM = 'HOEOEM';
+         QSNDDTAQ(DQ#NAM:DQ#LIB:DQ#LEN:DTAQ);
+
+         If ProcessMode = 'L';
+           // Now write the order to the XML Orders files...
+           Clear XMLOEHDR;
+
+           XHFILE = XMLFILE;
+           XHOBAT = XMLOrderID;
+           XHPTNR = XMLRetailer;
+           XHSNDR = 'Amerigas';
+           XHTRNS = Transact;
+           // XHXORD = %Dec(XMLOrderID:11:0);
+           XHXORD = 0;
+           XHPO   = HWPO#;
+           XHHDOR = LastOrder;
+           XHOLNT = HWLinCnt;
+           XHPOTY = HWPOType;
+           XHGFTM = HWGiftMSG;
+           XHODTE = HWOrdDate;
+           XHSHCD = HWShipCd;
+           XHCNTL = HWControl;
+           XHSLDV = HWSlsDiv;
+           XHCORD = XMLOrderID;
+           XHBCNT = HWBuyCntrct;
+           XHMDPT = HWMerchDpt;
+           XHRQSD = %EditC(H1RqDt:'X');
+           // Capture Ship-To Address Only...
+           XHSHPP    = HWShpToID;
+           XHPPNM1   = STName1;
+           XHPP1A1   = STAdr1;
+           XHPP1A2   = STAdr2;
+           XHCTY1    = STCity;
+           XHST1     = STState;
+           XHCNT1    = STCountry;
+           XHZIP1    = STZIP;
+           XHEML1    = STEmail;
+           XHDPH1    = STPhone;
+           XHBLPP = HWBillToID;
+           XHCUPP = HWCustID;
+           XHIVPP = HWInvToID;
+
+           Write XMLOEHDR;
+
+         EndIf;
+
+       EndSr;
+       //---------------------------------------------------------------*
+
+
+
+       //---------------------------------------------------------------*
+       //  WriteCmt will handle writing detail line item comments to an *
+       //  order.                                                       *
+       //---------------------------------------------------------------*
+
+       BegSr WriteCmt;
+
+         For x = 1 to 5;
+           O4CSEQ = x;
+           Select;
+           When x = 1;
+             O4CMNT = %Subst(SaveDesc : 1 : 60);
+           When x = 2;
+             O4CMNT = %Subst(SaveDesc : 61 : 60);
+           When x = 3;
+             O4CMNT = %Subst(SaveDesc : 121 : 60);
+           When x = 4;
+             O4CMNT = %Subst(SaveDesc : 181 : 60);
+           When x = 5;
+             O4CMNT = %Subst(SaveDesc : 241 : 60);
+           EndSl;
+
+           If O4CMNT <> *Blanks;
+             O4OCTL = LastOrder;
+             O4ORL# = lineCounter;
+             O4BLN# = 0;
+             O4DOCT = 'ACK';
+             O4CSR  = *BLanks;
+
+             Chain (O4OCTL:O4ORL#:O4BLN#:O4DOCT:O4CSEQ) OECMWKR;
+             If NOT %Found(OECMWK);
+               Write OECMWKR;
+             EndIf;
+           EndIf;
+         EndFor;
+
+       EndSr;
+       //---------------------------------------------------------------*
+
+
+
+
+       //---------------------------------------------------------------*
+       //* AlertCustom notifies customerservice@screen-grpahics.com of  *
+       //* the orders with 'CUSTOM ITEM's on them and the details about *
+       //* those lines.                                                 *
+       //---------------------------------------------------------------*
+       BegSr AlertCustom;
+
+         Select;
+         When ProcessMode = 'T';
+           AlertSubj = 'Testing Amerigas archived order ' +
+                       'file ' + %Trim(xmlFile) + ' with ' +
+                       'a custom item.';
+         When xmlMode = 'T';
+           AlertSubj = 'Amerigas sent a test order in file ' +
+                       %Trim(xmlFile) + ' with a custom item.';
+         Other;
+           AlertSubj = 'Amerigas has at least one custom ' +
+                       'item in order ' + %Trim(HWPO#) +
+                       ' in file ' + %Trim(xmlFile);
+         EndSL;
+         AlertMsg = %Trim(AlertMsg) + 'HarrisData Order: '
+                    + %Char(LastOrder) + CrLf;
+
+
+         // Now pull the order from OEDTWK, each 'CUSTOM ITEM' line,
+         // and report all the details about those lines for customer service.
+         Exec SQL
+           Declare Custom Cursor for
+              Select O1ORL#, O1RQDT, O1IMDS, O4CMNT, O1QORD, O1SLPR
+                from OEDTWK Left Outer Join OECMWK on
+                     O1OCTL = O4OCTL And O1ORL# = O4ORL# And
+                     O4DOCT = 'INT' And O4CSEQ  = 1
+               Where O1ITEM = 'CUSTOM ITEM' and
+                     O1OCTL = :LastOrder ;
+
+         Exec SQL
+            Open Custom;
+
+         Exec SQL
+            Fetch Next from Custom Into :CustOrdLn, :CustRqDt,
+                                        :CustDesc, :CustCmt,
+                                        :CustQOrd, :CustSlPr;
+
+         pass = 0;
+
+         DoW SQLCod = 0;
+
+           pass += 1;
+
+           If pass > 1;
+             AlertMsg = %Trim(AlertMsg) + CrLf;
+           EndIf;
+
+           AlertMsg = %Trim(AlertMsg) + 'Order Line: '
+                      + %Char(CustOrdLn) + CrLf;
+           AlertMsg = %Trim(AlertMsg) + 'Required: '
+                      + %Char(CustRqDt) + CrLf;
+           AlertMsg = %Trim(AlertMsg) + 'Description: '
+                      + %Trim(CustDesc) + %Trim(CustCmt) +
+                      CrLf;
+           AlertMsg = %Trim(AlertMsg) + 'Qty: ' +
+                      %Char(CustQOrd) + CrLf;
+           AlertMsg = %Trim(AlertMsg) + 'Price: ' +
+                      %Char(CustSlPr) + CrLf +
+           AlertMsg = %Trim(AlertMsg) + 'Extended Price: ' +
+                      %Char(CustQOrd * CustSlPr);
+
+           Exec SQL
+              Fetch Next from Custom Into :CustOrdLn,
+                      :CustRqDt, :CustDesc, :CustCmt,
+                      :CustQOrd, :CustSlPr;
+
+         EndDo;
+
+         Exec SQL
+            Close Custom;
+
+         Exsr Notify;
+
+       EndSr;
+       //---------------------------------------------------------------*
+
+
+
+       //---------------------------------------------------------------*
+       //* exitProgram archives the order processed and terminates the  *
+       //* program upon completion                                      *
+       //---------------------------------------------------------------*
+       BegSr exitProgram;
+
+         // Archive the order file...
+
+         Cmd = 'CPY OBJ(' + '''' + %Trim(filename) + '''' + ') ' +
+               'TODIR(' + '''' + '/orders/archive inbound/' +
+               %Trim(XMLRetailer) + '/orders' + '''' + ') ' +
+               'REPLACE(*YES) OWNER(*NEW)';
+         CmdLen = %Len(%Trim(Cmd));
+         ExecCmd (Cmd:CmdLen);
+
+
+         Cmd = 'RMVLNK OBJLNK(' + '''' + %Trim(filename) + '''' + ')';
+         CmdLen = %Len(%Trim(Cmd));
+         ExecCmd (Cmd:CmdLen);
+
+       EndSr;
+       //---------------------------------------------------------------*
+
+
+
+       // -------------------------------------------------------------//
+       // NxtHDOrd subroutine will pull the last order number Harris   //
+       // used and update it for the new cXML order.  It will also     //
+       // write to the XML cross reference file of orders.             //
+       // -------------------------------------------------------------//
+       BegSR NxtHDOrd;
+
+         Exec SQL
+            Select CELORD into :LastOrder from OECtrl;
+
+         LastOrder += 1;
+
+         Exec SQL
+            Update OECTRL set CELORD = :LastOrder;
+
+         CurDate = %Date();
+         CurTime = %Time();
+
+         Exec SQL
+         Insert into XMLORDS (XCCOORD, XHDSORD, XPROCISO, XPROCHMS)
+                   Values (:XMLOrderID, :LastOrder, :CurDate, :CurTime);
+
+         // Calculate the required date for the order
+         TempDate = %Date() + %Days(1);
+
+         // *Mon = 0 ... Sun = 6
+         Day_Of_Week = %rem(%diff(%date() +
+                       %Days(1):d'0001-01-01':*days):7);
+         If Day_of_Week = 5;    //Saturday
+           TempDate = %Date() + %Days(3);
+         EndIf;
+         If Day_of_Week = 6;    // Sunday
+           TempDate = %Date() + %Days(2);
+         EndIf;
+
+         LastDtlDate = TempDate;
+         // Seed header date to zero; CalcReqD sets it to the earliest
+         // line required date. Empty orders fall back after the loop.
+         H1RqDt = 0;
+
+       EndSR;
+       // ----------------------------------------------------------//
+
+
+
+       // -------------------------------------------------------------//
+       //  CalcReqD subroutine will calculate the required date for    //
+       //  individual detail line item based on Bill's criteria of     //
+       //  the number of days to add based on the item ordered.  It    //
+       //  will also take into account any holidays and weekends and   //
+       //  not include those in the data calculations.                 //
+       //  ------------------------------------------------------------//
+       BegSR CalcReqD;
+
+         TodayISO = %Date();
+         TempDate = TodayISO;
+
+         // Add AddDays *business* days: step one calendar day at a
+         // time, skipping Saturdays, Sundays, and holidays until
+         // AddDays working days have been counted. The order date
+         // itself is not counted (Tue + 1 business day = Wed).
+         DoW AddDays > 0;
+
+           TempDate = TempDate + %Days(1);
+
+           // Mon = 0 ... Sun = 6
+           Day_Of_Week = %rem(%diff(TempDate:
+                         d'0001-01-01':*days):7);
+           If Day_Of_Week = 5 Or Day_Of_Week = 6;   // Sat / Sun
+             Iter;
+           EndIf;
+
+           // Company holiday?
+           Exec SQL
+             Select Count(*) Into :DaysOff
+              From PROITRG/UDCDetail
+             Where Date(UDCIndexed) = :TempDate
+               And UDCSystemD = 'HOLIDAY';
+           If DaysOff > 0;
+             Iter;
+           EndIf;
+
+           AddDays -= 1;   // a real working day
+
+         EndDo;
+
+         // TempDate builds the actual O1RqDt...
+         O1RqDt = %Dec(%Char(TempDate:*CYMD0):7:0);
+
+         // Header required date = earliest of the line required dates
+         If H1RqDt = 0 Or O1RqDt < H1RqDt;
+           H1RqDt = O1RqDt;
+         EndIf;
+
+       EndSR;
+
+
+       // -------------------------------------------------------------//
+       // ClearOrd subroutine will clear all the processing for this   //
+       // PO# since the order is rejected due to a bad item.           //
+       // -------------------------------------------------------------//
+       BegSR ClearOrd;
+
+         Exec SQL
+            Delete From OEHDWK Where H1ORRF = :HWPO#;
+
+         Exec SQL
+            Delete From OEDTWK Where O1OCTL = :LastOrder;
+
+         // Notify users of the cancellation....
+         Exsr Notify;
+
+       EndSR;
+       // ----------------------------------------------------------//
+
+
+
+       // -------------------------------------------------------------//
+       // Notify subroutine will send notification of rejection for    //
+       // the order to the appropriate individuals.                    //
+       // -------------------------------------------------------------//
+       BegSR Notify;
+
+         Exec SQL
+         Declare Emails Cursor for
+            Select UDCDESC1 from PROITRG/UDCDetail
+             Where UDCSYSTEMD = 'EMAIL' and UDCCODED = :Alert;
+
+         Exec SQL
+            Open Emails;
+
+         Exec SQL
+            Fetch Next from Emails into :Distribution;
+
+         DoW SQLCod = 0;
+
+           // Actual email routine
+           from = 'hdfiles@screen-graphics.com';
+           to   = Distribution;
+           replyTo = *Blanks;
+           subject = AlertSubj;
+           text = AlertMsg;
+
+           Monitor;
+             email = RPGMail_new();
+             RPGMail_addAddress(email:'FROM':from: ' ');
+             RPGMail_addAddress(email:'TO':to: ' ');
+             RPGMail_setSubject(email:subject);
+             RPGMail_setBodyText(email: text: 'text/plain');
+             RPGMail_setSMTPHost(email: 'MAILGATE');
+             RPGMail_setSMTPPort(email: '25');
+             RPGMail_send(email);
+           On-error;
+             error = Error_catch();
+             // Don't swallow the failure - log it to the job log.
+             LogTxt = 'XML850R_AR: e-mail send failed for ' + %Trim(to) +
+                      ' (alert ' + %Trim(Alert) + '). ' +
+                      %Trim(error.text);
+             SndPgmMsg( *blanks : *blanks : LogTxt
+                      : %Len(%Trim(LogTxt)) : '*DIAG' : '*PGMBDY' : 1
+                      : MsgKey : ApiErr );
+           EndMon;
+
+           Exec SQL
+             Fetch Next from Emails into :Distribution;
+
+         EndDo;
+
+         Exec SQL
+           Close Emails;
+
+       EndSR;
+       // ------------------------------------------------------------//

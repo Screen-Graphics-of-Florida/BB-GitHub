@@ -62,9 +62,9 @@ $reportMap = array(
                 'file'  => 'Order%20Entry/CustServiceInquiry.php',
             ),
             array(
-                'title' => 'Buyer Pattern',
-                'desc'  => 'Customers who habitually order in the next quarter, so those orders can be pulled into the current quarter. Five call tiers, dollars at stake, repeat products stopped or reduced by item, and opportunity by customer class; drills from the headline down to the actual order lines; open unshipped orders shown alongside; export any view to Excel',
-                'file'  => 'Order%20Entry/BuyerPattern.php',
+                'title' => 'Q4 Buyer Pattern',
+                'desc'  => 'Customers who habitually order in Q4, so those orders can be pulled into Q3. Five call tiers, dollars at stake, repeat products stopped or reduced by SKU, and opportunity by customer class; open unshipped orders shown alongside; export the call list to Excel',
+                'file'  => 'Order%20Entry/Q4BuyerPattern.php',
             ),
         ),
     ),
