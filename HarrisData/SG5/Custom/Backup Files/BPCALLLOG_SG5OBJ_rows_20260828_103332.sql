@@ -1,0 +1,4 @@
+﻿-- SG5OBJ.BPCALLLOG row backup taken 2026-08-28 10:33:32
+-- Rows at time of backup: 0
+-- Taken before inserting follow-up mail test rows.
+-- Table was empty. Nothing to restore.

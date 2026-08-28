@@ -70,7 +70,7 @@ $BP_BAD_ORDERS = '356066,347305,356706';
 // -- Request routing ----------------------------------------------------------
 
 $view    = isset($_GET['view']) ? strtolower(trim($_GET['view'])) : 'tiles';
-if (!in_array($view, array('tiles', 'cust', 'detail', 'lines', 'cards', 'activity'), true)) { $view = 'tiles'; }
+if (!in_array($view, array('tiles', 'cust', 'detail', 'lines', 'cards', 'activity', 'followups'), true)) { $view = 'tiles'; }
 $fLimit  = isset($_GET['limit']) ? max(1, min(60, (int)$_GET['limit'])) : 12;
 // Month drill from the seasonal chart: the customers whose target-quarter order
 // historically lands in this month. Validated against the target quarter below.
@@ -157,6 +157,27 @@ function bp_mdy($ymd) {
     return substr($ymd, 5, 2) . '-' . substr($ymd, 8, 2) . '-' . substr($ymd, 0, 4);
 }
 
+// Whole days between a CYMD date and today, or null when there is no date.
+// "today" is passed in rather than read from the server clock, because the frame
+// of this whole page comes from the IBM i's own CURRENT DATE, not from PHP.
+function bp_daysSince($cymd, $todayTs) {
+    $p = bp_cymdParts($cymd);
+    if ($p === null) { return null; }
+    $then = mktime(0, 0, 0, $p[1], $p[2], $p[0]);
+    if ($then === false) { return null; }
+    return (int)floor(($todayTs - $then) / 86400);
+}
+
+// Days as something a rep can read at a glance. Anything under a year is days,
+// beyond that the exact day count stops meaning anything.
+function bp_daysLabel($d) {
+    if ($d === null)  { return '-'; }
+    if ($d < 0)       { return '0'; }
+    if ($d < 400)     { return number_format($d); }
+    $yy = floor($d / 365);
+    return number_format($d) . ' (' . $yy . 'y+)';
+}
+
 $conn    = $i5Connect->getConnection();
 $sqlErr  = array();
 $timings = array();
@@ -184,6 +205,8 @@ $curY = !empty($todayRow) ? (int)$todayRow[0]['Y'] : 2026;
 $curM = !empty($todayRow) ? (int)$todayRow[0]['M'] : 1;
 $curD = !empty($todayRow) ? (int)$todayRow[0]['D'] : 1;
 $todayCymd = bp_cymd($curY, $curM, $curD);
+// Midnight today on the IBM i's calendar, for every "days since" figure
+$bpTodayTs = mktime(0, 0, 0, $curM, $curD, $curY);
 
 $curQ  = intval(($curM - 1) / 3) + 1;          // quarter we are in now
 $tgtQ  = ($curQ % 4) + 1;                      // the quarter we want orders pulled FROM
@@ -219,7 +242,32 @@ foreach ($yrs as $y) {
 // PROITRG is a single library - not split per environment - so Test and Live
 // read the same access rows.
 
-require_once dirname(__FILE__) . '/../SgRequireAccess.php';   // defines sgAccessUser()
+require_once dirname(__FILE__) . '/../SgRequireAccess.php';   // sgAccessUser(), sgRequireAccess()
+
+// -- Program security --------------------------------------------------------
+//
+// Two independent layers, and they answer different questions:
+//   SYPGMS  (this)  - may you open this page at all?  Granted per user through
+//                     SgProgramAccess.php, registered in SYPGMO.
+//   BUYPATTERN UDC  - which accounts may you see once inside?
+//
+// The gate stays open until the FIRST SYPGMS row exists for this program, so
+// registering it cannot lock everyone out of a page nobody has been granted
+// yet. The moment you grant one user in SgProgramAccess.php, enforcement starts
+// for everybody. A visible banner says which state we are in.
+
+$BP_PGMID    = 'BUYPATTERN';
+$bpPgmSecOn  = false;
+$bpPgmSchema = function_exists('sgAccessSchema') ? sgAccessSchema() : 'SGHDSDATA';
+
+$bpPgmChk = bp_fetchAll($conn,
+    "SELECT COUNT(*) AS N FROM $bpPgmSchema.SYPGMS
+      WHERE RTRIM(SPPGID) = '" . bp_sqlStr($BP_PGMID) . "'",
+    'pgmSecurity', $sqlErr, $timings);
+if (!empty($bpPgmChk) && (int)$bpPgmChk[0]['N'] > 0) {
+    $bpPgmSecOn = true;
+    sgRequireAccess($BP_PGMID);   // denies and exits if this user has no grant
+}
 
 $bpUser = function_exists('sgAccessUser') ? sgAccessUser() : '';
 if ($bpUser === '') {
@@ -347,7 +395,8 @@ if (isset($_POST['bp_action']) && $_POST['bp_action'] === 'logcontact') {
     if ($bpUser === '')                          { $logErr = 'Your EIP profile could not be identified, so nothing was logged.'; }
     elseif ($pSh <= 0)                           { $logErr = 'No ship-to was supplied.'; }
     elseif (!in_array($pTy, array('C','E','N'), true)) { $logErr = 'Pick call or email.'; }
-    elseif ($pOut !== '' && !in_array($pOut, $BP_OUTCOMES, true)) { $logErr = 'That outcome is not on the list.'; }
+    elseif ($pOut === '')                        { $logErr = 'Pick an outcome. Nothing was logged.'; }
+    elseif (!in_array($pOut, $BP_OUTCOMES, true)) { $logErr = 'That outcome is not on the list.'; }
     elseif (!in_array($pOut, $BP_NOTE_OPTIONAL, true) && mb_strlen($pNote) < $BP_NOTE_MIN)
                                                  { $logErr = 'The note must be at least ' . $BP_NOTE_MIN . ' characters. Nothing was logged.'; }
     elseif ($pFud === '' && $pFnr === '')        { $logErr = 'Set a follow-up date, or say why none is needed.'; }
@@ -410,6 +459,12 @@ $LINE = "
            MAX(d.DHQSTC)         AS QSHIP,
            MAX(d.DHSLPR)         AS PRICE,
            MAX(d.DHORUF)         AS UF,
+           -- MAX(TRIM(..)) deliberately prefers a non-blank value: a blank
+           -- trims to '' and sorts below any real code, so if any shipment row
+           -- of the line carries the product group or the entered-by name, that
+           -- is what survives the roll-up to line grain.
+           MAX(TRIM(d.DHPGRP))   AS PGRP,
+           MAX(TRIM(h.OEUDF1))   AS ENTBY,
            COUNT(*)              AS SHIPROWS,
            $AMT                  AS AMT
     FROM SGHDSDATA.OEORDH d
@@ -456,6 +511,7 @@ $sqlCust = "
         MAX(TRIM(c2.CMCNA1))                 AS CUSTNAME,
         MAX(COALESCE(TRIM(c2.CMCCLS), '??')) AS CLSCODE,
         MAX(TRIM(c2.CMCNA2))                 AS ADDR1,
+        MAX(TRIM(c2.CMCNA3))                 AS ADDR2,
         MAX(TRIM(c2.CMCCTY))                 AS CITY,
         MAX(TRIM(c2.CMST))                   AS STATE,
         MAX(TRIM(c2.CMZIP))                  AS ZIP,
@@ -491,6 +547,7 @@ $sqlItem = "
         L.SHIPTO            AS SHIPTO,
         L.ITEM              AS ITEM,
         MAX(L.ITEMDESC)     AS ITEMDESC,
+        MAX(L.PGRP)         AS PGRP,
         $selItemYear
         COUNT(DISTINCT CASE WHEN L.ORDDTE BETWEEN $histS AND $histE
                             THEN L.ORDNO END) AS HISTORDS,
@@ -503,6 +560,28 @@ $sqlItem = "
 $itemRows = ($view === 'lines')
           ? array()
           : bp_fetchAll($conn, $sqlItem, 'items', $sqlErr, $timings);
+
+// -- Product group descriptions ----------------------------------------------
+// HDPRGM is the product group master, 4-char code to a 30-char description.
+// Two thirds of order lines carry no product group at all, so a blank is normal
+// and shows as a dash rather than being treated as missing data.
+$pgrpDesc = array();
+foreach (bp_fetchAll($conn,
+        "SELECT TRIM(PGPGRP) AS C, TRIM(PGDESC) AS D FROM SGHDSDATA.HDPRGM",
+        'productGroups', $sqlErr, $timings) as $r) {
+    $c = strtoupper(trim((string)$r['C']));
+    if ($c !== '') { $pgrpDesc[$c] = trim((string)$r['D']); }
+}
+
+// A product group shown as "REPB - Replacement Boards", or just the code when
+// the master has no description for it.
+function bp_pgrpLabel($code, $map) {
+    $code = strtoupper(trim((string)$code));
+    if ($code === '') { return ''; }
+    return isset($map[$code]) && $map[$code] !== ''
+         ? $code . ' - ' . $map[$code]
+         : $code;
+}
 
 // -- Query: open unshipped orders (shown, never used to suppress) -------------
 
@@ -736,9 +815,32 @@ foreach ($itemRows as $r) {
         $lossAmt = max(0.0, $normal - $curRev);
     }
 
+    // "Stopped" on its own hides the difference between a customer who was
+    // buying this right up to last year and one who has not touched it since
+    // 2023. The first is a live call, the second is archaeology. $status keeps
+    // its four original values so colours, filters and rollups are untouched;
+    // $sub is the finer grain, taken from the last history year with revenue.
+    //   thru-<lastyear>   bought it right up to the end of last year
+    //   since-<year>      nothing since that year
+    // A repeat item with no revenue in any of the three history years can only
+    // come from zero-priced lines, so it gets its own bucket rather than being
+    // silently lumped in with the recent stops.
+    $sub = '';
+    if ($status === 'stopped') {
+        $lastYrWith = 0;
+        foreach ($hy as $y) {
+            if ((float)$r['R' . $y] > 0) { $lastYrWith = $y; }
+        }
+        if ($lastYrWith === 0)          { $sub = 'norev'; }
+        elseif ($lastYrWith === $hy[2]) { $sub = 'thru';  }   // e.g. regular thru 2025
+        elseif ($lastYrWith === $hy[1]) { $sub = 'since2'; }  // nothing since 2024
+        else                            { $sub = 'since3'; }  // nothing since 2023
+    }
+
     $rec = array(
         'item'      => $item,
         'desc'      => trim((string)$r['ITEMDESC']),
+        'pgrp'      => strtoupper(trim((string)$r['PGRP'])),
         'histRev'   => $histRev,
         'curRev'    => $curRev,
         'curQty'    => $curQty,
@@ -747,9 +849,11 @@ foreach ($itemRows as $r) {
         'yrsWith'   => $yrsWith,
         'histOrds'  => $histOrds,
         'status'    => $status,
+        'sub'       => $sub,
         'lossAmt'   => $lossAmt,
         'lastOrd'   => (int)$r['LASTORD'],
         'lastPrice' => (float)$r['LASTPRICE'],
+        'daysSince' => bp_daysSince((int)$r['LASTORD'], $bpTodayTs),
     );
     foreach ($yrs as $y) {
         $rec['r' . $y] = (float)$r['R' . $y];
@@ -758,14 +862,33 @@ foreach ($itemRows as $r) {
     $itemsByShip[$sh][] = $rec;
 
     if (!isset($itemAgg[$sh])) {
-        $itemAgg[$sh] = array('stopAmt'=>0.0, 'redAmt'=>0.0, 'stopN'=>0, 'redN'=>0);
+        $itemAgg[$sh] = array('stopAmt'=>0.0, 'redAmt'=>0.0, 'stopN'=>0, 'redN'=>0,
+                              'thru'=>0, 'since2'=>0, 'since3'=>0, 'norev'=>0);
     }
+
+    // Every item feeds the SKU row, not just the stopped ones. The 3-year total
+    // and "last ordered by anyone" are there to answer "is this SKU dead
+    // everywhere, or is it just this customer who quit" - which needs the
+    // customers still buying it counted too. Both figures respect the access
+    // filter, so they describe the accounts this user can see.
+    if (!isset($skuAgg[$item])) {
+        $skuAgg[$item] = array('desc'=>$rec['desc'], 'pgrp'=>$rec['pgrp'],
+                               'custs'=>0, 'amt'=>0.0, 'qty'=>0.0,
+                               'hist'=>0.0, 'lastAny'=>0, 'anyCusts'=>0);
+    }
+    if ($skuAgg[$item]['pgrp'] === '' && $rec['pgrp'] !== '') {
+        $skuAgg[$item]['pgrp'] = $rec['pgrp'];
+    }
+    $skuAgg[$item]['hist'] += $histRev;
+    $skuAgg[$item]['anyCusts']++;
+    if ((int)$r['LASTORD'] > $skuAgg[$item]['lastAny']) {
+        $skuAgg[$item]['lastAny'] = (int)$r['LASTORD'];
+    }
+
     if ($status === 'stopped') {
         $itemAgg[$sh]['stopAmt'] += $normal;
         $itemAgg[$sh]['stopN']++;
-        if (!isset($skuAgg[$item])) {
-            $skuAgg[$item] = array('desc'=>$rec['desc'], 'custs'=>0, 'amt'=>0.0, 'qty'=>0.0);
-        }
+        if ($sub !== '') { $itemAgg[$sh][$sub]++; }
         $skuAgg[$item]['custs']++;
         $skuAgg[$item]['amt'] += $normal;
         $skuAgg[$item]['qty'] += $normalQty;
@@ -775,6 +898,32 @@ foreach ($itemRows as $r) {
         $itemAgg[$sh]['redN']++;
     }
 }
+
+// -- Status vocabulary, shared by the screen, the CSVs and the workbook -------
+//
+// Defined here rather than beside the other display constants because the
+// exports run before any HTML is emitted and need the same labels.
+
+$statusClr = array('stopped'=>'#CC1F20', 'reduced'=>'#EA580C',
+                   'steady'=>'#1DA032', 'one-off'=>'#6B7280');
+
+// The finer grain under "stopped". Same family of reds, darkening as the trail
+// goes cold, so the recoverable ones read hottest. An item that was still being
+// bought through the end of last year is a live call; one untouched since the
+// first year of the window is history.
+$subClr = array('thru'   => '#CC1F20',
+                'since2' => '#A21D1E',
+                'since3' => '#7F1D1D',
+                'norev'  => '#6B7280');
+$subLbl = array('thru'   => 'was regular thru ' . $hy[2],
+                'since2' => 'none since ' . $hy[1],
+                'since3' => 'none since ' . $hy[0],
+                'norev'  => 'no revenue in window');
+// Short form, for cells too narrow for the sentence
+$subShort = array('thru'   => 'thru ' . $hy[2],
+                  'since2' => 'none since ' . $hy[1],
+                  'since3' => 'none since ' . $hy[0],
+                  'norev'  => 'no revenue');
 
 // -- Build the customer model -------------------------------------------------
 
@@ -851,7 +1000,9 @@ foreach ($custRows as $r) {
         $callBy  = date('Y-m-d', $kickTs - $BP_CALL_LEAD * 86400);
     }
 
-    $ia  = isset($itemAgg[$sh]) ? $itemAgg[$sh] : array('stopAmt'=>0.0,'redAmt'=>0.0,'stopN'=>0,'redN'=>0);
+    $ia  = isset($itemAgg[$sh]) ? $itemAgg[$sh]
+         : array('stopAmt'=>0.0,'redAmt'=>0.0,'stopN'=>0,'redN'=>0,
+                 'thru'=>0,'since2'=>0,'since3'=>0,'norev'=>0);
     $op  = isset($openBy[$sh])  ? $openBy[$sh]  : array('ords'=>0,'amt'=>0.0);
     $cls = trim((string)$r['CLSCODE']);
     $slm = (int)$r['SLSM'];
@@ -863,6 +1014,7 @@ foreach ($custRows as $r) {
         'cls'      => $cls,
         'clsdesc'  => isset($clsName[$cls]) ? $clsName[$cls] : $cls,
         'addr1'    => trim((string)$r['ADDR1']),
+        'addr2'    => trim((string)$r['ADDR2']),
         'city'     => trim((string)$r['CITY']),
         'state'    => trim((string)$r['STATE']),
         'zip'      => trim((string)$r['ZIP']),
@@ -891,9 +1043,13 @@ foreach ($custRows as $r) {
         'redAmt'   => $ia['redAmt'],
         'stopN'    => $ia['stopN'],
         'redN'     => $ia['redN'],
+        'stopThru'   => $ia['thru'],
+        'stopSince2' => $ia['since2'],
+        'stopSince3' => $ia['since3'],
         'openOrds' => $op['ords'],
         'openAmt'  => $op['amt'],
         'lastOrd'  => (int)$r['LASTORD'],
+        'daysSince'=> bp_daysSince((int)$r['LASTORD'], $bpTodayTs),
         'ordCnt'   => (int)$r['ORDCNT'],
         'lineCnt'  => (int)$r['LINECNT'],
     );
@@ -957,10 +1113,17 @@ foreach ($custs as $c) {
 
 $tierTotal = array_sum($tierCount);
 
+// The SKU list is the STOPPED list, so an item nobody stopped is dropped - but
+// its 3-year total and last-order date came from the whole customer base, which
+// is the point of showing them beside the stopped count.
 $skuList = array();
 foreach ($skuAgg as $item => $a) {
-    $skuList[] = array('item'=>$item, 'desc'=>$a['desc'],
-                       'custs'=>$a['custs'], 'amt'=>$a['amt'], 'qty'=>$a['qty']);
+    if ((int)$a['custs'] <= 0) { continue; }
+    $skuList[] = array('item'=>$item, 'desc'=>$a['desc'], 'pgrp'=>$a['pgrp'],
+                       'custs'=>$a['custs'], 'amt'=>$a['amt'], 'qty'=>$a['qty'],
+                       'hist'=>$a['hist'], 'lastAny'=>$a['lastAny'],
+                       'anyCusts'=>$a['anyCusts'],
+                       'daysAny'=>bp_daysSince($a['lastAny'], $bpTodayTs));
 }
 usort($skuList, function ($a, $b) {
     if ($a['amt'] == $b['amt']) return 0;
@@ -1099,7 +1262,8 @@ if ($view === 'cards') {
 // Per-customer rollup, for the Level 3 coverage columns. The log is small, so
 // one aggregate over the whole table is cheaper than a correlated lookup.
 $logAgg = array();
-if ($view === 'tiles' || $view === 'cust' || $view === 'activity') {
+$bpWantBook = (isset($_GET['export']) && strtolower(trim($_GET['export'])) === 'book');
+if ($view === 'tiles' || $view === 'cust' || $view === 'activity' || $bpWantBook) {
     $sqlLogAgg = "
         SELECT CLSHTO                                             AS SHIPTO,
                COUNT(*)                                           AS N,
@@ -1154,6 +1318,70 @@ if ($view === 'activity') {
     $actRows = bp_fetchAll($conn, $sqlAct, 'activity', $sqlErr, $timings);
 }
 
+// -- Open follow-ups ---------------------------------------------------------
+//
+// The log is append-only, so there is no "mark done" flag. The live follow-up
+// for a customer is the one on their MOST RECENT note: logging the next contact
+// supersedes the previous follow-up automatically, and earlier ones become
+// history rather than sitting overdue forever. A note that chose "no follow-up
+// needed" therefore clears the customer.
+// Scoped by the same UDC rule as everything else.
+
+$fuList  = array();   // open follow-ups the viewer may see
+$fuMine  = array('overdue' => 0, 'today' => 0, 'week' => 0, 'later' => 0);
+$fuAll   = array('overdue' => 0, 'today' => 0, 'week' => 0, 'later' => 0);
+
+if ($view === 'tiles' || $view === 'followups') {
+    $fuWho = ($bpSeeAll || empty($bpAllowed))
+           ? '' : ' AND c.CMSLSM IN (' . implode(',', $bpAllowed) . ')';
+    $sqlFu = "
+        SELECT L.CLSHTO AS SHIPTO, L.CLUSER AS SETBY, L.CLTSTP AS NOTEAT,
+               L.CLFUDT AS FUDATE, L.CLTYPE AS CLTYPE, L.CLOUTC AS OUTC,
+               L.CLNOTE AS NOTE, L.CLTIER AS TIER,
+               TRIM(c.CMCNA1) AS CUSTNAME, TRIM(c.CMPHON) AS PHONE,
+               TRIM(c.CMCCTY) AS CITY, TRIM(c.CMST) AS STATE,
+               c.CMSLSM AS SLSM,
+               DAYS(CURRENT DATE) - DAYS(L.CLFUDT) AS DAYSLATE
+        FROM (
+            SELECT l.*, ROW_NUMBER() OVER (PARTITION BY l.CLSHTO
+                        ORDER BY l.CLTSTP DESC, l.CLSEQ DESC) AS RN
+            FROM $BP_LOGLIB.BPCALLLOG l
+        ) L
+        JOIN SGHDSDATA.HDCUST c ON c.CMCUST = L.CLSHTO
+        WHERE L.RN = 1
+          AND L.CLFUDT IS NOT NULL
+          $fuWho
+        ORDER BY L.CLFUDT
+    ";
+    foreach (bp_fetchAll($conn, $sqlFu, 'followUps', $sqlErr, $timings) as $r) {
+        $late = (int)$r['DAYSLATE'];
+        $band = ($late > 0) ? 'overdue' : (($late === 0) ? 'today'
+              : (($late >= -7) ? 'week' : 'later'));
+        $row = array(
+            'shipto'  => trim((string)$r['SHIPTO']),
+            'name'    => trim((string)$r['CUSTNAME']),
+            'phone'   => trim((string)$r['PHONE']),
+            'city'    => trim((string)$r['CITY']),
+            'state'   => trim((string)$r['STATE']),
+            'slsm'    => (int)$r['SLSM'],
+            'setby'   => strtoupper(trim((string)$r['SETBY'])),
+            'noteat'  => trim((string)$r['NOTEAT']),
+            'fudate'  => trim((string)$r['FUDATE']),
+            'type'    => trim((string)$r['CLTYPE']),
+            'outc'    => trim((string)$r['OUTC']),
+            'note'    => trim((string)$r['NOTE']),
+            'tier'    => (int)$r['TIER'],
+            'late'    => $late,
+            'band'    => $band,
+        );
+        $fuList[] = $row;
+        $fuAll[$band]++;
+        if ($row['setby'] === $bpUser) { $fuMine[$band]++; }
+    }
+}
+$fuMineOpen = $fuMine['overdue'] + $fuMine['today'] + $fuMine['week'];
+$fuAllOpen  = $fuAll['overdue']  + $fuAll['today']  + $fuAll['week'];
+
 $totalMs = array_sum($timings);
 
 // Base query string for building drill links that keep the current context
@@ -1164,6 +1392,478 @@ function bp_url($params) {
         $keep[$k] = $v;
     }
     return '?' . http_build_query($keep);
+}
+
+// -- Multi-sheet workbook -----------------------------------------------------
+//
+// This is the replacement for the five hand-built tier workbooks. One .xlsx,
+// built live, with the sheets a rep and a manager each need:
+//     Read Me                 what every number means and when it was pulled
+//     Summary by Salesperson   one row per rep, the manager's view
+//     Tier 1..5                the call lists, one sheet per tier
+//     <rep> tabs               one row per customer x product they lost
+//     All Customers            every account with history, tier or not
+//     Products Stopped         the SKU view, across the whole base
+//
+// Everything respects the same access filter as the page, so a rep who can see
+// three sales numbers gets a workbook covering exactly those three.
+
+if (isset($_GET['export']) && strtolower(trim($_GET['export'])) === 'book') {
+    require_once dirname(__FILE__) . '/../SgXlsx.php';
+
+    $stamp = date('Ymd_His');
+    // Products worth listing on a rep tab: the ones they used to buy and no
+    // longer do, or buy far less of. Steady lines would bury the signal.
+    $bookStat = array('stopped' => true, 'reduced' => true);
+
+    // A single PHP notice printed here would land in front of the zip header and
+    // Excel would refuse the file with no clue why. Buffer everything: send()
+    // discards our buffer immediately before it writes the binary, and the
+    // catch below shows whatever was in it.
+    //
+    // $bpObBase is what the SAPI already had open (php.ini sets
+    // output_buffering = 4096). send() must not tear that down.
+    $bpObBase = ob_get_level();
+    ob_start();
+
+    // Breadcrumbs. error_log() alone is NOT enough on this box: php.ini points
+    // error_log at /QOpenSys/var/log/php_error.log, which is mode 644 owned by
+    // BILL, so the web server (QTMHHTTP) cannot write it and every runtime
+    // message from a web request is silently dropped. /tmp is world-writable,
+    // so the trace file is the channel that actually works. Both are written,
+    // because the CLI can use the first.
+    // Tracing is OFF unless the link carries &trace=1. The stage name is always
+    // tracked - it costs nothing and the catch below reports it - but nothing is
+    // written and no PHP errors are shown to a normal user.
+    $BP_TRACE_FILE = '/tmp/bpbook.log';
+    $bpDebug = (isset($_GET['trace']) && $_GET['trace'] !== '0');
+    $bpStage = 'start';
+    $bpTrace = function ($s) use (&$bpStage, $BP_TRACE_FILE, $bpDebug) {
+        $bpStage = $s;
+        if (!$bpDebug) { return; }
+        $line = date('H:i:s') . '  ' . $s
+              . '  mem=' . round(memory_get_usage(true) / 1048576, 1)
+              . 'MB peak=' . round(memory_get_peak_usage(true) / 1048576, 1) . 'MB' . "\n";
+        @file_put_contents($BP_TRACE_FILE, $line, FILE_APPEND);
+        error_log('BPBOOK ' . rtrim($line));
+    };
+    if ($bpDebug) {
+        @ini_set('display_errors', '1');
+        @error_reporting(E_ALL);
+    }
+    // A hard fatal or a crash never reaches the catch below. This does.
+    register_shutdown_function(function () use (&$bpStage, $BP_TRACE_FILE) {
+        $e = error_get_last();
+        if ($e !== null && in_array($e['type'],
+                array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR), true)) {
+            $msg = date('H:i:s') . '  DIED at stage ' . $bpStage . ': ' . $e['message']
+                 . ' in ' . $e['file'] . ':' . $e['line'] . "\n";
+            @file_put_contents($BP_TRACE_FILE, $msg, FILE_APPEND);
+            error_log('BPBOOK ' . rtrim($msg));
+        }
+    });
+    $bpTrace('begin');
+
+    try {
+        $x = new SgXlsx();
+
+        // ---- Read Me ----------------------------------------------------
+        $x->addSheet('Read Me', array('widths' => array(112)));
+        $x->row(array($x->title('Buyer Pattern - ' . $tgtQLbl . ' ' . $tgtQY . ' call workbook')));
+        $x->blank();
+        $meLines = array(
+            'Pulled ' . date('Y-m-d H:i:s') . ' from live IBM i data by ' . $bpUser . '.',
+            'Environment: ' . (((string)@$_SERVER['SERVER_PORT'] === '5610') ? 'TEST (SG5)' : 'LIVE (EIP)') . '.',
+            '',
+            'A DECISION IS NEEDED - PLEASE READ',
+            'There are two summary sheets in this workbook on purpose, and one of them will be '
+                . 'deleted once a decision is made.',
+            'Summary A - All Salespeople: every rep sees the whole company. Each rep would see '
+                . 'every other rep\'s revenue, coverage and overdue follow-ups.',
+            'Summary B - One Rep Only: each rep sees only their own line.',
+            'The figures are identical on both; only the number of rows differs. Either way, the '
+                . 'customer detail sheets stay restricted to the accounts that person covers - '
+                . 'nobody sees another rep\'s customers unless that is granted separately.',
+            'Access is controlled by data, not code: PROITRG.UDCDETAIL, system BUYPATTERN, code '
+                . 'SALESPRSN. Changing who sees what is a table row, not a program change.',
+            '',
+            'WHAT THIS IS',
+            'Customers who habitually order in ' . $tgtQLbl . ', so those orders can be pulled '
+                . 'forward into ' . $curQLbl . ', plus the wider recovery list of lapsed and '
+                . 'declining accounts.',
+            '',
+            'HOW REVENUE IS COUNTED',
+            'Qty ordered x unit price / unit factor (DHQORD x DHSLPR / DHORUF), zero when the '
+                . 'price or the factor is zero.',
+            'Each order line is counted ONCE. DHQORD restates the full line quantity on every '
+                . 'partial-shipment row in OEORDH, so summing raw rows overstates revenue by '
+                . 'roughly 38%.',
+            'Only lines with a matching OEORDT.ODOREC = S row count as revenue.',
+            'Excluded: order types ' . str_replace("'", '', $BP_BAD_ORDTY) . '; items AD0166, '
+                . 'LTL*, *SAMP*; internal bill-to accounts; 3 named orders.',
+            'Customer grain is the ship-to, never the bill-to. Periods key on the ORDER date.',
+            '',
+            'THE WINDOW',
+            'History is ' . $hy[0] . ' to ' . $hy[2] . ' (three full years). The current year is '
+                . $curY . ' and is partial - ' . $curQLbl . ' is still open.',
+            'A "normal year" divides history by the full three-year window, so a customer who '
+                . 'bought in only one of three years gets a third of that year. This is the '
+                . 'conservative basis, and the one the 17 Aug deck used.',
+            '',
+            'THE TIERS',
+            'Tier 1 - ' . $tierRule[1], 'Tier 2 - ' . $tierRule[2], 'Tier 3 - ' . $tierRule[3],
+            'Tier 4 - ' . $tierRule[4], 'Tier 5 - ' . $tierRule[5],
+            '',
+            'PRODUCT STATUS',
+            'stopped - a genuine repeat purchase (2+ years, or 3+ separate orders) with nothing '
+                . 'at all in ' . $curY . '. The detail column says how cold it is: was regular '
+                . 'thru ' . $hy[2] . ' is a live call; none since ' . $hy[1] . ' or ' . $hy[0]
+                . ' are progressively colder.',
+            'reduced - a repeat purchase running under half its normal year.',
+            'one-off - bought once and never repeated. Excluded from lost dollars, because most '
+                . 'of these are custom prints that were completed, not lost.',
+            'steady  - still buying at or near normal.',
+            '',
+            'WHAT IS ON THE REP TABS',
+            'One row per customer x product, for products that are stopped or reduced, for '
+                . 'customers on a call tier. Steady products are left off deliberately.',
+            '',
+            'WHO CAN SEE WHAT',
+            $bpSeeAll
+                ? 'You have *ALL access, so this workbook covers every salesperson.'
+                : 'This workbook covers salesperson number(s) '
+                  . (empty($bpAllowed) ? '(none)' : implode(', ', $bpAllowed))
+                  . ' - the accounts assigned to you in the BUYPATTERN UDC table.',
+            '',
+            'Dates are real date cells formatted yyyy-mm-dd, so they sort and filter as dates.',
+        );
+        foreach ($meLines as $ln) { $x->row(array($x->wrap($ln))); }
+
+        // ---- Summary by Salesperson -------------------------------------
+        $bpTrace('readme done');
+        $bySls = array();
+        foreach ($custs as $c) {
+            $s = (int)$c['slsm'];
+            if (!isset($bySls[$s])) {
+                $bySls[$s] = array('name' => $c['slsmname'], 'custs' => 0, 'oncall' => 0,
+                                   'stake' => 0.0, 'hist' => 0.0, 'cur' => 0.0,
+                                   'tq' => 0.0, 'stop' => 0.0, 'red' => 0.0,
+                                   'open' => 0.0, 'silent' => 0, 'logged' => 0,
+                                   'overdue' => 0,
+                                   't' => array(1=>0,2=>0,3=>0,4=>0,5=>0));
+            }
+            $bySls[$s]['custs']++;
+            $bySls[$s]['hist'] += $c['histRev'];
+            $bySls[$s]['cur']  += $c['curRev'];
+            $bySls[$s]['tq']   += $c['tqRev'];
+            $bySls[$s]['stop'] += $c['stopAmt'];
+            $bySls[$s]['red']  += $c['redAmt'];
+            $bySls[$s]['open'] += $c['openAmt'];
+            if ($c['silent'])   { $bySls[$s]['silent']++; }
+            if ($c['tier'] > 0) {
+                $bySls[$s]['oncall']++;
+                $bySls[$s]['stake'] += $c['stake'];
+                $bySls[$s]['t'][$c['tier']]++;
+            }
+            $lg = isset($logAgg[$c['shipto']]) ? $logAgg[$c['shipto']] : null;
+            if ($lg !== null) {
+                $bySls[$s]['logged']++;
+                if ($lg['overfu'] !== '') { $bySls[$s]['overdue']++; }
+            }
+        }
+        uasort($bySls, function ($a, $b) {
+            if ($a['stake'] == $b['stake']) { return 0; }
+            return ($a['stake'] < $b['stake']) ? 1 : -1;
+        });
+
+        // One definition, used by both summary sheets, so the two cannot drift
+        // apart while the COO is comparing them.
+        $sumCols = array('widths' => array(8, 26, 11, 11, 13, 13, 13, 13, 13, 13, 12, 8,
+                                           8, 8, 8, 8, 8, 11, 10));
+        $sumHdr  = array('Sls #', 'Salesperson', 'Customers', 'On a call tier',
+            'At stake', $hy[0] . '-' . $hy[2] . ' revenue', $curY . ' revenue',
+            $tgtQLbl . ' revenue', 'Stopped $/yr', 'Reduced $/yr', 'Open order $',
+            'Silent in ' . $curY, 'T1', 'T2', 'T3', 'T4', 'T5',
+            'Contacted', 'Overdue follow-ups');
+        $sumRow = function ($s, $a) use ($x) {
+            return array($x->int($s), $a['name'], $x->int($a['custs']), $x->int($a['oncall']),
+                $x->amber($a['stake']), $x->money($a['hist']), $x->money($a['cur']),
+                $x->money($a['tq']), $x->money($a['stop']), $x->money($a['red']),
+                $x->money($a['open']), $x->int($a['silent']),
+                $x->int($a['t'][1]), $x->int($a['t'][2]), $x->int($a['t'][3]),
+                $x->int($a['t'][4]), $x->int($a['t'][5]),
+                $x->int($a['logged']), $x->int($a['overdue']));
+        };
+
+        // ---- Summary A: the manager view, every salesperson ---------------
+        $sheetA = $sumCols; $sheetA['freeze'] = 1; $sheetA['filter'] = true;
+        $x->addSheet('Summary A - All Salespeople', $sheetA);
+        $x->headerRow($sumHdr);
+        foreach ($bySls as $s => $a) { $x->row($sumRow($s, $a)); }
+
+        // ---- Summary B: what one salesperson sees -------------------------
+        //
+        // TEMPORARY, BY DESIGN. Two summary sheets ship together only so the COO
+        // can choose whether a salesperson should see the whole company's
+        // numbers (Summary A) or only their own (Summary B), judging it from the
+        // real thing rather than a description. Once she decides, delete the
+        // losing sheet - this block and the one above are self-contained.
+        //
+        // B is a genuine simulation, not a mock-up: it is the same figures from
+        // the same model, filtered to one salesperson, which is exactly what a
+        // rep restricted by the BUYPATTERN UDC table would receive.
+        $repNums = array_keys($bySls);
+        sort($repNums, SORT_NUMERIC);
+
+        $demoSls = 0;
+        if (isset($_GET['demo']) && ctype_digit((string)$_GET['demo'])
+                && isset($bySls[(int)$_GET['demo']])) {
+            $demoSls = (int)$_GET['demo'];
+        } else {
+            // Default to the rep carrying the most at stake - the most telling
+            // example, and $bySls is already ordered that way.
+            foreach ($bySls as $s2 => $a2) { $demoSls = (int)$s2; break; }
+        }
+
+        $sheetB = $sumCols;      // no freeze or filter: it is a handful of rows
+        $x->addSheet('Summary B - One Rep Only', $sheetB);
+
+        // Plain, NON-WRAPPING lines, each short enough to read across the empty
+        // cells to its right. Do not use wrap() here: column A is 8 characters
+        // wide because it holds "Sls #", and wrapped text in a narrow column
+        // makes Excel stretch the row to fit a vertical ribbon of words.
+        $noteLines = array(
+            '',
+            'This is the same summary as Summary A, restricted to a single salesperson.',
+            'It is what a rep receives if reps are limited to their own accounts.',
+            '',
+            'Summary A lists all ' . count($bySls) . ' salespeople, so every rep would see every',
+            'other rep\'s revenue, coverage and overdue follow-ups.',
+            '',
+            'The figures on both sheets are identical. Only the number of rows differs.',
+            'Either way, the customer detail sheets stay restricted to the accounts that',
+            'person covers - nobody sees another rep\'s customers.',
+            '',
+        );
+        $x->row(array($x->title('Summary B - what one salesperson sees')));
+        foreach ($noteLines as $ln) { $x->row(array($ln)); }
+        $x->row(array($x->bold('Example: salesperson ' . $demoSls . ' '
+            . (isset($bySls[$demoSls]['name']) ? $bySls[$demoSls]['name'] : ''))));
+        $x->blank();
+        $x->headerRow($sumHdr);
+        if (isset($bySls[$demoSls])) { $x->row($sumRow($demoSls, $bySls[$demoSls])); }
+        $x->blank();
+        $x->row(array('To see a different rep, add &demo=<salesperson number> to the export link.'));
+        $x->row(array('Valid numbers today: ' . implode(', ', $repNums) . '.'));
+
+        // ---- One sheet per tier ------------------------------------------
+        $bpTrace('summary done, ' . count($bySls) . ' salespeople');
+        $custCols = array('widths' => array(6, 10, 34, 26, 22, 16, 5, 10, 8, 20, 7, 24,
+                                            7, 20, 11, 10, 11, 13, 13,
+                                            13, 13, 13, 13, 13, 13, 9, 9, 13, 11, 10, 12, 13),
+                          'freeze' => 1, 'filter' => true);
+        $custHdr  = array('Tier', 'Ship-to #', 'Customer', 'Address', 'Address 2', 'City',
+                          'ST', 'Zip', 'Country', 'Phone', 'Class', 'Class description',
+                          'Sls #', 'Salesperson', $tgtQLbl . ' share', $tgtQLbl . ' years',
+                          'Call by', 'At stake', 'Normal year',
+                          $hy[0] . ' sales', $hy[1] . ' sales', $hy[2] . ' sales',
+                          $curY . ' sales', 'Stopped $/yr', 'Reduced $/yr',
+                          'Items stopped', 'Items reduced', 'Open order $',
+                          'Last order', 'Days since', 'Last contact', 'Next follow-up');
+        $custRow = function ($c) use ($x, $yrs, $tierRule, $logAgg) {
+            $lg = isset($logAgg[$c['shipto']]) ? $logAgg[$c['shipto']] : null;
+            $fu = ($lg === null) ? ''
+                : (($lg['overfu'] !== '') ? $lg['overfu'] : $lg['nextfu']);
+            $r = array(
+                ($c['tier'] > 0 ? 'T' . $c['tier'] : '-'),
+                $x->int($c['shipto']), $c['name'], $c['addr1'], $c['addr2'],
+                $c['city'], $c['state'], $c['zip'], $c['ctry'], $c['phone'],
+                $c['cls'], $c['clsdesc'], $x->int($c['slsm']), $c['slsmname'],
+                $x->pct($c['tqShare']), $x->int($c['tqYears']),
+                ($c['callBy'] !== '' ? $x->date($c['callBy']) : ''),
+                $x->amber($c['stake']), $x->money($c['normal']));
+            foreach ($yrs as $y) { $r[] = $x->money($c['byYear'][$y]); }
+            $r[] = $x->money($c['stopAmt']);
+            $r[] = $x->money($c['redAmt']);
+            $r[] = $x->int($c['stopN']);
+            $r[] = $x->int($c['redN']);
+            $r[] = $x->money($c['openAmt']);
+            $r[] = ($c['lastOrd'] > 0 ? $x->date(bp_cymdIso($c['lastOrd'])) : '');
+            $r[] = ($c['daysSince'] === null ? '' : $x->int($c['daysSince']));
+            $r[] = ($lg !== null ? $x->date(substr($lg['lastts'], 0, 10)) : '');
+            $r[] = ($fu !== '' ? $x->date($fu) : '');
+            return $r;
+        };
+
+        // A row that drifts out of step with its header misaligns every column
+        // after the gap and still looks like a valid workbook. Check once,
+        // against real data, and fail loudly rather than shipping a wrong grid.
+        if (!empty($custs)) {
+            $probe = $custRow(reset($custs));
+            if (count($probe) !== count($custHdr)) {
+                throw new Exception('Customer sheet layout mismatch: ' . count($custHdr)
+                    . ' headers against ' . count($probe) . ' values. '
+                    . 'The workbook was not written.');
+            }
+        }
+
+        for ($t = 1; $t <= 5; $t++) {
+            $rows = array();
+            foreach ($custs as $c) { if ($c['tier'] === $t) { $rows[] = $c; } }
+            usort($rows, function ($a, $b) {
+                if ($a['stake'] == $b['stake']) { return 0; }
+                return ($a['stake'] < $b['stake']) ? 1 : -1;
+            });
+            $x->addSheet('Tier ' . $t, $custCols);
+            $x->headerRow($custHdr);
+            foreach ($rows as $c) { $x->row($custRow($c)); }
+            if (empty($rows)) { $x->row(array('No customers in this tier.')); }
+            $bpTrace('tier ' . $t . ' done, ' . count($rows) . ' rows');
+        }
+
+        // ---- One tab per salesperson, customer x lost product ------------
+        $repHdr = array('Sls #', 'Salesperson', 'Tier', 'Ship-to #', 'Customer', 'City', 'ST',
+                        'Phone', 'Call by', 'Item', 'Description', 'Product group',
+                        'Product group description', 'Status', 'Stopped detail',
+                        'Years bought', 'History orders', 'Normally buys qty/yr',
+                        'Normal $/yr', 'Lost $/yr',
+                        $hy[0] . ' $', $hy[1] . ' $', $hy[2] . ' $', $curY . ' $',
+                        'Last ordered', 'Days since', 'Last unit price');
+        $repCols = array('widths' => array(7, 22, 6, 10, 32, 18, 5, 20, 11, 16, 34, 9, 26,
+                                           10, 24, 8, 9, 12, 12, 12, 12, 12, 12, 12, 12, 9, 12),
+                         'freeze' => 1, 'filter' => true);
+        // Tabs run in salesperson-number order, not by dollars at stake. A rep
+        // looking for their own tab wants it where their number puts it; the
+        // ranking by dollars belongs on the Summary sheet, which keeps it.
+        $repOrder = array_keys($bySls);
+        sort($repOrder, SORT_NUMERIC);
+
+        $repTabs = 0; $repSkipped = array();
+        foreach ($repOrder as $s) {
+            $a = $bySls[$s];
+            // Build the rows first, so a rep with nothing to chase gets a tab
+            // that says so rather than an empty grid
+            $rows = array();
+            foreach ($custs as $c) {
+                if ((int)$c['slsm'] !== (int)$s || $c['tier'] <= 0) { continue; }
+                $its = isset($itemsByShip[$c['shipto']]) ? $itemsByShip[$c['shipto']] : array();
+                foreach ($its as $it) {
+                    if (!isset($bookStat[$it['status']])) { continue; }
+                    $rows[] = array($c, $it);
+                }
+            }
+            usort($rows, function ($p, $q) {
+                if ($p[1]['lossAmt'] == $q[1]['lossAmt']) { return 0; }
+                return ($p[1]['lossAmt'] < $q[1]['lossAmt']) ? 1 : -1;
+            });
+
+            // Excel allows 255 sheets; well before that a workbook stops being
+            // usable. 40 rep tabs has never been approached (there are 10
+            // salespeople), but if it ever is, say so rather than truncating in
+            // silence.
+            if ($repTabs >= 40) { $repSkipped[] = $s . ' ' . $a['name']; continue; }
+            $repTabs++;
+
+            $nm = trim($s . ' ' . ($a['name'] !== '' ? $a['name'] : 'Salesperson'));
+            $x->addSheet($nm, $repCols);
+            $x->headerRow($repHdr);
+            foreach ($rows as $pair) {
+                list($c, $it) = $pair;
+                $pg  = $it['pgrp'];
+                $sb  = (isset($it['sub']) && $it['sub'] !== '' && isset($subLbl[$it['sub']]))
+                     ? $subLbl[$it['sub']] : '';
+                $row = array($x->int($c['slsm']), $c['slsmname'],
+                    ($c['tier'] > 0 ? 'T' . $c['tier'] : '-'),
+                    $x->int($c['shipto']), $c['name'], $c['city'], $c['state'], $c['phone'],
+                    ($c['callBy'] !== '' ? $x->date($c['callBy']) : ''),
+                    $it['item'], $it['desc'],
+                    $pg, (isset($pgrpDesc[$pg]) ? $pgrpDesc[$pg] : ''),
+                    $it['status'], $sb,
+                    $x->int($it['yrsWith']), $x->int($it['histOrds']),
+                    $x->int($it['normalQty']), $x->money($it['normal']),
+                    $x->amber($it['lossAmt']));
+                foreach ($yrs as $y) { $row[] = $x->money($it['r' . $y]); }
+                $row[] = ($it['lastOrd'] > 0 ? $x->date(bp_cymdIso($it['lastOrd'])) : '');
+                $row[] = ($it['daysSince'] === null ? '' : $x->int($it['daysSince']));
+                $row[] = $x->money2($it['lastPrice']);
+                if (count($row) !== count($repHdr)) {
+                    throw new Exception('Rep sheet layout mismatch: ' . count($repHdr)
+                        . ' headers against ' . count($row) . ' values. '
+                        . 'The workbook was not written.');
+                }
+                $x->row($row);
+            }
+            if (empty($rows)) {
+                $x->row(array('No stopped or reduced products on this salesperson\'s call-tier '
+                            . 'customers. Their call lists are on the Tier sheets.'));
+            }
+            $bpTrace('rep tab ' . $s . ' done, ' . count($rows) . ' rows');
+        }
+
+        // ---- All Customers ----------------------------------------------
+        $allSorted = $custs;
+        usort($allSorted, function ($a, $b) {
+            if ($a['histRev'] == $b['histRev']) { return 0; }
+            return ($a['histRev'] < $b['histRev']) ? 1 : -1;
+        });
+        $bpTrace('rep tabs done, ' . $repTabs . ' tabs');
+        $x->addSheet('All Customers', $custCols);
+        $x->headerRow($custHdr);
+        foreach ($allSorted as $c) { $x->row($custRow($c)); }
+        $bpTrace('all customers done, ' . count($allSorted) . ' rows');
+
+        // ---- Products Stopped -------------------------------------------
+        $x->addSheet('Products Stopped', array(
+            'widths' => array(16, 38, 9, 26, 11, 12, 13, 12, 15, 12, 9),
+            'freeze' => 1, 'filter' => true));
+        $x->headerRow(array('Item', 'Description', 'Product group',
+            'Product group description', 'Customers stopped', 'Customers who ever bought',
+            'Annual $ stopped', 'Annual qty', $hy[0] . '-' . $hy[2] . ' revenue, all customers',
+            'Last ordered by anyone', 'Days since'));
+        foreach ($skuList as $s) {
+            $pg = $s['pgrp'];
+            $x->row(array($s['item'], $s['desc'], $pg,
+                (isset($pgrpDesc[$pg]) ? $pgrpDesc[$pg] : ''),
+                $x->int($s['custs']), $x->int($s['anyCusts']),
+                $x->amber($s['amt']), $x->int($s['qty']), $x->money($s['hist']),
+                ($s['lastAny'] > 0 ? $x->date(bp_cymdIso($s['lastAny'])) : ''),
+                ($s['daysAny'] === null ? '' : $x->int($s['daysAny']))));
+        }
+
+        // Anything dropped gets said out loud, on its own sheet
+        if (!empty($repSkipped)) {
+            $x->addSheet('Not Included', array('widths' => array(90)));
+            $x->row(array($x->bold('Salespeople with no tab in this workbook')));
+            $x->row(array($x->wrap('The workbook caps rep tabs at 40. These were left out; '
+                                 . 'their customers are still on the Tier and All Customers '
+                                 . 'sheets.')));
+            foreach ($repSkipped as $sk) { $x->row(array($sk)); }
+        }
+
+        $bpTrace('sku done, streaming');
+        $x->send('BuyerPattern_Workbook_' . $tgtQLbl . $tgtQY . '_' . $stamp . '.xlsx',
+                 $bpObBase);
+
+    } catch (Exception $e) {
+        // Exception, not Throwable: the web SAPI here is PHP 5.6, which has no
+        // Throwable at all - a catch on it compiles and then never matches,
+        // silently turning every handled failure into a bare 500.
+        error_log('BPBOOK FAILED at stage ' . $bpStage . ': ' . get_class($e) . ' '
+                . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+        $stray = '';
+        while (ob_get_level() > $bpObBase) { $stray .= (string)ob_get_clean(); }
+        if (ob_get_level() > 0) { @ob_clean(); }
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo "The workbook could not be built.\n\n"
+           . 'Stage reached: ' . $bpStage . "\n"
+           . get_class($e) . ': ' . $e->getMessage() . "\n"
+           . 'at ' . $e->getFile() . ':' . $e->getLine() . "\n\n";
+        if (trim(strip_tags($stray)) !== '') {
+            echo "PHP also reported:\n" . strip_tags($stray) . "\n\n";
+        }
+        echo "Nothing was changed. The CSV exports are unaffected.\n";
+        exit;
+    }
 }
 
 // -- CSV export ---------------------------------------------------------------
@@ -1178,13 +1878,18 @@ if (isset($_GET['export'])) {
              . $sub['shipto'] . '_' . $stamp . '.csv"');
         $out = fopen('php://output', 'w');
         fputcsv($out, array('Ship-To #', 'Customer', 'Order #', 'Line #', 'Order Date',
-                            'Order Type', 'Item', 'Description', 'Qty Ordered', 'Qty Shipped',
+                            'Order Type', 'Order Entered By', 'Item', 'Description',
+                            'Product Group', 'Product Group Description',
+                            'Qty Ordered', 'Qty Shipped',
                             'Unit Price', 'Unit Factor', 'Shipment Rows', 'Line Amount'));
         foreach ($lineRows as $r) {
+            $xpg = strtoupper(trim((string)$r['PGRP']));
             fputcsv($out, array($sub['shipto'], $sub['name'],
                 trim((string)$r['ORDNO']), trim((string)$r['LN']),
                 bp_cymdIso($r['ORDDTE']), trim((string)$r['ORDTY']),
+                trim((string)$r['ENTBY']),
                 trim((string)$r['ITEM']), trim((string)$r['ITEMDESC']),
+                $xpg, (isset($pgrpDesc[$xpg]) ? $pgrpDesc[$xpg] : ''),
                 number_format((float)$r['QORD'], 0, '.', ''),
                 number_format((float)$r['QSHIP'], 0, '.', ''),
                 number_format((float)$r['PRICE'], 5, '.', ''),
@@ -1200,19 +1905,28 @@ if (isset($_GET['export'])) {
         header('Content-Disposition: attachment; filename="BuyerPattern_Products_'
              . $sub['shipto'] . '_' . $stamp . '.csv"');
         $out = fopen('php://output', 'w');
-        $hdr = array('Ship-To #', 'Customer', 'Item', 'Description', 'Status',
+        $hdr = array('Ship-To #', 'Customer', 'Item', 'Description',
+                     'Product Group', 'Product Group Description',
+                     'Status', 'Stopped Detail',
                      'Years Bought', 'History Orders', 'Normally Buys Qty/Yr',
-                     'Normal $/Yr', 'Lost $/Yr', 'Last Order Date', 'Last Unit Price');
+                     'Normal $/Yr', 'Lost $/Yr', 'Last Order Date', 'Days Since Last Order',
+                     'Last Unit Price');
         foreach ($yrs as $y) { $hdr[] = $y . ' $'; }
         foreach ($yrs as $y) { $hdr[] = $y . ' Qty'; }
         fputcsv($out, $hdr);
         foreach ($subItems as $it) {
-            $row = array($sub['shipto'], $sub['name'], $it['item'], $it['desc'], $it['status'],
+            $xpg = $it['pgrp'];
+            $xsb = (isset($it['sub']) && $it['sub'] !== '' && isset($subLbl[$it['sub']]))
+                 ? $subLbl[$it['sub']] : '';
+            $row = array($sub['shipto'], $sub['name'], $it['item'], $it['desc'],
+                         $xpg, (isset($pgrpDesc[$xpg]) ? $pgrpDesc[$xpg] : ''),
+                         $it['status'], $xsb,
                          $it['yrsWith'], $it['histOrds'],
                          number_format($it['normalQty'], 0, '.', ''),
                          number_format($it['normal'], 2, '.', ''),
                          number_format($it['lossAmt'], 2, '.', ''),
                          bp_cymdIso($it['lastOrd']),
+                         ($it['daysSince'] === null ? '' : (int)$it['daysSince']),
                          number_format($it['lastPrice'], 5, '.', ''));
             foreach ($yrs as $y) { $row[] = number_format($it['r' . $y], 2, '.', ''); }
             foreach ($yrs as $y) { $row[] = number_format($it['q' . $y], 0, '.', ''); }
@@ -1225,12 +1939,22 @@ if (isset($_GET['export'])) {
     if ($what === 'sku') {
         header('Content-Disposition: attachment; filename="BuyerPattern_StoppedSKUs_' . $stamp . '.csv"');
         $out = fopen('php://output', 'w');
-        fputcsv($out, array('Item', 'Description', 'Customers Stopped',
-                            'Annual $ Stopped', 'Annual Qty'));
+        fputcsv($out, array('Item', 'Description', 'Product Group',
+                            'Product Group Description',
+                            'Customers Stopped', 'Customers Who Ever Bought',
+                            'Annual $ Stopped', 'Annual Qty',
+                            $hy[0] . '-' . $hy[2] . ' Revenue All Customers',
+                            'Last Ordered By Anyone', 'Days Since Anyone Ordered'));
         foreach ($skuList as $s) {
-            fputcsv($out, array($s['item'], $s['desc'], $s['custs'],
+            $xpg = $s['pgrp'];
+            fputcsv($out, array($s['item'], $s['desc'],
+                                $xpg, (isset($pgrpDesc[$xpg]) ? $pgrpDesc[$xpg] : ''),
+                                $s['custs'], $s['anyCusts'],
                                 number_format($s['amt'], 2, '.', ''),
-                                number_format($s['qty'], 0, '.', '')));
+                                number_format($s['qty'], 0, '.', ''),
+                                number_format($s['hist'], 2, '.', ''),
+                                bp_cymdIso($s['lastAny']),
+                                ($s['daysAny'] === null ? '' : (int)$s['daysAny'])));
         }
         fclose($out);
         exit;
@@ -1281,7 +2005,8 @@ if (isset($_GET['export'])) {
     }
     header('Content-Disposition: attachment; filename="BuyerPattern_CallList_' . $stamp . '.csv"');
     $out = fopen('php://output', 'w');
-    $hdr = array('Tier', 'Tier Rule', 'Ship-To #', 'Customer Name', 'Address', 'City', 'State',
+    $hdr = array('Tier', 'Tier Rule', 'Ship-To #', 'Customer Name',
+                 'Address', 'Address 2', 'City', 'State',
                  'Zip', 'Phone', 'Class', 'Class Description', 'Salesperson #', 'Salesperson',
                  $tgtQLbl . ' Share %', $tgtQLbl . ' Years', 'Call By');
     if ($periodOn) {
@@ -1292,12 +2017,18 @@ if (isset($_GET['export'])) {
     foreach ($yrs as $y) { $hdr[] = $y . ' ' . $tgtQLbl . ' Sales'; }
     $hdr = array_merge($hdr, array('Years Active', 'Normal Year', 'At Stake', 'At-Stake Basis',
                                    'Stopped $/yr', 'Reduced $/yr', 'Items Stopped',
-                                   'Items Reduced', 'Open Orders', 'Open Order $',
-                                   'Orders', 'Order Lines', 'Last Order Date'));
+                                   'Items Reduced',
+                                   'Items Stopped - Regular Thru ' . $hy[2],
+                                   'Items Stopped - None Since ' . $hy[1],
+                                   'Items Stopped - None Since ' . $hy[0],
+                                   'Open Orders', 'Open Order $',
+                                   'Orders', 'Order Lines', 'Last Order Date',
+                                   'Days Since Last Order'));
     fputcsv($out, $hdr);
     foreach ($sel as $c) {
         $row = array($c['tier'], $c['tier'] > 0 ? $tierRule[$c['tier']] : 'not on a call tier',
-                     $c['shipto'], $c['name'], $c['addr1'], $c['city'], $c['state'], $c['zip'],
+                     $c['shipto'], $c['name'], $c['addr1'], $c['addr2'],
+                     $c['city'], $c['state'], $c['zip'],
                      $c['phone'], $c['cls'], $c['clsdesc'], $c['slsm'], $c['slsmname'],
                      number_format($c['tqShare'] * 100, 1, '.', ''), $c['tqYears'], $c['callBy']);
         if ($periodOn) {
@@ -1314,9 +2045,12 @@ if (isset($_GET['export'])) {
             $c['tier'] > 0 ? $stakeRule[$c['tier']] : '',
             number_format($c['stopAmt'], 2, '.', ''),
             number_format($c['redAmt'],  2, '.', ''),
-            $c['stopN'], $c['redN'], $c['openOrds'],
+            $c['stopN'], $c['redN'],
+            $c['stopThru'], $c['stopSince2'], $c['stopSince3'],
+            $c['openOrds'],
             number_format($c['openAmt'], 2, '.', ''),
-            $c['ordCnt'], $c['lineCnt'], bp_cymdIso($c['lastOrd'])));
+            $c['ordCnt'], $c['lineCnt'], bp_cymdIso($c['lastOrd']),
+            ($c['daysSince'] === null ? '' : (int)$c['daysSince'])));
         fputcsv($out, $row);
     }
     fclose($out);
@@ -1332,8 +2066,18 @@ print "\n</head>";
 require_once 'Banner.php';
 require_once dirname(__FILE__) . '/../SgReportNav.php';
 
-$statusClr = array('stopped'=>'#CC1F20', 'reduced'=>'#EA580C',
-                   'steady'=>'#1DA032', 'one-off'=>'#6B7280');
+function bp_statusText($it, $subLbl) {
+    if ($it['status'] !== 'stopped') { return $it['status']; }
+    $s = isset($it['sub']) ? $it['sub'] : '';
+    return ($s !== '' && isset($subLbl[$s])) ? 'stopped - ' . $subLbl[$s] : 'stopped';
+}
+function bp_statusClr($it, $statusClr, $subClr) {
+    $s = isset($it['sub']) ? $it['sub'] : '';
+    if ($it['status'] === 'stopped' && $s !== '' && isset($subClr[$s])) {
+        return $subClr[$s];
+    }
+    return isset($statusClr[$it['status']]) ? $statusClr[$it['status']] : '#111827';
+}
 ?>
 <table <?php echo $baseTable; ?>>
 <tr valign="top">
@@ -1457,7 +2201,9 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <!-- Breadcrumb -->
 <div class="bp-crumb">
   <a href="?">Level 1 &middot; Headline</a>
-<?php if ($view === 'activity'): ?>
+<?php if ($view === 'followups'): ?>
+  &nbsp;&rsaquo;&nbsp; <b>Open follow-ups</b>
+<?php elseif ($view === 'activity'): ?>
   &nbsp;&rsaquo;&nbsp; <b>Contact activity</b>
 <?php elseif ($view === 'cards'): ?>
   &nbsp;&rsaquo;&nbsp; <b>What a rep actually sees</b>
@@ -1511,6 +2257,19 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <a href="<?php echo bp_h(bp_url(array('view'=>'activity'))); ?>"
          style="background:#fff;border-radius:12px;padding:2px 10px;font-weight:700;
                 color:#7B1FA2 !important;text-decoration:none;">Contact activity</a>
+      <a href="<?php echo bp_h(bp_url(array('view'=>'followups'))); ?>"
+         style="background:<?php echo $fuAll['overdue'] > 0 ? '#CC1F20' : '#fff'; ?>;
+                border-radius:12px;padding:2px 10px;font-weight:700;text-decoration:none;
+                color:<?php echo $fuAll['overdue'] > 0 ? '#fff' : '#B45309'; ?> !important;">
+        Follow-ups<?php echo $fuAllOpen > 0 ? ' (' . bp_int($fuAllOpen) . ')' : ''; ?></a>
+      <span style="background:<?php echo $bpPgmSecOn ? '#fff' : '#FEE2E2'; ?>;border-radius:12px;
+                   padding:2px 10px;font-weight:700;
+                   color:<?php echo $bpPgmSecOn ? '#1DA032' : '#7F1D1D'; ?> !important;"
+            title="<?php echo bp_h($bpPgmSecOn
+                    ? $BP_PGMID . ' is granted per user in SYPGMS via SgProgramAccess.php'
+                    : $BP_PGMID . ' has no SYPGMS rows yet, so the program gate is open to anyone with the SGINQ portal'); ?>">
+        <?php echo $bpPgmSecOn ? 'Pgm security on' : 'Pgm security NOT set'; ?>
+      </span>
     </div>
     <div style="display:flex;align-items:center;gap:14px;padding:6px 10px;
                 background:#F7F7F7;font-size:12px;flex:1;flex-wrap:wrap;">
@@ -1559,12 +2318,52 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 ?>
     <a href="<?php echo bp_h('?' . http_build_query($expParams)); ?>" class="bp-btn"
        style="background:#1DA032;text-align:center;">&#8595; Export this view</a>
+<?php
+  // The workbook always covers the whole base this user can see, so it is
+  // offered from the wide views only - from Level 4 or 5 the page is scoped to
+  // one customer and the workbook would quietly contain only that one.
+  if (!$isSingle):
+?>
+    <a href="?export=book" class="bp-btn"
+       style="background:#0F766E;text-align:center;"
+       title="Multi-sheet Excel workbook: Read Me, Summary by Salesperson, one sheet per tier, a tab per salesperson, All Customers and Products Stopped">
+       &#8595; Full workbook (.xlsx)</a>
+<?php endif; ?>
   </div>
 </div>
 
 <div class="bp-body<?php echo in_array($view, array("cust","lines"), true) ? " bp-body-wide" : ""; ?>">
 
 <?php if ($view === 'tiles'): ?>
+
+<?php if ($fuAllOpen > 0): ?>
+<!-- Open follow-ups, loudest first. Silent when there is nothing due. -->
+<div style="margin:8px 0;padding:10px 14px;border-radius:3px;
+            background:<?php echo $fuAll['overdue'] > 0 ? '#FEE2E2' : '#FEF3C7'; ?>;
+            border:1px solid <?php echo $fuAll['overdue'] > 0 ? '#CC1F20' : '#F0C060'; ?>;
+            color:<?php echo $fuAll['overdue'] > 0 ? '#7F1D1D' : '#78350F'; ?>;
+            display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+  <span style="font-size:15px;font-weight:bold;">
+<?php if ($fuAll['overdue'] > 0): ?>
+    <?php echo bp_int($fuAll['overdue']); ?> follow-up<?php echo $fuAll['overdue'] === 1 ? '' : 's'; ?> overdue
+<?php else: ?>
+    <?php echo bp_int($fuAll['today'] + $fuAll['week']); ?> follow-up<?php echo ($fuAll['today'] + $fuAll['week']) === 1 ? '' : 's'; ?> coming up
+<?php endif; ?>
+  </span>
+  <span style="font-size:12px;">
+<?php if ($fuAll['today'] > 0): ?>
+    <?php echo bp_int($fuAll['today']); ?> due today &middot;
+<?php endif; ?>
+<?php if ($fuAll['week'] > 0): ?>
+    <?php echo bp_int($fuAll['week']); ?> within 7 days &middot;
+<?php endif; ?>
+    <?php echo bp_int($fuMineOpen); ?> of them yours
+  </span>
+  <a href="<?php echo bp_h(bp_url(array('view'=>'followups'))); ?>"
+     class="bp-btn" style="background:#CC1F20;border:1px solid #8b1010;margin-left:auto;">
+    Work the list &rarr;</a>
+</div>
+<?php endif; ?>
 
 <!-- ===================== LEVEL 1 ===================== -->
 <div class="bp-sec">Level 1 &middot; The headline
@@ -1616,6 +2415,35 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <div class="bp-tv"><?php echo bp_moneyK($tileAtStake); ?></div>
       <div class="bp-tn"><?php echo bp_int($tierTotal); ?> customers on the lists. Lost years
           for those who stopped, shortfalls for those who slowed.</div>
+    </a>
+  </div>
+<?php
+  // The follow-up tile. Unlike the other five it changes colour, because it is
+  // the only tile that represents a promise somebody made to call back. Red
+  // when anything is overdue, amber when something is due inside the week,
+  // plain when the queue is genuinely clear.
+  $fuTileClr = ($fuAll['overdue'] > 0) ? '#CC1F20'
+             : ((($fuAll['today'] + $fuAll['week']) > 0) ? '#B45309' : '#1DA032');
+?>
+  <div class="bp-tile" style="border-top:3px solid <?php echo $fuTileClr; ?>;">
+    <a href="<?php echo bp_h(bp_url(array('view'=>'followups'))); ?>">
+      <div class="bp-tk">Follow-ups open</div>
+      <div class="bp-tv" style="color:<?php echo $fuTileClr; ?> !important;"><?php
+          echo bp_int($fuAllOpen); ?></div>
+      <div class="bp-tn">
+<?php if ($fuAllOpen === 0): ?>
+        Nothing outstanding. Every logged contact either has no follow-up needed or is
+        dated beyond next week.
+<?php else: ?>
+        <?php echo $fuAll['overdue'] > 0
+              ? '<b style="color:#CC1F20;">' . bp_int($fuAll['overdue']) . ' overdue</b>'
+              : 'None overdue'; ?><?php
+          if ($fuAll['today'] > 0) { echo ' &middot; ' . bp_int($fuAll['today']) . ' due today'; }
+          if ($fuAll['week']  > 0) { echo ' &middot; ' . bp_int($fuAll['week'])  . ' this week'; } ?>.
+        <?php echo bp_int($fuMineOpen); ?> of them
+        <?php echo $fuMineOpen === 1 ? 'is' : 'are'; ?> yours.
+<?php endif; ?>
+      </div>
     </a>
   </div>
 </div>
@@ -1790,24 +2618,40 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
   <thead>
     <tr>
       <th class="bp-nw">Item</th><th class="bp-wide">Description</th>
+      <th class="bp-nw">Product group</th>
       <th class="bp-r">Customers<br>stopped</th>
       <th class="bp-r">Annual $<br>stopped</th>
       <th class="bp-r">Annual<br>qty</th>
+      <th class="bp-r"><?php echo $hy[0]; ?>-<?php echo $hy[2]; ?><br>revenue</th>
+      <th class="bp-nw">Last ordered<br>by anyone</th>
+      <th class="bp-r">Days<br>since</th>
     </tr>
   </thead>
   <tbody>
 <?php $shown = 0; foreach ($skuList as $s): if ($shown++ >= 25) break;
-      $skuUrl = bp_url(array('view'=>'cust','item'=>$s['item'])); ?>
+      $skuUrl = bp_url(array('view'=>'cust','item'=>$s['item']));
+      // Still moving somewhere? Then this is one customer walking away from a
+      // live product, not a product going end-of-life.
+      $skuLive = ($s['daysAny'] !== null && $s['daysAny'] <= 365); ?>
     <tr>
       <td class="bp-nw"><a href="<?php echo bp_h($skuUrl); ?>"><?php echo bp_h($s["item"]); ?></a></td>
       <td class="bp-wide"><?php echo bp_h($s['desc']); ?></td>
-      <td class="bp-r"><a href="<?php echo bp_h($skuUrl); ?>"><?php echo bp_int($s['custs']); ?></a></td>
+      <td class="bp-nw"><?php echo $s['pgrp'] !== ''
+            ? bp_h(bp_pgrpLabel($s['pgrp'], $pgrpDesc)) : '&mdash;'; ?></td>
+      <td class="bp-r"><a href="<?php echo bp_h($skuUrl); ?>"><?php echo bp_int($s['custs']); ?></a>
+          <span style="color:#6B7280;">of <?php echo bp_int($s['anyCusts']); ?></span></td>
       <td class="bp-r"><?php echo bp_money($s['amt']); ?></td>
       <td class="bp-r"><?php echo bp_qty($s['qty']); ?></td>
+      <td class="bp-r"><?php echo bp_money($s['hist']); ?></td>
+      <td class="bp-nw" data-val="<?php echo (int)$s['lastAny']; ?>"<?php
+          echo $skuLive ? ' style="color:#1DA032 !important;font-weight:bold;"' : ''; ?>><?php
+          echo $s['lastAny'] > 0 ? bp_h(bp_cymdToDate($s['lastAny'])) : 'never'; ?></td>
+      <td class="bp-r" data-val="<?php echo $s['daysAny'] === null ? -1 : (int)$s['daysAny']; ?>"><?php
+          echo bp_h(bp_daysLabel($s['daysAny'])); ?></td>
     </tr>
 <?php endforeach; ?>
 <?php if (empty($skuList)): ?>
-    <tr><td colspan="5" style="text-align:center;padding:20px;">No stopped repeat items found.</td></tr>
+    <tr><td colspan="9" style="text-align:center;padding:20px;">No stopped repeat items found.</td></tr>
 <?php endif; ?>
   </tbody>
 </table>
@@ -1816,8 +2660,85 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
   A stopped item is a genuine repeat purchase - bought in 2+ years or across 3+ separate
   orders - with zero purchases in <?php echo $curY; ?>. One-time custom prints are excluded.
   A high customer count is a slipping product line, not one lost account.
+  <b>Customers stopped</b> reads "3 of 11" - three quit, eleven bought it at some point.
+  <b><?php echo $hy[0]; ?>-<?php echo $hy[2]; ?> revenue</b> and
+  <b>last ordered by anyone</b> cover every customer, not just the ones who stopped, so a
+  <span style="color:#1DA032;font-weight:bold;">green date</span> means the product is still
+  moving elsewhere and this is an account problem rather than a dying line. Both figures are
+  limited to the accounts you are allowed to see.
   <a href="?export=sku" style="color:#1DA032;font-weight:bold;">Export all
   <?php echo bp_int(count($skuList)); ?> items</a>
+</div>
+
+<?php elseif ($view === 'followups'): ?>
+
+<!-- ===================== Open follow-ups ===================== -->
+<?php $fuOnly = (isset($_GET['who']) && $_GET['who'] === 'mine'); ?>
+<div class="bp-sec">Open follow-ups
+  <span>The live follow-up per customer - their most recent note. Logging the next contact
+  clears it.</span></div>
+<div style="padding:2px 2px 8px;font-size:12px;">
+  Show:
+  <a href="<?php echo bp_h(bp_url(array('view'=>'followups'))); ?>"
+     style="color:#2563EB;text-decoration:none;font-weight:<?php echo $fuOnly ? 'normal' : 'bold'; ?>;margin-right:8px;">
+     everyone I cover (<?php echo bp_int(count($fuList)); ?>)</a>
+  <a href="<?php echo bp_h(bp_url(array('view'=>'followups','who'=>'mine'))); ?>"
+     style="color:#2563EB;text-decoration:none;font-weight:<?php echo $fuOnly ? 'bold' : 'normal'; ?>;">
+     only mine (<?php echo bp_int($fuMineOpen + $fuMine['later']); ?>)</a>
+  <span style="margin-left:14px;color:#6B7280;">
+    <?php echo bp_int($fuAll['overdue']); ?> overdue &middot;
+    <?php echo bp_int($fuAll['today']); ?> today &middot;
+    <?php echo bp_int($fuAll['week']); ?> this week &middot;
+    <?php echo bp_int($fuAll['later']); ?> later
+  </span>
+</div>
+<div style="overflow-x:auto;">
+<table class="bp-grid" id="bp-fugrid">
+  <thead>
+    <tr><th>Follow up</th><th class="bp-r">Days</th><th>Ship-to</th>
+        <th class="bp-wide">Customer</th><th>City</th><th>ST</th><th>Phone</th>
+        <th class="bp-r">Sls</th><th class="bp-r">Tier</th>
+        <th>Set by</th><th>Last contact</th><th>Outcome</th><th class="bp-wide">Note</th></tr>
+  </thead>
+  <tbody>
+<?php $fuShown = 0; foreach ($fuList as $fu):
+        if ($fuOnly && $fu['setby'] !== $bpUser) { continue; }
+        $fuShown++;
+        $bg = ($fu['band'] === 'overdue') ? '#FEE2E2'
+            : (($fu['band'] === 'today') ? '#FEF3C7' : '');
+        $noteFull = $fu['note']; $noteClip = bp_clip($noteFull, 120); ?>
+    <tr<?php echo $bg !== '' ? ' style="background:' . $bg . ' !important;"' : ''; ?>>
+      <td style="white-space:nowrap;font-weight:bold;
+                 <?php echo $fu['band'] === 'overdue' ? 'color:#CC1F20 !important;' : ''; ?>">
+        <?php echo bp_h(bp_mdy($fu['fudate'])); ?></td>
+      <td class="bp-r" data-val="<?php echo (int)$fu['late']; ?>">
+        <?php if ($fu['late'] > 0)      { echo bp_int($fu['late']) . ' late'; }
+              elseif ($fu['late'] === 0) { echo 'today'; }
+              else                       { echo 'in ' . bp_int(-$fu['late']); } ?></td>
+      <td class="bp-nw"><a href="<?php echo bp_h(bp_url(array('view'=>'detail','shipto'=>$fu['shipto']))); ?>#bp-log"><?php echo bp_h($fu['shipto']); ?></a></td>
+      <td class="bp-wide"><a href="<?php echo bp_h(bp_url(array('view'=>'detail','shipto'=>$fu['shipto']))); ?>#bp-log"><?php echo bp_h($fu['name']); ?></a></td>
+      <td><?php echo bp_h($fu['city']); ?></td>
+      <td><?php echo bp_h($fu['state']); ?></td>
+      <td class="bp-nw"><?php echo bp_h($fu['phone']); ?></td>
+      <td class="bp-r"><?php echo (int)$fu['slsm']; ?></td>
+      <td class="bp-r"><?php echo $fu['tier'] > 0 ? 'T' . $fu['tier'] : '&mdash;'; ?></td>
+      <td><b><?php echo bp_h($fu['setby']); ?></b></td>
+      <td style="white-space:nowrap;"><?php echo bp_h(substr($fu['noteat'], 0, 10)); ?></td>
+      <td><?php echo bp_h($fu['outc']); ?></td>
+      <td class="bp-wide" title="<?php echo bp_h($noteFull); ?>"><?php echo bp_h($noteClip); ?></td>
+    </tr>
+<?php endforeach; ?>
+<?php if ($fuShown === 0): ?>
+    <tr><td colspan="13" style="text-align:center;padding:20px;">
+      Nothing outstanding<?php echo $fuOnly ? ' that you set' : ''; ?>.</td></tr>
+<?php endif; ?>
+  </tbody>
+</table>
+</div>
+<div style="font-size:11px;color:#6B7280;padding:5px 2px;">
+  Red rows are overdue, amber due today. Clicking a customer opens their contact log, where
+  logging the next contact supersedes this follow-up. There is no "mark done" - the log is
+  append-only, so the next note is what closes it.
 </div>
 
 <?php elseif ($view === 'activity'): ?>
@@ -1934,6 +2855,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       </div>
       <div style="font-size:11.5px;color:#4B5563;margin-top:2px;">
         <?php echo bp_h(trim($c['addr1'])); ?><?php echo $c['addr1'] !== '' ? ', ' : ''; ?><?php
+              echo $c['addr2'] !== '' ? bp_h(trim($c['addr2'])) . ', ' : ''; ?><?php
               echo bp_h(trim($c['city'] . ', ' . $c['state'] . ' ' . $c['zip'], ', ')); ?>
       </div>
       <div style="font-size:12px;font-weight:bold;color:#111827;margin-top:3px;">
@@ -1942,6 +2864,15 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
           &middot; <?php echo bp_h($c['cls']); ?>
           &middot; Sls <?php echo (int)$c['slsm']; ?>
           <?php echo $c['slsmname'] !== '' ? bp_h($c['slsmname']) : ''; ?></span>
+      </div>
+      <div style="font-size:11.5px;color:#4B5563;margin-top:3px;">
+        Last ordered
+        <b style="color:<?php echo ($c['daysSince'] !== null && $c['daysSince'] > 365)
+                                   ? '#CC1F20' : '#111827'; ?>;"><?php
+          echo $c['lastOrd'] > 0 ? bp_h(bp_cymdToDate($c['lastOrd'])) : 'never'; ?></b>
+        <?php if ($c['daysSince'] !== null): ?>
+          &middot; <b><?php echo bp_h(bp_daysLabel($c['daysSince'])); ?></b> days ago
+        <?php endif; ?>
       </div>
     </div>
     <!-- the pattern -->
@@ -2008,7 +2939,13 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
           <td style="padding:2px 6px 2px 0;white-space:nowrap;">
             <a href="<?php echo bp_h(bp_url(array('view'=>'lines','shipto'=>$c['shipto'],'item'=>$it['item']))); ?>"
                style="color:#2563EB;font-weight:bold;text-decoration:none;"><?php echo bp_h($it['item']); ?></a></td>
-          <td style="padding:2px 6px;color:#4B5563;"><?php echo bp_h($it['desc']); ?></td>
+          <td style="padding:2px 6px;color:#4B5563;"><?php echo bp_h($it['desc']); ?>
+<?php   $sSub = isset($it['sub']) ? $it['sub'] : '';
+        if ($sSub !== '' && isset($subShort[$sSub])): ?>
+            <span style="color:<?php echo $subClr[$sSub]; ?>;font-weight:bold;white-space:nowrap;">
+              &middot; <?php echo bp_h($subShort[$sSub]); ?></span>
+<?php   endif; ?>
+          </td>
           <td style="padding:2px 0 2px 6px;text-align:right;white-space:nowrap;color:#111827;">
             <?php if ($lb !== null): ?>
               <b><?php echo bp_qty($lb['qty']); ?></b> on <?php echo bp_h(bp_cymdToDate($lb['date'])); ?>
@@ -2017,7 +2954,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
             <?php endif; ?>
           </td>
           <td style="padding:2px 0 2px 8px;text-align:right;white-space:nowrap;
-                     color:<?php echo $statusClr[$it['status']]; ?>;font-weight:bold;">
+                     color:<?php echo bp_statusClr($it, $statusClr, $subClr); ?>;font-weight:bold;">
             <?php echo bp_money($it['lossAmt']); ?>/yr</td>
         </tr>
 <?php endforeach; ?>
@@ -2103,14 +3040,15 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <?php endforeach; ?>
       <th class="bp-r">Normal yr</th><th class="bp-r">At stake</th>
       <th class="bp-r">Stopped $/yr</th><th class="bp-r">Reduced $/yr</th>
-      <th class="bp-r">Open $</th><th>Last order</th>
+      <th class="bp-r">Open $</th><th class="bp-nw">Last order</th>
+      <th class="bp-r">Days since</th>
       <th>Last contact</th><th class="bp-r">Calls</th><th class="bp-r">Emails</th>
       <th>Next follow-up</th>
     </tr>
   </thead>
   <tbody>
 <?php if (empty($listRows)): ?>
-    <tr><td colspan="<?php echo 22 + count($yrs) + ($periodOn ? 2 : 0); ?>"
+    <tr><td colspan="<?php echo 23 + count($yrs) + ($periodOn ? 2 : 0); ?>"
             style="text-align:center;padding:20px;">
       No customers match this selection.</td></tr>
 <?php endif; ?>
@@ -2148,8 +3086,12 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <td class="bp-r"><?php echo $c['stopAmt'] > 0 ? bp_money($c['stopAmt']) : '&mdash;'; ?></td>
       <td class="bp-r"><?php echo $c['redAmt']  > 0 ? bp_money($c['redAmt'])  : '&mdash;'; ?></td>
       <td class="bp-r"><?php echo $c['openAmt'] > 0 ? bp_money($c['openAmt']) : '&mdash;'; ?></td>
-      <td data-val="<?php echo (int)$c['lastOrd']; ?>"<?php echo $stale ? ' class="bp-stale-yr"' : ''; ?>>
+      <td class="bp-nw" data-val="<?php echo (int)$c['lastOrd']; ?>"<?php echo $stale ? ' class="bp-stale-yr"' : ''; ?>>
           <?php echo $c['lastOrd'] > 0 ? bp_h(bp_cymdToDate($c['lastOrd'])) : 'never'; ?></td>
+      <td class="bp-r" data-val="<?php echo $c['daysSince'] === null ? -1 : (int)$c['daysSince']; ?>"<?php
+          echo ($c['daysSince'] !== null && $c['daysSince'] > 365)
+             ? ' style="color:#CC1F20 !important;font-weight:bold;"' : ''; ?>><?php
+          echo bp_h(bp_daysLabel($c['daysSince'])); ?></td>
 <?php   $lg = isset($logAgg[$c['shipto']]) ? $logAgg[$c['shipto']] : null;
         $fuOver = ($lg !== null && $lg['overfu'] !== ''); ?>
       <td style="white-space:nowrap;"><?php echo $lg
@@ -2220,6 +3162,9 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
     <div class="bp-cv"><?php echo bp_h($sub['shipto'] . '  ' . $sub['name']); ?></div>
     <div style="font-size:12px;color:#4B5563;margin-top:4px;">
       <?php echo bp_h($sub['addr1']); ?><?php echo $sub['addr1'] !== '' ? '<br>' : ''; ?>
+      <?php /* Address #2 (CMCNA3) is usually a suite or floor. Shown, but kept out
+               of the Maps query below, where it hurts geocoding more than it helps. */
+      echo $sub['addr2'] !== '' ? bp_h($sub['addr2']) . '<br>' : ''; ?>
       <?php echo bp_h($lkLoc); ?><br>
       <?php echo bp_h($sub['phone']); ?>
     </div>
@@ -2337,11 +3282,11 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       </div>
       <div style="flex:1 1 220px;">
         <label style="font-size:11px;font-weight:bold;color:#374151;display:block;margin-bottom:3px;">
-          Outcome
+          Outcome <span style="color:#CC1F20;">*</span>
         </label>
         <select name="bp_outcome" id="bp-outcome" style="width:100%;font-size:12px;padding:4px;
                 border:1px solid #9CA3AF;border-radius:3px;">
-          <option value="">(not stated)</option>
+          <option value="">-- pick one --</option>
 <?php foreach ($BP_OUTCOMES as $o): ?>
           <option value="<?php echo bp_h($o); ?>"><?php echo bp_h($o); ?></option>
 <?php endforeach; ?>
@@ -2385,18 +3330,30 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
         <th class="bp-wide">Note</th></tr>
   </thead>
   <tbody>
-<?php foreach ($logRows as $lr):
+<?php $lrIx = 0; foreach ($logRows as $lr):
       $lt = trim((string)$lr['CLTYPE']);
       $tn = ($lt === 'C') ? 'Call' : (($lt === 'E') ? 'Email' : 'Note');
       $fu = trim((string)$lr['CLFUDT']);
-      $overdue = ($fu !== '' && $fu < date('Y-m-d')); ?>
+      // Rows are newest first, so only index 0 carries the live follow-up. An
+      // earlier row's date was superseded the moment the next note was logged -
+      // showing it red would make history look like outstanding work.
+      $isLive  = ($lrIx === 0);
+      $lrIx++;
+      $overdue = ($isLive && $fu !== '' && $fu < date('Y-m-d')); ?>
     <tr>
       <td style="white-space:nowrap;"><?php echo bp_h(substr(trim((string)$lr['CLTSTP']), 0, 19)); ?></td>
       <td><b><?php echo bp_h(trim((string)$lr['CLUSER'])); ?></b></td>
       <td><?php echo bp_h($tn); ?></td>
       <td><?php echo bp_h(trim((string)$lr['CLOUTC'])); ?></td>
       <td style="white-space:nowrap;<?php echo $overdue ? 'color:#CC1F20 !important;font-weight:bold;' : ''; ?>">
-        <?php if ($fu !== ''): echo bp_h(bp_mdy($fu)); echo $overdue ? ' (overdue)' : '';
+        <?php if ($fu !== ''):
+                  if ($isLive) {
+                      echo bp_h(bp_mdy($fu)) . ($overdue ? ' (overdue)' : '');
+                  } else {
+                      echo '<span style="text-decoration:line-through;">'
+                         . bp_h(bp_mdy($fu)) . '</span>'
+                         . '<span style="font-size:10px;"> superseded</span>';
+                  }
               else: echo '<span style="color:#6B7280;">' . bp_h(trim((string)$lr['CLFUNR'])) . '</span>';
               endif; ?></td>
       <td class="bp-wide"><?php $nv = trim((string)$lr["CLNOTE"]);
@@ -2451,14 +3408,16 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <table class="bp-grid" id="bp-itemgrid">
   <thead>
     <tr>
-      <th class="bp-nw">Item</th><th class="bp-wide">Description</th><th>Status</th>
+      <th class="bp-nw">Item</th><th class="bp-wide">Description</th>
+      <th class="bp-nw">Product group</th><th class="bp-nw">Status</th>
       <th class="bp-r">Yrs bought</th><th class="bp-r">Orders</th>
       <th class="bp-r">Normally buys qty/yr</th>
       <th class="bp-r">Normal $/yr</th><th class="bp-r">Lost $/yr</th>
 <?php foreach ($yrs as $y): ?>
       <th class="bp-r"><?php echo $y; ?> qty</th>
 <?php endforeach; ?>
-      <th class="bp-r">Last unit price</th><th>Last ordered</th>
+      <th class="bp-r">Last unit price</th><th class="bp-nw">Last ordered</th>
+      <th class="bp-r">Days since</th>
     </tr>
   </thead>
   <tbody>
@@ -2470,8 +3429,10 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
     <tr>
       <td class="bp-nw"><a href="<?php echo bp_h($lUrl); ?>"><?php echo bp_h($it["item"]); ?></a></td>
       <td><?php echo bp_h($it['desc']); ?></td>
-      <td><span style="color:<?php echo $statusClr[$it['status']]; ?> !important;font-weight:bold;">
-          <?php echo bp_h($it['status']); ?></span></td>
+      <td class="bp-nw" title="<?php echo bp_h(bp_pgrpLabel($it['pgrp'], $pgrpDesc)); ?>"><?php
+          echo $it['pgrp'] !== '' ? bp_h(bp_pgrpLabel($it['pgrp'], $pgrpDesc)) : '&mdash;'; ?></td>
+      <td class="bp-nw"><span style="color:<?php echo bp_statusClr($it, $statusClr, $subClr); ?> !important;font-weight:bold;">
+          <?php echo bp_h(bp_statusText($it, $subLbl)); ?></span></td>
       <td class="bp-r"><?php echo (int)$it['yrsWith']; ?></td>
       <td class="bp-r"><?php echo bp_int($it['histOrds']); ?></td>
       <td class="bp-r"><?php echo bp_qty($it['normalQty']); ?></td>
@@ -2483,17 +3444,27 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <td class="bp-r"><?php echo $it['q' . $y] != 0 ? bp_qty($it['q' . $y]) : '&mdash;'; ?></td>
 <?php endforeach; ?>
       <td class="bp-r">$<?php echo number_format($it['lastPrice'], 5); ?></td>
-      <td data-val="<?php echo (int)$it['lastOrd']; ?>"><?php echo bp_h(bp_cymdToDate($it['lastOrd'])); ?></td>
+      <td class="bp-nw" data-val="<?php echo (int)$it['lastOrd']; ?>"><?php echo bp_h(bp_cymdToDate($it['lastOrd'])); ?></td>
+      <td class="bp-r" data-val="<?php echo $it['daysSince'] === null ? -1 : (int)$it['daysSince']; ?>"><?php
+          echo bp_h(bp_daysLabel($it['daysSince'])); ?></td>
     </tr>
 <?php endforeach; ?>
   </tbody>
 </table>
 </div>
 <div style="font-size:11px;color:#6B7280;padding:5px 2px;">
-  <b>stopped</b> = repeat purchase with nothing in <?php echo $curY; ?> &middot;
+  <b>stopped</b> = repeat purchase with nothing in <?php echo $curY; ?>, and the trailing phrase
+  says how cold the trail is:
+  <span style="color:<?php echo $subClr['thru']; ?>;font-weight:bold;">was regular thru <?php echo $hy[2]; ?></span>
+  is a live call,
+  <span style="color:<?php echo $subClr['since2']; ?>;font-weight:bold;">none since <?php echo $hy[1]; ?></span>
+  and
+  <span style="color:<?php echo $subClr['since3']; ?>;font-weight:bold;">none since <?php echo $hy[0]; ?></span>
+  are progressively colder &middot;
   <b>reduced</b> = repeat purchase running under half its normal year &middot;
   <b>one-off</b> = bought once and never repeated, excluded from lost dollars &middot;
   <b>steady</b> = still buying at or near normal.
+  <b>Days since</b> counts from the last order for that item, against the IBM i's own date.
   <a href="<?php echo bp_h(bp_url(array('view'=>'lines','shipto'=>$sub['shipto']))); ?>"
      style="color:#2563EB;font-weight:bold;">See all order lines for this customer</a>
 </div>
@@ -2518,8 +3489,10 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <table class="bp-grid" id="bp-linegrid">
   <thead>
     <tr>
-      <th>Order #</th><th class="bp-r">Line</th><th>Order date</th><th>Ty</th>
+      <th>Order #</th><th class="bp-r">Line</th><th class="bp-nw">Order date</th><th>Ty</th>
+      <th class="bp-nw">Entered by</th>
       <th class="bp-nw">Item</th><th class="bp-wide">Description</th>
+      <th class="bp-nw">Product group</th>
       <th class="bp-r">Qty ordered</th><th class="bp-r">Qty shipped</th>
       <th class="bp-r">Unit price</th><th class="bp-r">Unit factor</th>
       <th class="bp-r">Shipment rows</th><th class="bp-r">Line amount</th>
@@ -2527,7 +3500,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
   </thead>
   <tbody>
 <?php if (empty($lineRows)): ?>
-    <tr><td colspan="12" style="text-align:center;padding:20px;">No order lines found.</td></tr>
+    <tr><td colspan="14" style="text-align:center;padding:20px;">No order lines found.</td></tr>
 <?php endif; ?>
 <?php $lineTot = 0.0; foreach ($lineRows as $r):
       $lineTot += (float)$r['AMT']; $multi = (int)$r['SHIPROWS'] > 1; ?>
@@ -2536,8 +3509,12 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <td class="bp-r"><?php echo bp_h(trim((string)$r['LN'])); ?></td>
       <td data-val="<?php echo (int)$r['ORDDTE']; ?>"><?php echo bp_h(bp_cymdToDate($r['ORDDTE'])); ?></td>
       <td><?php echo bp_h(trim((string)$r['ORDTY'])); ?></td>
+      <td class="bp-nw"><?php $eb = trim((string)$r['ENTBY']);
+          echo $eb !== '' ? bp_h($eb) : '<span style="color:#9CA3AF;">&mdash;</span>'; ?></td>
       <td class="bp-nw"><a href="<?php echo bp_h(bp_url(array("view"=>"lines","shipto"=>$sub["shipto"],"item"=>trim((string)$r["ITEM"])))); ?>"><?php echo bp_h(trim((string)$r["ITEM"])); ?></a></td>
       <td><?php echo bp_h(trim((string)$r['ITEMDESC'])); ?></td>
+      <td class="bp-nw"><?php $pg = trim((string)$r['PGRP']);
+          echo $pg !== '' ? bp_h(bp_pgrpLabel($pg, $pgrpDesc)) : '<span style="color:#9CA3AF;">&mdash;</span>'; ?></td>
       <td class="bp-r"><?php echo bp_qty($r['QORD']); ?></td>
       <td class="bp-r"><?php echo bp_qty($r['QSHIP']); ?></td>
       <td class="bp-r">$<?php echo number_format((float)$r['PRICE'], 5); ?></td>
@@ -2549,7 +3526,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <?php endforeach; ?>
   </tbody>
   <tfoot>
-    <tr><td colspan="11">TOTAL <?php echo bp_int(count($lineRows)); ?> lines</td>
+    <tr><td colspan="13">TOTAL <?php echo bp_int(count($lineRows)); ?> lines</td>
         <td class="bp-r"><?php echo bp_money($lineTot, 2); ?></td></tr>
   </tfoot>
 </table>
@@ -2817,6 +3794,11 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 
     form.addEventListener('submit', function (e) {
         var n = note.value.trim().length;
+        if (outc.value === '') {
+            e.preventDefault();
+            errEl.textContent = 'Pick an outcome.';
+            outc.focus(); return;
+        }
         if (!noteOptional() && n < MIN) {
             e.preventDefault();
             errEl.textContent = 'The note needs at least ' + MIN + ' characters.';

@@ -1432,25 +1432,20 @@ if (isset($_GET['export']) && strtolower(trim($_GET['export'])) === 'book') {
     // message from a web request is silently dropped. /tmp is world-writable,
     // so the trace file is the channel that actually works. Both are written,
     // because the CLI can use the first.
-    // Tracing is OFF unless the link carries &trace=1. The stage name is always
-    // tracked - it costs nothing and the catch below reports it - but nothing is
-    // written and no PHP errors are shown to a normal user.
     $BP_TRACE_FILE = '/tmp/bpbook.log';
-    $bpDebug = (isset($_GET['trace']) && $_GET['trace'] !== '0');
     $bpStage = 'start';
-    $bpTrace = function ($s) use (&$bpStage, $BP_TRACE_FILE, $bpDebug) {
+    $bpTrace = function ($s) use (&$bpStage, $BP_TRACE_FILE) {
         $bpStage = $s;
-        if (!$bpDebug) { return; }
         $line = date('H:i:s') . '  ' . $s
               . '  mem=' . round(memory_get_usage(true) / 1048576, 1)
               . 'MB peak=' . round(memory_get_peak_usage(true) / 1048576, 1) . 'MB' . "\n";
         @file_put_contents($BP_TRACE_FILE, $line, FILE_APPEND);
         error_log('BPBOOK ' . rtrim($line));
     };
-    if ($bpDebug) {
-        @ini_set('display_errors', '1');
-        @error_reporting(E_ALL);
-    }
+    // Errors into the response body as well, so a failure is visible to whoever
+    // clicked instead of turning into a bare Apache 500.
+    @ini_set('display_errors', '1');
+    @error_reporting(E_ALL);
     // A hard fatal or a crash never reaches the catch below. This does.
     register_shutdown_function(function () use (&$bpStage, $BP_TRACE_FILE) {
         $e = error_get_last();
