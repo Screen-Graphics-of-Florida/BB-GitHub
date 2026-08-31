@@ -17,12 +17,46 @@
 --    direct entry in the EIP left-hand nav, bypassing the category tile.
 --
 -- 2. SCHEMA
+--    THIS IS THE REASON THE CHANGE STILL DOESN'T SHOW IN SG5 TEST.
 --    Live EIP (port 5601) menu rows live in SGHDSDATA. The SG5 test instance
---    (port 5610) has previously been seen reading S5HDSDATA for some menu
---    files -- Custom/SG/DiagS5Schema.php was written specifically to determine
---    which schema GetMenu.php actually resolves to. Run that first and use the
---    schema it reports. Every statement below is written against SGHDSDATA;
---    change the qualifier if the diagnostic says otherwise.
+--    (port 5610) reads S5HDSDATA for GetMenu.php / SYPORT / SYURLM / SYPORR.
+--    Custom/SG/DiagS5Schema.php was written specifically to determine which
+--    schema the SG5 portal is actually using. If the diagnostic says S5HDSDATA,
+--    every menu insert MUST target S5HDSDATA instead of SGHDSDATA.
+--
+--    The examples below are written against SGHDSDATA because that is the live
+--    EIP schema. For SG5 Test, replace SGHDSDATA with S5HDSDATA in all INSERT
+--    / SELECT statements before running them.
+
+-- 2a. SG5 TEST ONLY: if the portal is using S5HDSDATA, use this exact pattern
+--     for the menu row update. Do not update SGHDSDATA in test; that is the
+--     live copy, not the SG5 database.
+--
+-- INSERT INTO S5HDSDATA.SYURLM
+--     (FUID, FUDESC, FUTITL, FUTRGT, FUURL, FUIMG,
+--      FURESV, FUDESCU, FUTSTP, FUTSUS, FUTSWS, FUTSPT)
+-- SELECT 'SGINQ_MFGKITS',
+--        'Kits Structure',
+--        'Kits Structure Report',
+--        '',
+--        '@@homeURL@@phpPathCustom/SG/Order%20Entry/KitsStructureReport.php',
+--        '',
+--        '', 'KITS STRUCTURE', CURRENT_TIMESTAMP, 'SGAPPLY', '', ''
+--   FROM SYSIBM.SYSDUMMY1
+--  WHERE NOT EXISTS (SELECT 1 FROM S5HDSDATA.SYURLM
+--                    WHERE RTRIM(FUID) = 'SGINQ_MFGKITS');
+--
+-- INSERT INTO S5HDSDATA.SYPORT
+--     (FPPORT, FPPAGE, FPSEQ, FPID, FPDESC, FPTITL,
+--      FPRESV, FPDESCU, FPTSTP, FPTSUS, FPTSWS, FPTSPT)
+-- SELECT 'SGINQ', 'SGINQ', 99, 'SGINQ_MFGKITS',
+--        'Kits Structure',
+--        'SG Inquiries - Kits Structure Report',
+--        '', '', CURRENT_TIMESTAMP, 'SGAPPLY', '', ''
+--   FROM SYSIBM.SYSDUMMY1
+--  WHERE NOT EXISTS (SELECT 1 FROM S5HDSDATA.SYPORT
+--                    WHERE RTRIM(FPPORT) = 'SGINQ' AND RTRIM(FPID) = 'SGINQ_MFGKITS');
+
 --
 -- 3. IDs AND SEQUENCES
 --    FUID / FPID are CHARACTER keys, not numbers -- the convention in
@@ -113,7 +147,11 @@ SELECT * FROM SGHDSDATA.SYPORR WHERE RTRIM(PRPORT) = 'SGINQ';
 --     FUTSUS is the "changed by" stamp; 'SGAPPLY' is what the app's own
 --     maintenance scripts write. FURESV/FUTSWS/FUTSPT stay blank for a
 --     non-reserved custom entry.
-INSERT INTO SGHDSDATA.SYURLM
+--
+--     IMPORTANT: for SG5 Test, replace SGHDSDATA with S5HDSDATA in all three
+--     blocks below before running them. The SG5 portal is not reading the live
+--     SGHDSDATA menu rows.
+INSERT INTO S5HDSDATA.SYURLM
     (FUID, FUDESC, FUTITL, FUTRGT, FUURL, FUIMG,
      FURESV, FUDESCU, FUTSTP, FUTSUS, FUTSWS, FUTSPT)
 SELECT 'SGINQ_MFGKITS',
@@ -124,13 +162,13 @@ SELECT 'SGINQ_MFGKITS',
        '',
        '', 'KITS STRUCTURE', CURRENT_TIMESTAMP, 'SGAPPLY', '', ''
   FROM SYSIBM.SYSDUMMY1
- WHERE NOT EXISTS (SELECT 1 FROM SGHDSDATA.SYURLM WHERE RTRIM(FUID) = 'SGINQ_MFGKITS');
+ WHERE NOT EXISTS (SELECT 1 FROM S5HDSDATA.SYURLM WHERE RTRIM(FUID) = 'SGINQ_MFGKITS');
 
 -- B2. Menu placement: second level of the SGINQ portal.
 --     FPPAGE = FPPORT is what makes it a level-2 item -- SgReportNav.php and
 --     GetMenu.php both select on (FPPAGE = '' OR FPPAGE = FPPORT).
 --     Replace 99 with the NEXT_FPSEQ value returned by query 0d.
-INSERT INTO SGHDSDATA.SYPORT
+INSERT INTO S5HDSDATA.SYPORT
     (FPPORT, FPPAGE, FPSEQ, FPID, FPDESC, FPTITL,
      FPRESV, FPDESCU, FPTSTP, FPTSUS, FPTSWS, FPTSPT)
 SELECT 'SGINQ', 'SGINQ', 99, 'SGINQ_MFGKITS',
@@ -138,7 +176,7 @@ SELECT 'SGINQ', 'SGINQ', 99, 'SGINQ_MFGKITS',
        'SG Inquiries - Kits Structure Report',
        '', '', CURRENT_TIMESTAMP, 'SGAPPLY', '', ''
   FROM SYSIBM.SYSDUMMY1
- WHERE NOT EXISTS (SELECT 1 FROM SGHDSDATA.SYPORT
+ WHERE NOT EXISTS (SELECT 1 FROM S5HDSDATA.SYPORT
                     WHERE RTRIM(FPPORT) = 'SGINQ' AND RTRIM(FPID) = 'SGINQ_MFGKITS');
 
 -- B3. Role visibility.
@@ -149,17 +187,17 @@ SELECT 'SGINQ', 'SGINQ', 99, 'SGINQ_MFGKITS',
 --
 --     This grants every role that already has SGINQ, except the bypass role,
 --     rather than hard-coding a role code. Confirm the list with query 0e first.
-INSERT INTO SGHDSDATA.SYPORR
+INSERT INTO S5HDSDATA.SYPORR
     (PRROLE, PRPORT, PRPAGE, PRSEQ, PRID, PRSEL, PRTSTP, PRTSUS, PRTSPT)
 SELECT RTRIM(t.PRROLE), 'SGINQ', 'SGINQ', 99, 'SGINQ_MFGKITS', 'Y',
        CURRENT_TIMESTAMP, 'SGAPPLY', ''
   FROM (SELECT DISTINCT PRROLE
-          FROM SGHDSDATA.SYPORR
+          FROM S5HDSDATA.SYPORR
          WHERE RTRIM(PRPORT) = 'SGINQ'
            AND RTRIM(PRPAGE) = ''
            AND RTRIM(PRSEL)  = 'Y'
            AND RTRIM(PRROLE) <> 'HD_ALL_SG') t
- WHERE NOT EXISTS (SELECT 1 FROM SGHDSDATA.SYPORR
+ WHERE NOT EXISTS (SELECT 1 FROM S5HDSDATA.SYPORR
                     WHERE PRROLE = t.PRROLE
                       AND RTRIM(PRPORT) = 'SGINQ'
                       AND RTRIM(PRPAGE) = 'SGINQ'

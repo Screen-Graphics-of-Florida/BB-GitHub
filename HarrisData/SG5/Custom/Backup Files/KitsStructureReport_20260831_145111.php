@@ -3,10 +3,7 @@ require_once dirname(__FILE__) . '/../../GetURLParm.php';
 require_once 'GenericDirectCallVariables.php';
 require_once 'SetLibraryList.php';
 
-// Enforce Program Option Security for KITSSTR. Without this the page runs for
-// anyone holding the URL regardless of what SYPGMS says.
-require_once dirname(__FILE__) . '/../SgRequireAccess.php';
-sgRequireAccess('KITSSTR');
+date_default_timezone_set('America/New_York');
 
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
@@ -43,8 +40,6 @@ $page_title = 'Kits Structure Report';
 //
 //  HDIWHS  23,720 rows   PK IWITEM, IWWHS
 //      IWOHQT  DECIMAL(13,4) Quantity On Hand
-//      IWQOO   DECIMAL(13,4) Quantity On Order
-//      IWRESQ  DECIMAL(13,4) Quantity Reserved
 //      IWQSYT  DECIMAL(13,4) Quantity Sold YTD
 //      IWQIYT  DECIMAL(13,4) Quantity - Issued YTD    <- spec said IWQITY; no such column
 //
@@ -225,9 +220,9 @@ $clsWhere
         ON RTRIM(b.PSPPN) = r.CHILD_ITEM
      WHERE r.LVL < $maxLevel
 ),
-WH (ITM, OHQTY, QOO, RESQ, SOLDYTD, ISSYTD) AS (
+WH (ITM, OHQTY, SOLDYTD, ISSYTD) AS (
     SELECT RTRIM(IWITEM),
-           SUM(IWOHQT), SUM(IWQOO), SUM(IWRESQ), SUM(IWQSYT), SUM(IWQIYT)
+           SUM(IWOHQT), SUM(IWQSYT), SUM(IWQIYT)
       FROM SGHDSDATA.HDIWHS
      GROUP BY RTRIM(IWITEM)
 ),
@@ -252,13 +247,10 @@ SELECT r.LVL                    AS LVL,
        r.EXT_QTY                AS EXT_QTY,
        r.BOM_PATH               AS BOM_PATH,
        COALESCE(WH.OHQTY,     0) AS OHQTY,
-       COALESCE(WH.QOO,       0) AS QOO,
-       COALESCE(WH.RESQ,      0) AS RESQ,
        COALESCE(WH.SOLDYTD,   0) AS SOLDYTD,
        COALESCE(WH.ISSYTD,    0) AS ISSYTD,
        COALESCE(PL.MFGYTD,    0) AS MFGYTD,
-       COALESCE(PL.CMTMO,     0) AS CMTMO,
-       (COALESCE(WH.OHQTY, 0) - (COALESCE(PL.CMTMO, 0) + COALESCE(WH.QOO, 0) + COALESCE(WH.RESQ, 0))) AS QTY_AVAILABLE
+       COALESCE(PL.CMTMO,     0) AS CMTMO
   FROM BOM r
   LEFT JOIN SGHDSDATA.HDIMST tp ON RTRIM(tp.IMITEM) = r.TOP_ITEM
   LEFT JOIN SGHDSDATA.HDIMST ci ON RTRIM(ci.IMITEM) = r.CHILD_ITEM
@@ -297,7 +289,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         'Parent Item', 'Seq',
      // 'Status',                                    // hidden - see "Hidden columns"
         'Child Item', 'Child Description', 'Child Class',
-        'Qty Per', 'Qty Available',
+        'Qty Per',
      // 'Ext Qty Per Kit',                           // hidden - see "Hidden columns"
      // 'BOM Path',                                  // hidden - see "Hidden columns"
         'Qty On Hand', 'Qty Sold YTD', 'Qty Issued YTD',
@@ -317,7 +309,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             rtrim((string)$r['CHILD_DESC']),
             rtrim((string)$r['CHILD_CLASS']),
             number_format((float)$r['QTY_PER'], 5, '.', ''),
-            number_format((float)$r['QTY_AVAILABLE'], 4, '.', ''),
          // number_format((float)$r['EXT_QTY'], 5, '.', ''),   // hidden - see "Hidden columns"
          // rtrim((string)$r['BOM_PATH']),           // hidden - see "Hidden columns"
             number_format((float)$r['OHQTY'],     4, '.', ''),
@@ -352,7 +343,7 @@ $clearURL = '?' . http_build_query($preserveParams);
 // Grid column count for the empty-state colspan. Only Parent Item is
 // all-levels-only now; Kit flag and Ext Qty/Kit are hidden (see "Hidden
 // columns" at the top of this file) and must NOT be counted here.
-$nCols = ($fLevels === 'all') ? 16 : 15;
+$nCols = ($fLevels === 'all') ? 15 : 14;
 
 print "\n<html><head>";
 require_once ($headInclude);
@@ -499,7 +490,6 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <th class="colhdr">Child Description</th>
       <th class="colhdr">Child Class</th>
       <th class="colhdr">Qty Per</th>
-      <th class="colhdr">Qty Available</th>
       <?php
       /* Hidden - see "Hidden columns" at the top of this file.
          <th class="colhdr">Ext Qty/Kit</th>       (was gated on $fLevels === 'all')
@@ -522,12 +512,11 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <?php
 $prevTop = null;
 foreach ($rows as $r):
-    $top      = rtrim((string)$r['TOP_ITEM']);
-    $newKit   = ($top !== $prevTop);
-    $prevTop  = $top;
-    $oh       = (float)$r['OHQTY'];
-    $qtyAvail = (float)$r['AVAILQTY'];
-    $kitFlag  = rtrim((string)$r['TOP_KIT']);
+    $top     = rtrim((string)$r['TOP_ITEM']);
+    $newKit  = ($top !== $prevTop);
+    $prevTop = $top;
+    $oh      = (float)$r['OHQTY'];
+    $kitFlag = rtrim((string)$r['TOP_KIT']);
 ?>
     <tr class="<?php echo $newKit ? 'ksr-newkit' : ''; ?>">
       <td class="colcode"><span class="ksr-lvl"><?php echo (int)$r['LVL']; ?></span></td>
@@ -557,7 +546,6 @@ foreach ($rows as $r):
          gated on $fLevels === 'all'.
       */
       ?>
-      <td class="colcode<?php echo $qtyAvail <= 0 ? ' ksr-zero' : ''; ?>" align="right"><?php echo ksr_qty($qtyAvail); ?></td>
       <td class="colcode<?php echo $oh <= 0 ? ' ksr-zero' : ''; ?>" align="right"><?php echo ksr_qty($oh); ?></td>
       <td class="colcode" align="right"><?php echo ksr_qty($r['SOLDYTD']); ?></td>
       <td class="colcode" align="right"><?php echo ksr_qty($r['ISSYTD']); ?></td>

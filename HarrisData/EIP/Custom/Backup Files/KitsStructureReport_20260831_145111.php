@@ -3,10 +3,7 @@ require_once dirname(__FILE__) . '/../../GetURLParm.php';
 require_once 'GenericDirectCallVariables.php';
 require_once 'SetLibraryList.php';
 
-// Enforce Program Option Security for KITSSTR. Without this the page runs for
-// anyone holding the URL regardless of what SYPGMS says.
-require_once dirname(__FILE__) . '/../SgRequireAccess.php';
-sgRequireAccess('KITSSTR');
+date_default_timezone_set('America/New_York');
 
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
@@ -522,12 +519,12 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <?php
 $prevTop = null;
 foreach ($rows as $r):
-    $top      = rtrim((string)$r['TOP_ITEM']);
-    $newKit   = ($top !== $prevTop);
-    $prevTop  = $top;
-    $oh       = (float)$r['OHQTY'];
-    $qtyAvail = (float)$r['AVAILQTY'];
-    $kitFlag  = rtrim((string)$r['TOP_KIT']);
+    $top       = rtrim((string)$r['TOP_ITEM']);
+    $newKit    = ($top !== $prevTop);
+    $prevTop   = $top;
+    $oh        = (float)$r['OHQTY'];
+    $qtyAvail  = (float)$r['QTY_AVAILABLE'];
+    $kitFlag   = rtrim((string)$r['TOP_KIT']);
 ?>
     <tr class="<?php echo $newKit ? 'ksr-newkit' : ''; ?>">
       <td class="colcode"><span class="ksr-lvl"><?php echo (int)$r['LVL']; ?></span></td>
@@ -551,13 +548,13 @@ foreach ($rows as $r):
       <td class="colcode" style="white-space:normal;"><?php echo ksr_h(rtrim((string)$r['CHILD_DESC'])); ?></td>
       <td class="colcode"><?php echo ksr_h(rtrim((string)$r['CHILD_CLASS'])); ?></td>
       <td class="colcode" align="right"><?php echo number_format((float)$r['QTY_PER'], 5); ?></td>
+      <td class="colcode<?php echo $qtyAvail <= 0 ? ' ksr-zero' : ''; ?>" align="right"><?php echo ksr_qty($qtyAvail); ?></td>
       <?php
       /* Hidden - see "Hidden columns" at the top of this file. The cell was a
          right-aligned td printing number_format((float)$r['EXT_QTY'], 5),
          gated on $fLevels === 'all'.
       */
       ?>
-      <td class="colcode<?php echo $qtyAvail <= 0 ? ' ksr-zero' : ''; ?>" align="right"><?php echo ksr_qty($qtyAvail); ?></td>
       <td class="colcode<?php echo $oh <= 0 ? ' ksr-zero' : ''; ?>" align="right"><?php echo ksr_qty($oh); ?></td>
       <td class="colcode" align="right"><?php echo ksr_qty($r['SOLDYTD']); ?></td>
       <td class="colcode" align="right"><?php echo ksr_qty($r['ISSYTD']); ?></td>

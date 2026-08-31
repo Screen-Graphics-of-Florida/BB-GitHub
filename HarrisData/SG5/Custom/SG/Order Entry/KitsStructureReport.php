@@ -3,7 +3,10 @@ require_once dirname(__FILE__) . '/../../GetURLParm.php';
 require_once 'GenericDirectCallVariables.php';
 require_once 'SetLibraryList.php';
 
-date_default_timezone_set('America/New_York');
+// Enforce Program Option Security for KITSSTR. Without this the page runs for
+// anyone holding the URL regardless of what SYPGMS says.
+require_once dirname(__FILE__) . '/../SgRequireAccess.php';
+sgRequireAccess('KITSSTR');
 
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
@@ -247,6 +250,7 @@ SELECT r.LVL                    AS LVL,
        r.EXT_QTY                AS EXT_QTY,
        r.BOM_PATH               AS BOM_PATH,
        COALESCE(WH.OHQTY,     0) AS OHQTY,
+       (COALESCE(WH.OHQTY, 0) - COALESCE(PL.CMTMO, 0)) AS AVAILQTY,
        COALESCE(WH.SOLDYTD,   0) AS SOLDYTD,
        COALESCE(WH.ISSYTD,    0) AS ISSYTD,
        COALESCE(PL.MFGYTD,    0) AS MFGYTD,
@@ -292,7 +296,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         'Qty Per',
      // 'Ext Qty Per Kit',                           // hidden - see "Hidden columns"
      // 'BOM Path',                                  // hidden - see "Hidden columns"
-        'Qty On Hand', 'Qty Sold YTD', 'Qty Issued YTD',
+        'Qty Available', 'Qty On Hand', 'Qty Sold YTD', 'Qty Issued YTD',
         'Qty Mfg YTD', 'Qty Committed To MO'
     ));
     foreach ($rows as $r) {
@@ -311,6 +315,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             number_format((float)$r['QTY_PER'], 5, '.', ''),
          // number_format((float)$r['EXT_QTY'], 5, '.', ''),   // hidden - see "Hidden columns"
          // rtrim((string)$r['BOM_PATH']),           // hidden - see "Hidden columns"
+            number_format((float)$r['AVAILQTY'],  4, '.', ''),
             number_format((float)$r['OHQTY'],     4, '.', ''),
             number_format((float)$r['SOLDYTD'],   4, '.', ''),
             number_format((float)$r['ISSYTD'],    4, '.', ''),
@@ -343,7 +348,7 @@ $clearURL = '?' . http_build_query($preserveParams);
 // Grid column count for the empty-state colspan. Only Parent Item is
 // all-levels-only now; Kit flag and Ext Qty/Kit are hidden (see "Hidden
 // columns" at the top of this file) and must NOT be counted here.
-$nCols = ($fLevels === 'all') ? 15 : 14;
+$nCols = ($fLevels === 'all') ? 16 : 15;
 
 print "\n<html><head>";
 require_once ($headInclude);
@@ -495,6 +500,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
          <th class="colhdr">Ext Qty/Kit</th>       (was gated on $fLevels === 'all')
       */
       ?>
+      <th class="colhdr">Qty Available</th>
       <th class="colhdr">Qty On Hand</th>
       <th class="colhdr">Qty Sold YTD</th>
       <th class="colhdr">Qty Issued YTD</th>
@@ -512,11 +518,12 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <?php
 $prevTop = null;
 foreach ($rows as $r):
-    $top     = rtrim((string)$r['TOP_ITEM']);
-    $newKit  = ($top !== $prevTop);
-    $prevTop = $top;
-    $oh      = (float)$r['OHQTY'];
-    $kitFlag = rtrim((string)$r['TOP_KIT']);
+    $top      = rtrim((string)$r['TOP_ITEM']);
+    $newKit   = ($top !== $prevTop);
+    $prevTop  = $top;
+    $oh       = (float)$r['OHQTY'];
+    $qtyAvail = (float)$r['AVAILQTY'];
+    $kitFlag  = rtrim((string)$r['TOP_KIT']);
 ?>
     <tr class="<?php echo $newKit ? 'ksr-newkit' : ''; ?>">
       <td class="colcode"><span class="ksr-lvl"><?php echo (int)$r['LVL']; ?></span></td>
@@ -546,6 +553,7 @@ foreach ($rows as $r):
          gated on $fLevels === 'all'.
       */
       ?>
+      <td class="colcode<?php echo $qtyAvail <= 0 ? ' ksr-zero' : ''; ?>" align="right"><?php echo ksr_qty($qtyAvail); ?></td>
       <td class="colcode<?php echo $oh <= 0 ? ' ksr-zero' : ''; ?>" align="right"><?php echo ksr_qty($oh); ?></td>
       <td class="colcode" align="right"><?php echo ksr_qty($r['SOLDYTD']); ?></td>
       <td class="colcode" align="right"><?php echo ksr_qty($r['ISSYTD']); ?></td>
