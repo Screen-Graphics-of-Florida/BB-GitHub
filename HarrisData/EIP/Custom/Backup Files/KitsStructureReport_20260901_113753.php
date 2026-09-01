@@ -526,7 +526,7 @@ foreach ($rows as $r):
     $newKit   = ($top !== $prevTop);
     $prevTop  = $top;
     $oh       = (float)$r['OHQTY'];
-    $qtyAvail = (float)$r['QTY_AVAILABLE'];
+    $qtyAvail = (float)$r['AVAILQTY'];
     $kitFlag  = rtrim((string)$r['TOP_KIT']);
 ?>
     <tr class="<?php echo $newKit ? 'ksr-newkit' : ''; ?>">

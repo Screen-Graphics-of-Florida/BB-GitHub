@@ -43,6 +43,8 @@ $page_title = 'Kits Structure Report';
 //
 //  HDIWHS  23,720 rows   PK IWITEM, IWWHS
 //      IWOHQT  DECIMAL(13,4) Quantity On Hand
+//      IWQOO   DECIMAL(13,4) Quantity On Order
+//      IWRESQ  DECIMAL(13,4) Quantity Reserved
 //      IWQSYT  DECIMAL(13,4) Quantity Sold YTD
 //      IWQIYT  DECIMAL(13,4) Quantity - Issued YTD    <- spec said IWQITY; no such column
 //
@@ -223,9 +225,9 @@ $clsWhere
         ON RTRIM(b.PSPPN) = r.CHILD_ITEM
      WHERE r.LVL < $maxLevel
 ),
-WH (ITM, OHQTY, SOLDYTD, ISSYTD) AS (
+WH (ITM, OHQTY, QOO, RESQ, SOLDYTD, ISSYTD) AS (
     SELECT RTRIM(IWITEM),
-           SUM(IWOHQT), SUM(IWQSYT), SUM(IWQIYT)
+           SUM(IWOHQT), SUM(IWQOO), SUM(IWRESQ), SUM(IWQSYT), SUM(IWQIYT)
       FROM SGHDSDATA.HDIWHS
      GROUP BY RTRIM(IWITEM)
 ),
@@ -250,11 +252,13 @@ SELECT r.LVL                    AS LVL,
        r.EXT_QTY                AS EXT_QTY,
        r.BOM_PATH               AS BOM_PATH,
        COALESCE(WH.OHQTY,     0) AS OHQTY,
-       (COALESCE(WH.OHQTY, 0) - COALESCE(PL.CMTMO, 0)) AS AVAILQTY,
+       COALESCE(WH.QOO,       0) AS QOO,
+       COALESCE(WH.RESQ,      0) AS RESQ,
        COALESCE(WH.SOLDYTD,   0) AS SOLDYTD,
        COALESCE(WH.ISSYTD,    0) AS ISSYTD,
        COALESCE(PL.MFGYTD,    0) AS MFGYTD,
-       COALESCE(PL.CMTMO,     0) AS CMTMO
+       COALESCE(PL.CMTMO,     0) AS CMTMO,
+       (COALESCE(WH.OHQTY, 0) - (COALESCE(PL.CMTMO, 0) + COALESCE(WH.QOO, 0) + COALESCE(WH.RESQ, 0))) AS QTY_AVAILABLE
   FROM BOM r
   LEFT JOIN SGHDSDATA.HDIMST tp ON RTRIM(tp.IMITEM) = r.TOP_ITEM
   LEFT JOIN SGHDSDATA.HDIMST ci ON RTRIM(ci.IMITEM) = r.CHILD_ITEM
@@ -293,10 +297,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         'Parent Item', 'Seq',
      // 'Status',                                    // hidden - see "Hidden columns"
         'Child Item', 'Child Description', 'Child Class',
-        'Qty Per',
+        'Qty Per', 'Qty Available',
      // 'Ext Qty Per Kit',                           // hidden - see "Hidden columns"
      // 'BOM Path',                                  // hidden - see "Hidden columns"
-        'Qty Available', 'Qty On Hand', 'Qty Sold YTD', 'Qty Issued YTD',
+        'Qty On Hand', 'Qty Sold YTD', 'Qty Issued YTD',
         'Qty Mfg YTD', 'Qty Committed To MO'
     ));
     foreach ($rows as $r) {
@@ -313,9 +317,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             rtrim((string)$r['CHILD_DESC']),
             rtrim((string)$r['CHILD_CLASS']),
             number_format((float)$r['QTY_PER'], 5, '.', ''),
+            number_format((float)$r['QTY_AVAILABLE'], 4, '.', ''),
          // number_format((float)$r['EXT_QTY'], 5, '.', ''),   // hidden - see "Hidden columns"
          // rtrim((string)$r['BOM_PATH']),           // hidden - see "Hidden columns"
-            number_format((float)$r['AVAILQTY'],  4, '.', ''),
             number_format((float)$r['OHQTY'],     4, '.', ''),
             number_format((float)$r['SOLDYTD'],   4, '.', ''),
             number_format((float)$r['ISSYTD'],    4, '.', ''),
@@ -495,12 +499,12 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <th class="colhdr">Child Description</th>
       <th class="colhdr">Child Class</th>
       <th class="colhdr">Qty Per</th>
+      <th class="colhdr">Qty Available</th>
       <?php
       /* Hidden - see "Hidden columns" at the top of this file.
          <th class="colhdr">Ext Qty/Kit</th>       (was gated on $fLevels === 'all')
       */
       ?>
-      <th class="colhdr">Qty Available</th>
       <th class="colhdr">Qty On Hand</th>
       <th class="colhdr">Qty Sold YTD</th>
       <th class="colhdr">Qty Issued YTD</th>
@@ -522,7 +526,7 @@ foreach ($rows as $r):
     $newKit   = ($top !== $prevTop);
     $prevTop  = $top;
     $oh       = (float)$r['OHQTY'];
-    $qtyAvail = (float)$r['AVAILQTY'];
+    $qtyAvail = (float)$r['QTY_AVAILABLE'];
     $kitFlag  = rtrim((string)$r['TOP_KIT']);
 ?>
     <tr class="<?php echo $newKit ? 'ksr-newkit' : ''; ?>">

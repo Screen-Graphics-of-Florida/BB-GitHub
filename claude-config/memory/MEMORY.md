@@ -1,0 +1,31 @@
+- [SYPGMO descriptions](feedback-sypgmo-descriptions.md) - never register a program with SOMDES = 'View'; write a real description
+- [One query at a time](feedback-one-query-at-a-time.md) - Bill runs SQL by hand; send one statement and wait
+- [Verify before UPDATE](feedback-verify-before-update.md) - preview the rows a set-based UPDATE would change, always
+- [Real timestamps on backups](feedback-real-timestamps.md) - read the clock, never approximate the HHMM
+- [Caveats before code](feedback-caveats-before-code.md) - decisions and risks first, SQL second
+- [Tick before promote](feedback-tick-before-promote.md) - list who'd be denied and let Bill grant them before enforcing on Live
+- [Full links always](feedback-full-links.md) - give the complete URL with parameters, never just a page name
+- [XML850R dual source layout](xml850r-dual-source-layout.md) - edit the IFS copy, but CRTSQLRPGI compiles the QSYS member; CPYFRMSTMF between
+- [Harris revenue rules](harris-revenue-rules.md) - DHQORD repeats per shipment row; aggregate to order-line grain or totals inflate ~38%
+- [Harris useful fields](harris-useful-fields.md) - Prod Group, Order-Entered-By, address lines, why contact names are unavailable
+- [Buyer Pattern project](buyer-pattern-project.md) - the next-quarter call-list page in EIP; state and what's outstanding
+- [Sales pattern source files](sales-pattern-source-files.md) - the 17 Aug deck and tier workbooks, built by openpyxl on Bill's other PC
+- [Portable Claude config](claude-config-portable.md) - CLAUDE.md and memory live in SG GitHub; memory folder is a junction
+- [Buyer Pattern access and log](buyer-pattern-access-and-log.md) - UDC-driven visibility, append-only contact log, and the new-table authority trap
+- [Write both config copies](feedback-write-both-config-copies.md) - CLAUDE.md and settings.json changes go to the live path AND the claude-config repo, same turn
+- [Program security always](feedback-program-security-always.md) - every page registered in SYPGMO and gated with sgRequireAccess, grantable in SgProgramAccess.php
+- [IBM i operational lessons](ibmi-operational-lessons.md) - lint PHP on the server before deploying, the LABEL ON TEXT IS syntax, why WRKDBF can't open the log
+- [Post deliverables in full](feedback-post-deliverables-in-full.md) - paste the whole document into the chat, never just the file path
+- [Project time and cost](feedback-project-time-and-cost.md) - track hours on every project; in-house at unrounded time x $76.16/hr, outside at a line-item no-AI estimate costed on the midpoint hours at $90-$150/hr, report the savings
+- [IBM i mail domain alias trap](ibmi-mail-not-delivered.md) - RESOLVED 2026-08-28; CHGSMTPA SMTP domain alias trapped 3 users mail locally, cleared to *NONE
+- [Web PHP is 5.6](ibmi-web-php-is-56.md) - portal pages run PHP 5.6.23 ZendServer, not the 7.4 CLI; lint with /usr/local/zendsvr6/bin/php
+- [Custom DB objects and upgrades](custom-db-objects-and-upgrades.md) - all custom objects in SG5OBJ/SGOBJ; paired drop and rebuild scripts for anything over HarrisData files
+- [SG environment topology](sg-environment-topology.md) - three databases, two program envs; T1HDSDATA shares HDSSTDPGM with Live, only S5HDSDATA has its own
+- [Upgrade Safety Scripts project](upgrade-safety-scripts-project.md) - scripts done and deployed; costing paused pending the rulebook revision, reopen from the RESUME HERE handoff
+- [Estimating extracts project](estimating-extracts-project.md) - NICKXTRCTS, nine HarrisData CSVs to the Claude-Extracts share via QNTC; live, Robot job CLAUDENGX M-Sat 12:30pm and 5:30pm
+- [Joblog to QEZJOBLOG](feedback-joblog-to-qezjoblog.md) - for IBM i objects, route all error joblogs to QEZJOBLOG and read the cause there, never guess
+- [Ask before naming](feedback-ask-before-naming.md) - never invent file, table, program or folder names; ask Bill for them
+- [Library placement: SGSRC / SGPGM / SGOBJ](feedback-source-in-sgsrc-objects-in-sgpgm.md) - source in SGSRC (CCSID 37), compiled objects only in SGPGM, log and data files in SGOBJ; QCLLESRC means CRTBNDCL
+- [Label confidence when diagnosing](feedback-label-confidence-when-diagnosing.md) - never state a hypothesis as a finding; prove the mechanism before handing over a command
+- [Accuracy over speed](feedback-accuracy-over-speed.md) - the governing standard; ~100% accurate, never fast-and-plausible, because people depend on what Bill produces
+- [Project cost register](project-cost-register.md) - all costings go in claude-config\PROJECT-COSTS.md; append a row, recompute totals, backfill still pending
