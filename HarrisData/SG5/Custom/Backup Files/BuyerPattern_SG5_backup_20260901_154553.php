@@ -583,174 +583,6 @@ function bp_pgrpLabel($code, $map) {
          : $code;
 }
 
-// -- Qty Available ------------------------------------------------------------
-//
-//  Bill's specification, revised 2026-09-01 and applied identically here and in
-//  KitsStructureReport.php so the two screens never disagree about an item:
-//
-//      Qty Available       = OHQTY - (CMTMO + RESQ)
-//      Qty On Order        = QOO + QMRL
-//      Projected Available = OHQTY + (QOO + QMRL) - (CMTMO + RESQ)
-//
-//          OHQTY  HDIWHS.IWOHQT   quantity on hand
-//          RESQ   HDIWHS.IWRESQ   quantity reserved
-//          CMTMO  HDIPLT.IPCMTO   quantity committed to manufacturing
-//          QOO    HDIWHS.IWQOO    quantity on order        - inbound purchases
-//          QMRL   HDIPLT.IPQMRL   mfg order qty released   - inbound production
-//
-//  WHY QOO IS NO LONGER SUBTRACTED. It used to be, inside the same bracket as
-//  CMTMO and RESQ. That was wrong twice over: on-order stock was never part of
-//  IWOHQT, so deducting it charged the item for inventory that had not arrived
-//  AND had never been counted. Item 14580-0008 read -24,000 against a real
-//  position of 12,000 reserved covered by a 12,000 purchase order.
-//
-//  WHY IT IS NOT SIMPLY DROPPED EITHER. Bill, 2026-09-01: an item showing a big
-//  negative invites a buyer to raise a purchase order for the shortfall, and if
-//  a PO is already in flight that is how you end up with twice what you need.
-//  So incoming supply is not hidden - it gets its own column, and Projected
-//  Available is the number to buy against. The three always reconcile:
-//      Qty Available + Qty On Order = Projected Available
-//
-//  QMRL is inbound too. IPQMRL is "Mfg Order Quantity Released/Scheduled" -
-//  what the shop floor is already making. For a manufactured item that is the
-//  exact analogue of a purchase order, which is why the column is "Qty On
-//  Order" and not "Purchase Qty On Order".
-//
-//  HDIWHS is keyed item x warehouse and HDIPLT item x plant. Joining the two to
-//  each other raw would multiply an item by its warehouse count TIMES its plant
-//  count, so both are folded into one pass over a UNION ALL and summed per item.
-//  The union rather than a join also means an item carried in only one of the
-//  two files still produces a row - driving off HDIWHS alone would silently drop
-//  it, and a dropped item reads on screen as "no data" rather than as an error.
-//
-//  Scoped to the items actually on screen. Past BP_AVAIL_MAXIN the IN list stops
-//  being worth building and the whole file is aggregated instead, which is what
-//  the Kits report does on every run anyway.
-
-define('BP_AVAIL_MAXIN', 400);
-
-function bp_qtyAvail($conn, $items, &$sqlErr, &$timings) {
-    $out  = array();
-    $want = array();
-    foreach ($items as $i) {
-        $i = trim((string)$i);
-        if ($i !== '') { $want[$i] = true; }
-    }
-    if (empty($want)) { return $out; }
-
-    $filterW = '';
-    $filterP = '';
-    if (count($want) <= BP_AVAIL_MAXIN) {
-        $q = array();
-        foreach (array_keys($want) as $i) { $q[] = "'" . bp_sqlStr($i) . "'"; }
-        $inList  = implode(',', $q);
-        $filterW = "WHERE RTRIM(IWITEM) IN ($inList)";
-        $filterP = "WHERE RTRIM(IPITEM) IN ($inList)";
-    }
-
-    $sql = "
-        SELECT X.ITM                       AS ITM,
-               SUM(X.OHQTY)                AS OHQTY,
-               SUM(X.QOO) + SUM(X.QMRL)    AS ONORDER,
-               SUM(X.CMTMO) + SUM(X.RESQ)  AS DEMAND
-        FROM (
-            SELECT RTRIM(IWITEM)            AS ITM,
-                   IWOHQT                   AS OHQTY,
-                   IWQOO                    AS QOO,
-                   IWRESQ                   AS RESQ,
-                   CAST(0 AS DECIMAL(13,4)) AS CMTMO,
-                   CAST(0 AS DECIMAL(13,4)) AS QMRL
-              FROM SGHDSDATA.HDIWHS
-              $filterW
-            UNION ALL
-            SELECT RTRIM(IPITEM),
-                   CAST(0 AS DECIMAL(13,4)),
-                   CAST(0 AS DECIMAL(13,4)),
-                   CAST(0 AS DECIMAL(13,4)),
-                   IPCMTO,
-                   IPQMRL
-              FROM SGHDSDATA.HDIPLT
-              $filterP
-        ) X
-        GROUP BY X.ITM
-    ";
-    foreach (bp_fetchAll($conn, $sql, 'qtyAvail', $sqlErr, $timings) as $r) {
-        $oh = (float)$r['OHQTY'];
-        $oo = (float)$r['ONORDER'];
-        $dm = (float)$r['DEMAND'];
-        $out[trim((string)$r['ITM'])] = array(
-            'avail'   => $oh - $dm,          // free to ship today
-            'onorder' => $oo,                // inbound: purchases + released MOs
-            'proj'    => $oh + $oo - $dm,    // the number to buy against
-        );
-    }
-    return $out;
-}
-
-// An item with no HDIWHS and no HDIPLT row has no availability at all, which is
-// a different statement from "zero on hand". null here, a dash on screen, so
-// nobody reads a missing record as an out-of-stock.
-function bp_avail($item, $map) {
-    $item = trim((string)$item);
-    return ($item !== '' && isset($map[$item])) ? (float)$map[$item] : null;
-}
-
-// Two decimals, matching the Kits Structure Report, so the same item reads the
-// same on both screens.
-function bp_availFmt($v) {
-    return ($v === null) ? '' : number_format((float)$v, 2);
-}
-
-// Trailing-zero trim, for the Level 5 audit columns. DHSLPR carries 5 decimals
-// and DHORUF 4, so a plain number_format prints "$242.20000" and "1.0000" and
-// the columns end up sized for precision that is not there. This keeps every
-// significant digit - a price of 242.20125 still prints in full - and drops only
-// zeros that carry no information. $min guards money, which should not collapse
-// to "$242.2".
-function bp_trimNum($v, $dec, $min = 0) {
-    $s = number_format((float)$v, $dec, '.', ',');
-    if (strpos($s, '.') === false) { return $s; }
-    list($whole, $frac) = explode('.', $s);
-    $frac = rtrim($frac, '0');
-    while (strlen($frac) < $min) { $frac .= '0'; }
-    return ($frac === '') ? $whole : $whole . '.' . $frac;
-}
-
-// -- The item bar, Levels 3 / 4 / 5 -------------------------------------------
-//
-//  Clicking an item number on the Level 2 stopped-SKU table drills to Level 3,
-//  then 4, then 5, and until 2026-09-01 not one of those screens said which item
-//  you had clicked. This bar carries the item, its description and its Qty
-//  Available down the whole drill path. Deliberately large - it is the answer to
-//  "what am I even looking at", so it has to survive a glance.
-
-function bp_itemBar($item, $desc, $avail) {
-    $item = trim((string)$item);
-    if ($item === '') { return; }
-    $lab = 'font-size:11px;font-weight:700;color:#1E3A8A;text-transform:uppercase;'
-         . 'letter-spacing:.6px;white-space:nowrap;';
-    // Nothing available is the whole point of the call, so it reads in the same
-    // red the Kits report uses for a non-positive balance.
-    $qCol = ($avail !== null && $avail <= 0) ? '#CC1F20' : '#111827';
-    echo '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;'
-       . 'margin:8px 0;padding:10px 16px;background:#EFF6FF;border:1px solid #2563EB;'
-       . 'border-left:6px solid #2563EB;border-radius:3px;">'
-       . '<span style="' . $lab . '">Item</span>'
-       . '<span style="font-size:22px;font-weight:bold;color:#111827;white-space:nowrap;">'
-       . bp_h($item) . '</span>'
-       . '<span style="font-size:16px;color:#374151;">'
-       . ($desc !== '' ? bp_h($desc) : '<span style="color:#9CA3AF;">no description on HDIMST</span>')
-       . '</span>'
-       // Everything stays left, reading as one sentence. An earlier cut pushed the
-       // quantity out with margin-left:auto and on a wide screen that left a metre
-       // of white space between the description and the number it belongs to.
-       . '<span style="color:#93C5FD;">|</span>'
-       . '<span style="' . $lab . '">Qty available</span>'
-       . '<span style="font-size:22px;font-weight:bold;white-space:nowrap;color:' . $qCol . ';">'
-       . ($avail === null ? '&mdash;' : bp_h(bp_availFmt($avail))) . '</span>'
-       . '</div>';
-}
-
 // -- Query: open unshipped orders (shown, never used to suppress) -------------
 
 // Open means OEORST = 'O' on the header AND ODORST = 'O' on the line - 'C' is
@@ -1297,64 +1129,6 @@ usort($skuList, function ($a, $b) {
     if ($a['amt'] == $b['amt']) return 0;
     return ($a['amt'] < $b['amt']) ? 1 : -1;
 });
-
-// -- Qty Available for whatever this particular request will show -------------
-// The Level 2 grid shows 25 SKUs, so it asks for 25. The SKU export covers every
-// stopped item, so it asks for all of them and bp_qtyAvail switches itself to a
-// whole-file aggregate. Levels 3-5 need only the one item in context.
-$bpExportNow = isset($_GET['export']) ? strtolower(trim($_GET['export'])) : '';
-$bpAvailAll  = ($bpExportNow === 'sku');
-$bpAvailWant = array();
-$bpAvailN    = 0;
-foreach ($skuList as $s) {
-    if (!$bpAvailAll && $bpAvailN >= 25) { break; }
-    $bpAvailWant[] = $s['item'];
-    $bpAvailN++;
-}
-if ($fItem !== '') { $bpAvailWant[] = $fItem; }
-$bpAvail = bp_qtyAvail($conn, $bpAvailWant, $sqlErr, $timings);
-
-// The item bar's description. $skuAgg already holds one for any STOPPED item,
-// but Levels 4 and 5 can be scoped to a customer for whom this item never
-// stopped, and Level 5 can be reached for an item nobody stopped at all, so
-// HDIMST is the reliable source and the rollup is only a free shortcut.
-$bpBarDesc = '';
-if ($fItem !== '') {
-    if (isset($skuAgg[$fItem]) && trim((string)$skuAgg[$fItem]['desc']) !== '') {
-        $bpBarDesc = trim((string)$skuAgg[$fItem]['desc']);
-    } else {
-        $rDesc = bp_fetchAll($conn,
-            "SELECT TRIM(IMIMDS) AS D FROM SGHDSDATA.HDIMST
-              WHERE TRIM(IMITEM) = '" . bp_sqlStr($fItem) . "'",
-            'itemBarDesc', $sqlErr, $timings);
-        if (!empty($rDesc)) { $bpBarDesc = trim((string)$rDesc[0]['D']); }
-    }
-}
-$bpBarAvail = bp_avail($fItem, $bpAvail);
-
-// -- Who may see "How every number here is built" ------------------------------
-//
-//  Bill, 2026-09-01: admins only. $activeRole is the role the signed-in user is
-//  currently operating under - a CHAR(10) global the framework sets in
-//  GenericDirectCallVariables.php from SYHAND.HNROLE (falling back to
-//  SYUSER.USROLE), confirmed reading HD_ALL_SG for BBUSCH by sg_pgmsec_diag.php
-//  on 2026-08-24.
-//
-//  This gates on the ACTIVE role, not on role membership in SYROLU. Someone who
-//  belongs to HD_ALL but has signed in under a restricted role will not see the
-//  block. That is the consistent reading of "only admins see it" - it follows
-//  the security context they actually chose - but it IS a choice, and swapping
-//  it for a SYROLU membership test is a change to this one array plus a query.
-$BP_ADMIN_ROLES = array('HD_ALL', 'HD_ALL_SG');
-
-$bpActiveRole = '';
-foreach (array('activeRole', 'ACTIVEROLE') as $v) {
-    if (isset($GLOBALS[$v]) && trim((string)$GLOBALS[$v]) !== '') {
-        $bpActiveRole = strtoupper(trim((string)$GLOBALS[$v]));
-        break;
-    }
-}
-$bpIsAdmin = in_array($bpActiveRole, $BP_ADMIN_ROLES, true);
 
 $classList = array();
 foreach ($byClass as $code => $a) { $a['code'] = $code; $classList[] = $a; }
@@ -2170,14 +1944,9 @@ if (isset($_GET['export'])) {
                             'Customers Stopped', 'Customers Who Ever Bought',
                             'Annual $ Stopped', 'Annual Qty',
                             $hy[0] . '-' . $hy[2] . ' Revenue All Customers',
-                            'Last Ordered By Anyone', 'Qty Available',
-                            'Days Since Anyone Ordered'));
+                            'Last Ordered By Anyone', 'Days Since Anyone Ordered'));
         foreach ($skuList as $s) {
             $xpg = $s['pgrp'];
-            // Kept in step with the grid on purpose. A column that exists in one
-            // and not the other is exactly the trap the Kits Structure Report hit
-            // with Ext Qty - the export carried a column the screen never showed.
-            $xAv = bp_avail($s['item'], $bpAvail);
             fputcsv($out, array($s['item'], $s['desc'],
                                 $xpg, (isset($pgrpDesc[$xpg]) ? $pgrpDesc[$xpg] : ''),
                                 $s['custs'], $s['anyCusts'],
@@ -2185,7 +1954,6 @@ if (isset($_GET['export'])) {
                                 number_format($s['qty'], 0, '.', ''),
                                 number_format($s['hist'], 2, '.', ''),
                                 bp_cymdIso($s['lastAny']),
-                                ($xAv === null ? '' : number_format($xAv, 2, '.', '')),
                                 ($s['daysAny'] === null ? '' : (int)$s['daysAny'])));
         }
         fclose($out);
@@ -2331,14 +2099,14 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 .bp-body-wide { max-width:none; }
 .bp-grid thead th { background-color:#374151 !important; color:#fff !important;
                     font-weight:bold !important; cursor:pointer; user-select:none;
-                    white-space:nowrap; padding:5px 7px; font-size:12px; text-align:left; }
+                    white-space:nowrap; padding:6px 10px; font-size:12px; text-align:left; }
 .bp-grid thead th:hover { opacity:0.85; }
 .bp-grid thead th.bp-asc::after  { content:' \25B2'; font-size:9px; }
 .bp-grid thead th.bp-desc::after { content:' \25BC'; font-size:9px; }
 .bp-grid tbody tr:nth-child(odd)  { background:#F7F7F7; }
 .bp-grid tbody tr:nth-child(even) { background:#FFFFFF; }
 .bp-grid tbody tr:hover           { background:#EFF6FF !important; }
-.bp-grid tbody td { color:#111827 !important; padding:4px 7px; font-size:12px;
+.bp-grid tbody td { color:#111827 !important; padding:5px 10px; font-size:12px;
                     border-bottom:1px solid #E5E7EB; }
 .bp-grid tbody td a, .bp-grid tfoot td a { color:#2563EB !important;
                     text-decoration:none !important; font-weight:bold !important; }
@@ -2358,11 +2126,6 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 .bp-grid th.bp-txt, .bp-grid td.bp-txt { white-space:normal; max-width:300px; }
 /* Codes that must never break mid-token - item numbers, order numbers, dates */
 .bp-grid th.bp-nw, .bp-grid td.bp-nw { white-space:nowrap; }
-/* Shrink-to-fit, for a grid whose columns are all short. width:100% spreads the
-   spare room across the columns and the result reads as a page of gaps; width:auto
-   sizes each column to its widest cell and stops. The overflow-x wrapper still
-   catches it if the content turns out wider than the container. */
-.bp-grid-fit { width:auto; }
 /* Rows whose last order did not happen this year. Painted on the cells, since a
    td background always covers a tr background. */
 .bp-grid tbody tr.bp-stale td       { background:#FEF3C7 !important; }
@@ -2454,7 +2217,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
   &nbsp;&rsaquo;&nbsp; <b>Level 4 &middot; <?php echo bp_h($sub['shipto'] . ' ' . $sub['name']); ?></b>
 <?php elseif ($view === 'lines' && $sub !== null): ?>
   &nbsp;&rsaquo;&nbsp; <a href="<?php echo bp_h(bp_url(array('view'=>'cust','status'=>'oncall'))); ?>">Level 3 &middot; Customers</a>
-  &nbsp;&rsaquo;&nbsp; <a href="<?php echo bp_h(bp_url(array('view'=>'detail','shipto'=>$sub['shipto'],'item'=>$fItem))); ?>">Level 4 &middot; <?php echo bp_h($sub['name']); ?></a>
+  &nbsp;&rsaquo;&nbsp; <a href="<?php echo bp_h(bp_url(array('view'=>'detail','shipto'=>$sub['shipto']))); ?>">Level 4 &middot; <?php echo bp_h($sub['name']); ?></a>
   &nbsp;&rsaquo;&nbsp; <b>Level 5 &middot; Order lines<?php echo $fItem !== '' ? ' for ' . bp_h($fItem) : ''; ?></b>
 <?php else: ?>
   &nbsp;&nbsp;<span style="color:#6B7280;">Click any figure to open the customers behind it,
@@ -2569,13 +2332,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
   </div>
 </div>
 
-<?php
-  // Only Level 3 earns an uncapped width - it carries 20-plus columns and a year
-  // block that genuinely needs the room. Level 5 was in here too, but its 14 short
-  // columns were being stretched across the whole viewport, which is what made the
-  // order-line grid look so airy. Capped at .bp-body it sizes to its content.
-?>
-<div class="bp-body<?php echo ($view === 'cust') ? ' bp-body-wide' : ''; ?>">
+<div class="bp-body<?php echo in_array($view, array("cust","lines"), true) ? " bp-body-wide" : ""; ?>">
 
 <?php if ($view === 'tiles'): ?>
 
@@ -2867,7 +2624,6 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <th class="bp-r">Annual<br>qty</th>
       <th class="bp-r"><?php echo $hy[0]; ?>-<?php echo $hy[2]; ?><br>revenue</th>
       <th class="bp-nw">Last ordered<br>by anyone</th>
-      <th class="bp-r">Qty<br>available</th>
       <th class="bp-r">Days<br>since</th>
     </tr>
   </thead>
@@ -2890,17 +2646,12 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <td class="bp-nw" data-val="<?php echo (int)$s['lastAny']; ?>"<?php
           echo $skuLive ? ' style="color:#1DA032 !important;font-weight:bold;"' : ''; ?>><?php
           echo $s['lastAny'] > 0 ? bp_h(bp_cymdToDate($s['lastAny'])) : 'never'; ?></td>
-<?php   $sAv = bp_avail($s['item'], $bpAvail); ?>
-      <td class="bp-r" data-val="<?php echo $sAv === null ? '' : $sAv; ?>"<?php
-          echo ($sAv !== null && $sAv <= 0)
-             ? ' style="color:#CC1F20 !important;font-weight:bold;"' : ''; ?>><?php
-          echo $sAv === null ? '&mdash;' : bp_h(bp_availFmt($sAv)); ?></td>
       <td class="bp-r" data-val="<?php echo $s['daysAny'] === null ? -1 : (int)$s['daysAny']; ?>"><?php
           echo bp_h(bp_daysLabel($s['daysAny'])); ?></td>
     </tr>
 <?php endforeach; ?>
 <?php if (empty($skuList)): ?>
-    <tr><td colspan="10" style="text-align:center;padding:20px;">No stopped repeat items found.</td></tr>
+    <tr><td colspan="9" style="text-align:center;padding:20px;">No stopped repeat items found.</td></tr>
 <?php endif; ?>
   </tbody>
 </table>
@@ -3227,7 +2978,6 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <?php elseif ($view === 'cust'): ?>
 
 <!-- ===================== LEVEL 3 - customer list ===================== -->
-<?php bp_itemBar($fItem, $bpBarDesc, $bpBarAvail); ?>
 <div class="bp-sec">Level 3 &middot; <?php echo bp_int(count($listRows)); ?>
   customer<?php echo count($listRows) === 1 ? '' : 's'; ?>
   <span>Click a ship-to for every product it buys &middot; any header sorts</span></div>
@@ -3303,9 +3053,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       No customers match this selection.</td></tr>
 <?php endif; ?>
 <?php foreach ($listRows as $c):
-      // 'item' is carried through so Level 4 knows which item you drilled on.
-      // bp_url() drops empty values, so this is a no-op when no item is in play.
-      $dUrl = bp_url(array('view'=>'detail','shipto'=>$c['shipto'],'item'=>$fItem));
+      $dUrl = bp_url(array('view'=>'detail','shipto'=>$c['shipto']));
       // Last order not in the current year - the row gets flagged
       $loYear = $c['lastOrd'] > 0 ? 1900 + intval($c['lastOrd'] / 10000) : 0;
       $stale  = ($loYear !== $curY); ?>
@@ -3620,10 +3368,9 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <div style="font-size:12px;color:#6B7280;padding:4px 2px;">No contact logged for this customer yet.</div>
 <?php endif; ?>
 
-<?php bp_itemBar($fItem, $bpBarDesc, $bpBarAvail); ?>
 <div class="bp-sec">Sales by year, and the <?php echo $tgtQLbl; ?> pattern</div>
 <div style="overflow-x:auto;">
-<table class="bp-grid bp-grid-fit">
+<table class="bp-grid">
   <thead>
     <tr><th>Year</th><th class="bp-r">Total sales</th>
         <th class="bp-r"><?php echo $tgtQLbl; ?> sales</th>
@@ -3725,7 +3472,6 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 <?php elseif ($view === 'lines' && $sub !== null): ?>
 
 <!-- ===================== LEVEL 5 - the raw order lines ===================== -->
-<?php bp_itemBar($fItem, $bpBarDesc, $bpBarAvail); ?>
 <div class="bp-sec">Level 5 &middot; Order lines behind the money
   <span><?php echo bp_h($sub['shipto'] . ' ' . $sub['name']); ?><?php
     echo $fItem !== '' ? ' &middot; item ' . bp_h($fItem) : ''; ?> &middot;
@@ -3740,7 +3486,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
   price or the factor is zero.
 </div>
 <div style="overflow-x:auto;">
-<table class="bp-grid bp-grid-fit" id="bp-linegrid">
+<table class="bp-grid" id="bp-linegrid">
   <thead>
     <tr>
       <th>Order #</th><th class="bp-r">Line</th><th class="bp-nw">Order date</th><th>Ty</th>
@@ -3771,8 +3517,8 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
           echo $pg !== '' ? bp_h(bp_pgrpLabel($pg, $pgrpDesc)) : '<span style="color:#9CA3AF;">&mdash;</span>'; ?></td>
       <td class="bp-r"><?php echo bp_qty($r['QORD']); ?></td>
       <td class="bp-r"><?php echo bp_qty($r['QSHIP']); ?></td>
-      <td class="bp-r">$<?php echo bp_trimNum($r['PRICE'], 5, 2); ?></td>
-      <td class="bp-r"><?php echo bp_trimNum($r['UF'], 4); ?></td>
+      <td class="bp-r">$<?php echo number_format((float)$r['PRICE'], 5); ?></td>
+      <td class="bp-r"><?php echo number_format((float)$r['UF'], 4); ?></td>
       <td class="bp-r"<?php echo $multi ? ' style="background:#FEF3C7;font-weight:bold;"' : ''; ?>>
           <?php echo (int)$r['SHIPROWS']; ?></td>
       <td class="bp-r"><?php echo bp_money($r['AMT'], 2); ?></td>
@@ -3796,12 +3542,7 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
 
 <?php endif; ?>
 
-<!-- Basis note, on every view - ADMINS ONLY (Bill, 2026-09-01).
-     $bpIsAdmin is the active EIP role measured against $BP_ADMIN_ROLES; see the
-     block that sets it for why this is the active role rather than SYROLU
-     membership. Everything inside is methodology, not data, so hiding it costs
-     a non-admin nothing they are entitled to see. -->
-<?php if ($bpIsAdmin): ?>
+<!-- Basis note, on every view -->
 <div class="bp-note">
   <b style="font-size:12px;">How every number here is built</b>
   <ul style="margin:8px 0 0 0;padding-left:20px;">
@@ -3848,7 +3589,6 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
         call.</li>
   </ul>
 </div>
-<?php endif; ?>
 
 </div>
 
