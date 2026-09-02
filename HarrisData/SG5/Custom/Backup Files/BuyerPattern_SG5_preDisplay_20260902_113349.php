@@ -690,31 +690,15 @@ function bp_qtyAvail($conn, $items, &$sqlErr, &$timings) {
 // An item with no HDIWHS and no HDIPLT row has no availability at all, which is
 // a different statement from "zero on hand". null here, a dash on screen, so
 // nobody reads a missing record as an out-of-stock.
-// Returns the whole three-part row - 'avail', 'onorder', 'proj' - or null. It
-// deliberately does NOT collapse to one number. That is the entire point of the
-// 2026-09-01 revision: a single figure could not answer both "can I ship this
-// today" and "do I still need to buy more", and trying to make it answer both
-// is what produced the -24,000 on 14580-0008.
 function bp_avail($item, $map) {
     $item = trim((string)$item);
-    return ($item !== '' && isset($map[$item])) ? $map[$item] : null;
+    return ($item !== '' && isset($map[$item])) ? (float)$map[$item] : null;
 }
 
-// One part of that row as a float, or null when the item had no HDIWHS/HDIPLT
-// record at all. Keeps isset() noise out of the call sites.
-function bp_availPart($row, $key) {
-    return (is_array($row) && isset($row[$key])) ? (float)$row[$key] : null;
-}
-
-// Whole units. Bill, 2026-09-02: no decimals for quantities on either screen -
-// the only exception in the whole pair is Qty Per on the Kits Structure Report,
-// where a fractional per-assembly usage is real and rounding it to a whole
-// number would be wrong. These are stocking quantities, so they read as counts.
-// Matches the Kits report's ksr_qty() and the neighbouring bp_qty(), so an item
-// reads the same everywhere. The data-val attributes keep the raw unrounded
-// value, so sorting is unaffected by the display rounding.
+// Two decimals, matching the Kits Structure Report, so the same item reads the
+// same on both screens.
 function bp_availFmt($v) {
-    return ($v === null) ? '' : number_format((float)$v, 0);
+    return ($v === null) ? '' : number_format((float)$v, 2);
 }
 
 // Trailing-zero trim, for the Level 5 audit columns. DHSLPR carries 5 decimals
@@ -739,26 +723,15 @@ function bp_trimNum($v, $dec, $min = 0) {
 //  you had clicked. This bar carries the item, its description and its Qty
 //  Available down the whole drill path. Deliberately large - it is the answer to
 //  "what am I even looking at", so it has to survive a glance.
-//
-//  Since 2026-09-01 it carries all three availability figures, not one. A buyer
-//  on the drill path is deciding whether to chase the customer OR raise a PO,
-//  and those are different numbers: Qty Available answers the first, Projected
-//  Available the second, and Qty On Order is the bridge that shows why they
-//  differ. Showing only one of the three is what let a buyer double-order.
 
 function bp_itemBar($item, $desc, $avail) {
     $item = trim((string)$item);
     if ($item === '') { return; }
     $lab = 'font-size:11px;font-weight:700;color:#1E3A8A;text-transform:uppercase;'
          . 'letter-spacing:.6px;white-space:nowrap;';
-    $av = bp_availPart($avail, 'avail');
-    $oo = bp_availPart($avail, 'onorder');
-    $pr = bp_availPart($avail, 'proj');
     // Nothing available is the whole point of the call, so it reads in the same
-    // red the Kits report uses for a non-positive balance. On Order is never red
-    // - inbound stock is not a problem, it is the mitigation.
-    $num = 'font-size:22px;font-weight:bold;white-space:nowrap;color:';
-    $sep = '<span style="color:#93C5FD;">|</span>';
+    // red the Kits report uses for a non-positive balance.
+    $qCol = ($avail !== null && $avail <= 0) ? '#CC1F20' : '#111827';
     echo '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;'
        . 'margin:8px 0;padding:10px 16px;background:#EFF6FF;border:1px solid #2563EB;'
        . 'border-left:6px solid #2563EB;border-radius:3px;">'
@@ -771,18 +744,10 @@ function bp_itemBar($item, $desc, $avail) {
        // Everything stays left, reading as one sentence. An earlier cut pushed the
        // quantity out with margin-left:auto and on a wide screen that left a metre
        // of white space between the description and the number it belongs to.
-       . $sep
+       . '<span style="color:#93C5FD;">|</span>'
        . '<span style="' . $lab . '">Qty available</span>'
-       . '<span style="' . $num . (($av !== null && $av <= 0) ? '#CC1F20' : '#111827') . ';">'
-       . ($av === null ? '&mdash;' : bp_h(bp_availFmt($av))) . '</span>'
-       . $sep
-       . '<span style="' . $lab . '">Qty on order</span>'
-       . '<span style="' . $num . '#111827;">'
-       . ($oo === null ? '&mdash;' : bp_h(bp_availFmt($oo))) . '</span>'
-       . $sep
-       . '<span style="' . $lab . '">Projected available</span>'
-       . '<span style="' . $num . (($pr !== null && $pr <= 0) ? '#CC1F20' : '#111827') . ';">'
-       . ($pr === null ? '&mdash;' : bp_h(bp_availFmt($pr))) . '</span>'
+       . '<span style="font-size:22px;font-weight:bold;white-space:nowrap;color:' . $qCol . ';">'
+       . ($avail === null ? '&mdash;' : bp_h(bp_availFmt($avail))) . '</span>'
        . '</div>';
 }
 
@@ -2206,17 +2171,13 @@ if (isset($_GET['export'])) {
                             'Annual $ Stopped', 'Annual Qty',
                             $hy[0] . '-' . $hy[2] . ' Revenue All Customers',
                             'Last Ordered By Anyone', 'Qty Available',
-                            'Qty On Order', 'Projected Available',
                             'Days Since Anyone Ordered'));
         foreach ($skuList as $s) {
             $xpg = $s['pgrp'];
             // Kept in step with the grid on purpose. A column that exists in one
             // and not the other is exactly the trap the Kits Structure Report hit
             // with Ext Qty - the export carried a column the screen never showed.
-            $xRow = bp_avail($s['item'], $bpAvail);
-            $xAv  = bp_availPart($xRow, 'avail');
-            $xOo  = bp_availPart($xRow, 'onorder');
-            $xPr  = bp_availPart($xRow, 'proj');
+            $xAv = bp_avail($s['item'], $bpAvail);
             fputcsv($out, array($s['item'], $s['desc'],
                                 $xpg, (isset($pgrpDesc[$xpg]) ? $pgrpDesc[$xpg] : ''),
                                 $s['custs'], $s['anyCusts'],
@@ -2225,8 +2186,6 @@ if (isset($_GET['export'])) {
                                 number_format($s['hist'], 2, '.', ''),
                                 bp_cymdIso($s['lastAny']),
                                 ($xAv === null ? '' : number_format($xAv, 2, '.', '')),
-                                ($xOo === null ? '' : number_format($xOo, 2, '.', '')),
-                                ($xPr === null ? '' : number_format($xPr, 2, '.', '')),
                                 ($s['daysAny'] === null ? '' : (int)$s['daysAny'])));
         }
         fclose($out);
@@ -2909,8 +2868,6 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <th class="bp-r"><?php echo $hy[0]; ?>-<?php echo $hy[2]; ?><br>revenue</th>
       <th class="bp-nw">Last ordered<br>by anyone</th>
       <th class="bp-r">Qty<br>available</th>
-      <th class="bp-r">Qty on<br>order</th>
-      <th class="bp-r">Projected<br>available</th>
       <th class="bp-r">Days<br>since</th>
     </tr>
   </thead>
@@ -2933,28 +2890,17 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <td class="bp-nw" data-val="<?php echo (int)$s['lastAny']; ?>"<?php
           echo $skuLive ? ' style="color:#1DA032 !important;font-weight:bold;"' : ''; ?>><?php
           echo $s['lastAny'] > 0 ? bp_h(bp_cymdToDate($s['lastAny'])) : 'never'; ?></td>
-<?php   // Inbound supply (Qty on order) is never red - it is the reason a
-        // negative Qty Available may not need a purchase order at all.
-        $sRow = bp_avail($s['item'], $bpAvail);
-        $sAv  = bp_availPart($sRow, 'avail');
-        $sOo  = bp_availPart($sRow, 'onorder');
-        $sPr  = bp_availPart($sRow, 'proj'); ?>
+<?php   $sAv = bp_avail($s['item'], $bpAvail); ?>
       <td class="bp-r" data-val="<?php echo $sAv === null ? '' : $sAv; ?>"<?php
           echo ($sAv !== null && $sAv <= 0)
              ? ' style="color:#CC1F20 !important;font-weight:bold;"' : ''; ?>><?php
           echo $sAv === null ? '&mdash;' : bp_h(bp_availFmt($sAv)); ?></td>
-      <td class="bp-r" data-val="<?php echo $sOo === null ? '' : $sOo; ?>"><?php
-          echo $sOo === null ? '&mdash;' : bp_h(bp_availFmt($sOo)); ?></td>
-      <td class="bp-r" data-val="<?php echo $sPr === null ? '' : $sPr; ?>"<?php
-          echo ($sPr !== null && $sPr <= 0)
-             ? ' style="color:#CC1F20 !important;font-weight:bold;"' : ''; ?>><?php
-          echo $sPr === null ? '&mdash;' : bp_h(bp_availFmt($sPr)); ?></td>
       <td class="bp-r" data-val="<?php echo $s['daysAny'] === null ? -1 : (int)$s['daysAny']; ?>"><?php
           echo bp_h(bp_daysLabel($s['daysAny'])); ?></td>
     </tr>
 <?php endforeach; ?>
 <?php if (empty($skuList)): ?>
-    <tr><td colspan="12" style="text-align:center;padding:20px;">No stopped repeat items found.</td></tr>
+    <tr><td colspan="10" style="text-align:center;padding:20px;">No stopped repeat items found.</td></tr>
 <?php endif; ?>
   </tbody>
 </table>

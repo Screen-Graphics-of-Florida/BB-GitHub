@@ -51,6 +51,22 @@ $page_title = 'Kits Structure Report';
 //  HDIPLT  23,412 rows   PK IPPLT, IPITEM
 //      IPQMFG  DECIMAL(13,4) YTD Quantity Manufactured
 //      IPCMTO  DECIMAL(13,4) Quantity Committed To Manufacturing
+//      IPQMRL  DECIMAL(13,4) Mfg Order Quantity Released/Scheduled
+//
+//  Availability, revised 2026-09-01 and held identical to BuyerPattern.php so
+//  the two screens never disagree about the same item. The full rationale lives
+//  in BuyerPattern.php under "-- Qty Available"; the short version:
+//
+//      Qty Available       = OHQTY - (CMTMO + RESQ)
+//      Qty On Order        = QOO + QMRL
+//      Projected Available = OHQTY + (QOO + QMRL) - (CMTMO + RESQ)
+//
+//  QOO used to be subtracted alongside CMTMO and RESQ. That was wrong: on-order
+//  stock was never in IWOHQT, so deducting it charged the item for inventory
+//  that had neither arrived nor been counted. It is not simply dropped either -
+//  hiding inbound supply invites a buyer to re-order what is already on its way,
+//  so it gets its own column and the three always reconcile:
+//      Qty Available + Qty On Order = Projected Available
 //
 //  HDPCLS  93 rows       PK PCPCLS
 //      PCPCLS  CHAR(4)       Product Class
@@ -102,8 +118,16 @@ function ksr_q($s) {
     return str_replace("'", "''", (string)$s);
 }
 
+// Whole units. Bill, 2026-09-02: no decimals for quantities on this screen or on
+// BuyerPattern. Covers Qty Available, Qty On Order, Projected Available, Qty On
+// Hand, Sold YTD, Issued YTD, Mfg YTD and Cmtd To MO - all stocking counts.
+//
+// The ONE exception is Qty Per, which is deliberately NOT routed through here:
+// it prints number_format($r['QTY_PER'], 5) inline because a fractional
+// per-assembly usage is real and rounding it to a whole number would be wrong.
+// If you ever "tidy" Qty Per to use ksr_qty(), you have broken the BOM.
 function ksr_qty($v) {
-    return number_format((float)$v, 2);
+    return number_format((float)$v, 0);
 }
 
 // Shop floor types 94-*; DB2 LIKE wants 94-%.
@@ -231,9 +255,9 @@ WH (ITM, OHQTY, QOO, RESQ, SOLDYTD, ISSYTD) AS (
       FROM SGHDSDATA.HDIWHS
      GROUP BY RTRIM(IWITEM)
 ),
-PL (ITM, MFGYTD, CMTMO) AS (
+PL (ITM, MFGYTD, CMTMO, QMRL) AS (
     SELECT RTRIM(IPITEM),
-           SUM(IPQMFG), SUM(IPCMTO)
+           SUM(IPQMFG), SUM(IPCMTO), SUM(IPQMRL)
       FROM SGHDSDATA.HDIPLT
      GROUP BY RTRIM(IPITEM)
 )
@@ -258,7 +282,12 @@ SELECT r.LVL                    AS LVL,
        COALESCE(WH.ISSYTD,    0) AS ISSYTD,
        COALESCE(PL.MFGYTD,    0) AS MFGYTD,
        COALESCE(PL.CMTMO,     0) AS CMTMO,
-       (COALESCE(WH.OHQTY, 0) - (COALESCE(PL.CMTMO, 0) + COALESCE(WH.QOO, 0) + COALESCE(WH.RESQ, 0))) AS QTY_AVAILABLE
+       COALESCE(PL.QMRL,      0) AS QMRL,
+       (COALESCE(WH.OHQTY, 0)
+         - (COALESCE(PL.CMTMO, 0) + COALESCE(WH.RESQ, 0)))            AS QTY_AVAILABLE,
+       (COALESCE(WH.QOO, 0) + COALESCE(PL.QMRL, 0))                   AS QTY_ON_ORDER,
+       (COALESCE(WH.OHQTY, 0) + COALESCE(WH.QOO, 0) + COALESCE(PL.QMRL, 0)
+         - (COALESCE(PL.CMTMO, 0) + COALESCE(WH.RESQ, 0)))            AS PROJ_AVAILABLE
   FROM BOM r
   LEFT JOIN SGHDSDATA.HDIMST tp ON RTRIM(tp.IMITEM) = r.TOP_ITEM
   LEFT JOIN SGHDSDATA.HDIMST ci ON RTRIM(ci.IMITEM) = r.CHILD_ITEM
@@ -297,7 +326,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         'Parent Item', 'Seq',
      // 'Status',                                    // hidden - see "Hidden columns"
         'Child Item', 'Child Description', 'Child Class',
-        'Qty Per', 'Qty Available',
+        'Qty Per', 'Qty Available', 'Qty On Order', 'Projected Available',
      // 'Ext Qty Per Kit',                           // hidden - see "Hidden columns"
      // 'BOM Path',                                  // hidden - see "Hidden columns"
         'Qty On Hand', 'Qty Sold YTD', 'Qty Issued YTD',
@@ -317,7 +346,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             rtrim((string)$r['CHILD_DESC']),
             rtrim((string)$r['CHILD_CLASS']),
             number_format((float)$r['QTY_PER'], 5, '.', ''),
-            number_format((float)$r['QTY_AVAILABLE'], 4, '.', ''),
+            number_format((float)$r['QTY_AVAILABLE'],  4, '.', ''),
+            number_format((float)$r['QTY_ON_ORDER'],   4, '.', ''),
+            number_format((float)$r['PROJ_AVAILABLE'], 4, '.', ''),
          // number_format((float)$r['EXT_QTY'], 5, '.', ''),   // hidden - see "Hidden columns"
          // rtrim((string)$r['BOM_PATH']),           // hidden - see "Hidden columns"
             number_format((float)$r['OHQTY'],     4, '.', ''),
@@ -352,7 +383,8 @@ $clearURL = '?' . http_build_query($preserveParams);
 // Grid column count for the empty-state colspan. Only Parent Item is
 // all-levels-only now; Kit flag and Ext Qty/Kit are hidden (see "Hidden
 // columns" at the top of this file) and must NOT be counted here.
-$nCols = ($fLevels === 'all') ? 16 : 15;
+// +2 on 2026-09-02: Qty On Order and Projected Available joined Qty Available.
+$nCols = ($fLevels === 'all') ? 18 : 17;
 
 print "\n<html><head>";
 require_once ($headInclude);
@@ -500,6 +532,8 @@ td.content { width:calc(100vw - 155px) !important; max-width:none !important; bo
       <th class="colhdr">Child Class</th>
       <th class="colhdr">Qty Per</th>
       <th class="colhdr">Qty Available</th>
+      <th class="colhdr">Qty On Order</th>
+      <th class="colhdr">Projected Available</th>
       <?php
       /* Hidden - see "Hidden columns" at the top of this file.
          <th class="colhdr">Ext Qty/Kit</th>       (was gated on $fLevels === 'all')
@@ -527,6 +561,8 @@ foreach ($rows as $r):
     $prevTop  = $top;
     $oh       = (float)$r['OHQTY'];
     $qtyAvail = (float)$r['QTY_AVAILABLE'];
+    $qtyOnOrd = (float)$r['QTY_ON_ORDER'];
+    $qtyProj  = (float)$r['PROJ_AVAILABLE'];
     $kitFlag  = rtrim((string)$r['TOP_KIT']);
 ?>
     <tr class="<?php echo $newKit ? 'ksr-newkit' : ''; ?>">
@@ -558,6 +594,9 @@ foreach ($rows as $r):
       */
       ?>
       <td class="colcode<?php echo $qtyAvail <= 0 ? ' ksr-zero' : ''; ?>" align="right"><?php echo ksr_qty($qtyAvail); ?></td>
+      <?php /* Inbound supply is never flagged - it is the mitigation, not the problem. */ ?>
+      <td class="colcode" align="right"><?php echo ksr_qty($qtyOnOrd); ?></td>
+      <td class="colcode<?php echo $qtyProj <= 0 ? ' ksr-zero' : ''; ?>" align="right"><?php echo ksr_qty($qtyProj); ?></td>
       <td class="colcode<?php echo $oh <= 0 ? ' ksr-zero' : ''; ?>" align="right"><?php echo ksr_qty($oh); ?></td>
       <td class="colcode" align="right"><?php echo ksr_qty($r['SOLDYTD']); ?></td>
       <td class="colcode" align="right"><?php echo ksr_qty($r['ISSYTD']); ?></td>

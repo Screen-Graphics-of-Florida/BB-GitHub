@@ -706,15 +706,10 @@ function bp_availPart($row, $key) {
     return (is_array($row) && isset($row[$key])) ? (float)$row[$key] : null;
 }
 
-// Whole units. Bill, 2026-09-02: no decimals for quantities on either screen -
-// the only exception in the whole pair is Qty Per on the Kits Structure Report,
-// where a fractional per-assembly usage is real and rounding it to a whole
-// number would be wrong. These are stocking quantities, so they read as counts.
-// Matches the Kits report's ksr_qty() and the neighbouring bp_qty(), so an item
-// reads the same everywhere. The data-val attributes keep the raw unrounded
-// value, so sorting is unaffected by the display rounding.
+// Two decimals, matching the Kits Structure Report, so the same item reads the
+// same on both screens.
 function bp_availFmt($v) {
-    return ($v === null) ? '' : number_format((float)$v, 0);
+    return ($v === null) ? '' : number_format((float)$v, 2);
 }
 
 // Trailing-zero trim, for the Level 5 audit columns. DHSLPR carries 5 decimals

@@ -118,16 +118,8 @@ function ksr_q($s) {
     return str_replace("'", "''", (string)$s);
 }
 
-// Whole units. Bill, 2026-09-02: no decimals for quantities on this screen or on
-// BuyerPattern. Covers Qty Available, Qty On Order, Projected Available, Qty On
-// Hand, Sold YTD, Issued YTD, Mfg YTD and Cmtd To MO - all stocking counts.
-//
-// The ONE exception is Qty Per, which is deliberately NOT routed through here:
-// it prints number_format($r['QTY_PER'], 5) inline because a fractional
-// per-assembly usage is real and rounding it to a whole number would be wrong.
-// If you ever "tidy" Qty Per to use ksr_qty(), you have broken the BOM.
 function ksr_qty($v) {
-    return number_format((float)$v, 0);
+    return number_format((float)$v, 2);
 }
 
 // Shop floor types 94-*; DB2 LIKE wants 94-%.
